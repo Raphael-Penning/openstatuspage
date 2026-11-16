@@ -191,10 +191,12 @@ export async function loadPublicCatalog(db: DB, settings: PublicPageSettings, no
     })
     .filter((g) => g.services.length > 0);
 
+  const ungrouped = services.filter((s) => s.groupId === null);
   return {
-    services,
+    // Display order: grouped services in group order, then ungrouped ones.
+    services: [...groups.flatMap((g) => g.services), ...ungrouped],
     groups,
-    ungrouped: services.filter((s) => s.groupId === null),
+    ungrouped,
     counts: countStatuses(services.map((s) => s.status)),
     groupNames: new Map(groupRows.map((g) => [g.id, g.name])),
   };

@@ -291,8 +291,12 @@ describe('status.json and feeds', () => {
   it('returns compact status', async () => {
     const res = (await get('/api/public/status.json')).json();
     expect(res.overall).toBe('major_outage');
-    expect(res.services).toContainEqual({ id: ids.api, name: 'Public API', group: 'Platform', status: 'major_outage' });
-    expect(res.services).toContainEqual({ id: ids.inHiddenGroup, name: 'Billing', group: null, status: 'operational' });
+    // Display order: grouped services first, then ungrouped ones.
+    expect(res.services).toEqual([
+      { id: ids.api, name: 'Public API', group: 'Platform', status: 'major_outage' },
+      { id: ids.inHiddenGroup, name: 'Billing', group: null, status: 'operational' },
+      { id: ids.web, name: 'Website', group: null, status: 'degraded' },
+    ]);
     expect(res.activeIncidents).toEqual([{ id: ids.incident, title: 'Database outage', status: 'investigating', impact: 'minor' }]);
     expect(res.activeMaintenances).toEqual([]);
   });
