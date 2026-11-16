@@ -71,7 +71,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/locations/reorder` | `ReorderInput` | 204 | admin |
 | GET | `/api/admin/service-groups` | – | `AdminServiceGroup[]` | editor |
 | POST | `/api/admin/service-groups` | `ServiceGroupInput` | `AdminServiceGroup` (201) | admin |
-| PUT/DELETE | `/api/admin/service-groups/:id` | `ServiceGroupInput` | `AdminServiceGroup` | admin |
+| GET/PUT/DELETE | `/api/admin/service-groups/:id` | `ServiceGroupInput` | `AdminServiceGroup` | GET editor, else admin |
 | POST | `/api/admin/service-groups/reorder` | `ReorderInput` | 204 | admin |
 | GET | `/api/admin/services` | – | `AdminService[]` | editor |
 | POST | `/api/admin/services` | `ServiceInput` | `AdminService` (201) | admin |
@@ -98,7 +98,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | DELETE | `/api/admin/checks/:id` | – | 204 | admin |
 | GET | `/api/admin/users` | – | `AdminUser[]` | admin |
 | POST | `/api/admin/users` | `UserCreateInput` | `AdminUser` (201) | admin |
-| PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
+| GET/PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
 | GET | `/api/admin/api-tokens` | – | `AdminApiToken[]` | admin |
 | POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201) | admin |
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
@@ -114,6 +114,28 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
   posting a non-resolved status on a resolved incident re-opens it (`resolved_at = null`).
 - Maintenance update `in_progress` sets `actual_start` (if empty), `completed`/`cancelled`
   sets `actual_end`.
+
+### Behaviour details
+
+- `POST .../incidents/:id/updates` and `POST .../maintenances/:id/updates` return `200`
+  with the full object; `DELETE .../incidents/:id/updates/:updateId` returns `204`
+  (an incident keeps at least one update, deleting the last one is `409`).
+- `PATCH /api/admin/incidents/:id` accepts `resolvedAt` only for resolved incidents
+  (to correct the time); resolving and re-opening is done by posting an update.
+- Creating a maintenance adds a first `scheduled` update with an empty message
+  (clients render a localized default text). Windows that are already due are
+  started/completed right away instead of on the next worker tick.
+- `PUT` bodies are complete objects (schema defaults apply to omitted fields);
+  an omitted `slug` keeps the current slug. An explicit slug that is taken is `409`.
+- `PUT /api/admin/users/:id` with `password: null` removes the local password
+  (not allowed for yourself). Changing a password signs that user out everywhere.
+- Mutations through API tokens are audited with `userId = null` and
+  `details.apiToken = <token name>`; logins are audited as `auth.login`.
+- API tokens are prefixed with `osp_`.
+- `/api/public/history?locationId=` matches items linked to the location directly
+  or affecting a service running there. Filters referencing non-public entities
+  return an empty page.
+- Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
 
 ## Ingest API (`/api/ingest`)
 
