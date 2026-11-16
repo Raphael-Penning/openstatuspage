@@ -31,9 +31,8 @@ export default function ServiceEditPage() {
   const service = useService(id);
   const services = useServices();
   if (!id) {
-    // New services are appended at the end of the ungrouped list.
     if (!services.data) return <QueryState query={services}>{() => null}</QueryState>;
-    return <ServiceBuilder key="new" initialSortOrder={nextSortOrder(services.data.filter((s) => !s.groupId))} />;
+    return <ServiceBuilder key="new" siblings={services.data} />;
   }
   if (service.data) return <ServiceBuilder key={service.data.id} service={service.data} />;
   return (
@@ -100,7 +99,7 @@ function RadioCard<T extends string>({
   );
 }
 
-function ServiceBuilder({ service, initialSortOrder = 0 }: { service?: AdminService; initialSortOrder?: number }) {
+function ServiceBuilder({ service, siblings = [] }: { service?: AdminService; siblings?: AdminService[] }) {
   const { t } = useTranslation('admin');
   const isAdmin = useIsAdmin();
   const readOnly = !isAdmin;
@@ -108,7 +107,7 @@ function ServiceBuilder({ service, initialSortOrder = 0 }: { service?: AdminServ
   const confirm = useConfirm();
   const opts = useOptions();
   const groups = useGroups();
-  const form = useForm<ServiceFormValues>(() => (service ? serviceToForm(service) : emptyServiceForm(initialSortOrder)));
+  const form = useForm<ServiceFormValues>(() => (service ? serviceToForm(service) : emptyServiceForm()));
   const v = form.values;
   const [touchedSlug, setTouchedSlug] = useState(Boolean(service));
 
@@ -132,7 +131,9 @@ function ServiceBuilder({ service, initialSortOrder = 0 }: { service?: AdminServ
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (readOnly) return;
-    const body = form.validate(ServiceInput, serviceFormToPayload({ ...v, slug: touchedSlug ? v.slug : '' }));
+    // New services are appended at the end of their group.
+    const sortOrder = service ? v.sortOrder : nextSortOrder(siblings.filter((s) => (s.groupId ?? '') === v.groupId));
+    const body = form.validate(ServiceInput, serviceFormToPayload({ ...v, sortOrder, slug: touchedSlug ? v.slug : '' }));
     if (body) save.mutate(body);
   };
 
