@@ -26,7 +26,7 @@ const SECRETS = [
   'web-07.internal.example.com',
   'PRIVATE_CHECK_NAME',
   'disk!/var/lib/postgresql',
-  'CRITICAL - connection refused on 10.0.0.12',
+  'CRITICAL - connection refused on 192.0.2.12',
   'Internal monitoring',
   'Hidden backend',
   'Hidden group',
@@ -46,7 +46,7 @@ beforeEach(async () => {
   ]);
   await t.db
     .updateTable('monitor_checks')
-    .set({ output: 'CRITICAL - connection refused on 10.0.0.12' })
+    .set({ output: 'CRITICAL - connection refused on 192.0.2.12' })
     .execute();
 
   const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json().id;
