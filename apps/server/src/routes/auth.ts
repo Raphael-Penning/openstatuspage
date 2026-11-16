@@ -1,0 +1,172 @@
+/**
+ * /api/auth: local login, logout, session info, password change and OIDC.
+ */
+import { ChangePasswordInput, LoginInput, type AuthConfig, type SessionInfo } from '@openstatuspage/shared';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { assertCsrf, requireSession, sessionCookieOptions } from '../plugins/auth.js';
+import { badRequest, forbidden, HttpError, notFound, unauthorized } from '../lib/errors.js';
+import { parse } from '../lib/http.js';
+import { hashPassword, verifyPassword } from '../lib/password.js';
+import { nowIso } from '../lib/time.js';
+import { audit } from '../services/audit.js';
+import {
+  OIDC_STATE_COOKIE,
+  OIDC_STATE_TTL_SECONDS,
+  OidcClient,
+  parseLoginState,
+  resolveOidcUser,
+} from '../services/oidc.js';
+import { createSession, deleteSession, deleteUserSessions, SESSION_COOKIE, sessionTtlMs } from '../services/sessions.js';
+import { toAdminUser } from '../services/users.js';
+
+const OIDC_COOKIE_PATH = '/api/auth/oidc';
+
+/** Hash used to keep the login timing similar when the user does not exist. */
+let dummyHash: Promise<string> | null = null;
+function getDummyHash(): Promise<string> {
+  dummyHash ??= hashPassword('openstatuspage-dummy-password-for-timing');
+  return dummyHash;
+}
+
+export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
+  const { ctx } = app;
+  const { config, db } = ctx;
+  const oidc = config.oidcEnabled ? new OidcClient(config) : null;
+
+  async function startSession(req: FastifyRequest, reply: FastifyReply, userId: string): Promise<void> {
+    const session = await createSession(ctx, userId, { ip: req.ip, userAgent: req.headers['user-agent'] ?? null });
+    reply.setCookie(SESSION_COOKIE, session.token, sessionCookieOptions(config, Math.floor(sessionTtlMs(ctx) / 1000)));
+  }
+
+  async function sessionInfo(userId: string): Promise<SessionInfo> {
+    const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirst();
+    if (!user) throw unauthorized();
+    return { user: toAdminUser(user), oidcEnabled: config.oidcEnabled };
+  }
+
+  app.get('/api/auth/config', async (): Promise<AuthConfig> => ({
+    oidcEnabled: config.oidcEnabled,
+    oidcLabel: config.OIDC_LABEL,
+    localLoginEnabled: config.LOCAL_LOGIN_ENABLED,
+  }));
+
+  app.post(
+    '/api/auth/login',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req, reply): Promise<SessionInfo> => {
+      if (!config.LOCAL_LOGIN_ENABLED) throw forbidden('Local login is disabled');
+      const body = parse(LoginInput, req.body);
+      const user = await db
+        .selectFrom('users')
+        .selectAll()
+        .where('email', '=', body.email.trim().toLowerCase())
+        .executeTakeFirst();
+      // Always verify a hash so response times do not reveal whether the account exists.
+      const valid = await verifyPassword(user?.password_hash ?? (await getDummyHash()), body.password);
+      if (!user || !user.password_hash || !valid) {
+        throw new HttpError(401, 'invalid_credentials', 'Invalid e-mail or password');
+      }
+      await startSession(req, reply, user.id);
+      await audit(db, { userId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, details: { method: 'password' } });
+      return sessionInfo(user.id);
+    },
+  );
+
+  app.post('/api/auth/logout', async (req, reply) => {
+    assertCsrf(req);
+    const token = req.cookies[SESSION_COOKIE];
+    if (token) await deleteSession(db, token);
+    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    return reply.status(204).send();
+  });
+
+  app.get('/api/auth/session', async (req): Promise<SessionInfo> => {
+    if (!req.authUser || req.authUser.via !== 'session') throw unauthorized();
+    return sessionInfo(req.authUser.id);
+  });
+
+  app.post('/api/auth/password', { preHandler: requireSession() }, async (req, reply) => {
+    const body = parse(ChangePasswordInput, req.body);
+    const userId = req.authUser!.id;
+    const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirstOrThrow();
+    if (!user.password_hash) throw badRequest('This account has no local password');
+    if (!(await verifyPassword(user.password_hash, body.currentPassword))) {
+      throw new HttpError(400, 'invalid_password', 'Current password is incorrect');
+    }
+    await db
+      .updateTable('users')
+      .set({ password_hash: await hashPassword(body.newPassword), updated_at: nowIso() })
+      .where('id', '=', userId)
+      .execute();
+    // Sign out every other session of this user.
+    await deleteUserSessions(db, userId, req.cookies[SESSION_COOKIE]);
+    await audit(db, { userId, action: 'user.password_change', entityType: 'user', entityId: userId });
+    return reply.status(204).send();
+  });
+
+  // --- OIDC -------------------------------------------------------------------
+
+  app.get(
+    '/api/auth/oidc/login',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      if (!oidc) throw notFound('OIDC login');
+      try {
+        const { url, state } = await oidc.startLogin();
+        reply.setCookie(OIDC_STATE_COOKIE, JSON.stringify(state), {
+          path: OIDC_COOKIE_PATH,
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: config.BASE_URL.startsWith('https://'),
+          signed: true,
+          maxAge: OIDC_STATE_TTL_SECONDS,
+        });
+        return reply.redirect(url, 302);
+      } catch (err) {
+        req.log.error({ err }, 'OIDC login could not be started');
+        return reply.redirect('/admin/login?error=oidc_unavailable', 302);
+      }
+    },
+  );
+
+  app.get(
+    '/api/auth/oidc/callback',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      if (!oidc) throw notFound('OIDC login');
+      const fail = (code: string) => reply.redirect(`/admin/login?error=${encodeURIComponent(code)}`, 302);
+
+      const raw = req.cookies[OIDC_STATE_COOKIE];
+      reply.clearCookie(OIDC_STATE_COOKIE, { path: OIDC_COOKIE_PATH });
+      const unsigned = raw ? req.unsignCookie(raw) : null;
+      const state = unsigned?.valid ? parseLoginState(unsigned.value) : null;
+      if (!state) return fail('invalid_state');
+
+      const query = req.query as Record<string, unknown>;
+      if (typeof query.error === 'string') return fail('idp_error');
+
+      let claims;
+      try {
+        claims = await oidc.finishLogin(new URL(req.url, config.BASE_URL), state);
+      } catch (err) {
+        req.log.warn({ err }, 'OIDC callback failed');
+        return fail('oidc_failed');
+      }
+
+      const result = await resolveOidcUser(db, config, claims);
+      if (!result.ok) {
+        req.log.info({ reason: result.error }, 'OIDC login rejected');
+        return fail(result.error);
+      }
+      await startSession(req, reply, result.user.id);
+      await audit(db, {
+        userId: result.user.id,
+        action: result.created ? 'user.create' : 'auth.login',
+        entityType: 'user',
+        entityId: result.user.id,
+        details: { method: 'oidc' },
+      });
+      return reply.redirect('/admin', 302);
+    },
+  );
+}

@@ -4,6 +4,7 @@ import { loadConfig } from './config.js';
 import { createDb, migrateToLatest } from './db/index.js';
 import { syncPollers } from './adapters/poller.js';
 import { runMaintenanceTransitions } from './services/maintenance-scheduler.js';
+import { registerSessionCleanup } from './services/sessions.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
     ctx.worker.schedule('maintenance-transitions', 30_000, async () => {
       await runMaintenanceTransitions(db, ctx.engine);
     });
+    registerSessionCleanup(ctx);
     await syncPollers(ctx);
     ctx.worker.start();
   }
