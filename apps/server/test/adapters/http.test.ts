@@ -34,6 +34,11 @@ beforeAll(async () => {
       setTimeout(() => res.end('late'), 2000).unref();
       return;
     }
+    if (req.url === '/partial') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.write('first chunk');
+      return;
+    }
     if (req.url === '/empty') {
       res.writeHead(204);
       res.end();
@@ -87,6 +92,10 @@ describe('insecureFetch', () => {
 
   it('honours abort signals', async () => {
     await expect(insecureFetch(`${BASE}/slow`, { signal: AbortSignal.timeout(50) })).rejects.toThrow();
+  });
+
+  it('rejects when aborted in the middle of the body', async () => {
+    await expect(insecureFetch(`${BASE}/partial`, { signal: AbortSignal.timeout(100) })).rejects.toThrow();
   });
 });
 

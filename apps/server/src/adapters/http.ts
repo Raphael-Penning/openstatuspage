@@ -90,17 +90,25 @@ export function insecureFetch(input: string | URL | Request, init: RequestInit =
     req.on('response', (res) => {
       const chunks: Buffer[] = [];
       let size = 0;
+      let failure: Error | null = null;
       res.on('data', (chunk: Buffer) => {
         size += chunk.length;
         if (size > MAX_RESPONSE_BYTES) {
-          req.destroy(new Error('Response body too large'));
+          failure = new Error('Response body too large');
+          req.destroy(failure);
           return;
         }
         chunks.push(chunk);
       });
       res.on('error', (err) => {
         cleanup();
-        reject(err);
+        reject(failure ?? err);
+      });
+      // Safety net: aborted mid-body without an 'error' event (no-op once resolved).
+      res.on('close', () => {
+        if (res.complete) return;
+        cleanup();
+        reject(failure ?? (signal?.aborted ? signal.reason : new Error('Connection closed before the response was complete')));
       });
       res.on('end', () => {
         cleanup();
