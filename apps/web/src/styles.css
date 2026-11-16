@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+
+/* Theme switching via <html data-theme="dark|light"> (see lib/theme.tsx). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * Design tokens. Components use the Tailwind utilities generated from
+ * @theme below (bg-bg, bg-surface, text-fg, text-muted, border-border,
+ * text-accent, bg-status-operational, ...), never raw hex values, so both
+ * themes and the configurable accent color work everywhere.
+ */
+:root {
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-2: #f1f1f3;
+  --border: #e4e4e7;
+  --fg: #18181b;
+  --muted: #6b6b76;
+  --accent: #7c6cf2;
+  --accent-fg: #ffffff;
+
+  --status-operational: #16a34a;
+  --status-maintenance: #2563eb;
+  --status-degraded: #ca8a04;
+  --status-partial-outage: #ea580c;
+  --status-major-outage: #dc2626;
+  --status-nodata: #d4d4d8;
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: #161618;
+  --surface: #1e1e21;
+  --surface-2: #26262a;
+  --border: #2e2e33;
+  --fg: #f4f4f5;
+  --muted: #a1a1aa;
+
+  --status-operational: #4ade80;
+  --status-maintenance: #60a5fa;
+  --status-degraded: #facc15;
+  --status-partial-outage: #fb923c;
+  --status-major-outage: #f87171;
+  --status-nodata: #3f3f46;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+
+  --color-status-operational: var(--status-operational);
+  --color-status-maintenance: var(--status-maintenance);
+  --color-status-degraded: var(--status-degraded);
+  --color-status-partial-outage: var(--status-partial-outage);
+  --color-status-major-outage: var(--status-major-outage);
+  --color-status-nodata: var(--status-nodata);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Rendered markdown-ish update texts keep line breaks. */
+.prose-update {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
