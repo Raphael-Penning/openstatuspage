@@ -132,6 +132,7 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
 
 function Header({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
+  const { isError } = usePublicSettings();
   return (
     <header className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center justify-between gap-3 px-4 pt-5 sm:px-6">
       <Link to="/" className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-accent">
@@ -142,8 +143,8 @@ function Header({ settings }: { settings: PublicPageSettings | undefined }) {
             <Activity className="size-5" />
           </span>
         )}
-        {settings ? (
-          <span className="truncate text-lg font-semibold">{settings.siteName}</span>
+        {settings || isError ? (
+          <span className="truncate text-lg font-semibold">{settings?.siteName ?? t('fallbackSiteName')}</span>
         ) : (
           <Skeleton className="h-5 w-32" />
         )}

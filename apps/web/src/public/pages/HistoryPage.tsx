@@ -242,7 +242,7 @@ function HistoryRow({ item }: { item: HistoryItem }) {
             <IncidentStatusBadge incident={i} />
           </div>
           <p className="mt-1 text-xs text-muted">
-            <span className="sr-only">{t('history.types.incident')} · </span>
+            <span className="sr-only">{t('incident.title')} · </span>
             <DateTime value={i.startedAt} /> ·{' '}
             {i.resolvedAt
               ? t('incident.resolvedAfter', { duration: f.durationSince(i.startedAt, i.resolvedAt) })
@@ -268,7 +268,7 @@ function HistoryRow({ item }: { item: HistoryItem }) {
           <MaintenanceStatusBadge status={m.status} />
         </div>
         <p className="mt-1 text-xs text-muted">
-          <span className="sr-only">{t('history.types.maintenance')} · </span>
+          <span className="sr-only">{t('maintenance.title')} · </span>
           <DateTime value={maintenanceStart(m)} />
           {m.status !== 'cancelled' && <> · {t('maintenance.durationLabel', { duration: f.durationSince(maintenanceStart(m), m.status === 'in_progress' ? null : maintenanceEnd(m)) })}</>}
           {m.affectedServices.length > 0 && <> · {m.affectedServices.map((s) => s.name).join(', ')}</>}
