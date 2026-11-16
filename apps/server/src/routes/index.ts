@@ -2,6 +2,7 @@ import rateLimit from '@fastify/rate-limit';
 import type { FastifyInstance } from 'fastify';
 import { registerAdapterRoutes } from '../adapters/routes.js';
 import { registerAuth } from '../plugins/auth.js';
+import { registerAdminRoutes } from './admin/index.js';
 import { registerAuthRoutes } from './auth.js';
 import { registerPublicRoutes } from './public.js';
 
@@ -29,6 +30,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   await registerPublicRoutes(app);
   await registerAuthRoutes(app);
+  await registerAdminRoutes(app);
 
   // Owned by the monitoring adapters (src/adapters).
   await registerAdapterRoutes(app);
