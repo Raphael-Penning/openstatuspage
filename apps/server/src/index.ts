@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { ensureInitialAdmin } from './bootstrap.js';
 import { loadConfig } from './config.js';
 import { createDb, migrateToLatest } from './db/index.js';
+import { syncPollers } from './adapters/poller.js';
 import { runMaintenanceTransitions } from './services/maintenance-scheduler.js';
 
 async function main(): Promise<void> {
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
     ctx.worker.schedule('maintenance-transitions', 30_000, async () => {
       await runMaintenanceTransitions(db, ctx.engine);
     });
+    await syncPollers(ctx);
     ctx.worker.start();
   }
 

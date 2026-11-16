@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { registerAdapterRoutes } from '../adapters/routes.js';
+import { registerAuth } from '../plugins/auth.js';
 
 /**
  * Registers all API route modules. Every module is a Fastify plugin and
@@ -12,8 +14,12 @@ import type { FastifyInstance } from 'fastify';
  *   /feed.rss, /feed.atom
  */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  await registerAuth(app);
   app.get('/api/health', async () => {
     await app.ctx.db.selectFrom('settings').select('key').limit(1).execute();
     return { status: 'ok' };
   });
+
+  // Owned by the monitoring adapters (src/adapters).
+  await registerAdapterRoutes(app);
 }
