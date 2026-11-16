@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { registerAdapterRoutes } from '../adapters/routes.js';
 import { registerAuth } from '../plugins/auth.js';
 import { registerAuthRoutes } from './auth.js';
+import { registerPublicRoutes } from './public.js';
 
 /**
  * Registers all API route modules. Every module is a Fastify plugin and
@@ -26,6 +27,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return { status: 'ok' };
   });
 
+  await registerPublicRoutes(app);
   await registerAuthRoutes(app);
 
   // Owned by the monitoring adapters (src/adapters).
