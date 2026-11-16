@@ -1,1 +1,200 @@
-{}
+{
+  "fallbackSiteName": "Status",
+  "skipToContent": "Zum Inhalt springen",
+  "lastRefreshed": "Zuletzt aktualisiert",
+  "affected": "Betroffen:",
+  "header": {
+    "home": "Zur Übersicht",
+    "timeZone": "Zeitzone: {{current}}. Klicken zum Umschalten.",
+    "language": "Sprache",
+    "theme": "Farbschema"
+  },
+  "nav": {
+    "label": "Bereiche der Statusseite",
+    "overview": "Übersicht",
+    "services": "Dienste & Websites",
+    "locations": "Standorte",
+    "history": "Verlauf"
+  },
+  "feeds": {
+    "subscribe": "Updates abonnieren",
+    "rss": "RSS-Feed",
+    "atom": "Atom-Feed",
+    "json": "Status-API (JSON)"
+  },
+  "footer": {
+    "label": "Fußzeile",
+    "statusApi": "Status-API",
+    "support": "Support",
+    "copyright": "© {{year}} {{name}}",
+    "poweredBy": "Betrieben mit OpenStatusPage"
+  },
+  "error": {
+    "title": "Der Status konnte nicht geladen werden.",
+    "description": "Bitte prüfe deine Verbindung und versuche es erneut."
+  },
+  "notFound": {
+    "title": "Seite nicht gefunden",
+    "description": "Die gesuchte Seite existiert nicht oder ist nicht mehr verfügbar.",
+    "home": "Zurück zur Übersicht"
+  },
+  "hero": {
+    "updated": "Aktualisiert",
+    "operational": {
+      "title": "Keine bekannten Störungen",
+      "description": "Alle Dienste laufen normal. Sobald sich etwas ändert, informieren wir hier."
+    },
+    "maintenance": {
+      "title": "Wartung läuft",
+      "description": "Einige Dienste befinden sich gerade in einer geplanten Wartung."
+    },
+    "degraded": {
+      "title": "Eingeschränkte Leistung",
+      "description": "Einige Dienste reagieren langsamer als gewohnt. Wir prüfen die Ursache."
+    },
+    "partial_outage": {
+      "title": "Teilausfall",
+      "description": "Einige Dienste sind teilweise nicht erreichbar. Wir arbeiten an einer Lösung."
+    },
+    "major_outage": {
+      "title": "Schwerer Ausfall",
+      "description": "Einige Dienste sind derzeit nicht verfügbar. Wir arbeiten mit Hochdruck an der Wiederherstellung."
+    },
+    "incidentsOpen": {
+      "title": "Wir untersuchen ein Problem",
+      "description": "Alle Dienste sind betriebsbereit, ein Vorfall ist aber noch offen. Details findest du unten."
+    }
+  },
+  "overview": {
+    "activeIncidents": "Aktuelle Vorfälle",
+    "activeMaintenance": "Laufende Wartungen",
+    "noActiveMaintenance": "Derzeit läuft keine Wartung.",
+    "upcomingMaintenance": "Geplante Wartungen",
+    "viewAllUpcoming_one": "Alle geplanten Wartungen anzeigen ({{count}})",
+    "viewAllUpcoming_other": "Alle geplanten Wartungen anzeigen ({{count}})",
+    "showFewerUpcoming": "Weniger anzeigen",
+    "recentIncidents": "Letzte Vorfälle",
+    "noRecentIncidents_one": "Keine Vorfälle am letzten Tag.",
+    "noRecentIncidents_other": "Keine Vorfälle in den letzten {{count}} Tagen.",
+    "services": "Dienste"
+  },
+  "counters": {
+    "operational": "Betriebsbereit",
+    "degraded": "Eingeschränkt",
+    "offline": "Ausgefallen",
+    "maintenance": "Wartung"
+  },
+  "services": {
+    "title": "Dienste & Websites",
+    "subtitle": "Aktueller Status und Verfügbarkeit aller Dienste und Websites.",
+    "countersLabel": "Dienste nach Status. Wähle einen Status, um die Liste zu filtern.",
+    "search": "Dienste durchsuchen",
+    "clearSearch": "Suche leeren",
+    "results_one": "{{count}} Dienst gefunden",
+    "results_other": "{{count}} Dienste gefunden",
+    "count_one": "{{count}} Dienst",
+    "count_other": "{{count}} Dienste",
+    "ungrouped": "Weitere Dienste",
+    "openSite": "{{name}} in neuem Tab öffnen",
+    "empty": "Es wurden noch keine Dienste veröffentlicht.",
+    "noMatches": "Keine Dienste passen zu deiner Suche."
+  },
+  "service": {
+    "back": "Alle Dienste",
+    "notFound": "Dieser Dienst existiert nicht oder ist nicht öffentlich.",
+    "locations": "Standorte",
+    "uptime": "Verfügbarkeit",
+    "lastDays_one": "Letzter Tag",
+    "lastDays_other": "Letzte {{count}} Tage",
+    "maintenance": "Laufende und geplante Wartungen",
+    "incidents": "Vorfälle der letzten 90 Tage",
+    "fullHistory": "Gesamter Verlauf",
+    "noIncidents": "Keine Vorfälle in den letzten 90 Tagen."
+  },
+  "uptime": {
+    "roleDescription": "Verfügbarkeitsleiste",
+    "ariaLabel": "{{name}}, letzte {{days}} Tage: {{uptime}}. Mit den Pfeiltasten einzelne Tage anzeigen.",
+    "percent": "{{value}} Verfügbarkeit",
+    "noData": "Keine Daten",
+    "noDowntime": "Keine Ausfallzeit erfasst.",
+    "daysAgo_one": "vor {{count}} Tag",
+    "daysAgo_other": "vor {{count}} Tagen",
+    "today": "Heute"
+  },
+  "locations": {
+    "title": "Standorte",
+    "subtitle": "Status unserer Rechenzentrumsstandorte weltweit.",
+    "countersLabel": "Standorte nach Status",
+    "map": "Karte",
+    "mapLabel_one": "Weltkarte mit {{count}} Standort",
+    "mapLabel_other": "Weltkarte mit {{count}} Standorten",
+    "legend": "Legende",
+    "zoomIn": "Vergrößern",
+    "zoomOut": "Verkleinern",
+    "resetZoom": "Zoom zurücksetzen",
+    "empty": "Es wurden noch keine Standorte veröffentlicht."
+  },
+  "history": {
+    "title": "Verlauf",
+    "subtitle": "Vergangene Vorfälle und Wartungen.",
+    "filters": "Filter",
+    "type": "Typ",
+    "types": {
+      "all": "Vorfälle & Wartungen",
+      "incident": "Vorfälle",
+      "maintenance": "Wartungen"
+    },
+    "service": "Dienst",
+    "allServices": "Alle Dienste",
+    "location": "Standort",
+    "allLocations": "Alle Standorte",
+    "month": "Monat",
+    "allMonths": "Alle Monate",
+    "reset": "Filter zurücksetzen",
+    "empty": "Bisher ist nichts passiert. Vorfälle und Wartungen werden hier aufgelistet.",
+    "emptyFiltered": "Keine Vorfälle oder Wartungen passen zu diesen Filtern.",
+    "resultCount_one": "{{count}} Eintrag",
+    "resultCount_other": "{{count}} Einträge",
+    "pagination": "Seitennavigation",
+    "previous": "Neuer",
+    "next": "Älter",
+    "pageOf": "Seite {{page}} von {{total}}"
+  },
+  "detail": {
+    "back": "Verlauf",
+    "facts": "Details",
+    "affectedServices": "Betroffene Dienste",
+    "updates": "Updates"
+  },
+  "timeline": {
+    "empty": "Es wurden noch keine Updates veröffentlicht."
+  },
+  "incident": {
+    "title": "Vorfall",
+    "notFound": "Dieser Vorfall existiert nicht oder ist nicht öffentlich.",
+    "impactLabel": "Auswirkung: {{impact}}",
+    "started": "Beginn",
+    "resolved": "Behoben",
+    "lastUpdate": "Letztes Update",
+    "duration": "Dauer",
+    "ongoing": "andauernd",
+    "ongoingFor": "Seit {{duration}}",
+    "resolvedAfter": "Behoben nach {{duration}}"
+  },
+  "maintenance": {
+    "title": "Wartung",
+    "notFound": "Diese Wartung existiert nicht oder ist nicht öffentlich.",
+    "window": "Geplantes Zeitfenster",
+    "actualStart": "Begonnen",
+    "actualEnd": "Beendet",
+    "runningFor": "Läuft seit",
+    "startsIn": "Beginnt",
+    "durationLabel": "Dauer {{duration}}"
+  },
+  "maintenanceAutoMessage": {
+    "scheduled": "Diese Wartung wurde geplant.",
+    "in_progress": "Die Wartung hat begonnen.",
+    "completed": "Die Wartung wurde abgeschlossen.",
+    "cancelled": "Die Wartung wurde abgesagt."
+  }
+}
