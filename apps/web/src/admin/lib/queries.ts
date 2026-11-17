@@ -11,16 +11,19 @@ import type {
   AdminMonitorSource,
   AdminService,
   AdminServiceGroup,
+  AdminSubscriber,
   AdminUser,
   AuditLogEntry,
   AuthConfig,
   CheckState,
+  NotificationStatus,
   Paginated,
   PublicPageSettings,
   ServiceStatus,
   SessionInfo,
+  SubscriberListQuery,
 } from '@openstatuspage/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../components/Toast';
 import { api, ApiError } from '../../lib/api';
@@ -68,6 +71,8 @@ export const keys = {
   users: ['admin', 'users'] as const,
   tokens: ['admin', 'api-tokens'] as const,
   audit: (page: number, entityType: string) => ['admin', 'audit-log', page, entityType] as const,
+  subscribers: (query: SubscriberListQuery) => ['admin', 'subscribers', query] as const,
+  notificationStatus: ['admin', 'notifications', 'status'] as const,
 };
 
 const notRetryingClientErrors = (failureCount: number, error: unknown) =>
@@ -138,6 +143,21 @@ export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
     page,
     pageSize,
     entityType: entityType || undefined,
+  });
+
+export const useSubscribers = (query: SubscriberListQuery) =>
+  useQuery({
+    queryKey: keys.subscribers(query),
+    queryFn: () => api.get<Paginated<AdminSubscriber>>('/api/admin/subscribers', { ...query, q: query.q || undefined }),
+    retry: notRetryingClientErrors,
+    placeholderData: keepPreviousData,
+  });
+export const useNotificationStatus = () =>
+  useQuery({
+    queryKey: keys.notificationStatus,
+    queryFn: () => api.get<NotificationStatus>('/api/admin/notifications/status'),
+    retry: notRetryingClientErrors,
+    refetchInterval: 30_000,
   });
 
 export type PreviewResult = { monitorStatus: ServiceStatus; status?: ServiceStatus };

@@ -554,7 +554,8 @@
     "sections": {
       "branding": "Branding",
       "display": "Display",
-      "footer": "Footer links"
+      "footer": "Footer links",
+      "email": "Email subscriptions"
     },
     "fields": {
       "siteName": "Site name",
@@ -568,7 +569,9 @@
       "showLocations": "Show locations",
       "showUptime": "Show uptime",
       "uptimeDays": "Uptime days",
-      "recentIncidentDays": "Recent incident days"
+      "recentIncidentDays": "Recent incident days",
+      "emailSubscriptionsEnabled": "Offer email subscriptions",
+      "maintenanceReminderHours": "Maintenance reminder (hours)"
     },
     "supportUrlHelp": "Optional link to your support or contact page.",
     "pickColor": "Pick accent color",
@@ -585,7 +588,9 @@
     "noLinks": "No footer links.",
     "linkLabel": "Label",
     "linkUrl": "URL",
-    "removeLink": "Remove link {{name}}"
+    "removeLink": "Remove link {{name}}",
+    "emailSubscriptionsHelp": "Visitors can subscribe to incidents and maintenance by email (double opt-in). Only offered when a mail transport is configured.",
+    "maintenanceReminderHoursHelp": "Reminds subscribers this many hours before scheduled maintenance; 0 turns reminders off (0–168)."
   },
   "users": {
     "title": "Users",
@@ -720,5 +725,34 @@
     "enabledHint": "Emails are only sent when email subscriptions are enabled in the settings.",
     "off": "No email notifications",
     "reminderSent": "Reminder queued {{date}}"
+  },
+  "notifications": {
+    "title": "Email delivery",
+    "transport": "Transport",
+    "transports": {
+      "smtp": "SMTP",
+      "log": "Server log",
+      "none": "Not configured"
+    },
+    "from": "Sender",
+    "subscribers": "Subscribers",
+    "subscriberCounts": "{{confirmed}} confirmed · {{pending}} pending",
+    "queue": "Queue",
+    "queuePending": "{{value}} pending",
+    "queueFailed": "{{value}} failed",
+    "lastSent": "Last sent",
+    "never": "Never",
+    "lastError": "Last error",
+    "noTransportWarning": "Email subscriptions are enabled, but no mail transport is configured, so the public page does not offer them. Set SMTP_HOST (or MAIL_TRANSPORT) in the server environment.",
+    "noTransport": "No mail transport is configured. Set SMTP_HOST and SMTP_FROM in the server environment, or MAIL_TRANSPORT=log for development.",
+    "logTransport": "Emails are written to the server log instead of being delivered (development mode).",
+    "testTo": "Send a test email to",
+    "testSend": "Send test email",
+    "testSent": "Test email sent.",
+    "testFailed": "The test email could not be sent.",
+    "retry": "Retry failed",
+    "nothingToRetry": "There are no failed emails.",
+    "requeued_one": "{{count}} email queued again.",
+    "requeued_other": "{{count}} emails queued again."
   }
 }

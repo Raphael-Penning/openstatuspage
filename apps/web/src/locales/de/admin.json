@@ -554,7 +554,8 @@
     "sections": {
       "branding": "Branding",
       "display": "Anzeige",
-      "footer": "Footer-Links"
+      "footer": "Footer-Links",
+      "email": "E-Mail-Abonnements"
     },
     "fields": {
       "siteName": "Seitenname",
@@ -568,7 +569,9 @@
       "showLocations": "Standorte anzeigen",
       "showUptime": "Verfügbarkeit anzeigen",
       "uptimeDays": "Tage der Verfügbarkeit",
-      "recentIncidentDays": "Tage für kürzliche Vorfälle"
+      "recentIncidentDays": "Tage für kürzliche Vorfälle",
+      "emailSubscriptionsEnabled": "E-Mail-Abonnements anbieten",
+      "maintenanceReminderHours": "Wartungserinnerung (Stunden)"
     },
     "supportUrlHelp": "Optionaler Link zu deiner Support- oder Kontaktseite.",
     "pickColor": "Akzentfarbe wählen",
@@ -585,7 +588,9 @@
     "noLinks": "Keine Footer-Links.",
     "linkLabel": "Bezeichnung",
     "linkUrl": "URL",
-    "removeLink": "Link {{name}} entfernen"
+    "removeLink": "Link {{name}} entfernen",
+    "emailSubscriptionsHelp": "Besucher können Vorfälle und Wartungen per E-Mail abonnieren (Double-Opt-in). Wird nur angeboten, wenn ein Mailversand konfiguriert ist.",
+    "maintenanceReminderHoursHelp": "Erinnert Abonnenten so viele Stunden vor einer geplanten Wartung; 0 schaltet Erinnerungen ab (0–168)."
   },
   "users": {
     "title": "Benutzer",
@@ -720,5 +725,34 @@
     "enabledHint": "E-Mails werden nur gesendet, wenn E-Mail-Abonnements in den Einstellungen aktiviert sind.",
     "off": "Keine E-Mail-Benachrichtigungen",
     "reminderSent": "Erinnerung eingereiht {{date}}"
+  },
+  "notifications": {
+    "title": "E-Mail-Versand",
+    "transport": "Versand",
+    "transports": {
+      "smtp": "SMTP",
+      "log": "Server-Log",
+      "none": "Nicht konfiguriert"
+    },
+    "from": "Absender",
+    "subscribers": "Abonnenten",
+    "subscriberCounts": "{{confirmed}} bestätigt · {{pending}} unbestätigt",
+    "queue": "Warteschlange",
+    "queuePending": "{{value}} ausstehend",
+    "queueFailed": "{{value}} fehlgeschlagen",
+    "lastSent": "Zuletzt gesendet",
+    "never": "Nie",
+    "lastError": "Letzter Fehler",
+    "noTransportWarning": "E-Mail-Abonnements sind aktiviert, aber kein Mailversand ist konfiguriert, daher bietet die öffentliche Seite sie nicht an. Setze SMTP_HOST (oder MAIL_TRANSPORT) in der Server-Umgebung.",
+    "noTransport": "Es ist kein Mailversand konfiguriert. Setze SMTP_HOST und SMTP_FROM in der Server-Umgebung oder MAIL_TRANSPORT=log für die Entwicklung.",
+    "logTransport": "E-Mails werden ins Server-Log geschrieben statt zugestellt (Entwicklungsmodus).",
+    "testTo": "Test-E-Mail senden an",
+    "testSend": "Test-E-Mail senden",
+    "testSent": "Test-E-Mail gesendet.",
+    "testFailed": "Die Test-E-Mail konnte nicht gesendet werden.",
+    "retry": "Fehlgeschlagene erneut senden",
+    "nothingToRetry": "Es gibt keine fehlgeschlagenen E-Mails.",
+    "requeued_one": "{{count}} E-Mail erneut eingereiht.",
+    "requeued_other": "{{count}} E-Mails erneut eingereiht."
   }
 }
