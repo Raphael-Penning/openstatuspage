@@ -1,0 +1,61 @@
+{
+  "all_services": [
+    {
+      "Service": {
+        "id": 11,
+        "uuid": "6b1f7a8e-0c2d-4f3a-9e1b-111111111111",
+        "servicename": "HTTPS",
+        "description": "",
+        "active_checks_enabled": true,
+        "host_id": 1
+      },
+      "Host": {
+        "id": 1,
+        "uuid": "a7d1c3e2-5b4f-4e6a-8c9d-aaaaaaaaaaaa",
+        "hostname": "web01.example.com",
+        "address": "192.0.2.10"
+      },
+      "Servicestatus": {
+        "currentState": 0,
+        "isHardstate": true,
+        "output": "HTTP OK: HTTP/1.1 200 OK",
+        "lastCheck": "17.11.2026 09:00:00",
+        "problemHasBeenAcknowledged": false,
+        "scheduledDowntimeDepth": 0,
+        "humanState": "ok"
+      },
+      "Hoststatus": {
+        "currentState": 0
+      }
+    },
+    {
+      "Service": {
+        "id": 12,
+        "uuid": "6b1f7a8e-0c2d-4f3a-9e1b-222222222222",
+        "servicename": "Load",
+        "host_id": 1
+      },
+      "Host": {
+        "id": 1,
+        "uuid": "a7d1c3e2-5b4f-4e6a-8c9d-aaaaaaaaaaaa",
+        "hostname": "web01.example.com"
+      },
+      "Servicestatus": {
+        "currentState": 1,
+        "isHardstate": true,
+        "output": "WARNING - load average: 9.10, 8.50, 7.90"
+      }
+    }
+  ],
+  "paging": {
+    "page": 1,
+    "current": 2,
+    "count": 4,
+    "perPage": 2,
+    "prevPage": false,
+    "nextPage": true,
+    "pageCount": 2,
+    "limit": 2
+  },
+  "_serialize": ["all_services", "paging"]
+}

@@ -1,0 +1,47 @@
+{
+  "all_services": [
+    {
+      "Service": {
+        "id": 21,
+        "uuid": "6b1f7a8e-0c2d-4f3a-9e1b-333333333333",
+        "servicename": "PostgreSQL",
+        "host_id": 2
+      },
+      "Host": {
+        "id": 2,
+        "uuid": "b8e2d4f3-6c5a-4f7b-9d0e-bbbbbbbbbbbb",
+        "name": "db01.example.com"
+      },
+      "Servicestatus": {
+        "currentState": 2,
+        "isHardstate": true,
+        "output": "connection refused",
+        "lastCheck": "2026-11-17T08:59:30+00:00"
+      }
+    },
+    {
+      "Service": {
+        "id": 22,
+        "uuid": "6b1f7a8e-0c2d-4f3a-9e1b-444444444444",
+        "servicename": "Backup",
+        "host_id": 2
+      },
+      "Host": {
+        "id": 2,
+        "uuid": "b8e2d4f3-6c5a-4f7b-9d0e-bbbbbbbbbbbb",
+        "name": "db01.example.com"
+      },
+      "Servicestatus": {}
+    }
+  ],
+  "scroll": {
+    "page": 2,
+    "limit": 2,
+    "offset": 2,
+    "hasPrevPage": true,
+    "prevPage": 1,
+    "nextPage": 3,
+    "current": 2,
+    "hasNextPage": false
+  }
+}

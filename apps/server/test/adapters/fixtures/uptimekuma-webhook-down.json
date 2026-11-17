@@ -1,0 +1,30 @@
+{
+  "heartbeat": {
+    "monitorID": 3,
+    "status": 0,
+    "time": "2026-11-17 08:15:30.123",
+    "msg": "connect ECONNREFUSED",
+    "ping": null,
+    "important": true,
+    "duration": 60,
+    "timezone": "Europe/Berlin",
+    "timezoneOffset": "+01:00",
+    "localDateTime": "2026-11-17 09:15:30"
+  },
+  "monitor": {
+    "id": 3,
+    "name": "Mail server",
+    "description": null,
+    "url": "https://",
+    "method": "GET",
+    "hostname": "mail.example.com",
+    "port": 25,
+    "maxretries": 1,
+    "weight": 2000,
+    "active": true,
+    "type": "port",
+    "interval": 60,
+    "tags": []
+  },
+  "msg": "[Mail server] [🔴 Down] connect ECONNREFUSED"
+}

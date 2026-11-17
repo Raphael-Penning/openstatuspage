@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "attrs": {
+        "name": "web01.example.com",
+        "display_name": "Web 01",
+        "state": 0,
+        "last_hard_state": 0,
+        "state_type": 1,
+        "last_check": 1763380800,
+        "last_check_result": {
+          "output": "PING OK - Packet loss = 0%, RTA = 0.40 ms",
+          "execution_end": 1763380800
+        }
+      },
+      "joins": {},
+      "meta": {},
+      "name": "web01.example.com",
+      "type": "Host"
+    },
+    {
+      "attrs": {
+        "name": "db01.example.com",
+        "display_name": "db01.example.com",
+        "state": 1,
+        "last_hard_state": 1,
+        "state_type": 1,
+        "last_check": 1763380800,
+        "last_check_result": {
+          "output": "PING CRITICAL - Packet loss = 100%",
+          "execution_end": 1763380800
+        }
+      },
+      "joins": {},
+      "meta": {},
+      "name": "db01.example.com",
+      "type": "Host"
+    }
+  ]
+}

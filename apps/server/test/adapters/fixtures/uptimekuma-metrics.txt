@@ -1,0 +1,21 @@
+# HELP monitor_cert_days_remaining The number of days remaining until the certificate expires
+# TYPE monitor_cert_days_remaining gauge
+monitor_cert_days_remaining{monitor_name="Website",monitor_type="http",monitor_url="https://www.example.com",monitor_hostname="null",monitor_port="null"} 64
+# HELP monitor_cert_is_valid Is the certificate still valid? (1 = Yes, 0= No)
+# TYPE monitor_cert_is_valid gauge
+monitor_cert_is_valid{monitor_name="Website",monitor_type="http",monitor_url="https://www.example.com",monitor_hostname="null",monitor_port="null"} 1
+# HELP monitor_response_time Monitor Response Time (ms)
+# TYPE monitor_response_time gauge
+monitor_response_time{monitor_name="Website",monitor_type="http",monitor_url="https://www.example.com",monitor_hostname="null",monitor_port="null"} 87
+monitor_response_time{monitor_name="Mail server",monitor_type="port",monitor_url="https://",monitor_hostname="mail.example.com",monitor_port="25"} -1
+monitor_response_time{monitor_name="API \"v2\"",monitor_type="keyword",monitor_url="https://api.example.com/health",monitor_hostname="null",monitor_port="null"} 230
+# HELP monitor_status Monitor Status (1 = UP, 0= DOWN, 2= PENDING, 3= MAINTENANCE)
+# TYPE monitor_status gauge
+monitor_status{monitor_name="Website",monitor_type="http",monitor_url="https://www.example.com",monitor_hostname="null",monitor_port="null"} 1
+monitor_status{monitor_name="Mail server",monitor_type="port",monitor_url="https://",monitor_hostname="mail.example.com",monitor_port="25"} 0
+monitor_status{monitor_name="API \"v2\"",monitor_type="keyword",monitor_url="https://api.example.com/health",monitor_hostname="null",monitor_port="null"} 2
+monitor_status{monitor_name="Storage",monitor_type="ping",monitor_url="https://",monitor_hostname="storage.example.com",monitor_port="null"} 3
+monitor_status{monitor_name="Group",monitor_type="group"} 1
+# HELP process_cpu_user_seconds_total Total user CPU time spent in seconds.
+# TYPE process_cpu_user_seconds_total counter
+process_cpu_user_seconds_total 12.5

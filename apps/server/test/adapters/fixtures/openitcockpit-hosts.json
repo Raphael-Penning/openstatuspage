@@ -1,0 +1,33 @@
+{
+  "all_hosts": [
+    {
+      "Host": {
+        "id": 1,
+        "uuid": "a7d1c3e2-5b4f-4e6a-8c9d-aaaaaaaaaaaa",
+        "name": "web01.example.com",
+        "address": "192.0.2.10"
+      },
+      "Hoststatus": {
+        "currentState": 0,
+        "isHardstate": true,
+        "output": "PING OK - Packet loss = 0%"
+      }
+    },
+    {
+      "Host": {
+        "id": 2,
+        "uuid": "b8e2d4f3-6c5a-4f7b-9d0e-bbbbbbbbbbbb",
+        "name": "db01.example.com"
+      },
+      "Hoststatus": {
+        "currentState": 2,
+        "output": "Host unreachable"
+      }
+    }
+  ],
+  "paging": {
+    "page": 1,
+    "nextPage": false,
+    "pageCount": 1
+  }
+}

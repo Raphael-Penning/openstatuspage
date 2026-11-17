@@ -1,0 +1,114 @@
+{
+  "results": [
+    {
+      "attrs": {
+        "name": "https",
+        "display_name": "HTTPS",
+        "host_name": "web01.example.com",
+        "state": 0,
+        "last_hard_state": 0,
+        "state_type": 1,
+        "last_check": 1763380800.25,
+        "last_check_result": {
+          "output": "HTTP OK: HTTP/1.1 200 OK - 1234 bytes in 0.050 second response time",
+          "execution_end": 1763380800.5,
+          "exit_status": 0,
+          "state": 0
+        },
+        "downtime_depth": 0,
+        "acknowledgement": 0
+      },
+      "joins": {},
+      "meta": {},
+      "name": "web01.example.com!https",
+      "type": "Service"
+    },
+    {
+      "attrs": {
+        "name": "disk",
+        "display_name": "Disk /",
+        "host_name": "db01.example.com",
+        "state": 2,
+        "last_hard_state": 1,
+        "state_type": 0,
+        "last_check": 1763380810,
+        "last_check_result": {
+          "output": "DISK CRITICAL - free space: / 512 MB (2%)",
+          "execution_end": 1763380810,
+          "exit_status": 2,
+          "state": 2
+        },
+        "downtime_depth": 0,
+        "acknowledgement": 0
+      },
+      "joins": {},
+      "meta": {},
+      "name": "db01.example.com!disk",
+      "type": "Service"
+    },
+    {
+      "attrs": {
+        "name": "postgres",
+        "display_name": "PostgreSQL",
+        "host_name": "db01.example.com",
+        "state": 2,
+        "last_hard_state": 2,
+        "state_type": 1,
+        "last_check": 1763380820,
+        "last_check_result": {
+          "output": "connection refused",
+          "execution_end": 1763380820,
+          "exit_status": 2,
+          "state": 2
+        },
+        "downtime_depth": 1,
+        "acknowledgement": 0
+      },
+      "joins": {},
+      "meta": {},
+      "name": "db01.example.com!postgres",
+      "type": "Service"
+    },
+    {
+      "attrs": {
+        "name": "backup",
+        "display_name": "Backup",
+        "host_name": "db01.example.com",
+        "state": 3,
+        "last_hard_state": 3,
+        "state_type": 1,
+        "last_check": 1763380830,
+        "last_check_result": {
+          "output": "UNKNOWN - plugin timed out",
+          "execution_end": 1763380830,
+          "exit_status": 3,
+          "state": 3
+        },
+        "downtime_depth": 0,
+        "acknowledgement": 0
+      },
+      "joins": {},
+      "meta": {},
+      "name": "db01.example.com!backup",
+      "type": "Service"
+    },
+    {
+      "attrs": {
+        "name": "new-check",
+        "display_name": "new-check",
+        "host_name": "web01.example.com",
+        "state": 0,
+        "last_hard_state": 0,
+        "state_type": 1,
+        "last_check": -1,
+        "last_check_result": null,
+        "downtime_depth": 0,
+        "acknowledgement": 0
+      },
+      "joins": {},
+      "meta": {},
+      "name": "web01.example.com!new-check",
+      "type": "Service"
+    }
+  ]
+}
