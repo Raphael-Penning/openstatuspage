@@ -193,6 +193,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     });
 
     scope.get('/api/public/locations', async (): Promise<PublicLocationsResponse> => {
+      if (!(await getSettings(db)).showLocations) throw notFound('Locations');
       const locations = await loadPublicLocations(db);
       return { locations, counts: countStatuses(locations.map((l) => l.status)) };
     });
@@ -258,8 +259,11 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
                 eb
                   .selectFrom('incident_services')
                   .innerJoin('service_locations', 'service_locations.service_id', 'incident_services.service_id')
+                  .innerJoin('services', 'services.id', 'incident_services.service_id')
                   .select('incident_services.incident_id')
-                  .where('service_locations.location_id', '=', locationId),
+                  .where('service_locations.location_id', '=', locationId)
+                  // Hidden services must not reveal where they run.
+                  .where('services.is_public', '=', 1),
               ),
             ]),
           );
@@ -296,8 +300,11 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
                 eb
                   .selectFrom('maintenance_services')
                   .innerJoin('service_locations', 'service_locations.service_id', 'maintenance_services.service_id')
+                  .innerJoin('services', 'services.id', 'maintenance_services.service_id')
                   .select('maintenance_services.maintenance_id')
-                  .where('service_locations.location_id', '=', locationId),
+                  .where('service_locations.location_id', '=', locationId)
+                  // Hidden services must not reveal where they run.
+                  .where('services.is_public', '=', 1),
               ),
             ]),
           );

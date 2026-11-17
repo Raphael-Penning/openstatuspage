@@ -91,13 +91,16 @@ export async function registerMonitoringRoutes(app: FastifyInstance): Promise<vo
     const current = await db.selectFrom('monitor_sources').selectAll().where('id', '=', id).executeTakeFirst();
     if (!current) throw notFound('Monitoring source');
 
-    // SECRET_MASK means "keep the stored value" (only possible when the type is unchanged).
+    // SECRET_MASK means "keep the stored value". Only allowed when the type, URL and
+    // username are unchanged, so stored credentials can never be redirected to another host.
     const stored = current.type === input.type ? decryptSourceConfig(secrets, current) : {};
     const sourceConfig = { ...(input.config as Record<string, unknown>) };
+    const sameTarget = ['baseUrl', 'username'].every((k) => (sourceConfig[k] ?? null) === (stored[k] ?? null));
     for (const key of SECRET_FIELDS) {
       if (sourceConfig[key] !== SECRET_MASK) continue;
       const previous = stored[key];
       if (typeof previous !== 'string' || previous === '') throw badRequest(`config.${key} must be provided`);
+      if (!sameTarget) throw badRequest(`config.${key} must be entered again when the URL or username changes`);
       sourceConfig[key] = previous;
     }
 

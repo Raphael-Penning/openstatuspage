@@ -85,6 +85,10 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
       })
       .where('id', '=', id)
       .execute();
+    // API tokens never outrank their creator: demotion revokes the creator's admin tokens.
+    if (input.role && input.role !== 'admin' && user.role === 'admin') {
+      await db.deleteFrom('api_tokens').where('created_by', '=', id).where('role', '=', 'admin').execute();
+    }
     // A new or removed password signs the user out everywhere (except the admin's own current session).
     if (passwordChanged) await deleteUserSessions(db, id, isSelf ? req.cookies[SESSION_COOKIE] : null);
 
@@ -101,7 +105,11 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
     if (actorUserId(req) === id) throw conflict('You cannot delete yourself');
     if (user.role === 'admin' && (await countAdmins(db)) <= 1) throw conflict('The last admin cannot be deleted');
     // Sessions cascade; authored records keep their content with created_by = NULL.
-    await db.deleteFrom('users').where('id', '=', id).execute();
+    // API tokens created by the user are revoked with the account.
+    await db.transaction().execute(async (trx) => {
+      await trx.deleteFrom('api_tokens').where('created_by', '=', id).execute();
+      await trx.deleteFrom('users').where('id', '=', id).execute();
+    });
     await auditRequest(db, req, 'user.delete', 'user', id, { email: user.email });
     return reply.status(204).send();
   });

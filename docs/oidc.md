@@ -74,7 +74,13 @@ and new users start as editor.
    the IdP marks the e-mail as verified** (`email_verified: true`) and the user
    is not linked to another subject yet.
 3. Otherwise a new user is created when `OIDC_AUTO_CREATE_USERS=true`
-   (requires an `email` claim).
+   (requires an `email` claim). The default is `false`.
+
+> **Warning:** with `OIDC_AUTO_CREATE_USERS=true` and no group configured, every
+> account the issuer can authenticate becomes an editor. Never combine this with
+> multi-tenant or public issuers (e.g. Microsoft `common`/`organizations`, Google,
+> GitLab.com) or IdPs with self-registration. Configure `OIDC_EDITOR_GROUP` /
+> `OIDC_ADMIN_GROUP` instead.
 
 Linked users can still use their local password unless you set
 `LOCAL_LOGIN_ENABLED=false`.

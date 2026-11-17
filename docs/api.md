@@ -25,7 +25,7 @@ Responses may be cached (`Cache-Control: public, max-age=30`).
 | GET | `/api/public/settings` | `PublicPageSettings` |
 | GET | `/api/public/services` | `{ groups: PublicServiceGroup[], ungrouped: PublicService[], counts: Record<ServiceStatus, number> }` incl. uptime |
 | GET | `/api/public/services/:idOrSlug` | `PublicService & { uptime: DailyUptime[], incidents: PublicIncident[] /* last 90d */, maintenances: PublicMaintenance[] /* active+upcoming */ }` |
-| GET | `/api/public/locations` | `PublicLocationsResponse` |
+| GET | `/api/public/locations` | `PublicLocationsResponse` (404 when `showLocations` is disabled) |
 | GET | `/api/public/incidents/:id` | `PublicIncident` |
 | GET | `/api/public/maintenances/:id` | `PublicMaintenance` |
 | GET | `/api/public/history` | `Paginated<HistoryItem>`, query: `HistoryQuery` (type, serviceId, locationId, month, page, pageSize). Newest first; incidents sorted by `startedAt`, maintenance by `scheduledStart`. Includes active and resolved items, excludes scheduled-in-the-future maintenance. |
@@ -90,7 +90,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/maintenances/:id/updates` | `MaintenanceUpdateInput` | `AdminMaintenance` | editor |
 | GET | `/api/admin/monitor-sources` | – | `AdminMonitorSource[]` | admin |
 | POST | `/api/admin/monitor-sources` | `MonitorSourceInput` | `AdminMonitorSource & { ingestToken: string }` (201, token shown once) | admin |
-| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value) | `AdminMonitorSource` | admin |
+| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` are unchanged, otherwise 400) | `AdminMonitorSource` | admin |
 | POST | `/api/admin/monitor-sources/:id/test` | – | `MonitorSourceTestResult` | admin |
 | POST | `/api/admin/monitor-sources/:id/poll` | – | `MonitorSourceTestResult` (polls now and stores the results) | admin |
 | POST | `/api/admin/monitor-sources/:id/rotate-token` | – | `{ ingestToken: string }` | admin |
@@ -102,6 +102,9 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | GET | `/api/admin/api-tokens` | – | `AdminApiToken[]` | admin |
 | POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201) | admin |
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
+
+API tokens are revoked when their creator is deleted; admin tokens are revoked when
+their creator loses the admin role.
 | GET | `/api/admin/audit-log` | query `page`, `pageSize`, `entityType` | `Paginated<AuditLogEntry>` | admin |
 
 ### Side effects the server must apply
