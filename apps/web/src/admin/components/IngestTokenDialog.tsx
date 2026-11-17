@@ -5,6 +5,14 @@ import { CopyField } from './CopyField';
 import { Dialog } from './Dialog';
 import { Button } from './ui';
 
+/** Setup guide per source type (paths in the repository). */
+const ADAPTER_DOCS: Record<string, string> = {
+  icinga2: 'docs/adapters/icinga2.md',
+  uptimekuma: 'docs/adapters/uptime-kuma.md',
+  openitcockpit: 'docs/adapters/openitcockpit.md',
+  webhook: 'docs/adapters/README.md',
+};
+
 /** Push endpoint for a source type (the generic endpoint accepts every type). */
 export function typedIngestUrl(ingestUrl: string, type: MonitorSourceType): string {
   return type === 'webhook' ? ingestUrl : `${ingestUrl}/${type}`;
@@ -51,7 +59,7 @@ export function IngestTokenDialog({
           <p className="text-muted">{t('ingest.authHint')}</p>
           <p className="text-muted">
             {t('ingest.docs')}{' '}
-            <code className="rounded bg-surface px-1 py-0.5 text-xs">{type === 'webhook' ? 'docs/api.md' : `docs/adapters/${type}.md`}</code>
+            <code className="rounded bg-surface px-1 py-0.5 text-xs">{ADAPTER_DOCS[type] ?? 'docs/adapters/README.md'}</code>
           </p>
         </div>
       </div>
