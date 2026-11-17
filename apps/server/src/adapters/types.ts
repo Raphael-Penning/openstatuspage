@@ -12,10 +12,15 @@ import type { CheckState, MonitorSourceType } from '@openstatuspage/shared';
 export interface NormalizedCheck {
   /** Stable ID within the source, e.g. `web01!http` for Icinga 2. */
   externalId: string;
-  /** Internal display name (never shown publicly). */
-  name: string;
+  /**
+   * Internal display name (never shown publicly). When omitted, a new check is
+   * named after its externalId and an existing check keeps its stored name.
+   */
+  name?: string;
+  /** Omitted (undefined) keeps the stored value; null clears it. */
   host?: string | null;
   state: CheckState;
+  /** Omitted keeps the stored output unless the state changed (then it is cleared). */
   output?: string | null;
   /** When the monitoring system last executed the check (ISO-8601). */
   checkedAt?: string | null;

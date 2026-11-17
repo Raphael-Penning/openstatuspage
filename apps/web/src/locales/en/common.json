@@ -25,8 +25,10 @@
     "cancelled": "Cancelled"
   },
   "maintenanceAutoMessage": {
+    "scheduled": "The maintenance has been scheduled.",
     "in_progress": "The maintenance has started.",
-    "completed": "The maintenance has been completed."
+    "completed": "The maintenance has been completed.",
+    "cancelled": "The maintenance has been cancelled."
   },
   "region": {
     "europe": "Europe",

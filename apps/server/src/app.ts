@@ -30,14 +30,27 @@ export async function buildApp({ config, db, serveWeb = true }: BuildAppOptions)
               ? { transport: { target: 'pino-pretty', options: { singleLine: true } } }
               : {}),
           },
-    trustProxy: config.TRUST_PROXY,
-    bodyLimit: 5 * 1024 * 1024,
+    trustProxy: trustProxyOption(config.TRUST_PROXY),
+    // 1 MiB; routes that need more (bulk ingest) raise it per route.
+    bodyLimit: 1024 * 1024,
   });
 
   const ctx: AppContext = createContext(config, db, app.log);
   app.decorate('ctx', ctx);
 
   await app.register(cookie, { secret: config.SECRET_KEY });
+
+  // Basic hardening headers. The public page may be embedded (iframe) by
+  // customers; the management UI and the API may not.
+  app.addHook('onSend', async (req, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    const path = req.url.split('?')[0] ?? '';
+    if (path === '/admin' || path.startsWith('/admin/') || isApiPath(path)) {
+      reply.header('X-Frame-Options', 'DENY');
+      reply.header('Content-Security-Policy', "frame-ancestors 'none'");
+    }
+  });
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) {
@@ -59,10 +72,13 @@ export async function buildApp({ config, db, serveWeb = true }: BuildAppOptions)
   const webDir = resolveWebDir(config);
   if (serveWeb && webDir) {
     await app.register(fastifyStatic, { root: webDir, wildcard: false, index: false });
-    // SPA fallback: every non-API GET returns index.html.
+    // SPA fallback: client routes (GET/HEAD, not /api, no file extension) return index.html.
+    // Missing assets get a real 404 so stale chunk requests fail cleanly after a deploy.
     app.setNotFoundHandler((req, reply) => {
-      if (req.method === 'GET' && !req.url.startsWith('/api/')) {
-        return reply.type('text/html').sendFile('index.html');
+      const path = req.url.split('?')[0] ?? '';
+      const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path);
+      if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
+        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile('index.html');
       }
       return reply.status(404).send({ error: 'not_found', message: 'Route not found' });
     });
@@ -71,6 +87,16 @@ export async function buildApp({ config, db, serveWeb = true }: BuildAppOptions)
   }
 
   return app;
+}
+
+/** Hop count → trust function (only the nearest n proxies), as proxy-addr does. */
+function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((addr: string, hop: number) => boolean) {
+  if (typeof value === 'number') return (_addr, hop) => hop < value;
+  return value;
+}
+
+function isApiPath(path: string): boolean {
+  return path === '/api' || path.startsWith('/api/');
 }
 
 function resolveWebDir(config: Config): string | null {

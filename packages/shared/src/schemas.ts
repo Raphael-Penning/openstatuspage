@@ -62,6 +62,14 @@ export const zSlug = z
 export const zId = z.string().min(1).max(64);
 const zOptionalText = (max: number) => z.string().max(max).nullish();
 
+/** Absolute http(s) URL. Rejects javascript:, data: and other schemes. */
+export const zHttpUrl = z.url({ protocol: /^https?$/, error: 'must be an http(s) URL' }).max(500);
+/** http(s) URL or a path on this site (`/logo.svg`), e.g. for logos. */
+export const zHttpUrlOrPath = z
+  .string()
+  .max(500)
+  .refine((v) => (v.startsWith('/') && !v.startsWith('//')) || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path');
+
 /** Value the server returns in place of stored secrets. Sending it back keeps the stored value. */
 export const SECRET_MASK = '••••••••';
 
@@ -71,14 +79,14 @@ export const SECRET_MASK = '••••••••';
 
 export const zFooterLink = z.object({
   label: z.string().min(1).max(60),
-  url: z.string().url().max(500),
+  url: zHttpUrl,
 });
 
 export const SettingsInput = z.object({
   siteName: z.string().min(1).max(120),
   description: z.string().max(500).default(''),
-  logoUrl: z.string().max(500).nullish(),
-  faviconUrl: z.string().max(500).nullish(),
+  logoUrl: zHttpUrlOrPath.nullish(),
+  faviconUrl: zHttpUrlOrPath.nullish(),
   /** CSS color used as accent (hex). */
   accentColor: z
     .string()
@@ -87,7 +95,7 @@ export const SettingsInput = z.object({
   defaultLocale: z.enum(['en', 'de']).default('en'),
   defaultTheme: z.enum(['system', 'dark', 'light']).default('system'),
   footerLinks: z.array(zFooterLink).max(10).default([]),
-  supportUrl: z.string().url().max(500).nullish(),
+  supportUrl: zHttpUrl.nullish(),
   showLocations: z.boolean().default(true),
   showUptime: z.boolean().default(true),
   /** Number of days shown in uptime bars. */
@@ -244,7 +252,7 @@ export const ServiceInput = z.object({
   description: zOptionalText(1000),
   kind: zServiceKind.default('service'),
   /** Public URL for sites. */
-  url: z.string().url().max(500).nullish(),
+  url: zHttpUrl.nullish(),
   groupId: zId.nullish(),
   sortOrder: z.number().int().default(0),
   isPublic: z.boolean().default(true),
@@ -502,7 +510,7 @@ export interface AdminMaintenance extends PublicMaintenance {
 // ---------------------------------------------------------------------------
 
 const zHttpBase = z.object({
-  baseUrl: z.string().url().max(500),
+  baseUrl: zHttpUrl,
   /** Disable only for self-signed certificates in trusted networks. */
   verifyTls: z.boolean().default(true),
 });

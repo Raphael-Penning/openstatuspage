@@ -1,7 +1,7 @@
 import { loadConfig } from '../config.js';
 import { createDb, migrateToLatest } from '../db/index.js';
 
-const db = await createDb(loadConfig());
+const db = await createDb(loadConfig(process.env, { allowMissingSecret: true }));
 await migrateToLatest(db);
 await db.destroy();
 console.log('Database is up to date.');

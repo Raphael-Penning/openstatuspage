@@ -15,7 +15,7 @@ if (!email || !password || password.length < 10 || !USER_ROLES.includes(roleArg 
   process.exit(1);
 }
 
-const db = await createDb(loadConfig());
+const db = await createDb(loadConfig(process.env, { allowMissingSecret: true }));
 await migrateToLatest(db);
 const now = nowIso();
 const normalized = email.toLowerCase();

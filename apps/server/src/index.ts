@@ -13,6 +13,15 @@ async function main(): Promise<void> {
   const app = await buildApp({ config, db });
   const { ctx } = app;
 
+  if (config.insecureSecret) {
+    app.log.warn('SECRET_KEY is not set: using the public development secret. Never use this in production.');
+  }
+  if (config.oidcEnabled && !config.OIDC_ADMIN_GROUP && !config.OIDC_EDITOR_GROUP && config.OIDC_AUTO_CREATE_USERS) {
+    app.log.warn(
+      'OIDC_AUTO_CREATE_USERS is enabled without OIDC_ADMIN_GROUP/OIDC_EDITOR_GROUP: every account of the identity provider can log in as editor.',
+    );
+  }
+
   const admin = await ensureInitialAdmin(db, config);
   if (admin === 'created') app.log.info({ email: config.ADMIN_EMAIL }, 'initial admin created');
   if (admin === 'skipped') {

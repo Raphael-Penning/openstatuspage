@@ -12,6 +12,8 @@ import { nowIso } from '../lib/time.js';
 import { StatusEngine } from '../services/status-engine.js';
 import { saveSettings, DEFAULT_SETTINGS } from '../services/settings.js';
 
+// Demo data is meant for development; a real SECRET_KEY is still used when set.
+process.env.NODE_ENV ??= 'development';
 const config = loadConfig();
 const db = await createDb(config);
 await migrateToLatest(db);

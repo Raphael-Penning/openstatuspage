@@ -48,6 +48,10 @@ Rules live in `apps/server/src/services/status-rules.ts` (pure, unit tested);
 `StatusEngine` loads data and persists results. Every code path that changes an
 input of a service must call `ctx.engine.recompute(serviceIds)`.
 
+Uptime bars use UTC days. A day counts only the time that was observed
+(a service created today is judged by the time since its creation);
+`degraded` and `maintenance` count as up.
+
 Service status values, ordered by severity:
 `operational < maintenance < degraded < partial_outage < major_outage`.
 

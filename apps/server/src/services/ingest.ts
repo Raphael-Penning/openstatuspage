@@ -54,7 +54,7 @@ export class IngestService {
               id,
               source_id: sourceId,
               external_id: check.externalId,
-              name: check.name,
+              name: check.name ?? check.externalId,
               host: check.host ?? null,
               state: check.state,
               output: truncate(check.output),
@@ -70,10 +70,15 @@ export class IngestService {
           await trx
             .updateTable('monitor_checks')
             .set({
-              name: check.name,
-              host: check.host ?? null,
+              // Partial pushes (e.g. state only) keep the stored metadata.
+              ...(check.name !== undefined ? { name: check.name } : {}),
+              ...(check.host !== undefined ? { host: check.host } : {}),
+              ...(check.output !== undefined
+                ? { output: truncate(check.output) }
+                : changed
+                  ? { output: null }
+                  : {}),
               state: check.state,
-              output: truncate(check.output),
               last_check_at: checkedAt,
               updated_at: now,
               ...(changed ? { last_state_change_at: now } : {}),
