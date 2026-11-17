@@ -46,29 +46,40 @@ Double opt-in; see [notifications.md](notifications.md). Responses are sent with
 
 | Method | Path | Body / auth | Response |
 | --- | --- | --- | --- |
-| POST | `/api/public/subscriptions` | `SubscribeInput` | `202 { ok: true }` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public `serviceIds`. Rate limited (5/min per IP). |
+| POST | `/api/public/subscriptions` | `SubscribeInput` | `202 { ok: true }` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated; also for a filled-in honeypot, see below). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public `serviceIds`. Rate limited (5/min per IP). |
 | POST | `/api/public/subscriptions/:id/confirm` | `SubscriptionConfirmInput` (token from the confirmation link) | `{ subscription: PublicSubscription, manageToken: string }`; idempotent |
 | GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` | `PublicSubscription` |
 | PUT | `/api/public/subscriptions/:id` | header as above, `SubscriptionPreferencesInput` | `PublicSubscription` |
 | DELETE | `/api/public/subscriptions/:id` | header as above | `204`, deletes the subscriber completely |
 | POST | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | empty or `List-Unsubscribe=One-Click` (form encoded) | `{ ok: true }`, deletes the subscriber (RFC 8058 one-click, used by the `List-Unsubscribe` header) |
-| GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | – | `303` to the manage page (never deletes) |
+| GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | – | `303` to the manage page with the unsubscribe confirmation, `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>` (never deletes) |
 
 Behaviour of `POST /api/public/subscriptions`:
 
 - new address: pending subscriber, confirmation email;
 - pending address: preferences replaced, confirmation email sent again;
-- confirmed address: preferences unchanged, email with the manage link.
+- confirmed address: preferences unchanged, email with the manage link;
+- `website` (honeypot, any string up to 500 characters) not empty: answered exactly
+  like a successful subscribe (`202 { ok: true }`), but nothing is created and no
+  email is sent. Real visitors never see the field.
 
 At most one confirmation/manage email per address every 10 minutes. The endpoints
 other than subscribe keep working when subscriptions are disabled later, so
 subscribers can always unsubscribe. Rate limit for the token endpoints: 30/min per IP.
 
-Links in emails (web client routes):
+Links in emails (web client routes). The token is in the URL fragment, so it never
+reaches the server, proxies or access logs; the web client reads it from the
+fragment and sends it in the request body (confirm) or the `X-Subscription-Token`
+header (manage):
 
-- `${BASE_URL}/subscription/confirm?id=<id>&token=<confirmToken>`
-- `${BASE_URL}/subscription/manage?id=<id>&token=<manageToken>` (the unsubscribe link
-  in the email body adds `&unsubscribe=1`)
+- confirm: `${BASE_URL}/subscription/confirm?id=<id>#token=<confirmToken>`
+- manage: `${BASE_URL}/subscription/manage?id=<id>#token=<manageToken>`
+- unsubscribe (email body): `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>`
+
+Only the RFC 8058 `List-Unsubscribe` header keeps the token in the query string
+(`/api/public/subscriptions/:id/unsubscribe?token=`), since mail clients post to it
+directly. The server log redacts the value of every `token` query parameter
+(`token=[REDACTED]`).
 
 ## Auth (`/api/auth`)
 
@@ -189,7 +200,8 @@ their creator loses the admin role.
 ## Ingest API (`/api/ingest`)
 
 Monitoring systems push check results. Authentication: `Authorization: Bearer <ingest token>`
-of the source (or `?token=` query parameter for systems that cannot set headers).
+of the source (or `?token=` query parameter for systems that cannot set headers; its
+value is redacted in the request log).
 Responses: `{ ok: true, created, updated, removed, stateChanges }`.
 
 | Method | Path | Body |

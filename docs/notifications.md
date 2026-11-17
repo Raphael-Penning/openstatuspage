@@ -6,8 +6,8 @@ server and how to operate and troubleshoot delivery.
 
 ## Overview
 
-- Subscribers choose **all services** or **specific public services** (the form
-  groups services by their group). The choice is stored per service.
+- Subscribers choose **All updates** or **Selected services** (public services
+  only; the form groups them by their group). The choice is stored per service.
 - **Double opt-in**: a new subscription stays inactive until the subscriber clicks
   the link in the confirmation email. Unconfirmed subscriptions are deleted after
   7 days.
@@ -16,13 +16,15 @@ server and how to operate and troubleshoot delivery.
   appear in an email.
 - Every incident and maintenance form in the management UI has a
   **Notify subscribers** checkbox (on by default):
-  - incidents: creating an incident and posting an update;
-  - maintenance: the announcement when it is created, and every posted update.
+  - incidents: creating an incident and posting an update (including **Resolve**);
+  - maintenance: the announcement when it is created, and every posted update
+    (including **Start now**, **Complete** and **Cancel maintenance**).
   The maintenance stores this flag: the automatic start and completion (when
   `autoStart`/`autoComplete` are set) and the reminder are only sent when the flag
   is set. The flag can be changed later when editing the maintenance.
 - **Reminder**: subscribers get a reminder before a scheduled maintenance starts
-  (setting *maintenance reminder*, default 24 hours, `0` disables reminders).
+  (setting **Maintenance reminder (hours)**, 0–168, default 24, `0` disables
+  reminders).
   Each window is reminded once. A maintenance created less than the reminder period
   before its start is not reminded (the announcement was just sent). When the
   start is moved later, a new reminder is sent before the new start.
@@ -30,28 +32,43 @@ server and how to operate and troubleshoot delivery.
   plus a simple HTML version. Times are shown in UTC.
 - Every notification contains links to manage the subscription and to unsubscribe,
   and the `List-Unsubscribe` / `List-Unsubscribe-Post` headers for one-click
-  unsubscribe in mail clients (RFC 8058).
+  unsubscribe in mail clients (RFC 8058). The unsubscribe link in the body opens
+  the manage page with `&unsubscribe=1`, which shows the unsubscribe confirmation
+  right away. The one-click header URL unsubscribes on `POST` (what mail clients
+  send); opening it in a browser (`GET`) only redirects (`303`) to the manage page
+  with the unsubscribe confirmation and never deletes anything.
+- Links in the email body carry their token in the URL fragment, so the token never
+  reaches the server, proxies or access logs:
+  - confirm: `${BASE_URL}/subscription/confirm?id=<id>#token=<confirmToken>`
+  - manage: `${BASE_URL}/subscription/manage?id=<id>#token=<manageToken>`
+  - unsubscribe: `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>`
+
+  Only the `List-Unsubscribe` header uses the API URL with `?token=` (mail clients
+  post to it directly); the server log redacts it as `token=[REDACTED]`.
 
 ### Who receives what
 
 | Event | Recipients |
 | --- | --- |
-| Incident or maintenance affecting public services | Confirmed subscribers with *all services*, plus subscribers of at least one affected public service |
-| Incident or maintenance without (public) affected services | Confirmed subscribers with *all services* only |
-| Private incident / maintenance, or *Notify subscribers* unchecked | Nobody |
+| Incident or maintenance affecting public services | Confirmed subscribers with *All updates*, plus subscribers of at least one affected public service |
+| Incident or maintenance without (public) affected services | Confirmed subscribers with *All updates* only |
+| Hidden (non-public) incident / maintenance, *Notify subscribers* unchecked, or subscriptions disabled in the settings | Nobody |
 
 ## Enabling subscriptions
 
 1. Configure a mail transport (see below) and restart the server.
-2. In the management UI open the settings and enable **email subscriptions**.
-   Optionally adjust the maintenance reminder.
-3. As an admin, check the notification status in the management UI and send a test
-   email (see [Troubleshooting](#troubleshooting)).
+2. In the management UI open **Administration → Settings**, section
+   **Email subscriptions**, and enable **Offer email subscriptions**. Optionally
+   adjust **Maintenance reminder (hours)**.
+3. Check the **Email delivery** panel in the same section and send a test email
+   (see [Troubleshooting](#troubleshooting)).
 
-The public page shows the subscribe form only when subscriptions are enabled
+The public page offers subscriptions (entry **Email notifications** in the
+**Subscribe to updates** menu, form at `/subscribe`) only when they are enabled
 **and** a transport (`smtp` or `log`) is configured. Disabling subscriptions stops
-all notifications; existing subscribers are kept and can still manage or cancel
-their subscription.
+all new notifications, including reminders and automatic start/completion emails
+(emails already in the outbox are still delivered); existing subscribers are kept
+and can still manage or cancel their subscription.
 
 ## Mail transport
 
@@ -101,7 +118,10 @@ network, since it allows interception of the connection.
 ### Docker Compose
 
 `docker/docker-compose.yml` passes `MAIL_TRANSPORT` and all `SMTP_*` variables
-through from the shell or a `.env` file next to the compose file:
+through from the shell, from the file given with `--env-file` (e.g. the
+`deploy.env` of the installation guide) or, without `--env-file`, from a `.env`
+file next to the compose file (`docker/.env`). The compose file itself does not
+need to be edited:
 
 ```bash
 export SMTP_HOST=smtp.example.com SMTP_USER=status@example.com SMTP_PASSWORD='change-me'
@@ -114,36 +134,48 @@ docker compose -f docker/docker-compose.yml up -d
 Emails are not sent inside the web request. Every email is first written to an
 outbox table (`email_outbox`) and delivered by a background task:
 
-- runs every 10 seconds (and right after new emails were queued), up to 50 emails per
-  batch;
+- runs every 10 seconds and right after new emails were queued; each run sends due
+  emails in batches of 50 (up to 10 batches per run);
 - failed attempts are retried after 1 min, 5 min, 15 min and 1 h; after 5 failed
   attempts the email is marked **failed**;
-- failed emails can be queued again by an admin (*retry failed* in the management UI,
+- failed emails can be queued again by an admin (**Retry failed** in the
+  **Email delivery** panel,
   `POST /api/admin/notifications/retry-failed`), e.g. after fixing the SMTP
   credentials;
 - sent and failed emails are deleted after 30 days;
-- emails of a subscriber who unsubscribes are deleted with the subscriber.
+- emails of a subscriber who unsubscribes are deleted with the subscriber (an email
+  whose subscriber no longer exists at sending time is dropped).
+
+Tokens are never written to the outbox. Subscriber emails are queued with
+placeholders instead of the confirm and manage tokens; the delivery task derives
+the real tokens from `SECRET_KEY`, the subscriber id and its salt right before
+sending and fills them into the body (text and HTML) and the `List-Unsubscribe`
+header. After an email was sent, its bodies and headers are blanked in the outbox;
+recipient, subject, kind and status stay for the status view. Failed emails keep
+their placeholder bodies so that **Retry failed** can send them again.
 
 Background tasks run only where `WORKER_ENABLED=true`. With several replicas, enable
 the worker on exactly one instance (as for monitoring polls). If no instance runs
 the worker, emails stay queued.
 
-A large incident with many subscribers queues one email per subscriber. At 50 emails
-per 10 s the default throughput is about 300 emails per minute; check the sending
-limits of your mail provider.
+A large incident with many subscribers queues one email per subscriber. A run sends
+up to 500 emails (10 batches of 50) as fast as the SMTP server accepts them, over at
+most 2 parallel connections; check the sending limits of your mail provider.
 
 ## Data stored and deletion
 
 For each subscriber the database stores:
 
-- email address (lowercase), language, *all services* flag and the selected services;
+- email address (lowercase), language, *All updates* flag and the selected services;
 - creation and confirmation timestamps and the time of the last confirmation email;
 - a random salt. The confirm and manage tokens in the links are derived from the
-  salt and `SECRET_KEY` (HMAC-SHA256) and are **never stored**. Changing
-  `SECRET_KEY` therefore invalidates all links in emails already sent.
+  salt and `SECRET_KEY` (HMAC-SHA256) and are **never stored**, neither in the
+  subscriber row nor in the outbox. Changing `SECRET_KEY` therefore invalidates all
+  links in emails already sent.
 
-Queued and sent emails (recipient, subject, body) are kept in the outbox for at most
-30 days.
+The outbox keeps recipient, subject, kind and status of every email for at most 30
+days. The body is only kept (with token placeholders) until the email is sent; failed
+emails keep it until they are retried or deleted.
 
 Deletion:
 
@@ -151,8 +183,8 @@ Deletion:
   confirmation email.
 - Subscribers can unsubscribe with the link in every email or on the manage page;
   this deletes the subscriber, the selected services and queued emails completely.
-- Admins can list and delete subscribers in the management UI
-  (`GET`/`DELETE /api/admin/subscribers`). The audit log records the deletion with a
+- Admins can list, search, filter and delete subscribers under
+  **Administration → Subscribers** (`GET`/`DELETE /api/admin/subscribers`). The audit log records the deletion with a
   masked address (`j***@example.com`).
 
 Subscribing answers identically for new, pending and already confirmed addresses,
@@ -161,6 +193,11 @@ subscribers who subscribe again get an email with their manage link instead; at 
 one confirmation or manage email is sent per address every 10 minutes, and the
 subscribe endpoint is limited to 5 requests per minute per client IP. Behind a
 reverse proxy set `TRUST_PROXY` so the limit applies per visitor.
+
+The form also contains a hidden honeypot field (`website`) that people never fill
+in. When a bot fills it in, the request is answered exactly like a successful
+subscription (`202`), but nothing is stored and no email is sent, so the bot gets
+no hint that it was detected.
 
 Mention the subscription in your privacy policy (purpose, data stored, retention,
 the mail provider you use as processor).
@@ -189,12 +226,15 @@ senders.
 
 ## Troubleshooting
 
-**Status.** The notification status in the management UI (admins,
-`GET /api/admin/notifications/status`) shows the transport, the sender, whether
-subscriptions are enabled, subscriber counts, the queue (pending/failed), the time
-of the last sent email and the last delivery error.
+**Status.** The **Email delivery** panel on the settings page (admins,
+`GET /api/admin/notifications/status`) shows the transport (*SMTP*, *Server log* or
+*Not configured*), the sender, subscriber counts (confirmed/pending), the queue
+(pending/failed), the time of the last sent email and the last delivery error. It
+warns when subscriptions are enabled but no transport is configured. Email addresses
+in SMTP error messages are masked (`j***@example.com`) before the error is stored or
+logged.
 
-**Test email.** *Send test email* in the management UI (or `POST /api/admin/notifications/test` with
+**Test email.** **Send test email** in the **Email delivery** panel (or `POST /api/admin/notifications/test` with
 `{ "to": "you@example.com" }`) sends immediately, bypassing the queue, and returns
 the SMTP error message when sending fails.
 
@@ -204,7 +244,7 @@ the server log.
 
 **Server log.** Failed deliveries are logged at level `warn`
 (`email delivery failed`, with outbox id, kind, attempt and error, without the
-recipient address). Queued notifications are logged at `info`
+recipient address; addresses inside the SMTP error are masked). Queued notifications are logged at `info`
 (`subscriber notifications queued`).
 
 Common problems:
@@ -213,7 +253,7 @@ Common problems:
 | --- | --- |
 | No subscribe form on the public page | Subscriptions disabled in the settings, or `MAIL_TRANSPORT` is `none` (no `SMTP_HOST`). |
 | Server does not start: `SMTP_FROM: required ...` | `SMTP_FROM` is mandatory for `smtp` and `log`. |
-| Queue grows, nothing is sent | No instance with `WORKER_ENABLED=true`, or every attempt fails: check *last error*. |
+| Queue grows, nothing is sent | No instance with `WORKER_ENABLED=true`, or every attempt fails: check **Last error**. |
 | `Invalid login` / `535 Authentication failed` | Wrong `SMTP_USER`/`SMTP_PASSWORD`; some providers need an app password. |
 | `self-signed certificate` / `unable to verify the first certificate` | Install a valid certificate on the relay (or, inside a trusted network only, `SMTP_TLS_REJECT_UNAUTHORIZED=false`). |
 | `wrong version number` / connection hangs | `SMTP_SECURE` does not match the port: `true` for 465, `false` for 587/25. |

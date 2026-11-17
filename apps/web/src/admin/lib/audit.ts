@@ -1,0 +1,21 @@
+/**
+ * Entity types offered by the audit log filter. Keep in sync with the
+ * entity types the server writes (auditRequest / audit calls) and with
+ * `audit.entities` in the admin locales.
+ */
+export const AUDIT_ENTITY_TYPES = [
+  'incident',
+  'maintenance',
+  'service',
+  'service_group',
+  'location',
+  'monitor_source',
+  'check',
+  'settings',
+  'user',
+  'api_token',
+  'subscriber',
+  'notifications',
+] as const;
+
+export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];

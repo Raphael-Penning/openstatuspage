@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
-import { subscriptionToken } from '../src/services/subscriptions.js';
+import { subscriptionToken, TOKEN_PLACEHOLDERS } from '../src/services/subscriptions.js';
 import { adminClient, BASE_URL, createTestApp, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
@@ -41,7 +41,7 @@ async function deliver(): Promise<MailMessage[]> {
 }
 
 function linkParams(mail: MailMessage, path: 'confirm' | 'manage') {
-  const match = new RegExp(`${BASE_URL}/subscription/${path}\\?id=([^&\\s]+)&token=([A-Za-z0-9_-]+)`).exec(mail.text);
+  const match = new RegExp(`${BASE_URL}/subscription/${path}\\?id=([^&#\\s]+)#token=([A-Za-z0-9_-]+)`).exec(mail.text);
   if (!match) throw new Error(`no ${path} link in mail:\n${mail.text}`);
   return { id: decodeURIComponent(match[1]!), token: match[2]! };
 }
@@ -82,7 +82,9 @@ describe('subscribe and confirm', () => {
     const { id, token } = linkParams(mail!, 'confirm');
     expect(id).toBe(row.id);
     expect(token).toBe(confirmToken);
-    expect(mail!.html).toContain(`href="${BASE_URL}/subscription/confirm?id=${id}&amp;token=${token}"`);
+    expect(mail!.html).toContain(`href="${BASE_URL}/subscription/confirm?id=${id}#token=${token}"`);
+    // The token is only in the URL fragment, never in a query string.
+    expect(mail!.text).not.toMatch(/[?&]token=/);
 
     const confirmed = await t.app.inject({
       method: 'POST',
@@ -174,7 +176,6 @@ describe('subscribe and confirm', () => {
   it('validates input and service ids', async () => {
     expect((await subscribe({ email: 'not-an-email' })).statusCode).toBe(400);
     expect((await subscribe({ email: 'jane@example.com', allServices: false })).statusCode).toBe(400);
-    expect((await subscribe({ email: 'jane@example.com', website: 'http://spam.example.com' })).statusCode).toBe(400);
     const hidden = await subscribe({ email: 'jane@example.com', allServices: false, serviceIds: [hiddenService] });
     const unknown = await subscribe({ email: 'jane@example.com', allServices: false, serviceIds: ['nope'] });
     expect(hidden.statusCode).toBe(400);
@@ -183,6 +184,41 @@ describe('subscribe and confirm', () => {
     expect(hidden.body).toBe(unknown.body);
     expect(hidden.body).not.toContain(hiddenService);
     expect(await t.db.selectFrom('subscribers').selectAll().execute()).toHaveLength(0);
+  });
+
+  it('answers a filled-in honeypot like a successful subscribe but creates and sends nothing', async () => {
+    const real = await subscribe({ email: 'jane@example.com' });
+    const bot = await subscribe({ email: 'bot@example.com', website: 'http://spam.example.com' });
+    expect(bot.statusCode).toBe(202);
+    expect(bot.body).toBe(real.body);
+    expect(bot.headers['cache-control']).toBe('no-store');
+    const rows = await t.db.selectFrom('subscribers').select('email').execute();
+    expect(rows.map((r) => r.email)).toEqual(['jane@example.com']);
+    expect(await deliver()).toHaveLength(1);
+    // An empty honeypot is a normal subscribe; overlong values are still rejected.
+    expect((await subscribe({ email: 'john@example.com', website: '' })).statusCode).toBe(202);
+    expect(await t.db.selectFrom('subscribers').selectAll().execute()).toHaveLength(2);
+    expect((await subscribe({ email: 'bot@example.com', website: 'x'.repeat(501) })).statusCode).toBe(400);
+  });
+
+  it('never stores tokens in the outbox and fills them in when sending', async () => {
+    await subscribe({ email: 'jane@example.com' });
+    const sub = await t.db.selectFrom('subscribers').selectAll().executeTakeFirstOrThrow();
+    const confirmToken = subscriptionToken(t.config.SECRET_KEY, 'confirm', sub.id, sub.token_salt);
+    const manageToken = subscriptionToken(t.config.SECRET_KEY, 'manage', sub.id, sub.token_salt);
+    const queued = JSON.stringify(await t.db.selectFrom('email_outbox').selectAll().execute());
+    expect(queued).not.toContain(confirmToken);
+    expect(queued).not.toContain(manageToken);
+    expect(queued).toContain(TOKEN_PLACEHOLDERS.confirm);
+
+    const [mail] = await deliver();
+    expect(linkParams(mail!, 'confirm').token).toBe(confirmToken);
+    expect(mail!.html).toContain(confirmToken);
+    expect(mail!.text).not.toContain('__OSP_');
+    // Sent rows keep subject and status, but no bodies or headers.
+    const sent = await t.db.selectFrom('email_outbox').selectAll().executeTakeFirstOrThrow();
+    expect(sent).toMatchObject({ status: 'sent', kind: 'confirm', text_body: '', html_body: '', headers: null });
+    expect(sent.subject).toBe(mail!.subject);
   });
 
   it('is 404 when disabled in the settings or without mail transport', async () => {
@@ -253,7 +289,7 @@ describe('manage and unsubscribe', () => {
     // A browser GET only redirects to the manage page.
     const get = await t.app.inject({ method: 'GET', url });
     expect(get.statusCode).toBe(303);
-    expect(get.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${id}&token=${manageToken}&unsubscribe=1`);
+    expect(get.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${id}&unsubscribe=1#token=${manageToken}`);
     expect(await t.db.selectFrom('subscribers').selectAll().execute()).toHaveLength(1);
 
     const wrong = await t.app.inject({

@@ -32,6 +32,18 @@ export function subscriberParams(query: Pick<SubscriberListQuery, 'page' | 'stat
   return out;
 }
 
+/**
+ * Page to jump to when the requested page lies past the end of the list (e.g.
+ * after deleting the last subscriber of the last page, or an outdated link):
+ * the last page with entries. Null when the page is fine.
+ */
+export function pageAfterEnd(data: { items: readonly unknown[]; total: number; page: number; pageSize: number }): number | null {
+  if (data.items.length > 0 || data.total <= 0 || data.page <= 1) return null;
+  const last = Math.max(1, Math.ceil(data.total / data.pageSize));
+  // Always move backwards, so an inconsistent response cannot cause a loop.
+  return Math.min(last, data.page - 1);
+}
+
 /** "All updates" or the names of the selected services. */
 export function subscriberScope(subscriber: Pick<AdminSubscriber, 'allServices' | 'services'>, allLabel: string): string {
   if (subscriber.allServices) return allLabel;
