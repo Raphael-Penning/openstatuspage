@@ -223,7 +223,8 @@ export class NotificationService {
     const rec = await loadMaintenance(this.db, maintenanceId);
     if (!rec || rec.row.is_public !== 1) return 0;
     if (opts.requireStoredFlag && rec.row.notify_subscribers !== 1) return 0;
-    const latest = rec.updates[0];
+    // Newest update matching the current status (automatic start+complete share one timestamp).
+    const latest = rec.updates.find((u) => u.status === rec.row.status) ?? rec.updates[0];
     const services = rec.services.filter((s) => s.isPublic);
     return this.fanOut(
       kind === 'reminder' ? 'maintenance_reminder' : 'maintenance',
@@ -237,7 +238,7 @@ export class NotificationService {
             id: rec.row.id,
             title: rec.row.title,
             description: rec.row.description,
-            status: kind === 'update' ? (latest?.status ?? rec.row.status) : rec.row.status,
+            status: rec.row.status,
             scheduledStart: rec.row.scheduled_start,
             scheduledEnd: rec.row.scheduled_end,
             services: services.map((s) => s.name),

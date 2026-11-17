@@ -4,13 +4,23 @@
  *
  * Automatic transitions add an update with an empty message; clients render a
  * localized default text for empty messages.
+ *
+ * Subscribers are notified about automatic transitions when the maintenance is
+ * public and its notify flag is set. A window that is started and completed in
+ * the same run (e.g. missed while the server was down) only sends the completion.
  */
 import type { DB } from '../db/index.js';
 import { newId } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
+import type { NotificationService } from './notifications.js';
 import type { StatusEngine } from './status-engine.js';
 
-export async function runMaintenanceTransitions(db: DB, engine: StatusEngine, now = nowIso()): Promise<number> {
+export async function runMaintenanceTransitions(
+  db: DB,
+  engine: StatusEngine,
+  now = nowIso(),
+  notifications?: NotificationService,
+): Promise<number> {
   const toStart = await db
     .selectFrom('maintenances')
     .select('id')
@@ -72,6 +82,14 @@ export async function runMaintenanceTransitions(db: DB, engine: StatusEngine, no
       .where('maintenance_id', 'in', [...ids])
       .execute();
     await engine.recompute(services.map((s) => s.service_id));
+  }
+
+  if (notifications) {
+    for (const id of ids) {
+      await notifications.safely('maintenance.auto_transition', () =>
+        notifications.maintenanceEvent(id, 'update', { requireStoredFlag: true }),
+      );
+    }
   }
   return ids.size;
 }

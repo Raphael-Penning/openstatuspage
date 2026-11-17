@@ -62,7 +62,7 @@ async function affectedServiceIds(db: DB, incidentId: string): Promise<string[]>
 
 /** /api/admin/incidents (editor) */
 export async function registerIncidentRoutes(app: FastifyInstance): Promise<void> {
-  const { db, engine } = app.ctx;
+  const { db, engine, notifications } = app.ctx;
 
   app.get('/api/admin/incidents', editor, async (req) => {
     const q = parse(ListQuery, req.query);
@@ -126,6 +126,9 @@ export async function registerIncidentRoutes(app: FastifyInstance): Promise<void
       status: input.status,
       impact: input.impact,
     });
+    if (input.notify && input.isPublic) {
+      await notifications.safely('incident.create', () => notifications.incidentPosted(id, { isNew: true }));
+    }
     return reply.status(201).send(await getIncident(db, id));
   });
 
@@ -216,6 +219,9 @@ export async function registerIncidentRoutes(app: FastifyInstance): Promise<void
     });
     await engine.recompute([...before, ...(input.affectedServices?.map((a) => a.serviceId) ?? [])]);
     await auditRequest(db, req, 'incident.update_posted', 'incident', id, { status: input.status });
+    if (input.notify && current.is_public === 1) {
+      await notifications.safely('incident.update', () => notifications.incidentPosted(id, { isNew: false }));
+    }
     return getIncident(db, id);
   });
 
