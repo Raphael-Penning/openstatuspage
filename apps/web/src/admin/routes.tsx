@@ -50,6 +50,7 @@ export const adminRoutes: RouteObject[] = [
           { path: 'monitoring/:id', ...adminPage(() => import('./pages/monitoring/SourceEditPage')) },
           { path: 'settings', ...adminPage(() => import('./pages/SettingsPage')) },
           { path: 'users', ...adminPage(() => import('./pages/UsersPage')) },
+          { path: 'subscribers', ...adminPage(() => import('./pages/SubscribersPage')) },
           { path: 'api-tokens', ...adminPage(() => import('./pages/ApiTokensPage')) },
           { path: 'audit-log', ...adminPage(() => import('./pages/AuditLogPage')) },
           { path: '*', ...page(() => import('./pages/AdminNotFound')) },

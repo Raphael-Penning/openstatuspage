@@ -26,7 +26,7 @@ export function OverviewPage() {
   return (
     <div className="space-y-10">
       <PageTitle title={data.page.siteName} subtitle={data.page.description}>
-        <FeedMenu />
+        <FeedMenu email={data.emailSubscriptions} />
       </PageTitle>
 
       <StatusHero

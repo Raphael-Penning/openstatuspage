@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Mail,
   MapPin,
   Menu,
   Radar,
@@ -75,6 +76,7 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
       items: [
         { to: '/admin/settings', label: t('nav.settings'), icon: Settings, adminOnly: true },
         { to: '/admin/users', label: t('nav.users'), icon: Users, adminOnly: true },
+        { to: '/admin/subscribers', label: t('nav.subscribers'), icon: Mail, adminOnly: true },
         { to: '/admin/api-tokens', label: t('nav.apiTokens'), icon: KeyRound, adminOnly: true },
         { to: '/admin/audit-log', label: t('nav.auditLog'), icon: ScrollText, adminOnly: true },
       ],

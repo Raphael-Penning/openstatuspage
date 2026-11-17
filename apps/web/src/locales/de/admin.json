@@ -20,7 +20,8 @@
     "settings": "Einstellungen",
     "users": "Benutzer",
     "apiTokens": "API-Tokens",
-    "auditLog": "Audit-Log"
+    "auditLog": "Audit-Log",
+    "subscribers": "Abonnenten"
   },
   "userMenu": {
     "label": "Konto und Einstellungen",
@@ -554,7 +555,8 @@
     "sections": {
       "branding": "Branding",
       "display": "Anzeige",
-      "footer": "Footer-Links"
+      "footer": "Footer-Links",
+      "email": "E-Mail-Abonnements"
     },
     "fields": {
       "siteName": "Seitenname",
@@ -568,7 +570,9 @@
       "showLocations": "Standorte anzeigen",
       "showUptime": "Verfügbarkeit anzeigen",
       "uptimeDays": "Tage der Verfügbarkeit",
-      "recentIncidentDays": "Tage für kürzliche Vorfälle"
+      "recentIncidentDays": "Tage für kürzliche Vorfälle",
+      "emailSubscriptionsEnabled": "E-Mail-Abonnements anbieten",
+      "maintenanceReminderHours": "Wartungserinnerung (Stunden)"
     },
     "supportUrlHelp": "Optionaler Link zu deiner Support- oder Kontaktseite.",
     "pickColor": "Akzentfarbe wählen",
@@ -585,7 +589,9 @@
     "noLinks": "Keine Footer-Links.",
     "linkLabel": "Bezeichnung",
     "linkUrl": "URL",
-    "removeLink": "Link {{name}} entfernen"
+    "removeLink": "Link {{name}} entfernen",
+    "emailSubscriptionsHelp": "Besucher können Vorfälle und Wartungen per E-Mail abonnieren (Double-Opt-in). Wird nur angeboten, wenn ein Mailversand konfiguriert ist.",
+    "maintenanceReminderHoursHelp": "Erinnert Abonnenten so viele Stunden vor einer geplanten Wartung; 0 schaltet Erinnerungen ab (0–168)."
   },
   "users": {
     "title": "Benutzer",
@@ -670,7 +676,9 @@
       "check": "Check",
       "settings": "Einstellungen",
       "user": "Benutzer",
-      "api_token": "API-Token"
+      "api_token": "API-Token",
+      "subscriber": "Abonnent",
+      "notification": "Benachrichtigung"
     },
     "actions": {
       "auth_login": "Angemeldet",
@@ -707,7 +715,80 @@
       "user_update": "Benutzer bearbeitet",
       "user_delete": "Benutzer gelöscht",
       "api_token_create": "API-Token erzeugt",
-      "api_token_delete": "API-Token widerrufen"
+      "api_token_delete": "API-Token widerrufen",
+      "subscriber_delete": "Abonnent gelöscht",
+      "notification_test": "Test-E-Mail gesendet"
     }
+  },
+  "notify": {
+    "label": "Abonnenten benachrichtigen",
+    "incidentHelp": "Sendet diesen Vorfall per E-Mail an Abonnenten der betroffenen Services und aller Updates.",
+    "updateHelp": "Sendet dieses Update per E-Mail an Abonnenten der betroffenen Services und aller Updates.",
+    "maintenanceHelp": "Sendet die Ankündigung per E-Mail und aktiviert die Erinnerung sowie die E-Mails zum automatischen Start und Abschluss.",
+    "maintenanceEditHelp": "Aktiviert die Erinnerung sowie die E-Mails zum automatischen Start und Abschluss. Beim Speichern wird keine E-Mail gesendet.",
+    "hiddenHelp": "Versteckte Einträge benachrichtigen nie Abonnenten.",
+    "enabledHint": "E-Mails werden nur gesendet, wenn E-Mail-Abonnements in den Einstellungen aktiviert sind.",
+    "off": "Keine E-Mail-Benachrichtigungen",
+    "reminderSent": "Erinnerung eingereiht {{date}}"
+  },
+  "notifications": {
+    "title": "E-Mail-Versand",
+    "transport": "Versand",
+    "transports": {
+      "smtp": "SMTP",
+      "log": "Server-Log",
+      "none": "Nicht konfiguriert"
+    },
+    "from": "Absender",
+    "subscribers": "Abonnenten",
+    "subscriberCounts": "{{confirmed}} bestätigt · {{pending}} unbestätigt",
+    "queue": "Warteschlange",
+    "queuePending": "{{value}} ausstehend",
+    "queueFailed": "{{value}} fehlgeschlagen",
+    "lastSent": "Zuletzt gesendet",
+    "never": "Nie",
+    "lastError": "Letzter Fehler",
+    "noTransportWarning": "E-Mail-Abonnements sind aktiviert, aber kein Mailversand ist konfiguriert, daher bietet die öffentliche Seite sie nicht an. Setze SMTP_HOST (oder MAIL_TRANSPORT) in der Server-Umgebung.",
+    "noTransport": "Es ist kein Mailversand konfiguriert. Setze SMTP_HOST und SMTP_FROM in der Server-Umgebung oder MAIL_TRANSPORT=log für die Entwicklung.",
+    "logTransport": "E-Mails werden ins Server-Log geschrieben statt zugestellt (Entwicklungsmodus).",
+    "testTo": "Test-E-Mail senden an",
+    "testSend": "Test-E-Mail senden",
+    "testSent": "Test-E-Mail gesendet.",
+    "testFailed": "Die Test-E-Mail konnte nicht gesendet werden.",
+    "retry": "Fehlgeschlagene erneut senden",
+    "nothingToRetry": "Es gibt keine fehlgeschlagenen E-Mails.",
+    "requeued_one": "{{count}} E-Mail erneut eingereiht.",
+    "requeued_other": "{{count}} E-Mails erneut eingereiht."
+  },
+  "subscribers": {
+    "title": "Abonnenten",
+    "description": "Personen, die E-Mails zu Vorfällen und Wartungen erhalten. Unbestätigte Anmeldungen werden nach 7 Tagen automatisch gelöscht.",
+    "search": "E-Mail-Adressen durchsuchen",
+    "filterStatus": "Nach Status filtern",
+    "filter": {
+      "all": "Alle",
+      "confirmed": "Bestätigt",
+      "pending": "Unbestätigt"
+    },
+    "status": {
+      "confirmed": "Bestätigt",
+      "pending": "Unbestätigt"
+    },
+    "fields": {
+      "email": "E-Mail",
+      "status": "Status",
+      "scope": "Abonniert",
+      "language": "Sprache",
+      "created": "Angemeldet",
+      "confirmed": "Bestätigt"
+    },
+    "allUpdates": "Alle Updates",
+    "empty": "Noch keine Abonnenten. Besucher können sich auf der öffentlichen Seite anmelden, sobald E-Mail-Abonnements aktiviert sind.",
+    "emptyFiltered": "Keine Abonnenten passen zu diesen Filtern.",
+    "toSettings": "Einstellungen für E-Mail-Abonnements",
+    "deleteSubscriber": "{{email}} löschen",
+    "deleteTitle": "Abonnent löschen",
+    "deleteConfirm": "{{email}} löschen? Die Adresse erhält keine weiteren E-Mails, eingereihte E-Mails werden verworfen. Das kann nicht rückgängig gemacht werden.",
+    "deleted": "Abonnent gelöscht."
   }
 }

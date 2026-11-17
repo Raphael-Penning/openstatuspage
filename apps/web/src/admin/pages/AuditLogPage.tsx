@@ -18,6 +18,7 @@ const ENTITY_TYPES = [
   'settings',
   'user',
   'api_token',
+  'subscriber',
 ] as const;
 
 const PAGE_SIZE = 25;

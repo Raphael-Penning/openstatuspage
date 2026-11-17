@@ -22,6 +22,7 @@ import {
   TextAreaField,
   TextField,
 } from '../../components/fields';
+import { NotifySubscribersField } from '../../components/NotifySubscribersField';
 import { AffectedServicesPicker, defaultImpactStatus, LocationsPicker, locationLabel, type AffectedValue } from '../../components/pickers';
 import { Badge, Button, Card, IconButton, PageHeader, QueryState, StatusBadge, VisibilityBadge } from '../../components/ui';
 import { isoToLocalInput, localInputToIso } from '../../lib/datetime';
@@ -174,6 +175,7 @@ function PostUpdateForm({ incident }: { incident: AdminIncident }) {
     message: '',
     adjust: false,
     affectedServices: toAffected(incident),
+    notify: true,
   });
   const form = useForm(initial);
   const v = form.values;
@@ -183,7 +185,13 @@ function PostUpdateForm({ incident }: { incident: AdminIncident }) {
     {
       success: t('incidents.updatePosted'),
       onSuccess: (updated) =>
-        form.setValues({ status: suggestedStatus(updated.status), message: '', adjust: false, affectedServices: toAffected(updated) }),
+        form.setValues({
+          status: suggestedStatus(updated.status),
+          message: '',
+          adjust: false,
+          affectedServices: toAffected(updated),
+          notify: true,
+        }),
       onError: form.applyServerError,
     },
   );
@@ -194,6 +202,7 @@ function PostUpdateForm({ incident }: { incident: AdminIncident }) {
       status: v.status,
       message: v.message.trim(),
       ...(v.adjust ? { affectedServices: v.affectedServices } : {}),
+      notify: v.notify,
     });
     if (body) post.mutate(body);
   };
@@ -231,6 +240,12 @@ function PostUpdateForm({ incident }: { incident: AdminIncident }) {
             error={form.error('affectedServices')}
           />
         )}
+        <NotifySubscribersField
+          context="update"
+          isPublic={incident.isPublic}
+          checked={v.notify}
+          onChecked={(x) => form.set('notify', x)}
+        />
         <div className="flex justify-end">
           <Button type="submit" variant="primary" pending={post.isPending}>
             {t('incidents.postUpdate')}
@@ -328,14 +343,18 @@ function UpdateItem({ incident, update, canDelete }: { incident: AdminIncident; 
 
 function ResolveDialog({ incident, open, onClose }: { incident: AdminIncident; open: boolean; onClose: () => void }) {
   const { t } = useTranslation('admin');
-  const form = useForm({ message: '' });
+  const form = useForm({ message: '', notify: true });
   const resolve = useAdminMutation(
     (body: IncidentUpdateInput) => api.post<AdminIncident>(`/api/admin/incidents/${incident.id}/updates`, body),
     { success: t('incidents.resolved'), onSuccess: onClose, onError: form.applyServerError },
   );
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const body = form.validate(IncidentUpdateInput, { status: 'resolved', message: form.values.message.trim() });
+    const body = form.validate(IncidentUpdateInput, {
+      status: 'resolved',
+      message: form.values.message.trim(),
+      notify: form.values.notify,
+    });
     if (body) resolve.mutate(body);
   };
   return (
@@ -349,6 +368,12 @@ function ResolveDialog({ incident, open, onClose }: { incident: AdminIncident; o
           placeholder={t('incidents.resolveDefaultMessage')}
           rows={3}
           required
+        />
+        <NotifySubscribersField
+          context="update"
+          isPublic={incident.isPublic}
+          checked={form.values.notify}
+          onChecked={(x) => form.set('notify', x)}
         />
         <div className="flex flex-wrap justify-end gap-2">
           <Button

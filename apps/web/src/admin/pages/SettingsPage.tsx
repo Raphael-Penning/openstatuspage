@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../../lib/api';
 import { LANGUAGES } from '../../lib/i18n';
 import { CheckboxField, FormErrorSummary, inputClass, SelectField, TextAreaField, TextField } from '../components/fields';
+import { NotificationStatusPanel } from '../components/NotificationStatusPanel';
 import { Button, Card, IconButton, PageHeader, QueryState } from '../components/ui';
 import { moveId } from '../lib/ordering';
 import { useAdminMutation, useSettings } from '../lib/queries';
@@ -31,6 +32,8 @@ interface Values {
   showUptime: boolean;
   uptimeDays: string;
   recentIncidentDays: string;
+  emailSubscriptionsEnabled: boolean;
+  maintenanceReminderHours: string;
 }
 
 let rowKey = 0;
@@ -50,6 +53,8 @@ const toValues = (s: PublicPageSettings): Values => ({
   showUptime: s.showUptime,
   uptimeDays: String(s.uptimeDays),
   recentIncidentDays: String(s.recentIncidentDays),
+  emailSubscriptionsEnabled: s.emailSubscriptionsEnabled,
+  maintenanceReminderHours: String(s.maintenanceReminderHours),
 });
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -84,6 +89,7 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const empty = (s: string) => s.trim() || null;
+    const int = (s: string) => (s.trim() === '' ? Number.NaN : Number(s));
     const body = form.validate(SettingsInput, {
       siteName: v.siteName.trim(),
       description: v.description.trim(),
@@ -96,8 +102,10 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
       supportUrl: empty(v.supportUrl),
       showLocations: v.showLocations,
       showUptime: v.showUptime,
-      uptimeDays: v.uptimeDays.trim() === '' ? Number.NaN : Number(v.uptimeDays),
-      recentIncidentDays: v.recentIncidentDays.trim() === '' ? Number.NaN : Number(v.recentIncidentDays),
+      uptimeDays: int(v.uptimeDays),
+      recentIncidentDays: int(v.recentIncidentDays),
+      emailSubscriptionsEnabled: v.emailSubscriptionsEnabled,
+      maintenanceReminderHours: int(v.maintenanceReminderHours),
     });
     if (body) save.mutate(body);
   };
@@ -243,6 +251,31 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
             error={form.error('recentIncidentDays')}
             help={t('settings.recentIncidentDaysHelp')}
           />
+        </div>
+      </Card>
+
+      <Card title={t('settings.sections.email')}>
+        <div className="grid gap-5 p-4 sm:p-6 md:grid-cols-2">
+          <CheckboxField
+            label={t('settings.fields.emailSubscriptionsEnabled')}
+            help={t('settings.emailSubscriptionsHelp')}
+            checked={v.emailSubscriptionsEnabled}
+            onChecked={(x) => form.set('emailSubscriptionsEnabled', x)}
+          />
+          <TextField
+            label={t('settings.fields.maintenanceReminderHours')}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={168}
+            value={v.maintenanceReminderHours}
+            onValue={(x) => form.set('maintenanceReminderHours', x)}
+            error={form.error('maintenanceReminderHours')}
+            help={t('settings.maintenanceReminderHoursHelp')}
+          />
+        </div>
+        <div className="border-t border-border p-4 sm:p-6">
+          <NotificationStatusPanel enabled={v.emailSubscriptionsEnabled} />
         </div>
       </Card>
 
