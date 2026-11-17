@@ -71,10 +71,11 @@ describe('generic push parser', () => {
     );
     expect(result.full).toBe(true);
     expect(result.checks).toEqual([
-      { externalId: 'a', name: 'a', host: null, state: 'ok', output: null, checkedAt: null },
+      // Omitted metadata stays undefined so stored values are kept.
+      { externalId: 'a', name: undefined, host: undefined, state: 'ok', output: undefined, checkedAt: null },
       { externalId: 'b', name: 'B', host: 'h1', state: 'critical', output: 'down', checkedAt: '2026-11-17T08:00:00Z' },
-      { externalId: 'c', name: 'c', host: null, state: 'warning', output: null, checkedAt: null },
-      { externalId: 'd', name: 'd', host: null, state: 'unknown', output: null, checkedAt: null },
+      { externalId: 'c', name: undefined, host: undefined, state: 'warning', output: undefined, checkedAt: null },
+      { externalId: 'd', name: undefined, host: undefined, state: 'unknown', output: undefined, checkedAt: null },
     ]);
   });
 

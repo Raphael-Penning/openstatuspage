@@ -13,11 +13,12 @@ export const genericPushParser: PushParser = {
       full: payload.full,
       checks: payload.checks.map((c) => ({
         externalId: c.id,
-        name: c.name?.trim() || c.id,
-        host: c.host?.trim() || null,
+        // Omitted name/host/output keep the stored values (state-only pushes).
+        name: c.name?.trim() || undefined,
+        host: c.host === undefined ? undefined : c.host?.trim() || null,
         // Numeric states follow the Nagios convention: 0 ok, 1 warning, 2 critical, 3 unknown.
         state: typeof c.state === 'number' ? serviceState(c.state) : c.state,
-        output: c.output ?? null,
+        output: c.output,
         checkedAt: c.timestamp ?? null,
       })),
     };

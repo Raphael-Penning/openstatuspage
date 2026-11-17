@@ -122,11 +122,12 @@ curl -fsS https://status.example.com/api/ingest/<source-id> \
 | Field | Description |
 | --- | --- |
 | `checks[].id` | Stable ID within the source (required, max 500 characters) |
-| `checks[].name` | Display name in the admin UI (default: `id`) |
-| `checks[].host` | Host name (internal only) |
+| `checks[].name` | Display name in the admin UI (new checks default to `id`; omitted on later pushes keeps the stored name) |
+| `checks[].host` | Host name (internal only; omitted keeps the stored host) |
 | `checks[].state` | `ok`, `warning`, `critical`, `unknown` or `0`–`3` (Nagios convention) |
-| `checks[].output` | Check output (internal only, max 5000 characters) |
+| `checks[].output` | Check output (internal only, max 5000 characters; omitted keeps the stored output unless the state changed) |
 | `checks[].timestamp` | ISO-8601 time of the check (default: now) |
 | `full` | `true` = the payload is the complete set; checks missing from it are removed |
 
-Up to 5000 checks per request.
+Up to 5000 checks per request (5 MiB body). Sending full metadata once and only
+`id` + `state` afterwards is fine.

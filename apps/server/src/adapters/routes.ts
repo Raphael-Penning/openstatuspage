@@ -52,7 +52,8 @@ export async function registerAdapterRoutes(app: FastifyInstance, options: Adapt
     });
 
     // Tokens may arrive in the query string: keep these routes out of info-level request logs.
-    const routeOptions = { logLevel: 'warn' as const };
+    // Full syncs of large sources can exceed the global 1 MiB body limit.
+    const routeOptions = { logLevel: 'warn' as const, bodyLimit: 5 * 1024 * 1024 };
 
     scope.post<{ Params: { sourceId: string } }>('/api/ingest/:sourceId', routeOptions, async (req, reply) => {
       const result = await handleIngest(app.ctx, limiter, req, reply, req.params.sourceId, null);
@@ -78,7 +79,14 @@ export async function registerAdapterRoutes(app: FastifyInstance, options: Adapt
   app.post<{ Params: { id: string } }>(
     '/api/admin/monitor-sources/:id/poll',
     { preHandler: requireRole('admin') },
-    async (req) => pollMonitorSourceNow(app.ctx, req.params.id, { userId: req.authUser?.id ?? null }),
+    async (req) => {
+      // audit_log.user_id references users: API tokens are recorded by name instead.
+      const user = req.authUser;
+      return pollMonitorSourceNow(app.ctx, req.params.id, {
+        userId: user?.via === 'session' ? user.id : null,
+        apiToken: user?.via === 'token' ? user.name : null,
+      });
+    },
   );
 }
 
@@ -180,21 +188,21 @@ export async function testMonitorSource(
 export async function pollMonitorSourceNow(
   ctx: AppContext,
   id: string,
-  options: RunnerOptions & { userId?: string | null } = {},
+  options: RunnerOptions & { userId?: string | null; apiToken?: string | null } = {},
 ): Promise<MonitorSourceTestResult> {
   const source = await loadSource(ctx, id);
   if (!getAdapter(source.type)?.poll) {
     throw badRequest(`Sources of type "${source.type}" receive pushed results and cannot be polled`);
   }
   if (source.enabled !== 1) throw conflict('Monitoring source is disabled');
-  const { userId = null, ...runnerOptions } = options;
+  const { userId = null, apiToken = null, ...runnerOptions } = options;
   const outcome = await pollAndStore(ctx, source.id, runnerOptions);
   await audit(ctx.db, {
     userId,
     action: 'monitor_source.poll',
     entityType: 'monitor_source',
     entityId: source.id,
-    details: { ok: outcome.ok, checkCount: outcome.checkCount ?? null },
+    details: { ok: outcome.ok, checkCount: outcome.checkCount ?? null, ...(apiToken ? { apiToken } : {}) },
   });
   const result: MonitorSourceTestResult = { ok: outcome.ok, message: outcome.message };
   if (outcome.checkCount !== undefined) result.checkCount = outcome.checkCount;
