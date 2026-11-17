@@ -709,5 +709,16 @@
       "api_token_create": "API-Token erzeugt",
       "api_token_delete": "API-Token widerrufen"
     }
+  },
+  "notify": {
+    "label": "Abonnenten benachrichtigen",
+    "incidentHelp": "Sendet diesen Vorfall per E-Mail an Abonnenten der betroffenen Services und aller Updates.",
+    "updateHelp": "Sendet dieses Update per E-Mail an Abonnenten der betroffenen Services und aller Updates.",
+    "maintenanceHelp": "Sendet die Ankündigung per E-Mail und aktiviert die Erinnerung sowie die E-Mails zum automatischen Start und Abschluss.",
+    "maintenanceEditHelp": "Aktiviert die Erinnerung sowie die E-Mails zum automatischen Start und Abschluss. Beim Speichern wird keine E-Mail gesendet.",
+    "hiddenHelp": "Versteckte Einträge benachrichtigen nie Abonnenten.",
+    "enabledHint": "E-Mails werden nur gesendet, wenn E-Mail-Abonnements in den Einstellungen aktiviert sind.",
+    "off": "Keine E-Mail-Benachrichtigungen",
+    "reminderSent": "Erinnerung eingereiht {{date}}"
   }
 }

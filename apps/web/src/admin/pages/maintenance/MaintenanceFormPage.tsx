@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 import { api } from '../../../lib/api';
 import { CheckboxField, DateTimeField, FormErrorSummary, TextAreaField, TextField } from '../../components/fields';
+import { NotifySubscribersField } from '../../components/NotifySubscribersField';
 import { LocationsPicker, ServicesPicker } from '../../components/pickers';
 import { Button, Card, LinkButton, PageHeader, QueryState } from '../../components/ui';
 import { isoToLocalInput, localInputToIso } from '../../lib/datetime';
@@ -20,6 +21,7 @@ interface Values {
   isPublic: boolean;
   serviceIds: string[];
   locationIds: string[];
+  notify: boolean;
 }
 
 /** Next full hour + `hours`, as datetime-local value. */
@@ -41,6 +43,7 @@ function fromMaintenance(m: AdminMaintenance): Values {
     isPublic: m.isPublic,
     serviceIds: m.affectedServices.map((s) => s.id),
     locationIds: m.locationIds,
+    notify: m.notify,
   };
 }
 
@@ -74,6 +77,7 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
           isPublic: true,
           serviceIds: [],
           locationIds: [],
+          notify: true,
         },
   );
   const v = form.values;
@@ -102,7 +106,8 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
       });
       return;
     }
-    // The create schema also validates "end after start"; its fields are a subset of the patch schema.
+    // The create schema also validates "end after start"; its fields are a subset of the patch
+    // schema. On edit, `notify` only changes the stored flag (MaintenancePatchInput.notify).
     const body = form.validate(MaintenanceCreateInput, {
       title: v.title.trim(),
       description: v.description,
@@ -113,6 +118,7 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
       isPublic: v.isPublic,
       serviceIds: v.serviceIds,
       locationIds: v.locationIds,
+      notify: v.notify,
     });
     if (body) save.mutate(body);
   };
@@ -177,6 +183,13 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
               help={t('maintenance.publicHelp')}
               checked={v.isPublic}
               onChecked={(x) => form.set('isPublic', x)}
+            />
+            <NotifySubscribersField
+              className="md:col-span-2"
+              context={maintenance ? 'maintenanceEdit' : 'maintenance'}
+              isPublic={v.isPublic}
+              checked={v.notify}
+              onChecked={(x) => form.set('notify', x)}
             />
             <ServicesPicker
               label={t('maintenance.fields.services')}

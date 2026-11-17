@@ -709,5 +709,16 @@
       "api_token_create": "API token created",
       "api_token_delete": "API token revoked"
     }
+  },
+  "notify": {
+    "label": "Notify subscribers",
+    "incidentHelp": "Emails this incident to subscribers of the affected services and of all updates.",
+    "updateHelp": "Emails this update to subscribers of the affected services and of all updates.",
+    "maintenanceHelp": "Emails the announcement and enables the reminder and the automatic start and completion emails.",
+    "maintenanceEditHelp": "Enables the reminder and the automatic start and completion emails. Saving does not send an email.",
+    "hiddenHelp": "Hidden entries never notify subscribers.",
+    "enabledHint": "Emails are only sent when email subscriptions are enabled in the settings.",
+    "off": "No email notifications",
+    "reminderSent": "Reminder queued {{date}}"
   }
 }
