@@ -129,8 +129,10 @@ Details, die Abonnenten und deinen Mailserver schützen:
   Reverse Proxy braucht das ein korrektes `TRUST_PROXY` (siehe
   [Reverse Proxy](03-reverse-proxy.md#trust_proxy)).
 - Links in E-Mails enthalten ein geheimes Token. Tokens werden nie
-  gespeichert; sie werden aus `SECRET_KEY` und einem Zufallswert pro
-  Abonnent abgeleitet.
+  gespeichert, auch nicht in der Warteschlange; sie werden beim Versand aus
+  `SECRET_KEY` und einem Zufallswert pro Abonnent abgeleitet. Das Token steht
+  im `#`-Teil des Links, den Browser nie an den Server schicken – es taucht
+  also weder in Server- noch in Proxy-Logs auf.
 - Jede Benachrichtigung enthält einen Link zur Verwaltung und einen Link zum
   Abmelden. Der Abmeldelink öffnet die Verwaltungsseite mit bereits
   angezeigter Rückfrage, ein Klick auf **Ja, abmelden** genügt dann.

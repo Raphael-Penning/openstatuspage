@@ -113,13 +113,22 @@ function HelpTopic({ topics, index, lang }: { topics: GuideTopic[]; index: numbe
   const next = topics[index + 1];
   const sections = useMemo(() => extractHeadings(topic.markdown).filter((h) => h.depth === 2), [topic.markdown]);
   const { hash } = useLocation();
+  // location.hash is percent-encoded (German headings contain umlauts).
+  const currentId = useMemo(() => {
+    const raw = hash.slice(1);
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }, [hash]);
 
   // Jump to the heading named in the URL hash, otherwise start at the top.
   useEffect(() => {
-    const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+    const target = currentId ? document.getElementById(currentId) : null;
     if (target) target.scrollIntoView();
     else window.scrollTo(0, 0);
-  }, [topic, hash]);
+  }, [topic, currentId]);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -159,7 +168,7 @@ function HelpTopic({ topics, index, lang }: { topics: GuideTopic[]; index: numbe
                           to={{ hash: section.id }}
                           className={clsx(
                             '-ml-px block border-l py-1 pr-2 pl-3 text-xs transition hover:text-fg',
-                            hash === `#${section.id}` ? 'border-accent text-fg' : 'border-transparent text-muted',
+                            currentId === section.id ? 'border-accent text-fg' : 'border-transparent text-muted',
                           )}
                         >
                           {section.text}

@@ -122,8 +122,11 @@ Details that protect subscribers and your mail server:
   manage and unsubscribe links to 30 per minute. Behind a reverse proxy this
   needs a correct `TRUST_PROXY` (see
   [Reverse proxy](03-reverse-proxy.md#trust_proxy)).
-- Links in emails contain a secret token. Tokens are never stored; they are
-  derived from `SECRET_KEY` and a random value per subscriber.
+- Links in emails contain a secret token. Tokens are never stored, not even
+  in the email queue; they are derived from `SECRET_KEY` and a random value
+  per subscriber when an email is sent. The token is part of the link's `#`
+  fragment, which browsers never send to the server, so it does not show up
+  in server or proxy logs.
 - Every notification email contains a manage link and an unsubscribe link.
   The unsubscribe link opens the manage page with the unsubscribe question
   already shown, so one more click on **Yes, unsubscribe** is enough.
