@@ -15,6 +15,11 @@ export class ApiError extends Error {
 
 type Query = Record<string, string | number | boolean | null | undefined>;
 
+export interface RequestOptions {
+  /** Extra request headers (e.g. the subscription manage token). */
+  headers?: Record<string, string>;
+}
+
 function buildUrl(path: string, query?: Query): string {
   if (!query) return path;
   const params = new URLSearchParams();
@@ -25,11 +30,12 @@ function buildUrl(path: string, query?: Query): string {
   return qs ? `${path}?${qs}` : path;
 }
 
-async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, query?: Query, options?: RequestOptions): Promise<T> {
   const res = await fetch(buildUrl(path, query), {
     method,
     credentials: 'same-origin',
     headers: {
+      ...options?.headers,
       // Required by the server for cookie-authenticated mutations (CSRF protection).
       'x-requested-with': 'openstatuspage',
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
@@ -44,9 +50,9 @@ async function request<T>(method: string, path: string, body?: unknown, query?: 
 }
 
 export const api = {
-  get: <T>(path: string, query?: Query) => request<T>('GET', path, undefined, query),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
-  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
-  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
-  delete: <T = void>(path: string) => request<T>('DELETE', path),
+  get: <T>(path: string, query?: Query, options?: RequestOptions) => request<T>('GET', path, undefined, query, options),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('POST', path, body ?? {}, undefined, options),
+  put: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('PUT', path, body, undefined, options),
+  patch: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('PATCH', path, body, undefined, options),
+  delete: <T = void>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, undefined, options),
 };

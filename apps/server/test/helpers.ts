@@ -8,6 +8,7 @@ import { loadConfig, type Config } from '../src/config.js';
 import { createDb, migrateToLatest, type DB } from '../src/db/index.js';
 import { newId } from '../src/lib/ids.js';
 import { hashPassword } from '../src/lib/password.js';
+import type { Mailer } from '../src/mail/mailer.js';
 import { nowIso } from '../src/lib/time.js';
 
 export const BASE_URL = 'https://status.example.com';
@@ -20,7 +21,10 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-export async function createTestApp(env: Record<string, string> = {}): Promise<TestApp> {
+export async function createTestApp(
+  env: Record<string, string> = {},
+  options: { mailer?: Mailer } = {},
+): Promise<TestApp> {
   const config = loadConfig({
     NODE_ENV: 'test',
     DATABASE_URL: 'sqlite::memory:',
@@ -30,7 +34,7 @@ export async function createTestApp(env: Record<string, string> = {}): Promise<T
   });
   const db = await createDb(config);
   await migrateToLatest(db);
-  const app = await buildApp({ config, db, serveWeb: false });
+  const app = await buildApp({ config, db, serveWeb: false, mailer: options.mailer });
   await app.ready();
   return {
     app,

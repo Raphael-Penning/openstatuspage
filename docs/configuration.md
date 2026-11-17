@@ -17,7 +17,7 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `NODE_ENV` | `production` | `development`, `production` or `test`. `pnpm dev` uses `development`. Outside development/test `SECRET_KEY` is mandatory and logs are JSON. |
 | `HOST` | `0.0.0.0` | Interface the HTTP server binds to. |
 | `PORT` | `3000` | HTTP port. |
-| `BASE_URL` | `http://localhost:3000` | Public URL of the status page, without trailing slash. Used for feed links, OIDC redirect URIs and ingest URLs. When it starts with `https://` cookies are marked `Secure`. |
+| `BASE_URL` | `http://localhost:3000` | Public URL of the status page, without trailing slash. Used for feed links, links in notification emails, OIDC redirect URIs and ingest URLs. When it starts with `https://` cookies are marked `Secure`. |
 | `TRUST_PROXY` | `false` | Behind a reverse proxy (nginx, Traefik, Caddy, ...) client IPs (rate limiting, session metadata) and the protocol are taken from `X-Forwarded-*` headers. Set the number of proxies in front of the app (`1` for a single proxy; `true` means `1`) or a comma separated list of trusted proxy addresses/CIDRs (e.g. `10.0.0.0/8,127.0.0.1`). Entries further left in `X-Forwarded-For` are set by the client and are never trusted. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
 | `WEB_DIST_DIR` | – | Directory with the built web client. By default the server looks for `apps/web/dist`. |
@@ -68,12 +68,39 @@ See [oidc.md](oidc.md) for IdP setup and the role mapping rules.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `WORKER_ENABLED` | `true` | Runs maintenance auto start/complete, monitoring pollers and the hourly session cleanup. Set to `false` on additional replicas so only one instance runs background jobs. |
+| `WORKER_ENABLED` | `true` | Runs maintenance auto start/complete, monitoring pollers, email delivery, maintenance reminders and the cleanup tasks. Set to `false` on additional replicas so only one instance runs background jobs. |
+
+## Email notifications
+
+Subscribers receive emails about public incidents and maintenance. Subscriptions are
+offered when they are enabled in the settings of the management UI **and** a
+transport (`smtp` or `log`) is configured. See [notifications.md](notifications.md)
+for setup examples, deliverability and troubleshooting.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, else `none` | `smtp` sends via SMTP, `log` writes emails to the server log instead of sending them (development only, the log then contains confirmation links), `none` disables email. |
+| `SMTP_HOST` | – | SMTP server, e.g. `smtp.example.com`. Required for `smtp`. |
+| `SMTP_PORT` | `587` | SMTP port. |
+| `SMTP_SECURE` | `false` | `true` = implicit TLS (usually port 465). With `false` the connection is upgraded with STARTTLS when the server offers it. |
+| `SMTP_USER` | – | User name for SMTP authentication. Leave empty for relays without authentication. |
+| `SMTP_PASSWORD` | – | Password for SMTP authentication. |
+| `SMTP_FROM` | – | Sender, e.g. `Example Status <status@example.com>`. Required for `smtp` and `log`. |
+| `SMTP_TLS_REJECT_UNAUTHORIZED` | `true` | Verify the SMTP server certificate. Only set `false` for relays with self-signed certificates inside a trusted network. |
+
+With Docker Compose these variables are passed through from the shell or the env
+file (`--env-file`, or `docker/.env`); the compose file does not need to be edited.
+
+`BASE_URL` must be the public URL of the status page: all links in emails use it.
+Confirmation and unsubscribe links are signed with `SECRET_KEY`; changing it
+invalidates links in emails already sent.
 
 ## Rate limits
 
 - `POST /api/auth/login`: 10 requests per minute per client IP.
 - `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`: 30 requests per minute per client IP.
+- `POST /api/public/subscriptions`: 5 requests per minute per client IP; the other
+  subscription endpoints 30 requests per minute per client IP.
 
 Behind a reverse proxy set `TRUST_PROXY` (hop count or proxy addresses), otherwise all
 clients share the proxy's IP.

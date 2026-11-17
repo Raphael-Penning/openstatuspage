@@ -2,7 +2,9 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { Config } from './config.js';
 import type { DB } from './db/index.js';
 import { SecretBox } from './lib/crypto.js';
+import { createMailer, type Mailer } from './mail/mailer.js';
 import { IngestService } from './services/ingest.js';
+import { NotificationService } from './services/notifications.js';
 import { StatusEngine } from './services/status-engine.js';
 import { Worker } from './worker.js';
 
@@ -15,10 +17,26 @@ export interface AppContext {
   engine: StatusEngine;
   ingest: IngestService;
   worker: Worker;
+  /** Mail transport (MAIL_TRANSPORT). */
+  mailer: Mailer;
+  /** Subscriber notifications and the mail outbox. */
+  notifications: NotificationService;
 }
 
-export function createContext(config: Config, db: DB, log: FastifyBaseLogger): AppContext {
+export interface CreateContextOptions {
+  /** Replaces the configured mail transport (tests). */
+  mailer?: Mailer;
+}
+
+export function createContext(
+  config: Config,
+  db: DB,
+  log: FastifyBaseLogger,
+  options: CreateContextOptions = {},
+): AppContext {
   const engine = new StatusEngine(db);
+  const worker = new Worker(log);
+  const mailer = options.mailer ?? createMailer(config, log);
   return {
     config,
     db,
@@ -26,7 +44,9 @@ export function createContext(config: Config, db: DB, log: FastifyBaseLogger): A
     secrets: new SecretBox(config.SECRET_KEY),
     engine,
     ingest: new IngestService(db, engine),
-    worker: new Worker(log),
+    worker,
+    mailer,
+    notifications: new NotificationService(db, config, mailer, log, worker),
   };
 }
 

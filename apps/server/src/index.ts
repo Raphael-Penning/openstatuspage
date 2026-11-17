@@ -4,6 +4,7 @@ import { loadConfig } from './config.js';
 import { createDb, migrateToLatest } from './db/index.js';
 import { syncPollers } from './adapters/poller.js';
 import { runMaintenanceTransitions } from './services/maintenance-scheduler.js';
+import { registerNotificationTasks } from './services/notifications.js';
 import { registerSessionCleanup } from './services/sessions.js';
 
 async function main(): Promise<void> {
@@ -16,6 +17,9 @@ async function main(): Promise<void> {
 
   if (config.insecureSecret) {
     app.log.warn('SECRET_KEY is not set: using the public development secret. Never use this in production.');
+  }
+  if (ctx.mailer.transport === 'log') {
+    app.log.warn('MAIL_TRANSPORT=log: mails are written to the log instead of being sent (development only).');
   }
   if (config.oidcEnabled && !config.OIDC_ADMIN_GROUP && !config.OIDC_EDITOR_GROUP && config.OIDC_AUTO_CREATE_USERS) {
     app.log.warn(
@@ -31,9 +35,10 @@ async function main(): Promise<void> {
 
   if (config.WORKER_ENABLED) {
     ctx.worker.schedule('maintenance-transitions', 30_000, async () => {
-      await runMaintenanceTransitions(db, ctx.engine);
+      await runMaintenanceTransitions(db, ctx.engine, undefined, ctx.notifications);
     });
     registerSessionCleanup(ctx);
+    registerNotificationTasks(ctx);
     await syncPollers(ctx);
     ctx.worker.start();
   }

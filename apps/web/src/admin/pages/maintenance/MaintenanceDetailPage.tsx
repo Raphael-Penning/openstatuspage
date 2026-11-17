@@ -4,7 +4,7 @@ import {
   type MaintenanceStatus,
   type MaintenanceUpdateEntry,
 } from '@openstatuspage/shared';
-import { Ban, CheckCircle2, Pencil, Play, Trash2 } from 'lucide-react';
+import { Ban, BellOff, CheckCircle2, Pencil, Play, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
@@ -12,9 +12,11 @@ import { api } from '../../../lib/api';
 import { MaintenanceStatusBadge } from '../../components/badges';
 import { ConfirmDialog, Dialog, useConfirm } from '../../components/Dialog';
 import { SelectField, TextAreaField } from '../../components/fields';
+import { NotifySubscribersField } from '../../components/NotifySubscribersField';
 import { locationLabel } from '../../components/pickers';
 import { Badge, Button, Card, LinkButton, PageHeader, QueryState, VisibilityBadge } from '../../components/ui';
 import { useFormat, useOptions } from '../../lib/format';
+import { postUpdateDefaults, transitionDefaults } from '../../lib/maintenance-updates';
 import { useAdminMutation, useLocations, useMaintenance } from '../../lib/queries';
 import { useForm } from '../../lib/useForm';
 
@@ -69,6 +71,12 @@ function MaintenanceDetail({ maintenance: m }: { maintenance: AdminMaintenance }
             <VisibilityBadge isPublic={m.isPublic} />
             {m.autoStart && <Badge>{t('maintenance.fields.autoStart')}</Badge>}
             {m.autoComplete && <Badge>{t('maintenance.fields.autoComplete')}</Badge>}
+            {!m.notify && (
+              <Badge>
+                <BellOff aria-hidden className="size-3" />
+                {t('notify.off')}
+              </Badge>
+            )}
           </span>
         }
         actions={
@@ -115,7 +123,8 @@ function MaintenanceDetail({ maintenance: m }: { maintenance: AdminMaintenance }
               <p className="prose-update p-4 text-sm">{m.description}</p>
             </Card>
           )}
-          <PostUpdateForm key={m.status} maintenance={m} />
+          {/* Remount when the status or the stored notify flag changes, so the defaults follow them. */}
+          <PostUpdateForm key={`${m.status}:${m.notify}`} maintenance={m} />
           <Card title={t('maintenance.timeline')}>
             <ol className="divide-y divide-border">
               {m.updates.map((u) => (
@@ -159,6 +168,15 @@ function MaintenanceDetail({ maintenance: m }: { maintenance: AdminMaintenance }
               <dt className="text-xs text-muted">{t('maintenance.fields.locations')}</dt>
               <dd>{locationNames.length ? locationNames.join(', ') : '–'}</dd>
             </div>
+            <div>
+              <dt className="text-xs text-muted">{t('notify.label')}</dt>
+              <dd>
+                {m.notify ? t('form.yes') : t('form.no')}
+                {m.reminderSentAt && (
+                  <span className="block text-xs text-muted">{t('notify.reminderSent', { date: fmt.dateTime(m.reminderSentAt) })}</span>
+                )}
+              </dd>
+            </div>
           </dl>
         </Card>
       </div>
@@ -169,7 +187,11 @@ function MaintenanceDetail({ maintenance: m }: { maintenance: AdminMaintenance }
   );
 }
 
-function usePostUpdate(maintenance: AdminMaintenance, onDone: () => void, onError: (e: unknown) => boolean) {
+function usePostUpdate(
+  maintenance: AdminMaintenance,
+  onDone: (stored: AdminMaintenance) => void,
+  onError: (e: unknown) => boolean,
+) {
   const { t } = useTranslation('admin');
   return useAdminMutation(
     (body: MaintenanceUpdateInput) => api.post<AdminMaintenance>(`/api/admin/maintenances/${maintenance.id}/updates`, body),
@@ -180,12 +202,21 @@ function usePostUpdate(maintenance: AdminMaintenance, onDone: () => void, onErro
 function PostUpdateForm({ maintenance }: { maintenance: AdminMaintenance }) {
   const { t } = useTranslation('admin');
   const opts = useOptions();
-  const form = useForm({ status: maintenance.status, message: '' });
-  const post = usePostUpdate(maintenance, () => form.set('message', ''), form.applyServerError);
+  // "Notify subscribers" starts from the maintenance's stored flag (incidents default to on).
+  const form = useForm(() => postUpdateDefaults(maintenance));
+  const post = usePostUpdate(
+    maintenance,
+    (stored) => form.setValues((v) => ({ ...v, message: '', notify: postUpdateDefaults(stored).notify })),
+    form.applyServerError,
+  );
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const body = form.validate(MaintenanceUpdateInput, { status: form.values.status, message: form.values.message.trim() });
+    const body = form.validate(MaintenanceUpdateInput, {
+      status: form.values.status,
+      message: form.values.message.trim(),
+      notify: form.values.notify,
+    });
     if (body) post.mutate(body);
   };
 
@@ -206,6 +237,12 @@ function PostUpdateForm({ maintenance }: { maintenance: AdminMaintenance }) {
           error={form.error('message')}
           rows={3}
           required
+        />
+        <NotifySubscribersField
+          context="update"
+          isPublic={maintenance.isPublic}
+          checked={form.values.notify}
+          onChecked={(x) => form.set('notify', x)}
         />
         <div className="flex justify-end">
           <Button type="submit" variant="primary" pending={post.isPending}>
@@ -228,12 +265,12 @@ function TransitionDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation('admin');
-  const form = useForm({ message: '' });
+  const form = useForm(() => transitionDefaults(maintenance, ''));
   const [lastStatus, setLastStatus] = useState(status);
   if (status !== lastStatus) {
     setLastStatus(status);
     if (status) {
-      form.setValues({ message: t(`maintenance.transitionMessage.${status}`) });
+      form.setValues(transitionDefaults(maintenance, t(`maintenance.transitionMessage.${status}`)));
       form.setErrors({});
     }
   }
@@ -242,7 +279,7 @@ function TransitionDialog({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!status) return;
-    const body = form.validate(MaintenanceUpdateInput, { status, message: form.values.message.trim() });
+    const body = form.validate(MaintenanceUpdateInput, { status, message: form.values.message.trim(), notify: form.values.notify });
     if (body) post.mutate(body);
   };
 
@@ -256,6 +293,12 @@ function TransitionDialog({
           error={form.error('message')}
           rows={3}
           required
+        />
+        <NotifySubscribersField
+          context="update"
+          isPublic={maintenance.isPublic}
+          checked={form.values.notify}
+          onChecked={(x) => form.set('notify', x)}
         />
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>{t('common:actions.cancel')}</Button>

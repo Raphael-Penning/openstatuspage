@@ -94,6 +94,8 @@ export function toAdminMaintenance(rec: MaintenanceRecord): AdminMaintenance {
     autoStart: rec.row.auto_start === 1,
     autoComplete: rec.row.auto_complete === 1,
     isPublic: rec.row.is_public === 1,
+    notify: rec.row.notify_subscribers === 1,
+    reminderSentAt: rec.row.reminder_sent_at,
     createdAt: rec.row.created_at,
     updatedAt: rec.row.updated_at,
   };

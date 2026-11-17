@@ -58,10 +58,10 @@ async function serviceIdsOf(db: DB, maintenanceId: string): Promise<string[]> {
 
 /** /api/admin/maintenances (editor) */
 export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<void> {
-  const { db, engine } = app.ctx;
+  const { db, engine, notifications } = app.ctx;
 
   /** Applies due automatic transitions right away instead of waiting for the next worker tick. */
-  const applyDueTransitions = () => runMaintenanceTransitions(db, engine);
+  const applyDueTransitions = () => runMaintenanceTransitions(db, engine, undefined, notifications);
 
   app.get('/api/admin/maintenances', editor, async (req) => {
     const q = parse(ListQuery, req.query);
@@ -113,6 +113,8 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
           auto_start: input.autoStart ? 1 : 0,
           auto_complete: input.autoComplete ? 1 : 0,
           is_public: input.isPublic ? 1 : 0,
+          notify_subscribers: input.notify ? 1 : 0,
+          reminder_sent_at: null,
           created_by: userId,
           created_at: now,
           updated_at: now,
@@ -126,6 +128,10 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
       await replaceServices(trx, id, serviceIds);
       await replaceLocations(trx, id, input.locationIds);
     });
+    // Announce first; a window that is already due is then started (and announced) by the scheduler.
+    if (input.notify && input.isPublic) {
+      await notifications.safely('maintenance.create', () => notifications.maintenanceEvent(id, 'scheduled'));
+    }
     await applyDueTransitions();
     await engine.recompute(serviceIds);
     await auditRequest(db, req, 'maintenance.create', 'maintenance', id, {
@@ -160,6 +166,9 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
           ...(input.autoStart !== undefined ? { auto_start: input.autoStart ? 1 : 0 } : {}),
           ...(input.autoComplete !== undefined ? { auto_complete: input.autoComplete ? 1 : 0 } : {}),
           ...(input.isPublic !== undefined ? { is_public: input.isPublic ? 1 : 0 } : {}),
+          ...(input.notify !== undefined ? { notify_subscribers: input.notify ? 1 : 0 } : {}),
+          // Moved later: remind again before the new start.
+          ...(start > current.scheduled_start ? { reminder_sent_at: null } : {}),
           scheduled_start: start,
           scheduled_end: end,
           updated_at: nowIso(),
@@ -218,6 +227,9 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
     });
     await engine.recompute(await serviceIdsOf(db, id));
     await auditRequest(db, req, 'maintenance.update_posted', 'maintenance', id, { status: input.status });
+    if (input.notify && current.is_public === 1) {
+      await notifications.safely('maintenance.update', () => notifications.maintenanceEvent(id, 'update'));
+    }
     return getMaintenance(db, id);
   });
 }

@@ -5,6 +5,7 @@ import { registerMaintenanceRoutes } from './maintenances.js';
 import { registerMonitoringRoutes } from './monitoring.js';
 import { registerOverviewRoutes } from './overview.js';
 import { registerServiceRoutes } from './services.js';
+import { registerSubscriberRoutes } from './subscribers.js';
 import { registerUserRoutes } from './users.js';
 
 /** /api/admin/*: every route declares its role with `editor` / `admin` from ./util.ts. */
@@ -16,4 +17,5 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   await registerMaintenanceRoutes(app);
   await registerMonitoringRoutes(app);
   await registerUserRoutes(app);
+  await registerSubscriberRoutes(app);
 }

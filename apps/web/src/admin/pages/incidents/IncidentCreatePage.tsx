@@ -16,6 +16,7 @@ import {
   TextAreaField,
   TextField,
 } from '../../components/fields';
+import { NotifySubscribersField } from '../../components/NotifySubscribersField';
 import { AffectedServicesPicker, defaultImpactStatus, LocationsPicker, type AffectedValue } from '../../components/pickers';
 import { Button, Card, LinkButton, PageHeader } from '../../components/ui';
 import { localInputToIso, nowLocalInput } from '../../lib/datetime';
@@ -32,6 +33,7 @@ interface Values {
   isPublic: boolean;
   affectedServices: AffectedValue[];
   locationIds: string[];
+  notify: boolean;
 }
 
 export default function IncidentCreatePage() {
@@ -47,6 +49,7 @@ export default function IncidentCreatePage() {
     isPublic: true,
     affectedServices: [],
     locationIds: [],
+    notify: true,
   }));
   const v = form.values;
 
@@ -72,6 +75,7 @@ export default function IncidentCreatePage() {
       isPublic: v.isPublic,
       affectedServices: v.affectedServices,
       locationIds: v.locationIds,
+      notify: v.notify,
     });
     if (body) create.mutate(body);
   };
@@ -131,6 +135,13 @@ export default function IncidentCreatePage() {
                 onChecked={(x) => form.set('isPublic', x)}
               />
             </div>
+            <NotifySubscribersField
+              className="md:col-span-2"
+              context="incident"
+              isPublic={v.isPublic}
+              checked={v.notify}
+              onChecked={(x) => form.set('notify', x)}
+            />
             <AffectedServicesPicker
               value={v.affectedServices}
               onChange={(x) => form.set('affectedServices', x)}

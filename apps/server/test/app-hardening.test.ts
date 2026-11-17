@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp, redactUrlTokens } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { createDb, migrateToLatest } from '../src/db/index.js';
 
@@ -86,5 +86,36 @@ describe('http hardening', () => {
     });
     // TRUST_PROXY=1: the spoofable left-most entry is ignored.
     expect(res.json()).toEqual({ ip: '198.51.100.7' });
+  });
+});
+
+describe('request logging', () => {
+  it('redacts token query parameters', () => {
+    expect(redactUrlTokens('/api/public/subscriptions/1/unsubscribe?token=abc-123_x')).toBe(
+      '/api/public/subscriptions/1/unsubscribe?token=[REDACTED]',
+    );
+    expect(redactUrlTokens('/x?a=1&token=abc&b=2&TOKEN=def')).toBe('/x?a=1&token=[REDACTED]&b=2&TOKEN=[REDACTED]');
+    expect(redactUrlTokens('/x?mytoken=keep&token_type=keep')).toBe('/x?mytoken=keep&token_type=keep');
+    expect(redactUrlTokens('/token=abc')).toBe('/token=abc');
+  });
+
+  it('never writes tokens from the query string to the log', async () => {
+    const lines: string[] = [];
+    const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'sqlite::memory:', LOG_LEVEL: 'info' });
+    const db = await createDb(config);
+    await migrateToLatest(db);
+    const app = await buildApp({ config, db, serveWeb: false, logStream: { write: (line) => lines.push(line) } });
+    try {
+      await app.inject({ url: '/api/public/summary?token=very-secret-token&lang=en' });
+      await app.inject({ url: '/api/nope?token=other-secret-token' });
+      const logged = lines.map((l) => JSON.parse(l) as { req?: { url: string; method: string } });
+      const urls = logged.flatMap((l) => (l.req ? [l.req.url] : []));
+      expect(urls).toEqual(['/api/public/summary?token=[REDACTED]&lang=en', '/api/nope?token=[REDACTED]']);
+      expect(logged.find((l) => l.req)?.req?.method).toBe('GET');
+      expect(lines.join('\n')).not.toContain('secret-token');
+    } finally {
+      await app.close();
+      await db.destroy();
+    }
   });
 });

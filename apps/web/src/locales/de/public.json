@@ -20,7 +20,8 @@
     "subscribe": "Updates abonnieren",
     "rss": "RSS-Feed",
     "atom": "Atom-Feed",
-    "json": "Status-API (JSON)"
+    "json": "Status-API (JSON)",
+    "email": "E-Mail-Benachrichtigungen"
   },
   "footer": {
     "label": "Fußzeile",
@@ -196,5 +197,80 @@
     "in_progress": "Die Wartung hat begonnen.",
     "completed": "Die Wartung wurde abgeschlossen.",
     "cancelled": "Die Wartung wurde abgesagt."
+  },
+  "subscription": {
+    "title": "E-Mail-Benachrichtigungen",
+    "subtitle": "Erhalte eine E-Mail, wenn wir Vorfälle oder Wartungen veröffentlichen.",
+    "email": "E-Mail-Adresse",
+    "emailPlaceholder": "name@example.com",
+    "language": "Sprache der E-Mails",
+    "scope": {
+      "label": "Worüber möchtest du informiert werden?",
+      "all": "Alle Updates",
+      "allHelp": "Alle öffentlichen Vorfälle und Wartungen.",
+      "selected": "Ausgewählte Dienste",
+      "selectedHelp": "Nur Vorfälle und Wartungen, die die gewählten Dienste betreffen."
+    },
+    "services": {
+      "selectedCount": "{{count}} von {{total}} ausgewählt",
+      "selectAll": "Alle auswählen",
+      "clear": "Auswahl aufheben",
+      "other": "Weitere Dienste",
+      "empty": "Es wurden noch keine Dienste veröffentlicht. Wähle stattdessen „Alle Updates“."
+    },
+    "honeypot": "Dieses Feld leer lassen",
+    "privacy": "Wir senden dir eine E-Mail, um deine Adresse zu bestätigen (Double-Opt-in); vor der Bestätigung erhältst du sonst nichts. Deine Adresse wird nur für diese Benachrichtigungen verwendet, und jede E-Mail enthält einen Link, mit dem du dich jederzeit abmelden kannst.",
+    "submit": "Abonnieren",
+    "backHome": "Zurück zur Übersicht",
+    "sent": {
+      "title": "Bitte prüfe dein Postfach",
+      "description": "Wir haben eine E-Mail an {{email}} gesendet. Öffne den Link darin, um dein Abonnement zu bestätigen.",
+      "hint": "Nichts angekommen? Sieh im Spam-Ordner nach. Ist die Adresse bereits angemeldet, erhältst du stattdessen einen Link zur Verwaltung deines Abonnements. Unbestätigte Anmeldungen werden nach 7 Tagen gelöscht."
+    },
+    "unavailable": {
+      "title": "E-Mail-Benachrichtigungen sind nicht verfügbar",
+      "description": "Diese Statusseite bietet derzeit keine E-Mail-Benachrichtigungen an. Du kannst Updates stattdessen per RSS- oder Atom-Feed verfolgen."
+    },
+    "invalidLink": {
+      "title": "Dieser Link ist ungültig oder abgelaufen",
+      "description": "Der Link ist möglicherweise unvollständig oder das Abonnement wurde entfernt. Unbestätigte Anmeldungen werden nach 7 Tagen gelöscht; du kannst dich einfach erneut anmelden.",
+      "subscribe": "Erneut abonnieren"
+    },
+    "confirm": {
+      "title": "Abonnement bestätigen",
+      "loading": "Dein Abonnement wird bestätigt …",
+      "success": "Dein Abonnement ist bestätigt",
+      "scopeAll": "Wir informieren {{email}} über alle öffentlichen Vorfälle und Wartungen.",
+      "scopeServices_one": "Wir informieren {{email}} über Vorfälle und Wartungen, die den ausgewählten Dienst betreffen.",
+      "scopeServices_other": "Wir informieren {{email}} über Vorfälle und Wartungen, die die {{count}} ausgewählten Dienste betreffen.",
+      "hint": "Jede E-Mail enthält einen Link, um deine Einstellungen zu ändern oder dich abzumelden.",
+      "manage": "Einstellungen verwalten"
+    },
+    "manage": {
+      "title": "Deine E-Mail-Benachrichtigungen",
+      "subtitle": "Lege fest, worüber du informiert wirst, oder melde dich ab.",
+      "pending": "Dieses Abonnement ist noch nicht bestätigt. Öffne den Link in der Bestätigungs-E-Mail, um Benachrichtigungen zu erhalten.",
+      "save": "Einstellungen speichern",
+      "saved": "Einstellungen gespeichert."
+    },
+    "unsubscribe": {
+      "title": "Abmelden",
+      "description": "Keine Benachrichtigungs-E-Mails mehr erhalten. Deine E-Mail-Adresse wird von dieser Statusseite gelöscht.",
+      "button": "Abmelden",
+      "confirm": "Möchtest du {{email}} wirklich abmelden?",
+      "confirmButton": "Ja, abmelden",
+      "cancel": "Abonnement behalten",
+      "done": "Du wurdest abgemeldet",
+      "doneDescription": "{{email}} erhält keine E-Mails mehr von uns und wurde gelöscht.",
+      "subscribeAgain": "Erneut abonnieren"
+    },
+    "errors": {
+      "email": "Gib eine gültige E-Mail-Adresse ein.",
+      "services": "Wähle mindestens einen Dienst aus.",
+      "servicesInvalid": "Einige ausgewählte Dienste sind nicht mehr verfügbar. Bitte lade die Seite neu und versuche es erneut.",
+      "invalid": "Bitte prüfe deine Eingaben und versuche es erneut.",
+      "rateLimited": "Zu viele Versuche. Bitte warte eine Minute und versuche es erneut.",
+      "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+    }
   }
 }

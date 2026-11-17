@@ -19,6 +19,7 @@ import { z } from 'zod';
 import type { DB } from '../db/index.js';
 import { notFound } from '../lib/errors.js';
 import { offsetOf, paginated, parse } from '../lib/http.js';
+import { mailerConfigured } from '../mail/mailer.js';
 import { loadIncidents, toPublicIncident } from '../services/incidents.js';
 import { loadMaintenances, toPublicMaintenance } from '../services/maintenances.js';
 import {
@@ -133,6 +134,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
         recentIncidents: recent,
         activeMaintenances: activeMaint,
         upcomingMaintenances: upcoming,
+        emailSubscriptions: settings.emailSubscriptionsEnabled && mailerConfigured(app.ctx.mailer),
         generatedAt: nowIso,
       };
     });

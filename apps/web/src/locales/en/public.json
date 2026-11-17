@@ -20,7 +20,8 @@
     "subscribe": "Subscribe to updates",
     "rss": "RSS feed",
     "atom": "Atom feed",
-    "json": "Status API (JSON)"
+    "json": "Status API (JSON)",
+    "email": "Email notifications"
   },
   "footer": {
     "label": "Footer",
@@ -196,5 +197,80 @@
     "in_progress": "The maintenance has started.",
     "completed": "The maintenance has been completed.",
     "cancelled": "The maintenance has been cancelled."
+  },
+  "subscription": {
+    "title": "Email notifications",
+    "subtitle": "Get an email when we post incidents or maintenance.",
+    "email": "Email address",
+    "emailPlaceholder": "name@example.com",
+    "language": "Email language",
+    "scope": {
+      "label": "What would you like to hear about?",
+      "all": "All updates",
+      "allHelp": "Every public incident and maintenance.",
+      "selected": "Selected services",
+      "selectedHelp": "Only incidents and maintenance affecting the services you choose."
+    },
+    "services": {
+      "selectedCount": "{{count}} of {{total}} selected",
+      "selectAll": "Select all",
+      "clear": "Clear selection",
+      "other": "Other services",
+      "empty": "No services have been published yet. Choose \"All updates\" instead."
+    },
+    "honeypot": "Leave this field empty",
+    "privacy": "We will send you an email to confirm your address (double opt-in); nothing else is sent before you confirm. Your address is only used for these notifications, and every email contains a link to unsubscribe at any time.",
+    "submit": "Subscribe",
+    "backHome": "Back to the overview",
+    "sent": {
+      "title": "Check your inbox",
+      "description": "We sent an email to {{email}}. Open the link in it to confirm your subscription.",
+      "hint": "Nothing arrived? Check your spam folder. If this address is already subscribed, you will get a link to manage your subscription instead. Unconfirmed subscriptions are removed after 7 days."
+    },
+    "unavailable": {
+      "title": "Email notifications are not available",
+      "description": "This status page does not offer email notifications at the moment. You can follow updates with the RSS or Atom feed instead."
+    },
+    "invalidLink": {
+      "title": "This link is invalid or has expired",
+      "description": "The link may be incomplete, or the subscription was removed. Unconfirmed subscriptions are deleted after 7 days; you can simply subscribe again.",
+      "subscribe": "Subscribe again"
+    },
+    "confirm": {
+      "title": "Confirm subscription",
+      "loading": "Confirming your subscription…",
+      "success": "Your subscription is confirmed",
+      "scopeAll": "We will email {{email}} about all public incidents and maintenance.",
+      "scopeServices_one": "We will email {{email}} about incidents and maintenance affecting the selected service.",
+      "scopeServices_other": "We will email {{email}} about incidents and maintenance affecting the {{count}} selected services.",
+      "hint": "Every email contains a link to change your preferences or unsubscribe.",
+      "manage": "Manage preferences"
+    },
+    "manage": {
+      "title": "Your email notifications",
+      "subtitle": "Choose what you hear about, or unsubscribe.",
+      "pending": "This subscription is not confirmed yet. Open the link in the confirmation email to start receiving notifications.",
+      "save": "Save preferences",
+      "saved": "Preferences saved."
+    },
+    "unsubscribe": {
+      "title": "Unsubscribe",
+      "description": "Stop all notification emails. Your email address is deleted from this status page.",
+      "button": "Unsubscribe",
+      "confirm": "Do you really want to unsubscribe {{email}}?",
+      "confirmButton": "Yes, unsubscribe",
+      "cancel": "Keep my subscription",
+      "done": "You have been unsubscribed",
+      "doneDescription": "{{email}} will not receive any more emails from us and has been deleted.",
+      "subscribeAgain": "Subscribe again"
+    },
+    "errors": {
+      "email": "Enter a valid email address.",
+      "services": "Select at least one service.",
+      "servicesInvalid": "Some selected services are no longer available. Please reload the page and try again.",
+      "invalid": "Please check your input and try again.",
+      "rateLimited": "Too many attempts. Please wait a minute and try again.",
+      "generic": "Something went wrong. Please try again."
+    }
   }
 }

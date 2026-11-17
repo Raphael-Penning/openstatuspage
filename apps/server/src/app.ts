@@ -9,6 +9,7 @@ import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
 import { HttpError } from './lib/errors.js';
+import type { Mailer } from './mail/mailer.js';
 import { registerRoutes } from './routes/index.js';
 
 export interface BuildAppOptions {
@@ -16,16 +17,54 @@ export interface BuildAppOptions {
   db: DB;
   /** Serve the built web client (disabled in tests). */
   serveWeb?: boolean;
+  /** Replaces the mail transport configured by MAIL_TRANSPORT (tests). */
+  mailer?: Mailer;
+  /** Writes the log as JSON lines to this stream, also with NODE_ENV=test (tests). */
+  logStream?: { write(line: string): void };
 }
 
-export async function buildApp({ config, db, serveWeb = true }: BuildAppOptions): Promise<FastifyInstance> {
+/** Replaces the value of every `token` query parameter: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1". */
+export function redactUrlTokens(url: string): string {
+  const query = url.indexOf('?');
+  if (query === -1) return url;
+  return url.slice(0, query) + url.slice(query).replace(/([?&]token=)[^&#]*/gi, '$1[REDACTED]');
+}
+
+interface LoggedRequest {
+  method: string;
+  url: string;
+  host?: string;
+  ip?: string;
+  socket?: { remotePort?: number };
+}
+
+/**
+ * Request serializer for the log (fields as Fastify's default). Tokens in query strings
+ * (e.g. the RFC 8058 one-click URL) never end up in the log.
+ */
+export function serializeRequest(req: LoggedRequest) {
+  return {
+    method: req.method,
+    url: redactUrlTokens(req.url),
+    host: req.host,
+    remoteAddress: req.ip,
+    remotePort: req.socket?.remotePort,
+  };
+}
+
+export async function buildApp({ config, db, serveWeb = true, mailer, logStream }: BuildAppOptions): Promise<FastifyInstance> {
+  const loggerBase = {
+    level: config.LOG_LEVEL,
+    redact: ['req.headers.authorization', 'req.headers.cookie'],
+    serializers: { req: serializeRequest },
+  };
   const app = Fastify({
-    logger:
-      config.NODE_ENV === 'test'
+    logger: logStream
+      ? { ...loggerBase, stream: logStream }
+      : config.NODE_ENV === 'test'
         ? false
         : {
-            level: config.LOG_LEVEL,
-            redact: ['req.headers.authorization', 'req.headers.cookie'],
+            ...loggerBase,
             ...(config.NODE_ENV === 'development'
               ? { transport: { target: 'pino-pretty', options: { singleLine: true } } }
               : {}),
@@ -35,8 +74,9 @@ export async function buildApp({ config, db, serveWeb = true }: BuildAppOptions)
     bodyLimit: 1024 * 1024,
   });
 
-  const ctx: AppContext = createContext(config, db, app.log);
+  const ctx: AppContext = createContext(config, db, app.log, { mailer });
   app.decorate('ctx', ctx);
+  app.addHook('onClose', async () => ctx.mailer.close());
 
   await app.register(cookie, { secret: config.SECRET_KEY });
 

@@ -102,6 +102,10 @@ export const SettingsInput = z.object({
   uptimeDays: z.number().int().min(7).max(180).default(90),
   /** How many days of resolved incidents appear on the overview. */
   recentIncidentDays: z.number().int().min(1).max(90).default(7),
+  /** Offer email subscriptions on the public page (needs a configured mail transport). */
+  emailSubscriptionsEnabled: z.boolean().default(false),
+  /** Hours before a scheduled maintenance to remind subscribers; 0 disables reminders. */
+  maintenanceReminderHours: z.number().int().min(0).max(168).default(24),
 });
 export type SettingsInput = z.infer<typeof SettingsInput>;
 export type PublicPageSettings = SettingsInput;
@@ -371,6 +375,8 @@ export const IncidentCreateInput = z.object({
   isPublic: z.boolean().default(true),
   affectedServices: z.array(AffectedServiceInput).default([]),
   locationIds: z.array(zId).default([]),
+  /** Email subscribers about this incident (only if public). */
+  notify: z.boolean().default(true),
 });
 export type IncidentCreateInput = z.infer<typeof IncidentCreateInput>;
 
@@ -391,6 +397,8 @@ export const IncidentUpdateInput = z.object({
   message: z.string().min(1).max(10000),
   /** Replaces the affected services when present. */
   affectedServices: z.array(AffectedServiceInput).optional(),
+  /** Email subscribers about this update (only if the incident is public). */
+  notify: z.boolean().default(true),
 });
 export type IncidentUpdateInput = z.infer<typeof IncidentUpdateInput>;
 
@@ -449,6 +457,11 @@ export const MaintenanceCreateInput = z
     isPublic: z.boolean().default(true),
     serviceIds: z.array(zId).default([]),
     locationIds: z.array(zId).default([]),
+    /**
+     * Email subscribers about this maintenance: the announcement, the reminder,
+     * automatic start/completion. Stored on the maintenance.
+     */
+    notify: z.boolean().default(true),
   })
   .refine((m) => new Date(m.scheduledEnd) > new Date(m.scheduledStart), {
     message: 'scheduledEnd must be after scheduledStart',
@@ -466,12 +479,16 @@ export const MaintenancePatchInput = z.object({
   isPublic: z.boolean().optional(),
   serviceIds: z.array(zId).optional(),
   locationIds: z.array(zId).optional(),
+  /** Changes the stored notification flag (does not send anything itself). */
+  notify: z.boolean().optional(),
 });
 export type MaintenancePatchInput = z.infer<typeof MaintenancePatchInput>;
 
 export const MaintenanceUpdateInput = z.object({
   status: zMaintenanceStatus,
   message: z.string().min(1).max(10000),
+  /** Email subscribers about this update (only if the maintenance is public). */
+  notify: z.boolean().default(true),
 });
 export type MaintenanceUpdateInput = z.infer<typeof MaintenanceUpdateInput>;
 
@@ -501,6 +518,10 @@ export interface AdminMaintenance extends PublicMaintenance {
   autoStart: boolean;
   autoComplete: boolean;
   isPublic: boolean;
+  /** Subscribers are notified about this maintenance (see MaintenanceCreateInput.notify). */
+  notify: boolean;
+  /** When the reminder email was queued, null if not (yet). */
+  reminderSentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -630,6 +651,8 @@ export interface PublicSummary {
   recentIncidents: PublicIncident[];
   activeMaintenances: PublicMaintenance[];
   upcomingMaintenances: PublicMaintenance[];
+  /** Email subscriptions are enabled in the settings AND a mail transport is configured. */
+  emailSubscriptions: boolean;
   generatedAt: string;
 }
 
@@ -673,6 +696,104 @@ export interface AuditLogEntry {
   details: Record<string, unknown> | null;
   createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Email subscriptions
+// ---------------------------------------------------------------------------
+
+export const SUBSCRIPTION_LOCALES = ['en', 'de'] as const;
+export type SubscriptionLocale = (typeof SUBSCRIPTION_LOCALES)[number];
+export const zSubscriptionLocale = z.enum(SUBSCRIPTION_LOCALES);
+
+const subscriptionScope = {
+  /** All public incidents and maintenance. When false, only those affecting `serviceIds`. */
+  allServices: z.boolean().default(true),
+  /** Public service ids; required (non-empty) when allServices is false. */
+  serviceIds: z.array(zId).max(500).default([]),
+};
+const requireServices = <T extends { allServices: boolean; serviceIds: string[] }>(s: T) =>
+  s.allServices || s.serviceIds.length > 0;
+const requireServicesIssue = { message: 'Select at least one service', path: ['serviceIds'] };
+
+/** POST /api/public/subscriptions. Always answered with 202 (no address enumeration). */
+export const SubscribeInput = z
+  .object({
+    email: z.email().max(254),
+    locale: zSubscriptionLocale.default('en'),
+    ...subscriptionScope,
+    /**
+     * Honeypot for bots (hidden field, humans leave it empty). A filled-in value is
+     * accepted and answered like a successful subscribe, but nothing is created or sent.
+     */
+    website: z.string().max(500).optional(),
+  })
+  .refine(requireServices, requireServicesIssue);
+export type SubscribeInput = z.infer<typeof SubscribeInput>;
+
+/** PUT /api/public/subscriptions/:id (token in the X-Subscription-Token header). */
+export const SubscriptionPreferencesInput = z
+  .object({ locale: zSubscriptionLocale.default('en'), ...subscriptionScope })
+  .refine(requireServices, requireServicesIssue);
+export type SubscriptionPreferencesInput = z.infer<typeof SubscriptionPreferencesInput>;
+
+/** POST /api/public/subscriptions/:id/confirm */
+export const SubscriptionConfirmInput = z.object({ token: z.string().min(16).max(256) });
+export type SubscriptionConfirmInput = z.infer<typeof SubscriptionConfirmInput>;
+
+/** Header carrying the manage token for GET/PUT/DELETE /api/public/subscriptions/:id. */
+export const SUBSCRIPTION_TOKEN_HEADER = 'x-subscription-token';
+
+/** GET /api/public/subscriptions/:id (only with a valid manage token). */
+export interface PublicSubscription {
+  id: string;
+  email: string;
+  locale: SubscriptionLocale;
+  allServices: boolean;
+  serviceIds: string[];
+  confirmed: boolean;
+}
+
+export const SubscriberListQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  /** Substring match on the email address. */
+  q: z.string().max(254).optional(),
+  status: z.enum(['all', 'confirmed', 'pending']).default('all'),
+});
+export type SubscriberListQuery = z.infer<typeof SubscriberListQuery>;
+
+/** GET /api/admin/subscribers (admin only). */
+export interface AdminSubscriber {
+  id: string;
+  email: string;
+  locale: SubscriptionLocale;
+  allServices: boolean;
+  /** Selected services when allServices is false. */
+  services: { id: string; name: string }[];
+  confirmed: boolean;
+  createdAt: string;
+  confirmedAt: string | null;
+}
+
+export type MailTransportKind = 'smtp' | 'log' | 'none';
+
+/** GET /api/admin/notifications/status (admin only). */
+export interface NotificationStatus {
+  transport: MailTransportKind;
+  /** A transport that can deliver mail is configured (smtp or log). */
+  configured: boolean;
+  from: string | null;
+  /** settings.emailSubscriptionsEnabled */
+  subscriptionsEnabled: boolean;
+  subscribers: { confirmed: number; pending: number };
+  queue: { pending: number; failed: number };
+  lastSentAt: string | null;
+  lastError: { message: string; at: string } | null;
+}
+
+/** POST /api/admin/notifications/test (admin only). */
+export const TestEmailInput = z.object({ to: z.email().max(254) });
+export type TestEmailInput = z.infer<typeof TestEmailInput>;
 
 /** Error body for every non-2xx response. */
 export interface ApiError {

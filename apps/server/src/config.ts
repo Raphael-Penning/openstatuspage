@@ -4,6 +4,7 @@
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { MailTransportKind } from '@openstatuspage/shared';
 import { z } from 'zod';
 
 const bool = z
@@ -71,14 +72,32 @@ const EnvSchema = z.object({
   WEB_DIST_DIR: z.string().optional(),
   /** Disable the background poller/scheduler (e.g. for additional read-only replicas). */
   WORKER_ENABLED: bool.default(true),
+
+  /**
+   * How notification mails are delivered: `smtp`, `log` (written to the server log,
+   * for development) or `none`. Defaults to `smtp` when SMTP_HOST is set, else `none`.
+   */
+  MAIL_TRANSPORT: z.enum(['smtp', 'log', 'none']).optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  /** `true` = implicit TLS (e.g. port 465). Otherwise STARTTLS is used when the server offers it. */
+  SMTP_SECURE: bool.default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  /** Sender address, e.g. `Example Status <status@example.com>`. Required for smtp/log. */
+  SMTP_FROM: z.string().max(320).optional(),
+  /** Verify the SMTP server certificate. Only disable for testing with self-signed certificates. */
+  SMTP_TLS_REJECT_UNAUTHORIZED: bool.default(true),
 });
 
-export type Config = z.infer<typeof EnvSchema> & {
+export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT'> & {
   SECRET_KEY: string;
   /** True when SECRET_KEY was not set and the public development secret is used. */
   insecureSecret: boolean;
   oidcEnabled: boolean;
   database: { dialect: 'sqlite'; filename: string } | { dialect: 'postgres'; connectionString: string };
+  /** Effective mail transport (MAIL_TRANSPORT or derived from SMTP_HOST). */
+  MAIL_TRANSPORT: MailTransportKind;
 };
 
 const DEV_SECRET = 'insecure-development-secret-change-me-please';
@@ -136,6 +155,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
 
   const oidcEnabled = Boolean(c.OIDC_ISSUER_URL && c.OIDC_CLIENT_ID);
 
+  const mailTransport: MailTransportKind = c.MAIL_TRANSPORT ?? (c.SMTP_HOST ? 'smtp' : 'none');
+  const mailIssues: string[] = [];
+  if (mailTransport !== 'none' && !c.SMTP_FROM) mailIssues.push(`  SMTP_FROM: required when MAIL_TRANSPORT=${mailTransport}`);
+  if (mailTransport === 'smtp' && !c.SMTP_HOST) mailIssues.push('  SMTP_HOST: required when MAIL_TRANSPORT=smtp');
+  if (c.SMTP_FROM && !/@[^\s@>]+\.[^\s@>]+>?\s*$/.test(c.SMTP_FROM)) {
+    mailIssues.push('  SMTP_FROM: expected an address like "Example Status <status@example.com>"');
+  }
+  if (mailIssues.length > 0) throw new Error(`Invalid configuration:\n${mailIssues.join('\n')}`);
+
   return {
     ...c,
     BASE_URL: c.BASE_URL.replace(/\/+$/, ''),
@@ -143,5 +171,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     insecureSecret: secret === DEV_SECRET,
     oidcEnabled,
     database,
+    MAIL_TRANSPORT: mailTransport,
   };
 }

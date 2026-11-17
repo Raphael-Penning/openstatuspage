@@ -20,7 +20,8 @@
     "settings": "Settings",
     "users": "Users",
     "apiTokens": "API tokens",
-    "auditLog": "Audit log"
+    "auditLog": "Audit log",
+    "subscribers": "Subscribers"
   },
   "userMenu": {
     "label": "Account and preferences",
@@ -554,7 +555,8 @@
     "sections": {
       "branding": "Branding",
       "display": "Display",
-      "footer": "Footer links"
+      "footer": "Footer links",
+      "email": "Email subscriptions"
     },
     "fields": {
       "siteName": "Site name",
@@ -568,7 +570,9 @@
       "showLocations": "Show locations",
       "showUptime": "Show uptime",
       "uptimeDays": "Uptime days",
-      "recentIncidentDays": "Recent incident days"
+      "recentIncidentDays": "Recent incident days",
+      "emailSubscriptionsEnabled": "Offer email subscriptions",
+      "maintenanceReminderHours": "Maintenance reminder (hours)"
     },
     "supportUrlHelp": "Optional link to your support or contact page.",
     "pickColor": "Pick accent color",
@@ -585,7 +589,9 @@
     "noLinks": "No footer links.",
     "linkLabel": "Label",
     "linkUrl": "URL",
-    "removeLink": "Remove link {{name}}"
+    "removeLink": "Remove link {{name}}",
+    "emailSubscriptionsHelp": "Visitors can subscribe to incidents and maintenance by email (double opt-in). Only offered when a mail transport is configured.",
+    "maintenanceReminderHoursHelp": "Reminds subscribers this many hours before scheduled maintenance; 0 turns reminders off (0–168)."
   },
   "users": {
     "title": "Users",
@@ -670,7 +676,9 @@
       "check": "Check",
       "settings": "Settings",
       "user": "User",
-      "api_token": "API token"
+      "api_token": "API token",
+      "subscriber": "Subscriber",
+      "notifications": "Email notifications"
     },
     "actions": {
       "auth_login": "Signed in",
@@ -707,7 +715,82 @@
       "user_update": "User edited",
       "user_delete": "User deleted",
       "api_token_create": "API token created",
-      "api_token_delete": "API token revoked"
+      "api_token_delete": "API token revoked",
+      "subscriber_delete": "Subscriber deleted",
+      "notifications_test": "Test email sent",
+      "notifications_retry_failed": "Failed emails requeued"
     }
+  },
+  "notify": {
+    "label": "Notify subscribers",
+    "incidentHelp": "Emails this incident to subscribers of the affected services and of all updates.",
+    "updateHelp": "Emails this update to subscribers of the affected services and of all updates.",
+    "maintenanceHelp": "Emails the announcement and enables the reminder and the automatic start and completion emails.",
+    "maintenanceEditHelp": "Enables the reminder and the automatic start and completion emails. Saving does not send an email.",
+    "hiddenHelp": "Hidden entries never notify subscribers.",
+    "enabledHint": "Emails are only sent when email subscriptions are enabled in the settings.",
+    "off": "No email notifications",
+    "reminderSent": "Reminder queued {{date}}"
+  },
+  "notifications": {
+    "title": "Email delivery",
+    "transport": "Transport",
+    "transports": {
+      "smtp": "SMTP",
+      "log": "Server log",
+      "none": "Not configured"
+    },
+    "from": "Sender",
+    "subscribers": "Subscribers",
+    "subscriberCounts": "{{confirmed}} confirmed · {{pending}} pending",
+    "queue": "Queue",
+    "queuePending": "{{value}} pending",
+    "queueFailed": "{{value}} failed",
+    "lastSent": "Last sent",
+    "never": "Never",
+    "lastError": "Last error",
+    "noTransportWarning": "Email subscriptions are enabled, but no mail transport is configured, so the public page does not offer them. Set SMTP_HOST (or MAIL_TRANSPORT) in the server environment.",
+    "noTransport": "No mail transport is configured. Set SMTP_HOST and SMTP_FROM in the server environment, or MAIL_TRANSPORT=log for development.",
+    "logTransport": "Emails are written to the server log instead of being delivered (development mode).",
+    "testTo": "Send a test email to",
+    "testSend": "Send test email",
+    "testSentTo": "Test email sent to {{to}}",
+    "testWrittenToLog": "Test email written to the server log",
+    "testFailed": "The test email could not be sent.",
+    "retry": "Retry failed",
+    "nothingToRetry": "There are no failed emails.",
+    "requeued_one": "{{count}} email queued again.",
+    "requeued_other": "{{count}} emails queued again."
+  },
+  "subscribers": {
+    "title": "Subscribers",
+    "description": "People who receive incident and maintenance emails. Unconfirmed subscriptions are removed automatically after 7 days.",
+    "search": "Search email addresses",
+    "filterStatus": "Filter by status",
+    "filter": {
+      "all": "All",
+      "confirmed": "Confirmed",
+      "pending": "Pending"
+    },
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending"
+    },
+    "fields": {
+      "email": "Email",
+      "status": "Status",
+      "scope": "Subscribed to",
+      "language": "Language",
+      "created": "Subscribed",
+      "confirmed": "Confirmed"
+    },
+    "allUpdates": "All updates",
+    "empty": "No subscribers yet. Visitors can subscribe on the public page once email subscriptions are enabled.",
+    "emptyFiltered": "No subscribers match these filters.",
+    "toSettings": "Email subscription settings",
+    "deleteSubscriber": "Delete {{email}}",
+    "deleteTitle": "Delete subscriber",
+    "deleteConfirm": "Delete {{email}}? The address receives no further emails and queued emails are dropped. This cannot be undone.",
+    "deleted": "Subscriber deleted."
   }
 }
