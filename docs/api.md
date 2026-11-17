@@ -25,7 +25,7 @@ Responses may be cached (`Cache-Control: public, max-age=30`).
 | GET | `/api/public/settings` | `PublicPageSettings` |
 | GET | `/api/public/services` | `{ groups: PublicServiceGroup[], ungrouped: PublicService[], counts: Record<ServiceStatus, number> }` incl. uptime |
 | GET | `/api/public/services/:idOrSlug` | `PublicService & { uptime: DailyUptime[], incidents: PublicIncident[] /* last 90d */, maintenances: PublicMaintenance[] /* active+upcoming */ }` |
-| GET | `/api/public/locations` | `PublicLocationsResponse` |
+| GET | `/api/public/locations` | `PublicLocationsResponse` (404 when `showLocations` is disabled) |
 | GET | `/api/public/incidents/:id` | `PublicIncident` |
 | GET | `/api/public/maintenances/:id` | `PublicMaintenance` |
 | GET | `/api/public/history` | `Paginated<HistoryItem>`, query: `HistoryQuery` (type, serviceId, locationId, month, page, pageSize). Newest first; incidents sorted by `startedAt`, maintenance by `scheduledStart`. Includes active and resolved items, excludes scheduled-in-the-future maintenance. |
@@ -71,7 +71,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/locations/reorder` | `ReorderInput` | 204 | admin |
 | GET | `/api/admin/service-groups` | – | `AdminServiceGroup[]` | editor |
 | POST | `/api/admin/service-groups` | `ServiceGroupInput` | `AdminServiceGroup` (201) | admin |
-| PUT/DELETE | `/api/admin/service-groups/:id` | `ServiceGroupInput` | `AdminServiceGroup` | admin |
+| GET/PUT/DELETE | `/api/admin/service-groups/:id` | `ServiceGroupInput` | `AdminServiceGroup` | GET editor, else admin |
 | POST | `/api/admin/service-groups/reorder` | `ReorderInput` | 204 | admin |
 | GET | `/api/admin/services` | – | `AdminService[]` | editor |
 | POST | `/api/admin/services` | `ServiceInput` | `AdminService` (201) | admin |
@@ -90,7 +90,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/maintenances/:id/updates` | `MaintenanceUpdateInput` | `AdminMaintenance` | editor |
 | GET | `/api/admin/monitor-sources` | – | `AdminMonitorSource[]` | admin |
 | POST | `/api/admin/monitor-sources` | `MonitorSourceInput` | `AdminMonitorSource & { ingestToken: string }` (201, token shown once) | admin |
-| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value) | `AdminMonitorSource` | admin |
+| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` are unchanged, otherwise 400) | `AdminMonitorSource` | admin |
 | POST | `/api/admin/monitor-sources/:id/test` | – | `MonitorSourceTestResult` | admin |
 | POST | `/api/admin/monitor-sources/:id/poll` | – | `MonitorSourceTestResult` (polls now and stores the results) | admin |
 | POST | `/api/admin/monitor-sources/:id/rotate-token` | – | `{ ingestToken: string }` | admin |
@@ -98,10 +98,13 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | DELETE | `/api/admin/checks/:id` | – | 204 | admin |
 | GET | `/api/admin/users` | – | `AdminUser[]` | admin |
 | POST | `/api/admin/users` | `UserCreateInput` | `AdminUser` (201) | admin |
-| PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
+| GET/PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
 | GET | `/api/admin/api-tokens` | – | `AdminApiToken[]` | admin |
 | POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201) | admin |
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
+
+API tokens are revoked when their creator is deleted; admin tokens are revoked when
+their creator loses the admin role.
 | GET | `/api/admin/audit-log` | query `page`, `pageSize`, `entityType` | `Paginated<AuditLogEntry>` | admin |
 
 ### Side effects the server must apply
@@ -114,6 +117,28 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
   posting a non-resolved status on a resolved incident re-opens it (`resolved_at = null`).
 - Maintenance update `in_progress` sets `actual_start` (if empty), `completed`/`cancelled`
   sets `actual_end`.
+
+### Behaviour details
+
+- `POST .../incidents/:id/updates` and `POST .../maintenances/:id/updates` return `200`
+  with the full object; `DELETE .../incidents/:id/updates/:updateId` returns `204`
+  (an incident keeps at least one update, deleting the last one is `409`).
+- `PATCH /api/admin/incidents/:id` accepts `resolvedAt` only for resolved incidents
+  (to correct the time); resolving and re-opening is done by posting an update.
+- Creating a maintenance adds a first `scheduled` update with an empty message
+  (clients render a localized default text). Windows that are already due are
+  started/completed right away instead of on the next worker tick.
+- `PUT` bodies are complete objects (schema defaults apply to omitted fields);
+  an omitted `slug` keeps the current slug. An explicit slug that is taken is `409`.
+- `PUT /api/admin/users/:id` with `password: null` removes the local password
+  (not allowed for yourself). Changing a password signs that user out everywhere.
+- Mutations through API tokens are audited with `userId = null` and
+  `details.apiToken = <token name>`; logins are audited as `auth.login`.
+- API tokens are prefixed with `osp_`.
+- `/api/public/history?locationId=` matches items linked to the location directly
+  or affecting a service running there. Filters referencing non-public entities
+  return an empty page.
+- Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
 
 ## Ingest API (`/api/ingest`)
 
