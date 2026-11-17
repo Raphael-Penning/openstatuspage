@@ -23,6 +23,7 @@ management area.
 - **Auth**: local users (admin / editor) and optional OIDC single sign-on
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
+- **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
 - **Public API and RSS/Atom feeds**
 
 ## Quick start (Docker)

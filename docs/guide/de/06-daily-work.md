@@ -98,19 +98,26 @@ aus dem Status aus den Checks aus.
 
 ### Ändern und absagen
 
-**Wartung bearbeiten** ändert Titel, Beschreibung, Zeitraum, Services und
-Sichtbarkeit. Zum Verschieben änderst du den Zeitraum; fällt eine Wartung aus,
+**Wartung bearbeiten** ändert Titel, Beschreibung, Zeitraum, Services,
+Sichtbarkeit und die gespeicherte Wahl bei **Abonnenten benachrichtigen**.
+Beim Speichern wird keine E-Mail verschickt. Zum Verschieben änderst du den
+Zeitraum (bei einem späteren Beginn bekommen Abonnenten eine neue
+Erinnerung); fällt eine Wartung aus,
 nutze **Wartung absagen**, damit Kunden sehen, dass sie nicht stattfindet.
 Löschen entfernt sie vollständig.
 
 ## Die Checkbox „Abonnenten benachrichtigen“
 
 Jedes Formular, das einen Vorfall oder eine Wartung anlegt oder ein Update
-veröffentlicht, hat die Checkbox **Abonnenten benachrichtigen**. Sie ist
+veröffentlicht, hat die Checkbox **Abonnenten benachrichtigen**: **Neuer
+Vorfall**, **Update veröffentlichen**, **Beheben**, **Wartung planen**,
+**Jetzt starten**, **Abschließen** und **Wartung absagen**. Sie ist
 standardmäßig angehakt.
 
 - E-Mails gibt es nur für **öffentliche** Vorfälle und Wartungen. Versteckte
   lösen nie eine E-Mail aus, egal was die Checkbox sagt.
+- E-Mails gehen nur raus, solange E-Mail-Abonnements in den Einstellungen
+  aktiviert sind (**E-Mail-Abonnements anbieten**).
 - Bei Vorfällen und bei Updates, die du selbst veröffentlichst, gilt die
   Checkbox nur für diesen einen Schritt: Nimm den Haken für kleine
   Korrekturen heraus.
@@ -120,8 +127,11 @@ standardmäßig angehakt.
   Zeitraum sowie den automatischen Start und Abschluss. Nimm den Haken heraus,
   wenn niemand von der Wartung erfahren muss; unter **Wartung bearbeiten**
   kannst du die gespeicherte Wahl später ändern (das allein verschickt
-  nichts).
-- Das Bearbeiten eines bestehenden Updates verschickt nie eine E-Mail.
+  nichts). Die Detailseite der Wartung zeigt die gespeicherte Wahl und wann
+  die Erinnerung eingereiht wurde; eine Wartung ohne Benachrichtigungen ist
+  mit *Keine E-Mail-Benachrichtigungen* markiert.
+- Das Bearbeiten eines Vorfalls, einer Wartung oder eines bestehenden
+  Updates verschickt nie eine E-Mail.
 
 Wer die E-Mail bekommt, hängt von den betroffenen Services ab, siehe
 [E-Mail-Abonnements](07-email-subscriptions.md#wer-bekommt-was).

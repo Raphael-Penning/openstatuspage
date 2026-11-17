@@ -94,18 +94,24 @@ interruptions from the check-based status.
 
 ### Changing and cancelling
 
-**Edit maintenance** changes title, description, window, services and
-visibility. To move a maintenance, change the window; to call it off, use
+**Edit maintenance** changes title, description, window, services,
+visibility and the stored **Notify subscribers** choice. Saving it sends no
+email. To move a maintenance, change the window (moved to a later start,
+subscribers get a new reminder); to call it off, use
 **Cancel maintenance** so customers see that it will not happen. Deleting
 removes it completely.
 
 ## The "Notify subscribers" checkbox
 
 Every form that creates an incident or maintenance or posts an update has a
-**Notify subscribers** checkbox. It is on by default.
+**Notify subscribers** checkbox: **New incident**, **Post update**,
+**Resolve**, **Schedule maintenance**, **Start now**, **Complete** and
+**Cancel maintenance**. It is on by default.
 
 - Only **public** incidents and maintenance ever send emails. Hidden ones
   never do, whatever the checkbox says.
+- Emails are only sent while email subscriptions are enabled in the settings
+  (**Offer email subscriptions**).
 - For incidents and for manual updates the checkbox applies to that one step:
   untick it for small corrections or internal-sounding updates.
 - For maintenance the choice is **stored** with the maintenance. It controls
@@ -113,8 +119,12 @@ Every form that creates an incident or maintenance or posts an update has a
   [reminder](07-email-subscriptions.md#maintenance-reminders) before the
   window and the automatic start and completion. Untick it when you schedule
   a maintenance nobody needs to be told about; you can change the stored
-  choice later in **Edit maintenance** (that alone sends nothing).
-- Editing an existing update never sends an email.
+  choice later in **Edit maintenance** (that alone sends nothing). The
+  maintenance detail page shows the stored choice and when the reminder was
+  queued; a maintenance without notifications is marked
+  *No email notifications*.
+- Editing an incident, a maintenance or an existing update never sends an
+  email.
 
 Who receives the email depends on the affected services, see
 [Email subscriptions](07-email-subscriptions.md#who-receives-what).

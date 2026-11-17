@@ -24,6 +24,7 @@ It is also shown in the management UI under **Help**, in English or German.
 | Document | Contents |
 | --- | --- |
 | [configuration.md](configuration.md) | Every environment variable with defaults |
+| [notifications.md](notifications.md) | Email subscriptions: mail transport, delivery queue, stored data, deliverability, troubleshooting |
 | [api.md](api.md) | HTTP API: public, auth, admin and ingest endpoints |
 | [adapters/](adapters/README.md) | Monitoring adapters: Icinga 2, Uptime Kuma, openITCockpit, generic webhook |
 | [oidc.md](oidc.md) | Single sign-on with OpenID Connect, role mapping, provider notes |

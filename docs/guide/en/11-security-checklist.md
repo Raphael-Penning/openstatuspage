@@ -64,11 +64,14 @@ Go through this list before going live and after larger changes.
 
 ## Email
 
-- [ ] SMTP uses TLS (`SMTP_SECURE=true` or STARTTLS);
-      `SMTP_TLS_REJECT_UNAUTHORIZED` stays `true`.
+- [ ] SMTP uses TLS: `SMTP_SECURE=true`, or a server that offers STARTTLS
+      (with `SMTP_SECURE=false` STARTTLS is used only when the server offers
+      it); `SMTP_TLS_REJECT_UNAUTHORIZED` stays `true`.
 - [ ] SPF, DKIM and DMARC are set up for the sender domain.
 - [ ] The privacy policy describes email subscriptions (purpose, storage,
-      unsubscribing).
+      unsubscribing) and is linked in the footer.
+- [ ] `MAIL_TRANSPORT=log` is not used in production: the server log would
+      contain the confirmation and manage links.
 
 ## Operations
 

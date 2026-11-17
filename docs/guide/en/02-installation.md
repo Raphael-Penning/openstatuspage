@@ -62,10 +62,13 @@ docker compose --env-file deploy.env -f docker/docker-compose.yml up -d --build
 Keep this file: you need the same `SECRET_KEY` and `POSTGRES_PASSWORD` for
 every later `up`.
 
-The compose file only passes `BASE_URL`, `SECRET_KEY`, `DATABASE_URL`,
-`ADMIN_EMAIL` and `ADMIN_PASSWORD` into the container. To use further options
-(for example `TRUST_PROXY`, `LOG_LEVEL`, the OIDC or SMTP variables), add them
-to the `environment:` section of the `openstatuspage` service.
+The compose file passes `BASE_URL`, `SECRET_KEY`, `DATABASE_URL`,
+`ADMIN_EMAIL`, `ADMIN_PASSWORD` and the email variables (`MAIL_TRANSPORT`,
+`SMTP_*`, see [Email subscriptions](07-email-subscriptions.md#mail-server))
+into the container, so you can set them in the env file or the shell. To use
+further options (for example `TRUST_PROXY`, `LOG_LEVEL` or the OIDC
+variables), add them to the `environment:` section of the `openstatuspage`
+service.
 
 ### HOST_PORT
 

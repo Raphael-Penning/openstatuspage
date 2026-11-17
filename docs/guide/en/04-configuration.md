@@ -44,6 +44,8 @@ Rules that apply to all variables:
 
 With Docker Compose remember that only the variables listed in the
 `environment:` section of the `openstatuspage` service reach the container.
+The email variables (`MAIL_TRANSPORT`, `SMTP_*`) are already listed there, so
+you set them in your env file or shell like `SECRET_KEY`.
 
 ## The settings page
 
@@ -63,10 +65,11 @@ With Docker Compose remember that only the variables listed in the
 | Display | Uptime days | Days shown in the uptime bars (7–180, default 90). |
 | Display | Recent incident days | How long resolved incidents stay on the overview (1–90, default 7). |
 | Footer links | – | Up to 10 links in the page footer (e.g. imprint, privacy policy). |
-| Email | Email subscriptions | Offers subscriptions on the public page (needs a configured mail server). |
-| Email | Maintenance reminder | Hours before a scheduled maintenance to remind subscribers (0 = off, default 24). |
+| Email subscriptions | Offer email subscriptions | Offers subscriptions on the public page (needs a configured mail server). Default: off. |
+| Email subscriptions | Maintenance reminder (hours) | Hours before a scheduled maintenance to remind subscribers (0–168, 0 = off, default 24). |
 
-The email settings are explained in [Email subscriptions](07-email-subscriptions.md).
+The email settings and the **Email delivery** panel below them are explained
+in [Email subscriptions](07-email-subscriptions.md).
 
 The language and theme of the management UI are personal settings in the user
 menu (bottom left).
@@ -77,7 +80,8 @@ There is no page that prints the environment, on purpose. To check a value:
 
 - the start-up log reports configuration errors and warns about an insecure
   `SECRET_KEY` or a risky OIDC setup;
-- the email status panel shows the mail transport and sender
+- the **Email delivery** panel on the settings page shows the mail transport
+  and sender
   (see [Email subscriptions](07-email-subscriptions.md#troubleshooting));
 - `docker compose -f docker/docker-compose.yml exec openstatuspage env` lists
   what the container actually received (it contains secrets, do not paste the

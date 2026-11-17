@@ -45,7 +45,9 @@ Für alle Variablen gilt:
   fehlen und die Logs sind für Menschen formatiert.
 
 Bei Docker Compose gilt: Nur Variablen, die im Abschnitt `environment:` des
-Dienstes `openstatuspage` stehen, kommen im Container an.
+Dienstes `openstatuspage` stehen, kommen im Container an. Die E-Mail-Variablen
+(`MAIL_TRANSPORT`, `SMTP_*`) stehen dort bereits; du setzt sie also wie
+`SECRET_KEY` in deiner Env-Datei oder in der Shell.
 
 ## Die Einstellungsseite
 
@@ -65,10 +67,11 @@ Dienstes `openstatuspage` stehen, kommen im Container an.
 | Anzeige | Tage der Verfügbarkeit | Tage in den Verfügbarkeitsbalken (7–180, Standard 90). |
 | Anzeige | Tage für kürzliche Vorfälle | Wie lange behobene Vorfälle in der Übersicht bleiben (1–90, Standard 7). |
 | Footer-Links | – | Bis zu 10 Links im Footer (z. B. Impressum, Datenschutzerklärung). |
-| E-Mail | E-Mail-Abonnements | Bietet Abonnements auf der öffentlichen Seite an (setzt einen konfigurierten Mailserver voraus). |
-| E-Mail | Wartungserinnerung | Stunden vor einer geplanten Wartung, zu denen Abonnenten erinnert werden (0 = aus, Standard 24). |
+| E-Mail-Abonnements | E-Mail-Abonnements anbieten | Bietet Abonnements auf der öffentlichen Seite an (setzt einen konfigurierten Mailserver voraus). Standard: aus. |
+| E-Mail-Abonnements | Wartungserinnerung (Stunden) | Stunden vor einer geplanten Wartung, zu denen Abonnenten erinnert werden (0–168, 0 = aus, Standard 24). |
 
-Die E-Mail-Einstellungen erklärt [E-Mail-Abonnements](07-email-subscriptions.md).
+Die E-Mail-Einstellungen und den Kasten **E-Mail-Versand** darunter erklärt
+[E-Mail-Abonnements](07-email-subscriptions.md).
 
 Sprache und Darstellung der Verwaltung stellt jeder Benutzer selbst im
 Benutzermenü (unten links) ein.
@@ -80,7 +83,8 @@ einen Wert:
 
 - Das Log beim Start meldet Konfigurationsfehler und warnt vor einem
   unsicheren `SECRET_KEY` oder einer riskanten OIDC-Einstellung.
-- Der E-Mail-Statusbereich zeigt Versandart und Absender
+- Der Kasten **E-Mail-Versand** auf der Einstellungsseite zeigt Versandart
+  und Absender
   (siehe [E-Mail-Abonnements](07-email-subscriptions.md#fehlersuche)).
 - `docker compose -f docker/docker-compose.yml exec openstatuspage env` zeigt,
   was tatsächlich im Container ankommt (enthält Geheimnisse, also nirgends

@@ -147,8 +147,8 @@ Empfohlene Checks:
 - Bei Push-Anbindungen: Die Quellenliste in der Verwaltung zeigt, wann
   zuletzt Daten ankamen. Bleibt eine Quelle stumm, steckt meist ein kaputtes
   Benachrichtigungsskript oder eine Firewall-Regel dahinter.
-- Mit E-Mail-Abonnements: die Zahl der fehlgeschlagenen E-Mails im
-  E-Mail-Statusbereich.
+- Mit E-Mail-Abonnements: die Zahl der fehlgeschlagenen E-Mails unter
+  **Warteschlange** im Kasten **E-Mail-Versand** auf der Einstellungsseite.
 
 Achte außerdem darauf, dass die Statusseite nicht mehr als nötig von der
 Infrastruktur abhängt, über die sie berichtet (derselbe Host, derselbe
@@ -224,7 +224,9 @@ neuen Schlüssel setzen, neu starten, Monitoring-Zugangsdaten neu eintragen.
 Der Worker entfernt von selbst:
 
 - abgelaufene Sitzungen (stündlich),
-- unbestätigte E-Mail-Abonnements nach 7 Tagen,
-- versendete und fehlgeschlagene E-Mails aus der Warteschlange nach 30 Tagen.
+- unbestätigte E-Mail-Abonnements 7 Tage nach der letzten
+  Bestätigungs-E-Mail (stündlich),
+- versendete und fehlgeschlagene E-Mails aus der Warteschlange nach 30 Tagen
+  (stündlich).
 
 Vorfälle, Wartungen, die Statushistorie und das Audit-Log bleiben erhalten.

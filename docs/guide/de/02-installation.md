@@ -64,10 +64,13 @@ docker compose --env-file deploy.env -f docker/docker-compose.yml up -d --build
 Bewahre diese Datei auf: Bei jedem weiteren `up` brauchst du denselben
 `SECRET_KEY` und dasselbe `POSTGRES_PASSWORD`.
 
-Die Compose-Datei reicht nur `BASE_URL`, `SECRET_KEY`, `DATABASE_URL`,
-`ADMIN_EMAIL` und `ADMIN_PASSWORD` in den Container durch. Weitere Optionen
-(zum Beispiel `TRUST_PROXY`, `LOG_LEVEL`, die OIDC- oder SMTP-Variablen)
-trägst du im Abschnitt `environment:` des Dienstes `openstatuspage` ein.
+Die Compose-Datei reicht `BASE_URL`, `SECRET_KEY`, `DATABASE_URL`,
+`ADMIN_EMAIL`, `ADMIN_PASSWORD` und die E-Mail-Variablen (`MAIL_TRANSPORT`,
+`SMTP_*`, siehe [E-Mail-Abonnements](07-email-subscriptions.md#mailserver)) in
+den Container durch; diese setzt du also einfach in der Env-Datei oder in der
+Shell. Weitere Optionen (zum Beispiel `TRUST_PROXY`, `LOG_LEVEL` oder die
+OIDC-Variablen) trägst du im Abschnitt `environment:` des Dienstes
+`openstatuspage` ein.
 
 ### HOST_PORT
 

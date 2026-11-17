@@ -138,7 +138,8 @@ Recommended checks:
 - For push integrations: the source list in the management UI shows when
   data last arrived. A source that stays silent usually means a broken
   notification script or firewall rule.
-- With email subscriptions: the failed count in the email status panel.
+- With email subscriptions: the failed count under **Queue** in the
+  **Email delivery** panel on the settings page.
 
 Also make sure the status page does not depend on the infrastructure it
 reports on (same host, same database cluster, same DNS) more than necessary.
@@ -210,7 +211,8 @@ key, restart, re-enter the monitoring credentials.
 The worker removes on its own:
 
 - expired login sessions (hourly),
-- unconfirmed email subscriptions after 7 days,
-- sent and failed emails from the queue after 30 days.
+- unconfirmed email subscriptions 7 days after the last confirmation email
+  (hourly),
+- sent and failed emails from the queue after 30 days (hourly).
 
 Incidents, maintenance, the status history and the audit log are kept.

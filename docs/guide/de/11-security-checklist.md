@@ -67,11 +67,14 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
 
 ## E-Mail
 
-- [ ] SMTP nutzt TLS (`SMTP_SECURE=true` oder STARTTLS);
-      `SMTP_TLS_REJECT_UNAUTHORIZED` bleibt `true`.
+- [ ] SMTP nutzt TLS: `SMTP_SECURE=true` oder ein Server, der STARTTLS
+      anbietet (mit `SMTP_SECURE=false` wird STARTTLS nur genutzt, wenn der
+      Server es anbietet); `SMTP_TLS_REJECT_UNAUTHORIZED` bleibt `true`.
 - [ ] SPF, DKIM und DMARC sind für die Absender-Domain eingerichtet.
 - [ ] Die Datenschutzerklärung beschreibt die E-Mail-Abonnements (Zweck,
-      Speicherung, Abmeldung).
+      Speicherung, Abmeldung) und ist im Footer verlinkt.
+- [ ] `MAIL_TRANSPORT=log` wird nicht produktiv genutzt: Das Server-Log
+      enthielte sonst die Bestätigungs- und Verwaltungslinks.
 
 ## Betrieb
 
