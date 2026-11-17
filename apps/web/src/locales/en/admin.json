@@ -20,7 +20,8 @@
     "settings": "Settings",
     "users": "Users",
     "apiTokens": "API tokens",
-    "auditLog": "Audit log"
+    "auditLog": "Audit log",
+    "subscribers": "Subscribers"
   },
   "userMenu": {
     "label": "Account and preferences",
@@ -675,7 +676,9 @@
       "check": "Check",
       "settings": "Settings",
       "user": "User",
-      "api_token": "API token"
+      "api_token": "API token",
+      "subscriber": "Subscriber",
+      "notification": "Notification"
     },
     "actions": {
       "auth_login": "Signed in",
@@ -712,7 +715,9 @@
       "user_update": "User edited",
       "user_delete": "User deleted",
       "api_token_create": "API token created",
-      "api_token_delete": "API token revoked"
+      "api_token_delete": "API token revoked",
+      "subscriber_delete": "Subscriber deleted",
+      "notification_test": "Test email sent"
     }
   },
   "notify": {
@@ -754,5 +759,36 @@
     "nothingToRetry": "There are no failed emails.",
     "requeued_one": "{{count}} email queued again.",
     "requeued_other": "{{count}} emails queued again."
+  },
+  "subscribers": {
+    "title": "Subscribers",
+    "description": "People who receive incident and maintenance emails. Unconfirmed subscriptions are removed automatically after 7 days.",
+    "search": "Search email addresses",
+    "filterStatus": "Filter by status",
+    "filter": {
+      "all": "All",
+      "confirmed": "Confirmed",
+      "pending": "Pending"
+    },
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending"
+    },
+    "fields": {
+      "email": "Email",
+      "status": "Status",
+      "scope": "Subscribed to",
+      "language": "Language",
+      "created": "Subscribed",
+      "confirmed": "Confirmed"
+    },
+    "allUpdates": "All updates",
+    "empty": "No subscribers yet. Visitors can subscribe on the public page once email subscriptions are enabled.",
+    "emptyFiltered": "No subscribers match these filters.",
+    "toSettings": "Email subscription settings",
+    "deleteSubscriber": "Delete {{email}}",
+    "deleteTitle": "Delete subscriber",
+    "deleteConfirm": "Delete {{email}}? The address receives no further emails and queued emails are dropped. This cannot be undone.",
+    "deleted": "Subscriber deleted."
   }
 }

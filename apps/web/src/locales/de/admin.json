@@ -20,7 +20,8 @@
     "settings": "Einstellungen",
     "users": "Benutzer",
     "apiTokens": "API-Tokens",
-    "auditLog": "Audit-Log"
+    "auditLog": "Audit-Log",
+    "subscribers": "Abonnenten"
   },
   "userMenu": {
     "label": "Konto und Einstellungen",
@@ -675,7 +676,9 @@
       "check": "Check",
       "settings": "Einstellungen",
       "user": "Benutzer",
-      "api_token": "API-Token"
+      "api_token": "API-Token",
+      "subscriber": "Abonnent",
+      "notification": "Benachrichtigung"
     },
     "actions": {
       "auth_login": "Angemeldet",
@@ -712,7 +715,9 @@
       "user_update": "Benutzer bearbeitet",
       "user_delete": "Benutzer gelöscht",
       "api_token_create": "API-Token erzeugt",
-      "api_token_delete": "API-Token widerrufen"
+      "api_token_delete": "API-Token widerrufen",
+      "subscriber_delete": "Abonnent gelöscht",
+      "notification_test": "Test-E-Mail gesendet"
     }
   },
   "notify": {
@@ -754,5 +759,36 @@
     "nothingToRetry": "Es gibt keine fehlgeschlagenen E-Mails.",
     "requeued_one": "{{count}} E-Mail erneut eingereiht.",
     "requeued_other": "{{count}} E-Mails erneut eingereiht."
+  },
+  "subscribers": {
+    "title": "Abonnenten",
+    "description": "Personen, die E-Mails zu Vorfällen und Wartungen erhalten. Unbestätigte Anmeldungen werden nach 7 Tagen automatisch gelöscht.",
+    "search": "E-Mail-Adressen durchsuchen",
+    "filterStatus": "Nach Status filtern",
+    "filter": {
+      "all": "Alle",
+      "confirmed": "Bestätigt",
+      "pending": "Unbestätigt"
+    },
+    "status": {
+      "confirmed": "Bestätigt",
+      "pending": "Unbestätigt"
+    },
+    "fields": {
+      "email": "E-Mail",
+      "status": "Status",
+      "scope": "Abonniert",
+      "language": "Sprache",
+      "created": "Angemeldet",
+      "confirmed": "Bestätigt"
+    },
+    "allUpdates": "Alle Updates",
+    "empty": "Noch keine Abonnenten. Besucher können sich auf der öffentlichen Seite anmelden, sobald E-Mail-Abonnements aktiviert sind.",
+    "emptyFiltered": "Keine Abonnenten passen zu diesen Filtern.",
+    "toSettings": "Einstellungen für E-Mail-Abonnements",
+    "deleteSubscriber": "{{email}} löschen",
+    "deleteTitle": "Abonnent löschen",
+    "deleteConfirm": "{{email}} löschen? Die Adresse erhält keine weiteren E-Mails, eingereihte E-Mails werden verworfen. Das kann nicht rückgängig gemacht werden.",
+    "deleted": "Abonnent gelöscht."
   }
 }
