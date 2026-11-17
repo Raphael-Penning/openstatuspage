@@ -241,7 +241,8 @@ function UnsubscribeCard({
               {remove.isPending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <MailMinus aria-hidden className="size-4" />}
               {t('subscription.unsubscribe.confirmButton')}
             </button>
-            <button type="button" className={secondaryButton} onClick={() => setConfirming(false)} disabled={remove.isPending}>
+            {/* Focus the safe choice when the confirmation opens. */}
+            <button type="button" className={secondaryButton} onClick={() => setConfirming(false)} disabled={remove.isPending} autoFocus>
               {t('subscription.unsubscribe.cancel')}
             </button>
           </div>

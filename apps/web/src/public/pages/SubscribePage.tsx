@@ -3,7 +3,7 @@
  */
 import { SubscribeInput, type SubscriptionLocale } from '@openstatuspage/shared';
 import { Loader2, MailCheck, MailX } from 'lucide-react';
-import { useId, useMemo, useState, type FormEvent } from 'react';
+import { useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { ApiError } from '../../lib/api';
@@ -64,6 +64,7 @@ function SubscribeForm({
 }) {
   const { t, i18n } = useTranslation('public');
   const emailId = useId();
+  const emailRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState('');
   const [locale, setLocale] = useState<SubscriptionLocale>(() => toSubscriptionLocale(i18n.resolvedLanguage));
   const [scope, setScope] = useState({ allServices: true, serviceIds: [] as string[] });
@@ -87,7 +88,9 @@ function SubscribeForm({
       serviceIds: scope.allServices ? [] : knownServiceIds(scope.serviceIds, sections),
     });
     if (!parsed.success) {
-      setErrors(subscriptionErrors(parsed.error.issues));
+      const next = subscriptionErrors(parsed.error.issues);
+      setErrors(next);
+      if (next.email) emailRef.current?.focus();
       return;
     }
     setErrors({});
@@ -112,6 +115,7 @@ function SubscribeForm({
               {t('subscription.email')}
             </label>
             <input
+              ref={emailRef}
               id={emailId}
               type="email"
               inputMode="email"
