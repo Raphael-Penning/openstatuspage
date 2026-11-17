@@ -3,10 +3,9 @@
  * every signed-in user. Shows the setup and operations guide from docs/guide
  * in the current UI language, falling back to English per topic.
  */
-import { useQuery } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useParams } from 'react-router';
 import { Button, EmptyState, LinkButton, LoadingState, PageHeader } from '../admin/components/ui';
@@ -17,31 +16,63 @@ import './help.css';
 
 const topicPath = (slug: string) => `${HELP_BASE_PATH}/${slug}`;
 
+/**
+ * Loaded guides per language. A plain promise cache instead of TanStack Query:
+ * importing useQuery here makes the bundler split it out of the public entry.
+ */
+const guideCache = new Map<string, Promise<GuideTopic[]>>();
+
+function useGuide(lang: string) {
+  const [state, setState] = useState<{ lang: string; topics?: GuideTopic[]; error?: unknown }>({ lang });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    let promise = guideCache.get(lang);
+    if (!promise) {
+      promise = loadGuide(lang);
+      guideCache.set(lang, promise);
+      promise.catch(() => guideCache.delete(lang));
+    }
+    promise.then(
+      (topics) => active && setState({ lang, topics }),
+      (error: unknown) => active && setState({ lang, error }),
+    );
+    return () => {
+      active = false;
+    };
+  }, [lang, attempt]);
+
+  const current = state.lang === lang ? state : { lang };
+  return {
+    topics: current.topics,
+    error: current.error,
+    retry: () => {
+      setState({ lang });
+      setAttempt((n) => n + 1);
+    },
+  };
+}
+
 export default function HelpPage() {
   const { t, i18n } = useTranslation('help');
   const lang = i18n.resolvedLanguage ?? 'en';
   const { topic: slug } = useParams();
-  const guide = useQuery({
-    queryKey: ['help', lang],
-    queryFn: () => loadGuide(lang),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnWindowFocus: false,
-  });
+  const guide = useGuide(lang);
 
   if (guide.error) {
     return (
       <div role="alert" className="flex flex-col items-center gap-3 p-10 text-center text-sm">
         <p className="text-status-major-outage">{t('loadError')}</p>
-        <Button size="sm" onClick={() => void guide.refetch()}>
+        <Button size="sm" onClick={guide.retry}>
           {t('common:actions.retry')}
         </Button>
       </div>
     );
   }
-  if (!guide.data) return <LoadingState />;
+  if (!guide.topics) return <LoadingState />;
 
-  const topics = guide.data;
+  const topics = guide.topics;
   if (!slug) return <HelpIndex topics={topics} />;
 
   const index = topics.findIndex((topic) => topic.slug === slug);

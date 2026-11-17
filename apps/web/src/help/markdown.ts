@@ -90,7 +90,7 @@ export function guideTitle(markdown: string): string | null {
 }
 
 /** First paragraph after the title as plain text, for the topic overview. */
-export function guideSummary(markdown: string, maxLength = 220): string {
+export function guideSummary(markdown: string, maxLength = 160): string {
   const lines = markdown.split(/\r?\n/);
   const start = lines.findIndex((l) => /^#\s/.test(l));
   const paragraph: string[] = [];
