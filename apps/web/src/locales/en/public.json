@@ -1,1 +1,200 @@
-{}
+{
+  "fallbackSiteName": "Status",
+  "skipToContent": "Skip to content",
+  "lastRefreshed": "Last refreshed",
+  "affected": "Affected:",
+  "header": {
+    "home": "Go to the overview",
+    "timeZone": "Time zone: {{current}}. Click to switch.",
+    "language": "Language",
+    "theme": "Color theme"
+  },
+  "nav": {
+    "label": "Status page sections",
+    "overview": "Overview",
+    "services": "Services & Sites",
+    "locations": "Locations",
+    "history": "History"
+  },
+  "feeds": {
+    "subscribe": "Subscribe to updates",
+    "rss": "RSS feed",
+    "atom": "Atom feed",
+    "json": "Status API (JSON)"
+  },
+  "footer": {
+    "label": "Footer",
+    "statusApi": "Status API",
+    "support": "Support",
+    "copyright": "© {{year}} {{name}}",
+    "poweredBy": "Powered by OpenStatusPage"
+  },
+  "error": {
+    "title": "The status could not be loaded.",
+    "description": "Please check your connection and try again."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you are looking for does not exist or is no longer available.",
+    "home": "Back to the overview"
+  },
+  "hero": {
+    "updated": "Updated",
+    "operational": {
+      "title": "No known issues",
+      "description": "All services are running normally. We will post updates here if anything changes."
+    },
+    "maintenance": {
+      "title": "Maintenance in progress",
+      "description": "Some services are currently under scheduled maintenance."
+    },
+    "degraded": {
+      "title": "Degraded performance",
+      "description": "Some services are running slower than usual. We are looking into it."
+    },
+    "partial_outage": {
+      "title": "Partial outage",
+      "description": "Some services are partially unavailable. We are working on a fix."
+    },
+    "major_outage": {
+      "title": "Major outage",
+      "description": "Some services are currently unavailable. We are working to restore them as quickly as possible."
+    },
+    "incidentsOpen": {
+      "title": "We are investigating an issue",
+      "description": "All services are operational, but an incident is still open. See the details below."
+    }
+  },
+  "overview": {
+    "activeIncidents": "Active incidents",
+    "activeMaintenance": "Active maintenance",
+    "noActiveMaintenance": "No maintenance is in progress right now.",
+    "upcomingMaintenance": "Scheduled maintenance",
+    "viewAllUpcoming_one": "View all future maintenance ({{count}})",
+    "viewAllUpcoming_other": "View all future maintenance ({{count}})",
+    "showFewerUpcoming": "Show less",
+    "recentIncidents": "Recent incidents",
+    "noRecentIncidents_one": "No incidents reported in the last day.",
+    "noRecentIncidents_other": "No incidents reported in the last {{count}} days.",
+    "services": "Services"
+  },
+  "counters": {
+    "operational": "Operational",
+    "degraded": "Degraded",
+    "offline": "Offline",
+    "maintenance": "Maintenance"
+  },
+  "services": {
+    "title": "Services & Sites",
+    "subtitle": "Current status and availability of all services and websites.",
+    "countersLabel": "Services by status. Select a status to filter the list.",
+    "search": "Search services",
+    "clearSearch": "Clear search",
+    "results_one": "{{count}} service found",
+    "results_other": "{{count}} services found",
+    "count_one": "{{count}} service",
+    "count_other": "{{count}} services",
+    "ungrouped": "Other services",
+    "openSite": "Open {{name}} in a new tab",
+    "empty": "No services have been published yet.",
+    "noMatches": "No services match your search."
+  },
+  "service": {
+    "back": "All services",
+    "notFound": "This service does not exist or is not public.",
+    "locations": "Locations",
+    "uptime": "Uptime",
+    "lastDays_one": "Last day",
+    "lastDays_other": "Last {{count}} days",
+    "maintenance": "Active and upcoming maintenance",
+    "incidents": "Incidents in the last 90 days",
+    "fullHistory": "Full history",
+    "noIncidents": "No incidents in the last 90 days."
+  },
+  "uptime": {
+    "roleDescription": "uptime bar",
+    "ariaLabel": "{{name}}, last {{days}} days: {{uptime}}. Use the arrow keys to inspect single days.",
+    "percent": "{{value}} uptime",
+    "noData": "No data",
+    "noDowntime": "No downtime recorded.",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago",
+    "today": "Today"
+  },
+  "locations": {
+    "title": "Locations",
+    "subtitle": "Status of our data center locations around the world.",
+    "countersLabel": "Locations by status",
+    "map": "Map",
+    "mapLabel_one": "World map with {{count}} location",
+    "mapLabel_other": "World map with {{count}} locations",
+    "legend": "Legend",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "resetZoom": "Reset zoom",
+    "empty": "No locations have been published yet."
+  },
+  "history": {
+    "title": "History",
+    "subtitle": "Past incidents and maintenance.",
+    "filters": "Filters",
+    "type": "Type",
+    "types": {
+      "all": "Incidents & maintenance",
+      "incident": "Incidents",
+      "maintenance": "Maintenance"
+    },
+    "service": "Service",
+    "allServices": "All services",
+    "location": "Location",
+    "allLocations": "All locations",
+    "month": "Month",
+    "allMonths": "All months",
+    "reset": "Reset filters",
+    "empty": "Nothing has happened yet. Incidents and maintenance will be listed here.",
+    "emptyFiltered": "No incidents or maintenance match these filters.",
+    "resultCount_one": "{{count}} entry",
+    "resultCount_other": "{{count}} entries",
+    "pagination": "Pagination",
+    "previous": "Newer",
+    "next": "Older",
+    "pageOf": "Page {{page}} of {{total}}"
+  },
+  "detail": {
+    "back": "History",
+    "facts": "Details",
+    "affectedServices": "Affected services",
+    "updates": "Updates"
+  },
+  "timeline": {
+    "empty": "No updates have been posted yet."
+  },
+  "incident": {
+    "title": "Incident",
+    "notFound": "This incident does not exist or is not public.",
+    "impactLabel": "Impact: {{impact}}",
+    "started": "Started",
+    "resolved": "Resolved",
+    "lastUpdate": "Last update",
+    "duration": "Duration",
+    "ongoing": "ongoing",
+    "ongoingFor": "Ongoing for {{duration}}",
+    "resolvedAfter": "Resolved after {{duration}}"
+  },
+  "maintenance": {
+    "title": "Maintenance",
+    "notFound": "This maintenance does not exist or is not public.",
+    "window": "Scheduled window",
+    "actualStart": "Started",
+    "actualEnd": "Ended",
+    "runningFor": "Running for",
+    "startsIn": "Starts",
+    "durationLabel": "Duration {{duration}}"
+  },
+  "maintenanceAutoMessage": {
+    "scheduled": "This maintenance has been scheduled.",
+    "in_progress": "The maintenance has started.",
+    "completed": "The maintenance has been completed.",
+    "cancelled": "The maintenance has been cancelled."
+  }
+}
