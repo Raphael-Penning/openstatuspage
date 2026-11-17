@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import { subscriptionToken, TOKEN_PLACEHOLDERS } from '../src/services/subscriptions.js';
 import { adminClient, BASE_URL, createTestApp, type Client, type TestApp } from './helpers.js';
@@ -30,8 +30,11 @@ async function enableSubscriptions(enabled = true) {
 }
 
 /** Every call uses another client IP unless given, so the per-IP rate limit does not interfere. */
-function subscribe(payload: object, remoteAddress = `192.0.2.${++ip % 250}`) {
-  return t.app.inject({ method: 'POST', url: '/api/public/subscriptions', payload, remoteAddress });
+async function subscribe(payload: object, remoteAddress = `192.0.2.${++ip % 250}`) {
+  const res = await t.app.inject({ method: 'POST', url: '/api/public/subscriptions', payload, remoteAddress });
+  // The subscribe work runs after the answer; wait for it so the tests see its effects.
+  await t.app.ctx.worker.idle();
+  return res;
 }
 
 async function deliver(): Promise<MailMessage[]> {
@@ -136,22 +139,23 @@ describe('subscribe and confirm', () => {
   });
 
   it('gives identical answers for new, pending and confirmed addresses and throttles mails', async () => {
-    const first = await subscribe({ email: 'jane@example.com' });
+    const first = await subscribe({ email: 'jane@example.com', allServices: false, serviceIds: [publicService] });
     expect((await deliver()).length).toBe(1);
-    // Pending: preferences are updated, the confirmation is not re-sent within 10 minutes.
-    const pending = await subscribe({ email: 'jane@example.com', allServices: false, serviceIds: [publicService] });
+    // Pending: preferences stay unchanged, the confirmation is not re-sent within 10 minutes.
+    const pending = await subscribe({ email: 'jane@example.com', locale: 'de' });
     expect(pending.statusCode).toBe(first.statusCode);
     expect(pending.body).toBe(first.body);
     expect((await deliver()).length).toBe(0);
     const row = await t.db.selectFrom('subscribers').selectAll().executeTakeFirstOrThrow();
-    expect(row.all_services).toBe(0);
+    expect(row).toMatchObject({ all_services: 0, locale: 'en' });
 
-    // After the throttle window the confirmation is sent again.
+    // After the throttle window the confirmation is sent again, still with the original choice.
     const old = new Date(Date.now() - 11 * 60_000).toISOString();
     await t.db.updateTable('subscribers').set({ confirmation_sent_at: old }).execute();
-    await subscribe({ email: 'jane@example.com', allServices: false, serviceIds: [publicService] });
+    await subscribe({ email: 'jane@example.com', allServices: false, serviceIds: [otherService] });
     const [resent] = await deliver();
     expect(resent!.text).toContain('/subscription/confirm?');
+    expect(resent!.subject).toMatch(/Confirm your subscription/);
 
     // Confirmed: preferences stay unchanged, a manage mail is sent instead (throttled as well).
     const { id } = linkParams(resent!, 'confirm');
@@ -171,6 +175,32 @@ describe('subscribe and confirm', () => {
     expect((await deliver()).length).toBe(0);
     const services = await t.db.selectFrom('subscriber_services').select('service_id').execute();
     expect(services.map((s) => s.service_id)).toEqual([publicService]);
+  });
+
+  it('answers before the subscribe work runs, and logs its failures', async () => {
+    // The response time must not depend on the address's state, so the answer may not wait for the work.
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => (release = resolve));
+    const enqueue = vi.spyOn(t.app.ctx.notifications, 'enqueue').mockImplementationOnce(async () => blocked);
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/api/public/subscriptions',
+      payload: { email: 'jane@example.com' },
+      remoteAddress: '192.0.2.251',
+    });
+    expect(res.statusCode).toBe(202);
+    await vi.waitFor(() => expect(enqueue).toHaveBeenCalledOnce());
+    release();
+    await t.app.ctx.worker.idle();
+    expect(await t.db.selectFrom('subscribers').select('email').execute()).toEqual([{ email: 'jane@example.com' }]);
+
+    // A failing job is logged and does not change the answer.
+    const logError = vi.spyOn(t.app.ctx.log, 'error');
+    await t.db.schema.dropTable('subscriber_services').execute();
+    const failing = await subscribe({ email: 'john@example.com', allServices: false, serviceIds: [publicService] });
+    expect(failing.statusCode).toBe(202);
+    expect(failing.body).toBe(res.body);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ task: 'subscribe' }), 'background task failed');
   });
 
   it('validates input and service ids', async () => {

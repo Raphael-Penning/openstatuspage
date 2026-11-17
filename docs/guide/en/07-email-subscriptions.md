@@ -112,12 +112,13 @@ they are kept.
 
 Details that protect subscribers and your mail server:
 
-- The form always answers the same way, whether the address is new, pending
-  or already subscribed. Nobody can find out who is subscribed.
-- Subscribing again with a pending address replaces its choices and re-sends
-  the confirmation; with a confirmed address the existing preferences stay
-  unchanged and a "manage your subscription" email with the manage link is
-  sent instead. Such emails go out at most once per 10 minutes per address.
+- The form always answers the same way and equally fast, whether the address
+  is new, pending or already subscribed. Nobody can find out who is subscribed.
+- Subscribing again never changes the choices of an existing address. A
+  pending address gets the confirmation again (the choices can be changed on
+  the manage page after confirming); a confirmed address gets a "manage your
+  subscription" email with the manage link instead. Such emails go out at
+  most once per 10 minutes per address.
 - The form is limited to 5 requests per minute per client IP, the confirm,
   manage and unsubscribe links to 30 per minute. Behind a reverse proxy this
   needs a correct `TRUST_PROXY` (see
