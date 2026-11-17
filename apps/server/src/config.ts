@@ -46,6 +46,12 @@ const EnvSchema = z.object({
     }),
   /** Session lifetime in hours. */
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 90).default(24 * 7),
+  /**
+   * Absolute session lifetime in hours, counted from the login. The sliding
+   * expiry never extends a session past it. Defaults to 30 days (or
+   * SESSION_TTL_HOURS when that is longer).
+   */
+  SESSION_MAX_AGE_HOURS: z.coerce.number().int().min(1).max(24 * 365).optional(),
 
   /** Creates this admin on first start when no user exists. */
   ADMIN_EMAIL: z.string().email().optional(),
@@ -90,8 +96,10 @@ const EnvSchema = z.object({
   SMTP_TLS_REJECT_UNAUTHORIZED: bool.default(true),
 });
 
-export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT'> & {
+export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT' | 'SESSION_MAX_AGE_HOURS'> & {
   SECRET_KEY: string;
+  /** Effective absolute session lifetime (never shorter than SESSION_TTL_HOURS). */
+  SESSION_MAX_AGE_HOURS: number;
   /** True when SECRET_KEY was not set and the public development secret is used. */
   insecureSecret: boolean;
   oidcEnabled: boolean;
@@ -101,6 +109,7 @@ export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT'> & {
 };
 
 const DEV_SECRET = 'insecure-development-secret-change-me-please';
+const DEFAULT_SESSION_MAX_AGE_HOURS = 24 * 30;
 
 export interface LoadConfigOptions {
   /**
@@ -164,6 +173,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
   }
   if (mailIssues.length > 0) throw new Error(`Invalid configuration:\n${mailIssues.join('\n')}`);
 
+  // An explicit absolute lifetime shorter than the sliding one is contradictory. The
+  // default follows a longer SESSION_TTL_HOURS, so existing setups keep working.
+  if (c.SESSION_MAX_AGE_HOURS !== undefined && c.SESSION_MAX_AGE_HOURS < c.SESSION_TTL_HOURS) {
+    throw new Error(
+      `Invalid configuration:\n  SESSION_MAX_AGE_HOURS: must be at least SESSION_TTL_HOURS (${c.SESSION_TTL_HOURS})`,
+    );
+  }
+  const sessionMaxAgeHours = c.SESSION_MAX_AGE_HOURS ?? Math.max(DEFAULT_SESSION_MAX_AGE_HOURS, c.SESSION_TTL_HOURS);
+
   return {
     ...c,
     BASE_URL: c.BASE_URL.replace(/\/+$/, ''),
@@ -172,5 +190,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     oidcEnabled,
     database,
     MAIL_TRANSPORT: mailTransport,
+    SESSION_MAX_AGE_HOURS: sessionMaxAgeHours,
   };
 }

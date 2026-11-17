@@ -13,6 +13,8 @@ import type { DB } from '../db/index.js';
 import type { User } from '../db/types.js';
 import { newId } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
+import { deleteUserSessions } from './sessions.js';
+import { changeUserRole } from './users.js';
 
 export const OIDC_STATE_COOKIE = 'osp_oidc';
 /** Lifetime of the login state (time the user has to finish the IdP login). */
@@ -99,6 +101,11 @@ function isVerified(value: unknown): boolean {
   return value === true || value === 'true';
 }
 
+/** Minimal logger interface, so the account resolution can be tested without Fastify. */
+export interface OidcLogger {
+  warn(obj: object, msg: string): void;
+}
+
 /**
  * Finds (or creates) the local user for a verified ID token.
  * Linking order: `oidc_subject`, then verified e-mail. With group mapping
@@ -108,6 +115,7 @@ export async function resolveOidcUser(
   db: DB,
   config: Pick<Config, 'OIDC_GROUPS_CLAIM' | 'OIDC_ADMIN_GROUP' | 'OIDC_EDITOR_GROUP' | 'OIDC_AUTO_CREATE_USERS'>,
   claims: Claims,
+  log?: OidcLogger,
 ): Promise<OidcUserResult> {
   const sub = typeof claims.sub === 'string' ? claims.sub : null;
   if (!sub) return { ok: false, error: 'missing_subject' };
@@ -118,7 +126,17 @@ export async function resolveOidcUser(
     editorGroup: config.OIDC_EDITOR_GROUP,
   };
   const mappedRole = mapOidcRole(claims, roleCfg);
-  if (!mappedRole) return { ok: false, error: 'forbidden' };
+  if (!mappedRole) {
+    // Removed from the allowed groups: also end the sessions of the linked user
+    // and revoke the API tokens they created, which would otherwise keep their
+    // last role (sessions until they expire, tokens forever).
+    const known = await db.selectFrom('users').select('id').where('oidc_subject', '=', sub).executeTakeFirst();
+    if (known) {
+      await deleteUserSessions(db, known.id);
+      await db.deleteFrom('api_tokens').where('created_by', '=', known.id).execute();
+    }
+    return { ok: false, error: 'forbidden' };
+  }
   const syncRole = roleMappingEnabled(roleCfg);
 
   const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : null;
@@ -138,8 +156,16 @@ export async function resolveOidcUser(
 
   if (user) {
     if (syncRole && user.role !== mappedRole) {
-      await db.updateTable('users').set({ role: mappedRole, updated_at: now }).where('id', '=', user.id).execute();
-      user = { ...user, role: mappedRole };
+      // Same safeguards as a change in the admin UI (token revocation, last admin).
+      if ((await changeUserRole(db, user.id, mappedRole)) === 'last_admin') {
+        // Logging in still works: locking out the only admin would be worse than a stale role.
+        log?.warn(
+          { userId: user.id, mappedRole },
+          'OIDC role sync skipped: the user is the last admin and cannot be demoted',
+        );
+      } else {
+        user = { ...user, role: mappedRole };
+      }
     }
     return { ok: true, user, created: false };
   }

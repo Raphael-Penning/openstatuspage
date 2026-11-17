@@ -163,11 +163,19 @@ async function handleIngest(
     throw badRequest(err instanceof Error ? err.message : 'Invalid payload');
   }
 
+  // A full sync deletes checks (and their service links). Pull sources get
+  // their complete check list from polling, so pushes may only add or update.
+  if (parsed.full && source.type !== 'webhook') {
+    throw badRequest(
+      `"full" is only supported for sources of type "webhook"; this source is of type "${source.type}". Push without "full".`,
+    );
+  }
+
   if (parsed.checks.length === 0 && !parsed.full) {
     // e.g. Uptime Kuma test notifications
     return { created: 0, updated: 0, removed: 0, stateChanges: 0 };
   }
-  return ctx.ingest.ingest(source.id, parsed.checks, { full: parsed.full });
+  return ctx.ingest.ingest(source.id, parsed.checks, { full: parsed.full, guardLinkedChecks: true });
 }
 
 // ---------------------------------------------------------------------------

@@ -62,7 +62,9 @@ docker compose --env-file deploy.env -f docker/docker-compose.yml up -d --build
 ```
 
 Bewahre diese Datei auf: Bei jedem weiteren `up` brauchst du denselben
-`SECRET_KEY` und dasselbe `POSTGRES_PASSWORD`.
+`SECRET_KEY` und dasselbe `POSTGRES_PASSWORD`. Git ignoriert sie (wie jede
+`*.env`-Datei), und sie gehört nicht zum Docker-Build-Kontext. Sie landet also
+weder in einem Commit noch im Image.
 
 Die Compose-Datei reicht `BASE_URL`, `SECRET_KEY`, `DATABASE_URL`,
 `ADMIN_EMAIL`, `ADMIN_PASSWORD` und die E-Mail-Variablen (`MAIL_TRANSPORT`,
@@ -193,7 +195,8 @@ Für das erste Konto gibt es zwei Wege:
    `ADMIN_PASSWORD` nach der ersten Anmeldung aus der Umgebung und ändere das
    Passwort im Benutzermenü.
 2. **Der Befehl `create-user`** legt einen Benutzer an oder setzt, wenn die
-   Adresse schon existiert, ein neues Passwort und die Rolle:
+   Adresse schon existiert, ein neues Passwort und die Rolle und beendet die
+   Sitzungen des Benutzers:
 
    ```bash
    # Docker Compose

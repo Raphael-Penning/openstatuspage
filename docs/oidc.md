@@ -67,6 +67,12 @@ When `OIDC_ADMIN_GROUP` or `OIDC_EDITOR_GROUP` is set, the role is
 group configured, existing users keep the role assigned in the management UI
 and new users start as editor.
 
+The sync follows the same rules as a role change in the management UI: when a
+user loses the admin role, the admin API tokens they created are revoked. The
+last admin is never demoted. Their login still works, they keep the admin role
+and the server logs a warning; make another user admin (or fix the group
+membership) to resolve it.
+
 ## Account linking
 
 1. A user whose `oidc_subject` equals the token's `sub` is logged in.
@@ -84,6 +90,24 @@ and new users start as editor.
 
 Linked users can still use their local password unless you set
 `LOCAL_LOGIN_ENABLED=false`.
+
+## Offboarding
+
+The IdP is only asked at login. Removing or disabling someone in the IdP, or
+removing them from the configured groups, does not end a session they already
+have, and API tokens they created stay valid:
+
+- An existing session ends at the latest `SESSION_MAX_AGE_HOURS` (default 30
+  days) after its login, even when it is used every day.
+- Only when `OIDC_EDITOR_GROUP` is set and an SSO login is rejected because the
+  user is in neither group (`forbidden`) are all their sessions ended and their
+  API tokens revoked right away. An account disabled in the IdP never reaches
+  this point, and with only `OIDC_ADMIN_GROUP` set, removal from that group
+  demotes the user to editor at their next login instead.
+- A linked user who still has a local password can keep signing in with it
+  unless `LOCAL_LOGIN_ENABLED=false`.
+- For immediate effect, **delete the local user** in the management UI. That
+  ends all sessions at once and revokes the API tokens they created.
 
 ## Error codes
 

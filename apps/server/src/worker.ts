@@ -1,5 +1,6 @@
 /**
- * Minimal in-process task runner for periodic background jobs.
+ * Minimal in-process task runner for periodic background jobs and one-off jobs
+ * that run after a request has been answered.
  * Each task runs at most once at a time; errors are logged and the task keeps running.
  */
 import type { FastifyBaseLogger } from 'fastify';
@@ -14,6 +15,7 @@ interface Task {
 
 export class Worker {
   private readonly tasks = new Map<string, Task>();
+  private readonly detached = new Set<Promise<void>>();
   private readonly abort = new AbortController();
   private started = false;
 
@@ -53,6 +55,19 @@ export class Worker {
   async runNow(name: string): Promise<void> {
     const task = this.tasks.get(name);
     if (task) await this.exec(task);
+  }
+
+  /** Runs a one-off job in the background. Errors are logged; idle() waits for it. */
+  runDetached(name: string, run: () => Promise<void>): void {
+    const job = run()
+      .catch((err: unknown) => this.log.error({ err, task: name }, 'background task failed'))
+      .finally(() => this.detached.delete(job));
+    this.detached.add(job);
+  }
+
+  /** Resolves once no one-off job is running (shutdown, tests). */
+  async idle(): Promise<void> {
+    while (this.detached.size > 0) await Promise.all([...this.detached]);
   }
 
   private arm(task: Task, runImmediately: boolean): void {

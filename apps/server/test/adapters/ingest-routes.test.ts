@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { INGEST_RATE_LIMIT_PER_MINUTE } from '../../src/adapters/routes.js';
+import { newId } from '../../src/lib/ids.js';
+import { nowIso } from '../../src/lib/time.js';
 import { createTestApp, jsonFixture, type TestApp } from './helpers.js';
 
 let t: TestApp;
@@ -158,6 +160,86 @@ describe('POST /api/ingest/:sourceId', () => {
     const res = await push({ checks: [{ id: 'a', state: 1 }], full: true });
     expect(res.json()).toMatchObject({ removed: 1 });
     expect((await checks(id)).map((c) => c.external_id)).toEqual(['a']);
+  });
+
+  it('rejects full pushes for pull sources', async () => {
+    const { id, token } = await t.insertSource({
+      type: 'icinga2',
+      config: { baseUrl: 'https://icinga.example.com:5665', username: 'u', password: 'p' },
+    });
+    const push = (payload: Record<string, unknown>) =>
+      t.app.inject({ method: 'POST', url: `/api/ingest/${id}`, headers: { authorization: `Bearer ${token}` }, payload });
+    await push({ checks: [{ id: 'a', state: 0 }, { id: 'b', state: 0 }] });
+    const res = await push({ checks: [{ id: 'a', state: 2 }], full: true });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain('only supported for sources of type "webhook"');
+    expect((await checks(id)).map((c) => [c.external_id, c.state])).toEqual([
+      ['a', 'ok'],
+      ['b', 'ok'],
+    ]);
+  });
+
+  it('rejects a full push that would remove most checks linked to services', async () => {
+    const { id, token } = await t.insertSource({ type: 'webhook' });
+    const push = (payload: Record<string, unknown>) =>
+      t.app.inject({ method: 'POST', url: `/api/ingest/${id}`, headers: { authorization: `Bearer ${token}` }, payload });
+    await push({ checks: ['a', 'b', 'c', 'd'].map((c) => ({ id: c, state: 0 })) });
+    const now = nowIso();
+    const serviceId = newId();
+    await t.ctx.db
+      .insertInto('services')
+      .values({
+        id: serviceId,
+        slug: 'web',
+        name: 'Web',
+        kind: 'service',
+        sort_order: 0,
+        is_public: 1,
+        status_mode: 'auto',
+        manual_status: 'operational',
+        aggregation: 'worst',
+        current_status: 'operational',
+        monitor_status: 'operational',
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+    const rows = await t.ctx.db.selectFrom('monitor_checks').select(['id', 'external_id']).where('source_id', '=', id).execute();
+    const linkedIds = rows.filter((r) => ['a', 'b', 'c'].includes(r.external_id)).map((r) => r.id);
+    await t.ctx.db
+      .insertInto('service_checks')
+      .values(linkedIds.map((checkId) => ({ service_id: serviceId, check_id: checkId })))
+      .execute();
+    const links = async () =>
+      (
+        await t.ctx.db
+          .selectFrom('service_checks')
+          .innerJoin('monitor_checks', 'monitor_checks.id', 'service_checks.check_id')
+          .select('monitor_checks.external_id')
+          .orderBy('monitor_checks.external_id')
+          .execute()
+      ).map((l) => l.external_id);
+
+    // Would remove b and c (2 of 3 linked): rejected, nothing stored.
+    const rejected = await push({ checks: [{ id: 'a', state: 2 }, { id: 'd', state: 2 }], full: true });
+    expect(rejected.statusCode).toBe(409);
+    expect(rejected.json().message).toContain('remove 2 of 3 checks that are linked to services');
+    expect((await checks(id)).map((c) => [c.external_id, c.state])).toEqual([
+      ['a', 'ok'],
+      ['b', 'ok'],
+      ['c', 'ok'],
+      ['d', 'ok'],
+    ]);
+
+    // Removing one of three linked checks (and any unlinked ones) is a normal sync.
+    const res = await push({ checks: [{ id: 'a', state: 0 }, { id: 'b', state: 0 }, { id: 'x', state: 0 }], full: true });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ created: 1, removed: 2 });
+    expect(await links()).toEqual(['a', 'b']);
+
+    const wipe = await push({ checks: [{ id: 'x', state: 0 }], full: true });
+    expect(wipe.statusCode).toBe(409);
+    expect(await links()).toEqual(['a', 'b']);
   });
 
   it(`rate limits to ${INGEST_RATE_LIMIT_PER_MINUTE} requests per minute and source`, async () => {

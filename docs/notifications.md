@@ -188,8 +188,12 @@ Deletion:
   masked address (`j***@example.com`).
 
 Subscribing answers identically for new, pending and already confirmed addresses,
-so the form cannot be used to find out whether an address is subscribed. Confirmed
-subscribers who subscribe again get an email with their manage link instead; at most
+so the form cannot be used to find out whether an address is subscribed. The work
+that depends on the address runs after the answer has been sent, so the response
+time does not give it away either. Subscribing again never changes the preferences
+of an existing address (they only change through the manage link): pending
+subscribers get the confirmation email again, confirmed subscribers an email with
+their manage link instead; at most
 one confirmation or manage email is sent per address every 10 minutes, and the
 subscribe endpoint is limited to 5 requests per minute per client IP. Behind a
 reverse proxy set `TRUST_PROXY` so the limit applies per visitor.

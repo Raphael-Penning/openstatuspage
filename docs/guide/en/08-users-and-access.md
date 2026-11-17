@@ -34,11 +34,15 @@ Every user can change their own password, language and theme in the user menu
 (bottom left).
 
 Sessions expire after `SESSION_TTL_HOURS` (default 168 hours = 7 days) without
-activity; active sessions are extended automatically. The login is rate
-limited to 10 attempts per minute per client IP.
+activity; active sessions are extended automatically, but never beyond
+`SESSION_MAX_AGE_HOURS` (default 720 hours = 30 days) after the login. Then
+everybody has to log in again. The login is rate limited to 10 attempts per
+minute per client IP.
 
 Locked out? Use the `create-user` command to set a new password, see
-[Installation](02-installation.md#the-first-administrator).
+[Installation](02-installation.md#the-first-administrator). It also signs the
+user out everywhere, so it is the way to reset a compromised account from the
+server.
 
 ## Single sign-on (OIDC)
 
@@ -77,6 +81,18 @@ editor.
 After SSO works and an SSO user is administrator, you can disable password
 logins with `LOCAL_LOGIN_ENABLED=false`.
 
+Losing the administrator role through the groups revokes the user's
+administrator API tokens, just like a change in the management UI. The last
+administrator is never demoted this way; the server logs a warning instead.
+
+Offboarding: the identity provider is only asked at login. Someone you remove
+or disable there keeps an existing session until `SESSION_MAX_AGE_HOURS` at
+the latest, and API tokens they created stay valid. A linked user who still
+has a local password can also keep signing in with it unless
+`LOCAL_LOGIN_ENABLED=false`. So when someone leaves, always delete the user in
+**Administration → Users** as well: that ends all sessions and revokes their
+tokens at once.
+
 Provider-specific notes, all variables and the error codes shown on the login
 page are documented in [`docs/oidc.md`](../../oidc.md).
 
@@ -99,6 +115,7 @@ login. **Administration → API tokens** (administrators):
 
 Tokens are revoked automatically when the user who created them is deleted;
 administrator tokens also when their creator loses the administrator role.
+A token created with another token belongs to the owner of that token.
 Revoke tokens that are no longer used; the list shows when each token was last
 used. Changes made with a token appear in the audit log with the token name.
 

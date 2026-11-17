@@ -4,6 +4,7 @@
  */
 import type { NormalizedCheck } from '../adapters/types.js';
 import type { DB } from '../db/index.js';
+import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso, toIso } from '../lib/time.js';
 import type { StatusEngine } from './status-engine.js';
@@ -25,8 +26,16 @@ export class IngestService {
    * Upserts check results of one source.
    * With `full = true`, checks that are missing from `checks` are deleted
    * (their service links disappear with them).
+   * With `guardLinkedChecks`, a full sync that would delete more than half of
+   * the checks linked to services is rejected with 409 and nothing is stored:
+   * service links are configured by administrators and do not come back when
+   * a check reappears later.
    */
-  async ingest(sourceId: string, checks: NormalizedCheck[], options: { full: boolean }): Promise<IngestResult> {
+  async ingest(
+    sourceId: string,
+    checks: NormalizedCheck[],
+    options: { full: boolean; guardLinkedChecks?: boolean },
+  ): Promise<IngestResult> {
     const now = nowIso();
     const result: IngestResult = { created: 0, updated: 0, removed: 0, stateChanges: 0 };
     const affectedCheckIds: string[] = [];
@@ -35,14 +44,29 @@ export class IngestService {
     // Last result wins when a payload contains duplicates.
     const byExternalId = new Map(checks.map((c) => [c.externalId, c]));
 
-    const existing = await this.db
-      .selectFrom('monitor_checks')
-      .select(['id', 'external_id', 'state'])
-      .where('source_id', '=', sourceId)
-      .execute();
-    const existingByExternal = new Map(existing.map((c) => [c.external_id, c]));
-
+    // Read and guard inside the transaction, so two concurrent full syncs cannot
+    // each pass the guard against the same snapshot and together remove all links.
     await this.db.transaction().execute(async (trx) => {
+      if (options.full) {
+        // Serialise full syncs of one source (row lock on PostgreSQL; SQLite
+        // transactions already run one at a time).
+        await trx
+          .updateTable('monitor_sources')
+          .set({ id: sourceId })
+          .where('id', '=', sourceId)
+          .execute();
+      }
+      const existing = await trx
+        .selectFrom('monitor_checks')
+        .select(['id', 'external_id', 'state'])
+        .where('source_id', '=', sourceId)
+        .execute();
+      const existingByExternal = new Map(existing.map((c) => [c.external_id, c]));
+
+      if (options.full && options.guardLinkedChecks) {
+        await this.assertKeepsLinkedChecks(trx, sourceId, byExternalId);
+      }
+
       for (const check of byExternalId.values()) {
         const checkedAt = check.checkedAt ? safeIso(check.checkedAt) ?? now : now;
         const prev = existingByExternal.get(check.externalId);
@@ -123,6 +147,31 @@ export class IngestService {
     await this.engine.recomputeForChecks(affectedCheckIds);
     await this.engine.recompute(servicesOfRemovedChecks);
     return result;
+  }
+
+  /**
+   * Push counterpart of the poll runner's empty-result guard: a truncated or
+   * forged full payload must not wipe most of the service mappings at once.
+   */
+  private async assertKeepsLinkedChecks(
+    db: Pick<DB, 'selectFrom'>,
+    sourceId: string,
+    incoming: Map<string, NormalizedCheck>,
+  ): Promise<void> {
+    const linked = await db
+      .selectFrom('service_checks')
+      .innerJoin('monitor_checks', 'monitor_checks.id', 'service_checks.check_id')
+      .select('monitor_checks.external_id')
+      .distinct()
+      .where('monitor_checks.source_id', '=', sourceId)
+      .execute();
+    const removed = linked.filter((l) => !incoming.has(l.external_id)).length;
+    if (removed > 0 && removed * 2 > linked.length) {
+      throw conflict(
+        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services. ` +
+          'Include these checks, unlink them in the admin UI first, or push without "full".',
+      );
+    }
   }
 
   /** Records the outcome of a poll on the source row. */

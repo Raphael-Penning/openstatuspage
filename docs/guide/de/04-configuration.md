@@ -26,6 +26,7 @@ wichtigsten Variablen:
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` oder `silent`. |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | – | Erster Administrator, nur solange es keinen Benutzer gibt. |
 | `SESSION_TTL_HOURS` | `168` | Inaktivität, nach der eine Anmeldung abläuft (gleitend). |
+| `SESSION_MAX_AGE_HOURS` | `720` | Maximale Dauer einer Anmeldung ab dem Login, auch bei Aktivität (mindestens `SESSION_TTL_HOURS`). |
 | `LOCAL_LOGIN_ENABLED` | `true` | `false` erlaubt nur noch Single Sign-On. |
 | `OIDC_*` | – | Single Sign-On, siehe [Benutzer und Zugriff](08-users-and-access.md#single-sign-on-oidc). |
 | `WORKER_ENABLED` | `true` | Hintergrundaufgaben; `false` auf zusätzlichen Instanzen. |

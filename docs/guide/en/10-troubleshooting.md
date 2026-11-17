@@ -31,7 +31,7 @@ user created. Use the `create-user` command, see
 
 **I forgot the administrator password.**
 Run `create-user` with the same email address: it sets a new password and
-role for the existing user.
+role for the existing user and signs them out everywhere.
 
 **I am logged out right after logging in, or the login does not stick.**
 `BASE_URL` starts with `https://` but the page is opened via `http://`: the
@@ -61,8 +61,9 @@ storing anything.
 
 **Pushed results do not arrive.**
 Call the ingest URL by hand with `curl` and look at the answer: `401` wrong
-token (rotated?), `404` wrong source ID, `409` source disabled, `413` request
-too large for the reverse proxy, `429` more than 120 requests per minute.
+token (rotated?), `404` wrong source ID, `409` source disabled or full sync
+rejected because it would remove most linked checks, `413` request too large
+for the reverse proxy, `429` more than 120 requests per minute.
 Run the notification scripts with `OSP_DRY_RUN=1` to see the payload.
 
 **A service stays operational although a check is critical.**

@@ -57,13 +57,17 @@ Double opt-in; see [notifications.md](notifications.md). Responses are sent with
 Behaviour of `POST /api/public/subscriptions`:
 
 - new address: pending subscriber, confirmation email;
-- pending address: preferences replaced, confirmation email sent again;
+- pending address: preferences unchanged, confirmation email sent again (the
+  choice can be changed on the manage page after confirming);
 - confirmed address: preferences unchanged, email with the manage link;
 - `website` (honeypot, any string up to 500 characters) not empty: answered exactly
   like a successful subscribe (`202 { ok: true }`), but nothing is created and no
   email is sent. Real visitors never see the field.
 
-At most one confirmation/manage email per address every 10 minutes. The endpoints
+The input is validated (`400`) before answering; everything that depends on the
+address runs after the `202` has been sent, so the response time does not reveal
+whether an address is subscribed either. At most one confirmation/manage email
+per address every 10 minutes. The endpoints
 other than subscribe keep working when subscriptions are disabled later, so
 subscribers can always unsubscribe. Rate limit for the token endpoints: 30/min per IP.
 
@@ -108,7 +112,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 
 | Method | Path | Body | Response | Role |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }` | editor |
+| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }`; editors only get `incident` and `maintenance` audit entries | editor |
 | GET/PUT | `/api/admin/settings` | `SettingsInput` | `PublicPageSettings` | GET editor, PUT admin |
 | GET | `/api/admin/locations` | – | `AdminLocation[]` | editor |
 | POST | `/api/admin/locations` | `LocationInput` | `AdminLocation` (201) | admin |
@@ -145,7 +149,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/users` | `UserCreateInput` | `AdminUser` (201) | admin |
 | GET/PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
 | GET | `/api/admin/api-tokens` | – | `AdminApiToken[]` | admin |
-| POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201) | admin |
+| POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201); created with a token, the new token belongs to that token's owner | admin |
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
 | GET | `/api/admin/subscribers` | query `SubscriberListQuery` (`page`, `pageSize`, `q` email substring, `status=all\|confirmed\|pending`) | `Paginated<AdminSubscriber>` (newest first) | admin |
 | DELETE | `/api/admin/subscribers/:id` | – | 204 (audit `subscriber.delete` with masked address) | admin |
@@ -203,6 +207,9 @@ Monitoring systems push check results. Authentication: `Authorization: Bearer <i
 of the source (or `?token=` query parameter for systems that cannot set headers; its
 value is redacted in the request log).
 Responses: `{ ok: true, created, updated, removed, stateChanges }`.
+`full: true` (remove checks missing from the payload) is accepted only for sources of type
+`webhook` (`400` otherwise); a full push that would remove more than half of the checks linked
+to services is rejected with `409` and stores nothing (see docs/adapters/README.md).
 
 | Method | Path | Body |
 | --- | --- | --- |

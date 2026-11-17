@@ -79,6 +79,14 @@ lieber den `Authorization`-Header als den Query-Parameter `?token=`:
 Query-Strings landen gern in Proxy-Logs. Das vollständige Format beschreibt
 [`docs/adapters/README.md`](../../adapters/README.md#generic-push-api).
 
+Mit `"full": true` sagst du, dass die Nutzdaten die vollständige Liste der
+Checks sind: Fehlende Checks werden entfernt, samt ihrer Verknüpfungen zu
+Services. Das geht nur bei Quellen vom Typ **Webhook (Push)**; andere Typen
+bekommen ihre Liste per Abfrage, dort antwortet der Server mit `400`. Als
+Schutz wird ein vollständiger Push, der mehr als die Hälfte der mit Services
+verknüpften Checks entfernen würde, mit `409` abgelehnt und ändert nichts. Ist
+das Entfernen gewollt, lös die Verknüpfungen vorher.
+
 ## Services aus Checks zusammensetzen
 
 Ein öffentlicher Service besteht aus beliebig vielen internen Checks:

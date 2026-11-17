@@ -7,6 +7,10 @@
  *   `AdapterError`s with messages that are useful to an administrator but
  *   never contain credentials (no userinfo, no query string, no auth headers).
  *
+ * - Response bodies are read with a byte limit on both fetch paths, so a
+ *   misconfigured or hostile endpoint cannot exhaust memory (fetch also
+ *   decompresses gzip/brotli transparently, so the limit applies after that).
+ *
  * Without TLS verification, requests go through `node:http(s)` because the
  * built-in fetch offers no per-request switch for certificate checks without
  * an extra dependency. That code path does not follow redirects; a redirect is
@@ -18,6 +22,8 @@ import https from 'node:https';
 export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 /** Upper bound for a single response body (protects memory on misconfigured URLs). */
 export const MAX_RESPONSE_BYTES = 50 * 1024 * 1024;
+/** Error bodies are only read for a short detail message. */
+export const MAX_ERROR_BODY_BYTES = 16 * 1024;
 
 /** Error raised by adapters. The message is safe to store and show to administrators. */
 export class AdapterError extends Error {
@@ -210,10 +216,51 @@ export async function requestText(fetchFn: FetchFn, url: string, options: Reques
 
 async function readText(res: Response, system: string, url: string): Promise<string> {
   try {
-    return await res.text();
+    return await readBodyLimited(res, MAX_RESPONSE_BYTES);
   } catch (err) {
+    if (err instanceof ResponseTooLargeError) {
+      throw new AdapterError(
+        `${system}: the response of ${describeUrl(url)} exceeds ${MAX_RESPONSE_BYTES / 1024 / 1024} MiB. Check the base URL.`,
+      );
+    }
     throw new AdapterError(`${system}: reading the response of ${describeUrl(url)} failed: ${describeTransportError(err)}`);
   }
+}
+
+class ResponseTooLargeError extends Error {
+  constructor() {
+    super('Response body too large');
+    this.name = 'ResponseTooLargeError';
+  }
+}
+
+/**
+ * Reads a body as UTF-8 text (like `res.text()`) but stops and cancels the
+ * stream as soon as more than `limit` bytes arrived. A larger Content-Length
+ * is rejected before reading anything.
+ */
+export async function readBodyLimited(res: Response, limit: number): Promise<string> {
+  const declared = Number(res.headers.get('content-length') ?? '');
+  if (Number.isFinite(declared) && declared > limit) {
+    await discard(res);
+    throw new ResponseTooLargeError();
+  }
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel().catch(() => {});
+      throw new ResponseTooLargeError();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
 }
 
 async function discard(res: Response): Promise<void> {
@@ -228,8 +275,9 @@ async function discard(res: Response): Promise<void> {
 async function errorDetail(res: Response): Promise<string | null> {
   let text: string;
   try {
-    text = await res.text();
+    text = await readBodyLimited(res, MAX_ERROR_BODY_BYTES);
   } catch {
+    // Too large or broken: the status line alone has to do.
     return null;
   }
   try {

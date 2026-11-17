@@ -14,7 +14,7 @@ import type { UserRole } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 import type { Config } from '../config.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
-import { resolveApiToken, resolveSession, SESSION_COOKIE, sessionTtlMs } from '../services/sessions.js';
+import { resolveApiToken, resolveSession, SESSION_COOKIE } from '../services/sessions.js';
 
 export interface AuthUser {
   id: string;
@@ -23,6 +23,8 @@ export interface AuthUser {
   role: UserRole;
   /** How the request was authenticated. */
   via: 'session' | 'token';
+  /** For API tokens: the user who created the token (null when unknown). */
+  tokenCreatedBy?: string | null;
 }
 
 declare module 'fastify' {
@@ -72,7 +74,7 @@ async function authenticate(app: FastifyInstance, req: FastifyRequest, reply: Fa
     if (!match) return null;
     const token = await resolveApiToken(ctx.db, match[1]!);
     if (!token) return null;
-    return { id: token.id, email: '', name: token.name, role: token.role, via: 'token' };
+    return { id: token.id, email: '', name: token.name, role: token.role, via: 'token', tokenCreatedBy: token.createdBy };
   }
 
   const cookie = req.cookies[SESSION_COOKIE];
@@ -83,7 +85,9 @@ async function authenticate(app: FastifyInstance, req: FastifyRequest, reply: Fa
     return null;
   }
   if (session.refreshed) {
-    reply.setCookie(SESSION_COOKIE, cookie, sessionCookieOptions(ctx.config, Math.floor(sessionTtlMs(ctx) / 1000)));
+    // The cookie lives as long as the session, which may be less than the TTL near the absolute lifetime.
+    const maxAge = Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000));
+    reply.setCookie(SESSION_COOKIE, cookie, sessionCookieOptions(ctx.config, maxAge));
   }
   const { user } = session;
   return { id: user.id, email: user.email, name: user.name, role: user.role, via: 'session' };
@@ -119,4 +123,15 @@ export function requireSession(): preHandlerAsyncHookHandler {
 /** User ID for `created_by` / audit columns. API tokens have no user row, so they yield null. */
 export function actorUserId(req: FastifyRequest): string | null {
   return req.authUser?.via === 'session' ? req.authUser.id : null;
+}
+
+/**
+ * User accountable for credentials the request creates: the session user, or
+ * the creator of the API token. Tokens minted by a token inherit its owner, so
+ * revoking the owner's tokens (on deletion or demotion) covers them too.
+ */
+export function owningUserId(req: FastifyRequest): string | null {
+  const user = req.authUser;
+  if (!user) return null;
+  return user.via === 'session' ? user.id : (user.tokenCreatedBy ?? null);
 }

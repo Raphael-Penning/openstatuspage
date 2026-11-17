@@ -76,6 +76,13 @@ States are `ok`, `warning`, `critical`, `unknown` or `0`–`3`. Prefer the
 to end up in proxy logs. The full format is described in
 [`docs/adapters/README.md`](../../adapters/README.md#generic-push-api).
 
+Add `"full": true` when the payload is the complete list of checks: checks
+missing from it are removed, together with their service links. This works
+only for **Webhook** sources (other types get their list from polling, and
+the server answers `400`). As a safety net, a full push that would remove more than half
+of the checks linked to services is rejected with `409` and changes nothing;
+unlink those checks first if the removal is intended.
+
 ## Composing services from checks
 
 A public service is built from any number of internal checks:

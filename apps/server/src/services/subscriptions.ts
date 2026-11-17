@@ -215,14 +215,17 @@ async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm
 }
 
 /**
- * POST /api/public/subscriptions. The caller always answers 202 for valid input.
+ * POST /api/public/subscriptions. The caller answers 202 for valid input before
+ * calling this, and has already checked `serviceIds` with assertPublicServices.
  * - new address: pending subscriber + confirmation mail
- * - pending: preferences updated, confirmation re-sent (throttled)
+ * - pending: preferences unchanged, confirmation re-sent (throttled)
  * - confirmed: preferences unchanged, "manage your subscription" mail (throttled)
+ * Preferences of an existing address only change with its manage token, so nobody
+ * who merely knows an address can change what its owner subscribed to.
  */
 export async function subscribe(ctx: AppContext, input: SubscribeInput, now = new Date()): Promise<void> {
   const { db } = ctx;
-  const serviceIds = input.allServices ? [] : await assertPublicServices(db, input.serviceIds);
+  const serviceIds = input.allServices ? [] : input.serviceIds;
   const email = normalizeEmail(input.email);
   const nowIso = now.toISOString();
 
@@ -253,21 +256,12 @@ export async function subscribe(ctx: AppContext, input: SubscribeInput, now = ne
     return;
   }
 
-  if (existing.confirmed_at === null) {
-    await db.transaction().execute(async (trx) => {
-      await trx
-        .updateTable('subscribers')
-        .set({ locale: input.locale, all_services: input.allServices ? 1 : 0, updated_at: nowIso })
-        .where('id', '=', existing.id)
-        .execute();
-      await replaceServices(trx, existing.id, serviceIds);
-    });
-    if (!throttled(existing, now)) await queueAccountMail(ctx, { ...existing, locale: input.locale }, 'confirm', now);
-    return;
+  // Existing address: never change preferences without the manage token. A pending
+  // one gets the confirmation again (its owner can adjust the choice after confirming),
+  // a confirmed one the manage link.
+  if (!throttled(existing, now)) {
+    await queueAccountMail(ctx, existing, existing.confirmed_at === null ? 'confirm' : 'manage', now);
   }
-
-  // Confirmed: never change preferences without the manage token; send the manage link instead.
-  if (!throttled(existing, now)) await queueAccountMail(ctx, existing, 'manage', now);
 }
 
 /** Loads a subscriber when `token` is valid for it; 404 otherwise (same response for both cases). */

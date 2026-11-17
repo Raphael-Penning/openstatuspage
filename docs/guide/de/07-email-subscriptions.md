@@ -117,13 +117,14 @@ genutzt und wie lange sie gespeichert werden.
 
 Details, die Abonnenten und deinen Mailserver schützen:
 
-- Das Formular antwortet immer gleich, egal ob die Adresse neu, unbestätigt
-  oder schon angemeldet ist. Niemand kann so herausfinden, wer abonniert hat.
-- Erneutes Abonnieren mit einer unbestätigten Adresse ersetzt deren Auswahl
-  und verschickt die Bestätigung noch einmal; bei einer bestätigten Adresse
-  bleiben die Einstellungen unverändert und es kommt stattdessen eine E-Mail
-  mit dem Link zur Verwaltung. Solche E-Mails gehen höchstens alle 10 Minuten
-  an dieselbe Adresse.
+- Das Formular antwortet immer gleich und gleich schnell, egal ob die Adresse
+  neu, unbestätigt oder schon angemeldet ist. Niemand kann so herausfinden,
+  wer abonniert hat.
+- Erneutes Abonnieren ändert nie die Auswahl einer vorhandenen Adresse. Eine
+  unbestätigte Adresse bekommt die Bestätigung noch einmal (die Auswahl lässt
+  sich nach der Bestätigung auf der Verwaltungsseite ändern); eine bestätigte
+  Adresse bekommt stattdessen eine E-Mail mit dem Link zur Verwaltung. Solche
+  E-Mails gehen höchstens alle 10 Minuten an dieselbe Adresse.
 - Das Formular ist auf 5 Anfragen pro Minute und Client-IP begrenzt, die
   Links zum Bestätigen, Verwalten und Abmelden auf 30 pro Minute. Hinter einem
   Reverse Proxy braucht das ein korrektes `TRUST_PROXY` (siehe

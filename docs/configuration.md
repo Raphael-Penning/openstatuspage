@@ -28,6 +28,7 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | --- | --- | --- |
 | `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`.** Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
 | `SESSION_TTL_HOURS` | `168` (7 days) | Session lifetime. The expiry slides: active sessions are extended, idle ones expire after this many hours. Range 1–2160. |
+| `SESSION_MAX_AGE_HOURS` | `720` (30 days) | Absolute session lifetime, counted from the login. Active sessions are never extended past it, so everybody has to log in again (and SSO users pass the IdP checks again) at least this often. Range 1–8760, at least `SESSION_TTL_HOURS`; when unset and `SESSION_TTL_HOURS` is longer, that value is used. |
 
 ## Database
 

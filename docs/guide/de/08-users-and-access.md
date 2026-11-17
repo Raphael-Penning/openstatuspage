@@ -32,11 +32,15 @@ Eigenes Passwort, Sprache und Darstellung ändert jeder Benutzer im
 Benutzermenü (unten links).
 
 Sitzungen laufen nach `SESSION_TTL_HOURS` (Standard 168 Stunden = 7 Tage) ohne
-Aktivität ab; aktive Sitzungen verlängern sich automatisch. Die Anmeldung ist
-auf 10 Versuche pro Minute und Client-IP begrenzt.
+Aktivität ab; aktive Sitzungen verlängern sich automatisch, aber nie über
+`SESSION_MAX_AGE_HOURS` (Standard 720 Stunden = 30 Tage) nach der Anmeldung
+hinaus. Danach muss sich jeder neu anmelden. Die Anmeldung ist auf 10 Versuche
+pro Minute und Client-IP begrenzt.
 
 Ausgesperrt? Mit dem Befehl `create-user` setzt du ein neues Passwort, siehe
-[Installation](02-installation.md#der-erste-administrator).
+[Installation](02-installation.md#der-erste-administrator). Der Befehl meldet
+den Benutzer auch überall ab; damit setzt du ein kompromittiertes Konto vom
+Server aus zurück.
 
 ## Single Sign-On (OIDC)
 
@@ -76,6 +80,19 @@ jedes Konto des Identity Providers zum Redakteur.
 Funktioniert SSO und ist ein SSO-Benutzer Administrator, kannst du die
 Anmeldung per Passwort mit `LOCAL_LOGIN_ENABLED=false` abschalten.
 
+Verliert jemand über die Gruppen die Administratorrolle, werden seine
+Administrator-API-Tokens widerrufen, genau wie bei einer Änderung in der
+Verwaltung. Der letzte Administrator wird so nie herabgestuft; stattdessen
+schreibt der Server eine Warnung ins Log.
+
+Offboarding: Der Identity Provider wird nur bei der Anmeldung gefragt. Wen du
+dort entfernst oder sperrst, der behält eine bestehende Sitzung bis spätestens
+`SESSION_MAX_AGE_HOURS`, und seine API-Tokens bleiben gültig. Ein verknüpfter
+Benutzer mit lokalem Passwort kann sich damit außerdem weiter anmelden, solange
+`LOCAL_LOGIN_ENABLED=false` nicht gesetzt ist. Wenn jemand geht, lösche den
+Benutzer deshalb immer auch unter **Administration → Benutzer**: Das beendet
+alle Sitzungen und widerruft seine Tokens sofort.
+
 Hinweise zu einzelnen Anbietern, alle Variablen und die Fehlercodes auf der
 Anmeldeseite stehen in [`docs/oidc.md`](../../oidc.md) (Englisch).
 
@@ -98,7 +115,8 @@ Anmeldung. **Administration → API-Tokens** (Administratoren):
 
 Tokens werden automatisch widerrufen, wenn der Benutzer gelöscht wird, der sie
 angelegt hat; Administrator-Tokens auch dann, wenn dieser die
-Administratorrolle verliert. Widerrufe Tokens, die nicht mehr gebraucht
+Administratorrolle verliert. Ein Token, das mit einem anderen Token angelegt
+wurde, gehört dem Besitzer dieses Tokens. Widerrufe Tokens, die nicht mehr gebraucht
 werden; die Liste zeigt, wann jedes Token zuletzt verwendet wurde. Änderungen
 über ein Token stehen mit dem Token-Namen im Audit-Log.
 
