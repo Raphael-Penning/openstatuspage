@@ -37,6 +37,11 @@ export const MAX_VALUE_LENGTH = 64;
  */
 const FLOAT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
+/** Whether `raw` is a plain decimal float; exported so its linear runtime stays tested. */
+export function isPromFloat(raw: string): boolean {
+  return FLOAT.test(raw);
+}
+
 export function parsePrometheusText(text: string): PromParseResult {
   const samples: PromSample[] = [];
   let invalidLines = 0;
@@ -142,6 +147,6 @@ function parseValue(raw: string): number | null {
     case 'NaN':
       return Number.NaN;
   }
-  if (raw.length > MAX_VALUE_LENGTH || !FLOAT.test(raw)) return null;
+  if (raw.length > MAX_VALUE_LENGTH || !isPromFloat(raw)) return null;
   return Number(raw);
 }

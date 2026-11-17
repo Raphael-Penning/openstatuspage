@@ -67,8 +67,9 @@ Ruf die Ingest-URL von Hand mit `curl` auf und sieh dir die Antwort an: `401`
 falsches Token (erneuert?), `404` falsche Quellen-ID, `409` Quelle
 deaktiviert oder vollständiger Abgleich abgelehnt, weil er die meisten
 verknüpften Checks entfernen würde, `413` Anfrage zu groß für den Reverse
-Proxy, `429` mehr als 120 Anfragen pro Minute. Starte die Benachrichtigungsskripte mit `OSP_DRY_RUN=1`,
-um die gesendeten Daten zu sehen.
+Proxy, `429` mehr als 120 Anfragen pro Minute. Starte die
+Benachrichtigungsskripte mit `OSP_DRY_RUN=1`, um die gesendeten Daten zu
+sehen.
 
 **Ein Service bleibt betriebsbereit, obwohl ein Check kritisch ist.**
 Prüfe, ob die Statusquelle des Services *Automatisch* ist, ob der Check

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_LINE_LENGTH, MAX_VALUE_LENGTH, parsePrometheusText } from '../../src/adapters/prometheus.js';
+import { isPromFloat, MAX_LINE_LENGTH, MAX_VALUE_LENGTH, parsePrometheusText } from '../../src/adapters/prometheus.js';
 import { fixture } from './helpers.js';
 
 describe('parsePrometheusText', () => {
@@ -59,6 +59,17 @@ describe('parsePrometheusText', () => {
     expect(performance.now() - started).toBeLessThan(100);
     expect(samples.map((s) => s.name)).toEqual(['d', 'e']);
     expect(invalidLines).toBe(3);
+  });
+
+  it('matches floats in linear time even without the length caps', () => {
+    // Runs the regex itself: the parser's caps would hide a quadratic pattern.
+    const digits = '1'.repeat(100_000);
+    const started = performance.now();
+    for (const raw of [`${digits}x`, `1.${digits}x`, `1e${digits}x`, `-${digits}.${digits}e`]) {
+      expect(isPromFloat(raw)).toBe(false);
+    }
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(['1', '-2.5e-3', '.5', '1.', '007', '1.e2'].every(isPromFloat)).toBe(true);
   });
 
   it('skips overlong lines', () => {

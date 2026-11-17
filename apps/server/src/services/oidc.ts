@@ -127,10 +127,14 @@ export async function resolveOidcUser(
   };
   const mappedRole = mapOidcRole(claims, roleCfg);
   if (!mappedRole) {
-    // Removed from the allowed groups: also end the sessions of the linked user,
-    // which would otherwise keep their last role until they expire.
+    // Removed from the allowed groups: also end the sessions of the linked user
+    // and revoke the API tokens they created, which would otherwise keep their
+    // last role (sessions until they expire, tokens forever).
     const known = await db.selectFrom('users').select('id').where('oidc_subject', '=', sub).executeTakeFirst();
-    if (known) await deleteUserSessions(db, known.id);
+    if (known) {
+      await deleteUserSessions(db, known.id);
+      await db.deleteFrom('api_tokens').where('created_by', '=', known.id).execute();
+    }
     return { ok: false, error: 'forbidden' };
   }
   const syncRole = roleMappingEnabled(roleCfg);

@@ -114,17 +114,33 @@ describe('resolveOidcUser', () => {
     ).toEqual({ ok: false, error: 'no_account' });
   });
 
-  it('ends the sessions of a linked user removed from the allowed groups', async () => {
+  it('ends the sessions and API tokens of a linked user removed from the allowed groups', async () => {
     const claims = { sub: 'abc', email: 'jane@example.com', groups: ['statuspage-editors'] };
     const first = await resolveOidcUser(t.db, config, claims);
     if (!first.ok) throw new Error('login failed');
     await createSession(t.app.ctx, first.user.id);
     const other = await createUser(t.db, { email: 'other@example.com', role: 'editor' });
     await createSession(t.app.ctx, other);
+    for (const owner of [first.user.id, other]) {
+      await t.db
+        .insertInto('api_tokens')
+        .values({
+          id: newId(),
+          name: 'automation',
+          role: 'editor',
+          token_hash: newId(),
+          created_by: owner,
+          created_at: new Date().toISOString(),
+          last_used_at: null,
+        })
+        .execute();
+    }
 
     expect(await resolveOidcUser(t.db, config, { ...claims, groups: [] })).toEqual({ ok: false, error: 'forbidden' });
     const sessions = await t.db.selectFrom('sessions').select('user_id').execute();
     expect(sessions).toEqual([{ user_id: other }]);
+    const tokens = await t.db.selectFrom('api_tokens').select('created_by').execute();
+    expect(tokens).toEqual([{ created_by: other }]);
   });
 
   it('applies the demotion rules when syncing roles', async () => {

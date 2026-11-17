@@ -93,16 +93,21 @@ Linked users can still use their local password unless you set
 
 ## Offboarding
 
-The IdP is only asked at login. Removing someone from the IdP or from the
-configured groups therefore does not end a session they already have:
+The IdP is only asked at login. Removing or disabling someone in the IdP, or
+removing them from the configured groups, does not end a session they already
+have, and API tokens they created stay valid:
 
-- At their next SSO login attempt they are rejected (`forbidden`) and all
-  their sessions are ended.
-- Otherwise the session ends at the latest `SESSION_MAX_AGE_HOURS` (default
-  30 days) after its login, even when it is used every day.
-- For immediate effect, also **delete the local user** in the management UI.
-  That ends all sessions at once and revokes the API tokens they created. A
-  linked user who still has a local password could otherwise keep using it.
+- An existing session ends at the latest `SESSION_MAX_AGE_HOURS` (default 30
+  days) after its login, even when it is used every day.
+- Only when `OIDC_EDITOR_GROUP` is set and an SSO login is rejected because the
+  user is in neither group (`forbidden`) are all their sessions ended and their
+  API tokens revoked right away. An account disabled in the IdP never reaches
+  this point, and with only `OIDC_ADMIN_GROUP` set, removal from that group
+  demotes the user to editor at their next login instead.
+- A linked user who still has a local password can keep signing in with it
+  unless `LOCAL_LOGIN_ENABLED=false`.
+- For immediate effect, **delete the local user** in the management UI. That
+  ends all sessions at once and revokes the API tokens they created.
 
 ## Error codes
 

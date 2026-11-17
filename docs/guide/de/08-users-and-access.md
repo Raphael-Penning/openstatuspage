@@ -86,10 +86,12 @@ Verwaltung. Der letzte Administrator wird so nie herabgestuft; stattdessen
 schreibt der Server eine Warnung ins Log.
 
 Offboarding: Der Identity Provider wird nur bei der Anmeldung gefragt. Wen du
-dort (oder aus den Gruppen) entfernst, der wird beim nächsten SSO-Anmeldeversuch
-überall abgemeldet, spätestens aber nach `SESSION_MAX_AGE_HOURS`. Soll es
-sofort wirken, lösche den Benutzer zusätzlich unter **Administration →
-Benutzer**.
+dort entfernst oder sperrst, der behält eine bestehende Sitzung bis spätestens
+`SESSION_MAX_AGE_HOURS`, und seine API-Tokens bleiben gültig. Ein verknüpfter
+Benutzer mit lokalem Passwort kann sich damit außerdem weiter anmelden, solange
+`LOCAL_LOGIN_ENABLED=false` nicht gesetzt ist. Wenn jemand geht, lösche den
+Benutzer deshalb immer auch unter **Administration → Benutzer**: Das beendet
+alle Sitzungen und widerruft seine Tokens sofort.
 
 Hinweise zu einzelnen Anbietern, alle Variablen und die Fehlercodes auf der
 Anmeldeseite stehen in [`docs/oidc.md`](../../oidc.md) (Englisch).

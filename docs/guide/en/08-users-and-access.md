@@ -86,9 +86,12 @@ administrator API tokens, just like a change in the management UI. The last
 administrator is never demoted this way; the server logs a warning instead.
 
 Offboarding: the identity provider is only asked at login. Someone you remove
-there (or from the groups) is signed out everywhere at their next SSO login
-attempt, and at the latest after `SESSION_MAX_AGE_HOURS`. For immediate
-effect, also delete the user in **Administration → Users**.
+or disable there keeps an existing session until `SESSION_MAX_AGE_HOURS` at
+the latest, and API tokens they created stay valid. A linked user who still
+has a local password can also keep signing in with it unless
+`LOCAL_LOGIN_ENABLED=false`. So when someone leaves, always delete the user in
+**Administration → Users** as well: that ends all sessions and revokes their
+tokens at once.
 
 Provider-specific notes, all variables and the error codes shown on the login
 page are documented in [`docs/oidc.md`](../../oidc.md).
