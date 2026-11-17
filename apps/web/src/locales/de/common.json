@@ -1,0 +1,76 @@
+{
+  "status": {
+    "operational": "Betriebsbereit",
+    "maintenance": "Wartung",
+    "degraded": "Eingeschränkte Leistung",
+    "partial_outage": "Teilausfall",
+    "major_outage": "Schwerer Ausfall"
+  },
+  "incidentStatus": {
+    "investigating": "Wird untersucht",
+    "identified": "Ursache identifiziert",
+    "monitoring": "Wird beobachtet",
+    "resolved": "Behoben"
+  },
+  "impact": {
+    "none": "Keine",
+    "minor": "Gering",
+    "major": "Hoch",
+    "critical": "Kritisch"
+  },
+  "maintenanceStatus": {
+    "scheduled": "Geplant",
+    "in_progress": "Läuft",
+    "completed": "Abgeschlossen",
+    "cancelled": "Abgesagt"
+  },
+  "maintenanceAutoMessage": {
+    "scheduled": "Die Wartung wurde geplant.",
+    "in_progress": "Die Wartung hat begonnen.",
+    "completed": "Die Wartung wurde abgeschlossen.",
+    "cancelled": "Die Wartung wurde abgesagt."
+  },
+  "region": {
+    "europe": "Europa",
+    "north_america": "Nordamerika",
+    "south_america": "Südamerika",
+    "asia": "Asien",
+    "middle_east": "Naher Osten",
+    "africa": "Afrika",
+    "oceania": "Ozeanien"
+  },
+  "kind": {
+    "service": "Service",
+    "site": "Website"
+  },
+  "checkState": {
+    "ok": "OK",
+    "warning": "Warnung",
+    "critical": "Kritisch",
+    "unknown": "Unbekannt"
+  },
+  "actions": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Anlegen",
+    "back": "Zurück",
+    "close": "Schließen",
+    "search": "Suchen",
+    "retry": "Erneut versuchen",
+    "viewAll": "Alle anzeigen"
+  },
+  "theme": {
+    "system": "System",
+    "dark": "Dunkel",
+    "light": "Hell"
+  },
+  "time": {
+    "local": "Ortszeit",
+    "utc": "UTC"
+  },
+  "loading": "Lädt…",
+  "error": "Etwas ist schiefgelaufen.",
+  "notFound": "Seite nicht gefunden."
+}

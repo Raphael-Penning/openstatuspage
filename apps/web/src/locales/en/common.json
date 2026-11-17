@@ -1,0 +1,76 @@
+{
+  "status": {
+    "operational": "Operational",
+    "maintenance": "Maintenance",
+    "degraded": "Degraded performance",
+    "partial_outage": "Partial outage",
+    "major_outage": "Major outage"
+  },
+  "incidentStatus": {
+    "investigating": "Investigating",
+    "identified": "Identified",
+    "monitoring": "Monitoring",
+    "resolved": "Resolved"
+  },
+  "impact": {
+    "none": "None",
+    "minor": "Minor",
+    "major": "Major",
+    "critical": "Critical"
+  },
+  "maintenanceStatus": {
+    "scheduled": "Scheduled",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "maintenanceAutoMessage": {
+    "scheduled": "The maintenance has been scheduled.",
+    "in_progress": "The maintenance has started.",
+    "completed": "The maintenance has been completed.",
+    "cancelled": "The maintenance has been cancelled."
+  },
+  "region": {
+    "europe": "Europe",
+    "north_america": "North America",
+    "south_america": "South America",
+    "asia": "Asia",
+    "middle_east": "Middle East",
+    "africa": "Africa",
+    "oceania": "Oceania"
+  },
+  "kind": {
+    "service": "Service",
+    "site": "Site"
+  },
+  "checkState": {
+    "ok": "OK",
+    "warning": "Warning",
+    "critical": "Critical",
+    "unknown": "Unknown"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "back": "Back",
+    "close": "Close",
+    "search": "Search",
+    "retry": "Retry",
+    "viewAll": "View all"
+  },
+  "theme": {
+    "system": "System",
+    "dark": "Dark",
+    "light": "Light"
+  },
+  "time": {
+    "local": "Local time",
+    "utc": "UTC"
+  },
+  "loading": "Loading…",
+  "error": "Something went wrong.",
+  "notFound": "Page not found."
+}
