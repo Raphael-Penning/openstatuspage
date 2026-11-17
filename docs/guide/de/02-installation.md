@@ -193,7 +193,8 @@ Für das erste Konto gibt es zwei Wege:
    `ADMIN_PASSWORD` nach der ersten Anmeldung aus der Umgebung und ändere das
    Passwort im Benutzermenü.
 2. **Der Befehl `create-user`** legt einen Benutzer an oder setzt, wenn die
-   Adresse schon existiert, ein neues Passwort und die Rolle:
+   Adresse schon existiert, ein neues Passwort und die Rolle und beendet die
+   Sitzungen des Benutzers:
 
    ```bash
    # Docker Compose

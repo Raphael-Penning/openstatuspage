@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config.js';
 import { sha256 } from '../src/lib/crypto.js';
 import { cleanupExpiredSessions } from '../src/services/sessions.js';
+import { createOrResetLocalUser } from '../src/services/users.js';
 import { PASSWORD, client, createTestApp, createUser, login, type TestApp } from './helpers.js';
+
+const HOUR_MS = 3600_000;
 
 let t: TestApp;
 beforeEach(async () => {
@@ -105,6 +109,47 @@ describe('login / logout / session', () => {
     const expired = await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } });
     expect(expired.statusCode).toBe(401);
     expect(await t.db.selectFrom('sessions').select('id').execute()).toEqual([]);
+  });
+
+  it('never extends a session past its absolute lifetime', async () => {
+    expect(t.config.SESSION_MAX_AGE_HOURS).toBe(720);
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const cookie = await login(t.app, 'admin@example.com');
+    const session = () => t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } });
+
+    // 3 hours before the absolute end: the sliding expiry stops there instead of now + TTL.
+    const createdAt = Date.now() - 717 * HOUR_MS;
+    await t.db
+      .updateTable('sessions')
+      .set({ created_at: new Date(createdAt).toISOString(), expires_at: new Date(Date.now() + 60_000).toISOString() })
+      .execute();
+    const res = await session();
+    expect(res.statusCode).toBe(200);
+    const row = await t.db.selectFrom('sessions').select('expires_at').executeTakeFirstOrThrow();
+    expect(new Date(row.expires_at).getTime()).toBe(createdAt + 720 * HOUR_MS);
+    const resent = res.cookies.find((c) => c.name === 'osp_session')!;
+    expect(resent.maxAge).toBeLessThanOrEqual(3 * 3600);
+
+    // Past the absolute lifetime the session is gone, even with a later expires_at (older rows).
+    await t.db
+      .updateTable('sessions')
+      .set({
+        created_at: new Date(Date.now() - 721 * HOUR_MS).toISOString(),
+        expires_at: new Date(Date.now() + 24 * HOUR_MS).toISOString(),
+      })
+      .execute();
+    expect((await session()).statusCode).toBe(401);
+    expect(await t.db.selectFrom('sessions').select('id').execute()).toEqual([]);
+  });
+
+  it('validates SESSION_MAX_AGE_HOURS', () => {
+    const base = { NODE_ENV: 'test', DATABASE_URL: 'sqlite::memory:' };
+    expect(loadConfig(base).SESSION_MAX_AGE_HOURS).toBe(720);
+    // The default follows a longer sliding lifetime, so existing setups keep working.
+    expect(loadConfig({ ...base, SESSION_TTL_HOURS: '2160' }).SESSION_MAX_AGE_HOURS).toBe(2160);
+    expect(loadConfig({ ...base, SESSION_MAX_AGE_HOURS: '24', SESSION_TTL_HOURS: '12' }).SESSION_MAX_AGE_HOURS).toBe(24);
+    expect(() => loadConfig({ ...base, SESSION_MAX_AGE_HOURS: '24' })).toThrow(/SESSION_MAX_AGE_HOURS/);
+    expect(() => loadConfig({ ...base, SESSION_MAX_AGE_HOURS: '8761' })).toThrow(/SESSION_MAX_AGE_HOURS/);
   });
 
   it('cleans up expired sessions', async () => {
@@ -256,5 +301,87 @@ describe('user management guards', () => {
     const bot = client(t.app, { token });
     expect((await bot.delete(`/api/admin/users/${adminId}`)).statusCode).toBe(409);
     expect((await bot.put(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
+  });
+});
+
+describe('token ownership', () => {
+  it('assigns tokens created with a token to the owner of that token', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const secondId = await createUser(t.db, { email: 'second@example.com', role: 'admin' });
+    const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
+    const second = client(t.app, { cookie: await login(t.app, 'second@example.com') });
+    const { token } = (await second.post('/api/admin/api-tokens', { name: 'parent', role: 'admin' })).json();
+
+    const child = await client(t.app, { token }).post('/api/admin/api-tokens', { name: 'child', role: 'admin' });
+    expect(child.statusCode).toBe(201);
+    const row = await t.db.selectFrom('api_tokens').select('created_by').where('id', '=', child.json().id).executeTakeFirstOrThrow();
+    expect(row.created_by).toBe(secondId);
+
+    // Demoting the owner revokes both tokens.
+    expect((await admin.put(`/api/admin/users/${secondId}`, { role: 'editor' })).statusCode).toBe(200);
+    expect((await client(t.app, { token: child.json().token }).get('/api/admin/overview')).statusCode).toBe(401);
+    expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
+  });
+});
+
+describe('create-user reset', () => {
+  it('sets the password, ends existing sessions and creates new users', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const cookie = await login(t.app, 'admin@example.com');
+
+    const reset = await createOrResetLocalUser(t.db, {
+      email: 'Admin@Example.com',
+      password: 'a-new-long-password',
+      role: 'admin',
+      name: 'Ignored',
+    });
+    expect(reset).toEqual({ ok: true, created: false });
+    expect((await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } })).statusCode).toBe(401);
+    await login(t.app, 'admin@example.com', 'a-new-long-password');
+
+    const created = await createOrResetLocalUser(t.db, {
+      email: 'new@example.com',
+      password: 'another-long-password',
+      role: 'editor',
+      name: 'New',
+    });
+    expect(created).toEqual({ ok: true, created: true });
+    await login(t.app, 'new@example.com', 'another-long-password');
+  });
+
+  it('applies the demotion rules', async () => {
+    const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const input = { email: 'admin@example.com', password: 'a-new-long-password', role: 'editor' as const, name: 'X' };
+
+    // The last admin is refused and stays unchanged.
+    expect(await createOrResetLocalUser(t.db, input)).toEqual({ ok: false, error: 'last_admin' });
+    await login(t.app, 'admin@example.com');
+
+    await createUser(t.db, { email: 'second@example.com', role: 'admin' });
+    const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
+    const { token } = (await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' })).json();
+    expect(await createOrResetLocalUser(t.db, input)).toEqual({ ok: true, created: false });
+    const user = await t.db.selectFrom('users').select('role').where('id', '=', adminId).executeTakeFirstOrThrow();
+    expect(user.role).toBe('editor');
+    // Admin tokens of the demoted user are revoked.
+    expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
+  });
+});
+
+describe('dashboard activity', () => {
+  it('shows editors only the audit entries of what they manage', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    await createUser(t.db, { email: 'editor@example.com', role: 'editor' });
+    const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
+    const editor = client(t.app, { cookie: await login(t.app, 'editor@example.com') });
+
+    await admin.post('/api/admin/users', { email: 'x@example.com', name: 'X', role: 'admin', password: 'a-long-password' });
+    await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' });
+    await editor.post('/api/admin/incidents', { title: 'Slow', message: 'Investigating' });
+
+    const types = async (c: typeof admin) =>
+      ((await c.get('/api/admin/overview')).json().recentAudit as { entityType: string }[]).map((e) => e.entityType);
+    expect(await types(editor)).toEqual(['incident']);
+    expect(await types(admin)).toEqual(expect.arrayContaining(['incident', 'user', 'api_token']));
   });
 });

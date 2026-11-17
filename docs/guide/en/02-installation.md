@@ -187,7 +187,7 @@ There are two ways to create the first account:
    starts ignore the variables. Remove `ADMIN_PASSWORD` from the environment
    after the first login and change the password in the user menu.
 2. **The `create-user` command**, which creates a user or, if the address
-   already exists, sets a new password and role:
+   already exists, sets a new password and role and ends the user's sessions:
 
    ```bash
    # Docker Compose

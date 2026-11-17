@@ -1,13 +1,12 @@
 /**
- * Creates or updates a local user.
+ * Creates or updates a local user. Updating an existing user sets a new
+ * password and role and signs the user out everywhere.
  * Usage: create-user <email> <password> [admin|editor] [name]
  */
 import { USER_ROLES, type UserRole } from '@openstatuspage/shared';
 import { loadConfig } from '../config.js';
 import { createDb, migrateToLatest } from '../db/index.js';
-import { newId } from '../lib/ids.js';
-import { hashPassword } from '../lib/password.js';
-import { nowIso } from '../lib/time.js';
+import { createOrResetLocalUser } from '../services/users.js';
 
 const [email, password, roleArg = 'admin', name = 'Administrator'] = process.argv.slice(2);
 if (!email || !password || password.length < 10 || !USER_ROLES.includes(roleArg as UserRole)) {
@@ -17,32 +16,11 @@ if (!email || !password || password.length < 10 || !USER_ROLES.includes(roleArg 
 
 const db = await createDb(loadConfig(process.env, { allowMissingSecret: true }));
 await migrateToLatest(db);
-const now = nowIso();
-const normalized = email.toLowerCase();
-const existing = await db.selectFrom('users').select('id').where('email', '=', normalized).executeTakeFirst();
-const password_hash = await hashPassword(password);
-if (existing) {
-  await db
-    .updateTable('users')
-    .set({ password_hash, role: roleArg as UserRole, updated_at: now })
-    .where('id', '=', existing.id)
-    .execute();
-  console.log(`Updated user ${normalized}.`);
-} else {
-  await db
-    .insertInto('users')
-    .values({
-      id: newId(),
-      email: normalized,
-      name,
-      role: roleArg as UserRole,
-      password_hash,
-      oidc_subject: null,
-      created_at: now,
-      updated_at: now,
-      last_login_at: null,
-    })
-    .execute();
-  console.log(`Created ${roleArg} ${normalized}.`);
-}
+const normalized = email.trim().toLowerCase();
+const result = await createOrResetLocalUser(db, { email: normalized, password, role: roleArg as UserRole, name });
 await db.destroy();
+if (!result.ok) {
+  console.error(`${normalized} is the last admin and cannot be demoted. Nothing was changed.`);
+  process.exit(1);
+}
+console.log(result.created ? `Created ${roleArg} ${normalized}.` : `Updated user ${normalized}; existing sessions were ended.`);

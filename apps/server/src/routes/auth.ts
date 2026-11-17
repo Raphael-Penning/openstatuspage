@@ -153,7 +153,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         return fail('oidc_failed');
       }
 
-      const result = await resolveOidcUser(db, config, claims);
+      const result = await resolveOidcUser(db, config, claims, req.log);
       if (!result.ok) {
         req.log.info({ reason: result.error }, 'OIDC login rejected');
         return fail(result.error);
