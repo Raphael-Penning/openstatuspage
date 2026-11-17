@@ -678,7 +678,7 @@
       "user": "User",
       "api_token": "API token",
       "subscriber": "Subscriber",
-      "notification": "Notification"
+      "notifications": "Email notifications"
     },
     "actions": {
       "auth_login": "Signed in",
@@ -717,7 +717,8 @@
       "api_token_create": "API token created",
       "api_token_delete": "API token revoked",
       "subscriber_delete": "Subscriber deleted",
-      "notification_test": "Test email sent"
+      "notifications_test": "Test email sent",
+      "notifications_retry_failed": "Failed emails requeued"
     }
   },
   "notify": {

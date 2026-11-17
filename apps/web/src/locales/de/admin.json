@@ -678,7 +678,7 @@
       "user": "Benutzer",
       "api_token": "API-Token",
       "subscriber": "Abonnent",
-      "notification": "Benachrichtigung"
+      "notifications": "E-Mail-Benachrichtigungen"
     },
     "actions": {
       "auth_login": "Angemeldet",
@@ -717,7 +717,8 @@
       "api_token_create": "API-Token erzeugt",
       "api_token_delete": "API-Token widerrufen",
       "subscriber_delete": "Abonnent gelöscht",
-      "notification_test": "Test-E-Mail gesendet"
+      "notifications_test": "Test-E-Mail gesendet",
+      "notifications_retry_failed": "Fehlgeschlagene E-Mails erneut eingeplant"
     }
   },
   "notify": {

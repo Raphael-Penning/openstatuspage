@@ -5,7 +5,7 @@
  */
 import { SubscriptionPreferencesInput, type PublicSubscription, type SubscriptionLocale } from '@openstatuspage/shared';
 import { CircleCheck, Clock, Loader2, MailMinus } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
@@ -40,12 +40,22 @@ export function SubscriptionManagePage() {
   return (
     <>
       <NoReferrer />
-      {link ? <Manage key={`${link.id}:${link.token}`} id={link.id} token={link.token} /> : <InvalidLinkState />}
+      {link ? (
+        <Manage
+          key={`${link.id}:${link.token}`}
+          id={link.id}
+          token={link.token}
+          // Unsubscribe links in emails add unsubscribe=1: open the confirmation directly.
+          startUnsubscribe={params.get('unsubscribe') === '1'}
+        />
+      ) : (
+        <InvalidLinkState />
+      )}
     </>
   );
 }
 
-function Manage({ id, token }: { id: string; token: string }) {
+function Manage({ id, token, startUnsubscribe }: { id: string; token: string; startUnsubscribe: boolean }) {
   const { t } = useTranslation('public');
   const subscription = useSubscription(id, token);
   const summary = useSummary();
@@ -77,6 +87,7 @@ function Manage({ id, token }: { id: string; token: string }) {
           id={id}
           token={token}
           email={subscription.data.email}
+          startConfirming={startUnsubscribe}
           onInvalid={() => setInvalid(true)}
           onRemoved={() => setRemoved(subscription.data.email)}
         />
@@ -207,17 +218,23 @@ function UnsubscribeCard({
   id,
   token,
   email,
+  startConfirming,
   onInvalid,
   onRemoved,
 }: {
   id: string;
   token: string;
   email: string;
+  startConfirming: boolean;
   onInvalid: () => void;
   onRemoved: () => void;
 }) {
   const { t } = useTranslation('public');
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(startConfirming);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (startConfirming) cardRef.current?.scrollIntoView({ block: 'center' });
+  }, [startConfirming]);
   const [failed, setFailed] = useState(false);
   const remove = useDeleteSubscription(id, token);
 
@@ -230,37 +247,39 @@ function UnsubscribeCard({
   };
 
   return (
-    <Card as="section" className="flex flex-col gap-3 p-5 sm:p-8">
-      <h2 className="text-lg font-semibold">{t('subscription.unsubscribe.title')}</h2>
-      <p className="text-sm text-muted">{t('subscription.unsubscribe.description')}</p>
-      {confirming ? (
-        <div role="group" aria-label={t('subscription.unsubscribe.title')} className="flex flex-col gap-3 rounded-xl border border-status-major-outage/30 bg-status-major-outage/5 p-4">
-          <p className="text-sm font-medium">{t('subscription.unsubscribe.confirm', { email })}</p>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={dangerButton} onClick={unsubscribe} disabled={remove.isPending} aria-busy={remove.isPending || undefined}>
-              {remove.isPending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <MailMinus aria-hidden className="size-4" />}
-              {t('subscription.unsubscribe.confirmButton')}
-            </button>
-            {/* Focus the safe choice when the confirmation opens. */}
-            <button type="button" className={secondaryButton} onClick={() => setConfirming(false)} disabled={remove.isPending} autoFocus>
-              {t('subscription.unsubscribe.cancel')}
+    <div ref={cardRef}>
+      <Card as="section" className="flex flex-col gap-3 p-5 sm:p-8">
+        <h2 className="text-lg font-semibold">{t('subscription.unsubscribe.title')}</h2>
+        <p className="text-sm text-muted">{t('subscription.unsubscribe.description')}</p>
+        {confirming ? (
+          <div role="group" aria-label={t('subscription.unsubscribe.title')} className="flex flex-col gap-3 rounded-xl border border-status-major-outage/30 bg-status-major-outage/5 p-4">
+            <p className="text-sm font-medium">{t('subscription.unsubscribe.confirm', { email })}</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={dangerButton} onClick={unsubscribe} disabled={remove.isPending} aria-busy={remove.isPending || undefined}>
+                {remove.isPending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <MailMinus aria-hidden className="size-4" />}
+                {t('subscription.unsubscribe.confirmButton')}
+              </button>
+              {/* Focus the safe choice when the confirmation opens. */}
+              <button type="button" className={secondaryButton} onClick={() => setConfirming(false)} disabled={remove.isPending} autoFocus>
+                {t('subscription.unsubscribe.cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <button type="button" className={dangerButton} onClick={() => setConfirming(true)}>
+              <MailMinus aria-hidden className="size-4" />
+              {t('subscription.unsubscribe.button')}
             </button>
           </div>
-        </div>
-      ) : (
-        <div>
-          <button type="button" className={dangerButton} onClick={() => setConfirming(true)}>
-            <MailMinus aria-hidden className="size-4" />
-            {t('subscription.unsubscribe.button')}
-          </button>
-        </div>
-      )}
-      {failed && (
-        <p role="alert" className="text-sm text-status-major-outage">
-          {t('subscription.errors.generic')}
-        </p>
-      )}
-    </Card>
+        )}
+        {failed && (
+          <p role="alert" className="text-sm text-status-major-outage">
+            {t('subscription.errors.generic')}
+          </p>
+        )}
+      </Card>
+    </div>
   );
 }
 
