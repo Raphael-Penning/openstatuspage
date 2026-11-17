@@ -10,7 +10,7 @@
  */
 import type { MailTransportKind } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
 import type { Config } from '../config.js';
 
 export interface MailMessage {
@@ -64,7 +64,7 @@ export class LogMailer implements Mailer {
 
 export class SmtpMailer implements Mailer {
   readonly transport = 'smtp' as const;
-  private readonly transporter: nodemailer.Transporter;
+  private readonly transporter: Transporter;
 
   constructor(
     readonly from: string,
