@@ -14,7 +14,13 @@ import { inputClass } from '../components/fields';
 import { Badge, Card, EmptyState, IconButton, PageHeader, Pagination, QueryState, Segmented, Table, td, th, tr } from '../components/ui';
 import { useFormat } from '../lib/format';
 import { useAdminMutation, useSubscribers } from '../lib/queries';
-import { subscriberParams, subscriberQueryFromParams, subscriberScope, type SubscriberStatusFilter } from '../lib/subscribers';
+import {
+  pageAfterEnd,
+  subscriberParams,
+  subscriberQueryFromParams,
+  subscriberScope,
+  type SubscriberStatusFilter,
+} from '../lib/subscribers';
 import { useDebounced } from '../lib/useDebounced';
 
 const PAGE_SIZE = 50;
@@ -37,6 +43,14 @@ export default function SubscribersPage() {
     setParams(subscriberParams({ ...query, q: debounced || undefined, page: 1 }), { replace: true });
     // Only the debounced input triggers this; the query is read at that moment.
   }, [debounced]);
+
+  // Past the end (last entry of the last page deleted, outdated link): go to the last page.
+  const lastPage = subscribers.data && !subscribers.isPlaceholderData ? pageAfterEnd(subscribers.data) : null;
+  useEffect(() => {
+    if (lastPage === null) return;
+    setParams(subscriberParams({ ...query, page: lastPage }), { replace: true });
+    // Only a new response triggers this; the query is read at that moment.
+  }, [lastPage, subscribers.data]);
 
   const remove = useAdminMutation((s: AdminSubscriber) => api.delete(`/api/admin/subscribers/${encodeURIComponent(s.id)}`), {
     success: t('subscribers.deleted'),
@@ -75,7 +89,7 @@ export default function SubscribersPage() {
         </div>
         <QueryState query={subscribers}>
           {(data) =>
-            data.items.length === 0 ? (
+            lastPage !== null ? null : data.items.length === 0 ? (
               filtered ? (
                 <EmptyState>{t('subscribers.emptyFiltered')}</EmptyState>
               ) : (
