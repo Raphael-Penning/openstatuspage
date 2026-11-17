@@ -54,6 +54,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('attempts', 'integer', (c) => c.notNull().defaultTo(0))
     .addColumn('next_attempt_at', 'text', (c) => c.notNull())
     .addColumn('last_error', 'text')
+    .addColumn('last_attempt_at', 'text')
     .addColumn('created_at', 'text', (c) => c.notNull())
     .addColumn('sent_at', 'text')
     .execute();

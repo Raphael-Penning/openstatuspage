@@ -9,6 +9,7 @@ import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
 import { HttpError } from './lib/errors.js';
+import type { Mailer } from './mail/mailer.js';
 import { registerRoutes } from './routes/index.js';
 
 export interface BuildAppOptions {
@@ -16,9 +17,11 @@ export interface BuildAppOptions {
   db: DB;
   /** Serve the built web client (disabled in tests). */
   serveWeb?: boolean;
+  /** Replaces the mail transport configured by MAIL_TRANSPORT (tests). */
+  mailer?: Mailer;
 }
 
-export async function buildApp({ config, db, serveWeb = true }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, db, serveWeb = true, mailer }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger:
       config.NODE_ENV === 'test'
@@ -35,8 +38,9 @@ export async function buildApp({ config, db, serveWeb = true }: BuildAppOptions)
     bodyLimit: 1024 * 1024,
   });
 
-  const ctx: AppContext = createContext(config, db, app.log);
+  const ctx: AppContext = createContext(config, db, app.log, { mailer });
   app.decorate('ctx', ctx);
+  app.addHook('onClose', async () => ctx.mailer.close());
 
   await app.register(cookie, { secret: config.SECRET_KEY });
 

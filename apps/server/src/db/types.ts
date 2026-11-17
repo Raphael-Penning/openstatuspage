@@ -297,6 +297,7 @@ export interface EmailOutboxTable {
   attempts: number;
   next_attempt_at: string;
   last_error: string | null;
+  last_attempt_at: string | null;
   created_at: string;
   sent_at: string | null;
 }

@@ -4,6 +4,7 @@
  */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { MailTransportKind } from '@openstatuspage/shared';
 import { z } from 'zod';
 
 const bool = z
@@ -89,8 +90,6 @@ const EnvSchema = z.object({
   SMTP_TLS_REJECT_UNAUTHORIZED: bool.default(true),
 });
 
-export type MailTransport = 'smtp' | 'log' | 'none';
-
 export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT'> & {
   SECRET_KEY: string;
   /** True when SECRET_KEY was not set and the public development secret is used. */
@@ -98,7 +97,7 @@ export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT'> & {
   oidcEnabled: boolean;
   database: { dialect: 'sqlite'; filename: string } | { dialect: 'postgres'; connectionString: string };
   /** Effective mail transport (MAIL_TRANSPORT or derived from SMTP_HOST). */
-  MAIL_TRANSPORT: MailTransport;
+  MAIL_TRANSPORT: MailTransportKind;
 };
 
 const DEV_SECRET = 'insecure-development-secret-change-me-please';
@@ -156,7 +155,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
 
   const oidcEnabled = Boolean(c.OIDC_ISSUER_URL && c.OIDC_CLIENT_ID);
 
-  const mailTransport: MailTransport = c.MAIL_TRANSPORT ?? (c.SMTP_HOST ? 'smtp' : 'none');
+  const mailTransport: MailTransportKind = c.MAIL_TRANSPORT ?? (c.SMTP_HOST ? 'smtp' : 'none');
   const mailIssues: string[] = [];
   if (mailTransport !== 'none' && !c.SMTP_FROM) mailIssues.push(`  SMTP_FROM: required when MAIL_TRANSPORT=${mailTransport}`);
   if (mailTransport === 'smtp' && !c.SMTP_HOST) mailIssues.push('  SMTP_HOST: required when MAIL_TRANSPORT=smtp');
