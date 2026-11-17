@@ -78,6 +78,20 @@ describe('http hardening', () => {
     expect(pub.headers['x-frame-options']).toBeUndefined();
   });
 
+  it('denies framing of case-variant and percent-encoded admin paths', async () => {
+    // The SPA fallback serves these, and the client router would match /admin.
+    for (const url of ['/ADMIN/x', '/Admin', '/%61dmin/x', '/%41DMIN/x?a=1', '//admin/x']) {
+      const res = await app.inject({ url });
+      expect(res.statusCode, url).toBe(200);
+      expect(res.headers['x-frame-options'], url).toBe('DENY');
+      expect(res.headers['content-security-policy'], url).toBe("frame-ancestors 'none'");
+    }
+    // Public client routes stay embeddable.
+    for (const url of ['/services/admin', '/%73ervices/foo']) {
+      expect((await app.inject({ url })).headers['x-frame-options'], url).toBeUndefined();
+    }
+  });
+
   it('trusts only the configured number of proxy hops', async () => {
     const res = await app.inject({
       url: '/__ip',

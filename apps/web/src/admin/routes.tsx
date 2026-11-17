@@ -23,6 +23,10 @@ const adminPage = (load: () => Promise<PageModule>): Pick<RouteObject, 'lazy'> =
 export const adminRoutes: RouteObject[] = [
   {
     path: '/admin',
+    // The server denies framing only for /admin/... (lower case). React Router
+    // matches case-insensitively by default, so without this /ADMIN/... would
+    // render the management UI on a response that may be framed.
+    caseSensitive: true,
     lazy: async () => ({ Component: (await import('./session')).AdminRoot }),
     children: [
       { path: 'login', ...page(() => import('./pages/LoginPage')) },

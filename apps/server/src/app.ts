@@ -76,7 +76,11 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
 
   const ctx: AppContext = createContext(config, db, app.log, { mailer });
   app.decorate('ctx', ctx);
-  app.addHook('onClose', async () => ctx.mailer.close());
+  app.addHook('onClose', async () => {
+    // Let work that runs after a response (e.g. subscribing) finish before the database goes away.
+    await ctx.worker.idle();
+    ctx.mailer.close();
+  });
 
   await app.register(cookie, { secret: config.SECRET_KEY });
 
@@ -85,7 +89,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
   app.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-    const path = req.url.split('?')[0] ?? '';
+    const path = normalizePath(req.url);
     if (path === '/admin' || path.startsWith('/admin/') || isApiPath(path)) {
       reply.header('X-Frame-Options', 'DENY');
       reply.header('Content-Security-Policy', "frame-ancestors 'none'");
@@ -133,6 +137,23 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
 function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((addr: string, hop: number) => boolean) {
   if (typeof value === 'number') return (_addr, hop) => hop < value;
   return value;
+}
+
+/**
+ * Request path as the client router sees it: percent-decoded, lower-cased and
+ * with repeated slashes collapsed. Used for the anti-framing check, so that
+ * /ADMIN/... or /%61dmin/... (served by the SPA fallback) cannot skip it.
+ * Malformed escapes keep the raw path, which the router does not decode either.
+ */
+function normalizePath(url: string): string {
+  const raw = url.split('?')[0] ?? '';
+  let path = raw;
+  try {
+    path = decodeURIComponent(raw);
+  } catch {
+    // keep the raw path
+  }
+  return path.toLowerCase().replace(/\/{2,}/g, '/');
 }
 
 function isApiPath(path: string): boolean {
