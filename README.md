@@ -50,7 +50,7 @@ See [docs/configuration.md](docs/configuration.md) for all settings and
   backups, upgrades and a security checklist (also available in German and
   inside the management UI under **Help**)
 - [Documentation index](docs/README.md): configuration, API, monitoring
-  adapters, OIDC and architecture
+  adapters, OIDC and architecture design
 
 ## License
 
