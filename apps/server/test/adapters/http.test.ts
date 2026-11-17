@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http';
+import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   AdapterError,
@@ -8,7 +9,11 @@ import {
   describeUrl,
   insecureFetch,
   joinUrl,
+  MAX_ERROR_BODY_BYTES,
+  MAX_RESPONSE_BYTES,
+  readBodyLimited,
   requestJson,
+  requestText,
 } from '../../src/adapters/http.js';
 import { redactSecrets } from '../../src/adapters/runner.js';
 import { jsonResponse, mockFetch } from './helpers.js';
@@ -18,9 +23,23 @@ const PORT = 3102;
 const BASE = `http://127.0.0.1:${PORT}`;
 
 let server: Server;
+// Decompresses to just over MAX_RESPONSE_BYTES while only ~50 KiB go over the wire.
+let gzipBomb: Buffer;
 
 beforeAll(async () => {
+  gzipBomb = gzipSync(Buffer.alloc(MAX_RESPONSE_BYTES + 1024, 'a'));
   server = createServer((req, res) => {
+    if (req.url === '/gzip-bomb') {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' });
+      res.end(gzipBomb);
+      return;
+    }
+    if (req.url === '/declared-huge') {
+      // Announces more than the limit and then stalls: the client must not wait for it.
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-length': String(MAX_RESPONSE_BYTES + 1) });
+      res.write('a');
+      return;
+    }
     if (req.url === '/json') {
       let body = '';
       req.on('data', (c) => (body += c));
@@ -141,6 +160,70 @@ describe('requestJson errors', () => {
     expect(describeTransportError({ code: 'ENOTFOUND', message: 'getaddrinfo ENOTFOUND x' })).toBe(
       'host name could not be resolved (ENOTFOUND)',
     );
+  });
+});
+
+/** Response whose body never ends; records how much was pulled and whether it was cancelled. */
+function endlessResponse(status = 200, headers: Record<string, string> = {}) {
+  const state = { pulled: 0, cancelled: false };
+  const chunk = new Uint8Array(1024 * 1024).fill(97);
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      state.pulled += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      state.cancelled = true;
+    },
+  });
+  return { res: new Response(body, { status, headers }), state };
+}
+
+describe('response size limits', () => {
+  it('reads bodies up to the limit', async () => {
+    await expect(readBodyLimited(new Response('héllo'), 6)).resolves.toBe('héllo');
+    await expect(readBodyLimited(new Response('héllo'), 5)).rejects.toThrow('too large');
+    await expect(readBodyLimited(new Response(null, { status: 204 }), 0)).resolves.toBe('');
+  });
+
+  it('rejects a larger Content-Length before reading', async () => {
+    const { res, state } = endlessResponse(200, { 'content-length': String(MAX_RESPONSE_BYTES + 1) });
+    await expect(readBodyLimited(res, MAX_RESPONSE_BYTES)).rejects.toThrow('too large');
+    expect(state.cancelled).toBe(true);
+    expect(state.pulled).toBeLessThanOrEqual(2 * 1024 * 1024);
+  });
+
+  it('stops reading and cancels an endless body', async () => {
+    const { res, state } = endlessResponse();
+    const { fetch } = mockFetch(() => res);
+    const err = await requestText(fetch, 'https://mon.example.com/metrics?k=1', { system: 'Mon' }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(AdapterError);
+    expect((err as Error).message).toBe('Mon: the response of https://mon.example.com/metrics exceeds 50 MiB. Check the base URL.');
+    expect(state.cancelled).toBe(true);
+    expect(state.pulled).toBeLessThan(MAX_RESPONSE_BYTES + 3 * 1024 * 1024);
+  });
+
+  it('reads only a few KiB of an error body', async () => {
+    const { res, state } = endlessResponse(500);
+    const { fetch } = mockFetch(() => res);
+    const err = (await requestJson(fetch, 'https://mon.example.com/x', { system: 'Mon' }).catch((e: Error) => e)) as Error;
+    expect(err.message).toBe('Mon returned HTTP 500 for https://mon.example.com/x');
+    expect(state.cancelled).toBe(true);
+    expect(state.pulled).toBeLessThanOrEqual(MAX_ERROR_BODY_BYTES + 2 * 1024 * 1024);
+  });
+
+  it('applies the limit after decompression on the default fetch path', async () => {
+    const f = createAdapterFetch({ verifyTls: true });
+    await expect(requestText(f, `${BASE}/gzip-bomb`, { system: 'Test' })).rejects.toThrow(
+      `Test: the response of ${BASE}/gzip-bomb exceeds 50 MiB. Check the base URL.`,
+    );
+  });
+
+  it('does not wait for an announced oversized body', async () => {
+    const f = createAdapterFetch({ verifyTls: true, timeoutMs: 5000 });
+    const started = performance.now();
+    await expect(requestText(f, `${BASE}/declared-huge`, { system: 'Test' })).rejects.toThrow('exceeds 50 MiB');
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 });
 
