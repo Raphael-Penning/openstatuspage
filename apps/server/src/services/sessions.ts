@@ -3,8 +3,9 @@
  *
  * Session token: 32 random bytes, only kept in the `osp_session` cookie.
  * The database stores its SHA-256 (`sessions.id`). Sessions use a sliding
- * expiry of SESSION_TTL_HOURS; expired rows are removed lazily and by a
- * periodic cleanup task.
+ * expiry of SESSION_TTL_HOURS, capped by an absolute lifetime of
+ * SESSION_MAX_AGE_HOURS from the login; expired rows are removed lazily and
+ * by a periodic cleanup task.
  */
 import type { UserRole } from '@openstatuspage/shared';
 import type { AppContext } from '../context.js';
@@ -26,6 +27,15 @@ export function sessionTtlMs(ctx: AppContext): number {
   return ctx.config.SESSION_TTL_HOURS * HOUR_MS;
 }
 
+/**
+ * Absolute end of a session created at `createdAtMs`. Without it a session that
+ * is used regularly would never expire, so a user removed from the IdP (whose
+ * role is only re-checked on login) could keep working indefinitely.
+ */
+function sessionMaxEndMs(ctx: AppContext, createdAtMs: number): number {
+  return createdAtMs + ctx.config.SESSION_MAX_AGE_HOURS * HOUR_MS;
+}
+
 export interface CreatedSession {
   token: string;
   expiresAt: string;
@@ -38,7 +48,9 @@ export async function createSession(
 ): Promise<CreatedSession> {
   const token = newToken();
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + sessionTtlMs(ctx)).toISOString();
+  const expiresAt = new Date(
+    Math.min(now.getTime() + sessionTtlMs(ctx), sessionMaxEndMs(ctx, now.getTime())),
+  ).toISOString();
   await ctx.db
     .insertInto('sessions')
     .values({
@@ -61,7 +73,10 @@ export interface ResolvedSession {
   refreshed: boolean;
 }
 
-/** Looks up a session token; extends its expiry (sliding) and deletes it when expired. */
+/**
+ * Looks up a session token; extends its expiry (sliding, up to the absolute
+ * lifetime) and deletes it when expired.
+ */
 export async function resolveSession(ctx: AppContext, token: string): Promise<ResolvedSession | null> {
   if (!token || token.length > 200) return null;
   const id = sha256(token);
@@ -69,23 +84,27 @@ export async function resolveSession(ctx: AppContext, token: string): Promise<Re
     .selectFrom('sessions')
     .innerJoin('users', 'users.id', 'sessions.user_id')
     .selectAll('users')
-    .select(['sessions.expires_at as session_expires_at'])
+    .select(['sessions.expires_at as session_expires_at', 'sessions.created_at as session_created_at'])
     .where('sessions.id', '=', id)
     .executeTakeFirst();
   if (!row) return null;
 
+  const { session_expires_at, session_created_at, ...user } = row;
   const now = Date.now();
-  const expires = new Date(row.session_expires_at).getTime();
-  if (!(expires > now)) {
+  const expires = new Date(session_expires_at).getTime();
+  // Checked on its own (not only via expires_at): sessions created before the cap
+  // existed, or before SESSION_MAX_AGE_HOURS was lowered, may expire later.
+  const maxEnd = sessionMaxEndMs(ctx, new Date(session_created_at).getTime());
+  if (!(expires > now) || !(maxEnd > now)) {
     await ctx.db.deleteFrom('sessions').where('id', '=', id).execute();
     return null;
   }
 
-  const { session_expires_at, ...user } = row;
   const ttl = sessionTtlMs(ctx);
+  const target = Math.min(now + ttl, maxEnd);
   // Extend when a noticeable part of the lifetime has passed, to avoid a write per request.
-  if (ttl - (expires - now) > Math.min(ttl * 0.1, HOUR_MS)) {
-    const expiresAt = new Date(now + ttl).toISOString();
+  if (target - expires > Math.min(ttl * 0.1, HOUR_MS)) {
+    const expiresAt = new Date(target).toISOString();
     await ctx.db.updateTable('sessions').set({ expires_at: expiresAt }).where('id', '=', id).execute();
     return { user, expiresAt, refreshed: true };
   }
@@ -120,6 +139,8 @@ export interface ResolvedApiToken {
   id: string;
   name: string;
   role: UserRole;
+  /** User who created the token; null for tokens whose creator is unknown. */
+  createdBy: string | null;
 }
 
 export function newApiToken(): string {
@@ -130,7 +151,7 @@ export async function resolveApiToken(db: DB, token: string): Promise<ResolvedAp
   if (!token || token.length > 200) return null;
   const row = await db
     .selectFrom('api_tokens')
-    .select(['id', 'name', 'role', 'last_used_at'])
+    .select(['id', 'name', 'role', 'created_by', 'last_used_at'])
     .where('token_hash', '=', sha256(token))
     .executeTakeFirst();
   if (!row) return null;
@@ -142,5 +163,5 @@ export async function resolveApiToken(db: DB, token: string): Promise<ResolvedAp
       .where('id', '=', row.id)
       .execute();
   }
-  return { id: row.id, name: row.name, role: row.role };
+  return { id: row.id, name: row.name, role: row.role, createdBy: row.created_by };
 }

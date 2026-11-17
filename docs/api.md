@@ -108,7 +108,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 
 | Method | Path | Body | Response | Role |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }` | editor |
+| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }`; editors only get `incident` and `maintenance` audit entries | editor |
 | GET/PUT | `/api/admin/settings` | `SettingsInput` | `PublicPageSettings` | GET editor, PUT admin |
 | GET | `/api/admin/locations` | – | `AdminLocation[]` | editor |
 | POST | `/api/admin/locations` | `LocationInput` | `AdminLocation` (201) | admin |
@@ -145,7 +145,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/users` | `UserCreateInput` | `AdminUser` (201) | admin |
 | GET/PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
 | GET | `/api/admin/api-tokens` | – | `AdminApiToken[]` | admin |
-| POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201) | admin |
+| POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201); created with a token, the new token belongs to that token's owner | admin |
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
 | GET | `/api/admin/subscribers` | query `SubscriberListQuery` (`page`, `pageSize`, `q` email substring, `status=all\|confirmed\|pending`) | `Paginated<AdminSubscriber>` (newest first) | admin |
 | DELETE | `/api/admin/subscribers/:id` | – | 204 (audit `subscriber.delete` with masked address) | admin |

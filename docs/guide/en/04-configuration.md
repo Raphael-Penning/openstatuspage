@@ -24,6 +24,7 @@ The complete reference with every option lives in
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | – | First administrator, only used while no user exists. |
 | `SESSION_TTL_HOURS` | `168` | Idle time after which a login session expires (sliding). |
+| `SESSION_MAX_AGE_HOURS` | `720` | Maximum session lifetime from the login, even for active sessions (at least `SESSION_TTL_HOURS`). |
 | `LOCAL_LOGIN_ENABLED` | `true` | `false` allows single sign-on only. |
 | `OIDC_*` | – | Single sign-on, see [Users and access](08-users-and-access.md#single-sign-on-oidc). |
 | `WORKER_ENABLED` | `true` | Background jobs; `false` on additional replicas. |

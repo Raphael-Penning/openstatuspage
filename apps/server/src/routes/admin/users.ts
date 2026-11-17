@@ -6,9 +6,9 @@ import { newId } from '../../lib/ids.js';
 import { IdParams, parse } from '../../lib/http.js';
 import { hashPassword } from '../../lib/password.js';
 import { nowIso } from '../../lib/time.js';
-import { actorUserId } from '../../plugins/auth.js';
+import { actorUserId, owningUserId } from '../../plugins/auth.js';
 import { deleteUserSessions, newApiToken, SESSION_COOKIE } from '../../services/sessions.js';
-import { countAdmins, toAdminUser } from '../../services/users.js';
+import { changeUserRole, countAdmins, toAdminUser } from '../../services/users.js';
 import { admin, auditRequest } from './util.js';
 
 /** /api/admin/users and /api/admin/api-tokens (admin) */
@@ -67,28 +67,26 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
     const email = input.email?.trim().toLowerCase();
     if (email && email !== user.email) await assertEmailFree(email, id);
 
-    if (input.role && input.role !== user.role && user.role === 'admin') {
-      if (isSelf) throw conflict('You cannot change your own role');
-      if ((await countAdmins(db)) <= 1) throw conflict('The last admin cannot be demoted');
+    if (input.role && input.role !== user.role && user.role === 'admin' && isSelf) {
+      throw conflict('You cannot change your own role');
     }
     if (input.password === null && isSelf) throw badRequest('You cannot remove your own password');
 
+    // Role first: a refused demotion leaves the user unchanged. Demotion also revokes their admin tokens.
+    if (input.role && (await changeUserRole(db, id, input.role)) === 'last_admin') {
+      throw conflict('The last admin cannot be demoted');
+    }
     const passwordChanged = input.password !== undefined;
     await db
       .updateTable('users')
       .set({
         ...(email ? { email } : {}),
         ...(input.name ? { name: input.name } : {}),
-        ...(input.role ? { role: input.role } : {}),
         ...(passwordChanged ? { password_hash: input.password ? await hashPassword(input.password) : null } : {}),
         updated_at: nowIso(),
       })
       .where('id', '=', id)
       .execute();
-    // API tokens never outrank their creator: demotion revokes the creator's admin tokens.
-    if (input.role && input.role !== 'admin' && user.role === 'admin') {
-      await db.deleteFrom('api_tokens').where('created_by', '=', id).where('role', '=', 'admin').execute();
-    }
     // A new or removed password signs the user out everywhere (except the admin's own current session).
     if (passwordChanged) await deleteUserSessions(db, id, isSelf ? req.cookies[SESSION_COOKIE] : null);
 
@@ -137,7 +135,8 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
         name: input.name,
         role: input.role,
         token_hash: sha256(token),
-        created_by: actorUserId(req),
+        // Owned by the session user or, when created with a token, by that token's owner.
+        created_by: owningUserId(req),
         created_at: now,
         last_used_at: null,
       })

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { newId } from '../src/lib/ids.js';
 import { extractGroups, mapOidcRole, parseLoginState, resolveOidcUser } from '../src/services/oidc.js';
+import { createSession } from '../src/services/sessions.js';
 import { createTestApp, createUser, type TestApp } from './helpers.js';
 
 describe('extractGroups', () => {
@@ -110,6 +112,57 @@ describe('resolveOidcUser', () => {
         groups: ['statuspage-editors'],
       }),
     ).toEqual({ ok: false, error: 'no_account' });
+  });
+
+  it('ends the sessions of a linked user removed from the allowed groups', async () => {
+    const claims = { sub: 'abc', email: 'jane@example.com', groups: ['statuspage-editors'] };
+    const first = await resolveOidcUser(t.db, config, claims);
+    if (!first.ok) throw new Error('login failed');
+    await createSession(t.app.ctx, first.user.id);
+    const other = await createUser(t.db, { email: 'other@example.com', role: 'editor' });
+    await createSession(t.app.ctx, other);
+
+    expect(await resolveOidcUser(t.db, config, { ...claims, groups: [] })).toEqual({ ok: false, error: 'forbidden' });
+    const sessions = await t.db.selectFrom('sessions').select('user_id').execute();
+    expect(sessions).toEqual([{ user_id: other }]);
+  });
+
+  it('applies the demotion rules when syncing roles', async () => {
+    const admins = { sub: 'abc', email: 'jane@example.com', email_verified: true, groups: ['statuspage-admins'] };
+    const editors = { ...admins, groups: ['statuspage-editors'] };
+    const adminId = await createUser(t.db, { email: 'jane@example.com', role: 'admin' });
+    const insertToken = (role: 'admin' | 'editor') =>
+      t.db
+        .insertInto('api_tokens')
+        .values({
+          id: newId(),
+          name: role,
+          role,
+          token_hash: newId(),
+          created_by: adminId,
+          created_at: new Date().toISOString(),
+          last_used_at: null,
+        })
+        .execute();
+    await insertToken('admin');
+    await insertToken('editor');
+
+    // The only admin is linked but not demoted: login works, the role stays, a warning is logged.
+    const warnings: string[] = [];
+    const log = { warn: (_obj: object, msg: string) => warnings.push(msg) };
+    const kept = await resolveOidcUser(t.db, config, editors, log);
+    expect(kept).toMatchObject({ ok: true, user: { id: adminId, role: 'admin' } });
+    expect(warnings).toHaveLength(1);
+    expect(await t.db.selectFrom('api_tokens').select('role').execute()).toHaveLength(2);
+
+    // With another admin the demotion goes through and revokes the admin token.
+    await createUser(t.db, { email: 'second@example.com', role: 'admin' });
+    const demoted = await resolveOidcUser(t.db, config, editors, log);
+    expect(demoted).toMatchObject({ ok: true, user: { role: 'editor' } });
+    expect(await t.db.selectFrom('api_tokens').select('role').execute()).toEqual([{ role: 'editor' }]);
+    const row = await t.db.selectFrom('users').select('role').where('id', '=', adminId).executeTakeFirstOrThrow();
+    expect(row.role).toBe('editor');
+    expect(warnings).toHaveLength(1);
   });
 
   it('keeps local roles when no group mapping is configured', async () => {

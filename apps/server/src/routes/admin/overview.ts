@@ -3,11 +3,19 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from '../../db/index.js';
 import { offsetOf, PageQuery, paginated, parse } from '../../lib/http.js';
+import { hasRole } from '../../plugins/auth.js';
 import { loadAdminServices } from '../../services/admin-catalog.js';
 import { getSettings, saveSettings } from '../../services/settings.js';
 import { admin, auditRequest, editor } from './util.js';
 
 const AuditQuery = PageQuery.extend({ entityType: z.string().min(1).max(64).optional() });
+
+/**
+ * Audit entity types editors may see on the dashboard: the ones they can change
+ * themselves. Everything else (users, API tokens, monitoring, settings, logins)
+ * is admin-only, like the full audit log.
+ */
+export const EDITOR_AUDIT_ENTITY_TYPES = ['incident', 'maintenance'] as const;
 
 async function count(db: DB, build: (db: DB) => { executeTakeFirstOrThrow(): Promise<{ n: number | string | bigint }> }) {
   const row = await build(db).executeTakeFirstOrThrow();
@@ -16,7 +24,7 @@ async function count(db: DB, build: (db: DB) => { executeTakeFirstOrThrow(): Pro
 
 export async function loadAuditEntries(
   db: DB,
-  opts: { limit: number; offset: number; entityType?: string },
+  opts: { limit: number; offset: number; entityType?: string; entityTypes?: readonly string[] },
 ): Promise<AuditLogEntry[]> {
   let q = db
     .selectFrom('audit_log')
@@ -36,6 +44,7 @@ export async function loadAuditEntries(
     .limit(opts.limit)
     .offset(opts.offset);
   if (opts.entityType) q = q.where('audit_log.entity_type', '=', opts.entityType);
+  if (opts.entityTypes) q = q.where('audit_log.entity_type', 'in', [...opts.entityTypes]);
   const rows = await q.execute();
   return rows.map((r) => ({
     id: r.id,
@@ -53,8 +62,9 @@ export async function loadAuditEntries(
 export async function registerOverviewRoutes(app: FastifyInstance): Promise<void> {
   const { db } = app.ctx;
 
-  app.get('/api/admin/overview', editor, async () => {
+  app.get('/api/admin/overview', editor, async (req) => {
     const now = new Date().toISOString();
+    const auditTypes = hasRole(req.authUser!, 'admin') ? undefined : EDITOR_AUDIT_ENTITY_TYPES;
     const [
       services,
       incidentsActive,
@@ -95,7 +105,7 @@ export async function registerOverviewRoutes(app: FastifyInstance): Promise<void
           .select((eb) => eb.fn.countAll<number>().as('n'))
           .where('state', 'in', ['warning', 'critical']),
       ),
-      loadAuditEntries(db, { limit: 10, offset: 0 }),
+      loadAuditEntries(db, { limit: 10, offset: 0, entityTypes: auditTypes }),
     ]);
 
     // Non-operational first (worst first), then display order.
