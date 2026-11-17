@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePrometheusText } from '../../src/adapters/prometheus.js';
+import { MAX_LINE_LENGTH, MAX_VALUE_LENGTH, parsePrometheusText } from '../../src/adapters/prometheus.js';
 import { fixture } from './helpers.js';
 
 describe('parsePrometheusText', () => {
@@ -39,6 +39,33 @@ describe('parsePrometheusText', () => {
     );
     expect(samples.map((s) => s.name)).toEqual(['ok']);
     expect(invalidLines).toBe(7);
+  });
+
+  it('accepts every float spelling of the exposition format', () => {
+    const { samples, invalidLines } = parsePrometheusText(
+      ['a 1.', 'b .5', 'c -2.5e-3', 'd +1E3', 'e 007', 'f 1.e2'].join('\n'),
+    );
+    expect(invalidLines).toBe(0);
+    expect(samples.map((s) => s.value)).toEqual([1, 0.5, -0.0025, 1000, 7, 100]);
+  });
+
+  it('rejects huge digit runs in linear time', () => {
+    // The previous value regex backtracked quadratically: 50k digits took seconds.
+    const digits = '1'.repeat(100_000);
+    const started = performance.now();
+    const { samples, invalidLines } = parsePrometheusText(
+      [`a ${digits}x`, `b ${digits}`, `c ${'1'.repeat(MAX_VALUE_LENGTH + 1)}`, `d ${'1'.repeat(MAX_VALUE_LENGTH)}`, 'e 1'].join('\n'),
+    );
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(samples.map((s) => s.name)).toEqual(['d', 'e']);
+    expect(invalidLines).toBe(3);
+  });
+
+  it('skips overlong lines', () => {
+    const label = 'x'.repeat(MAX_LINE_LENGTH);
+    const { samples, invalidLines } = parsePrometheusText(`m{a="${label}"} 1\nok 1`);
+    expect(samples.map((s) => s.name)).toEqual(['ok']);
+    expect(invalidLines).toBe(1);
   });
 
   it('parses the Uptime Kuma fixture', () => {

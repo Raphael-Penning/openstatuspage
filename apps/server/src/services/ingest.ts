@@ -4,6 +4,7 @@
  */
 import type { NormalizedCheck } from '../adapters/types.js';
 import type { DB } from '../db/index.js';
+import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso, toIso } from '../lib/time.js';
 import type { StatusEngine } from './status-engine.js';
@@ -25,8 +26,16 @@ export class IngestService {
    * Upserts check results of one source.
    * With `full = true`, checks that are missing from `checks` are deleted
    * (their service links disappear with them).
+   * With `guardLinkedChecks`, a full sync that would delete more than half of
+   * the checks linked to services is rejected with 409 and nothing is stored:
+   * service links are configured by administrators and do not come back when
+   * a check reappears later.
    */
-  async ingest(sourceId: string, checks: NormalizedCheck[], options: { full: boolean }): Promise<IngestResult> {
+  async ingest(
+    sourceId: string,
+    checks: NormalizedCheck[],
+    options: { full: boolean; guardLinkedChecks?: boolean },
+  ): Promise<IngestResult> {
     const now = nowIso();
     const result: IngestResult = { created: 0, updated: 0, removed: 0, stateChanges: 0 };
     const affectedCheckIds: string[] = [];
@@ -41,6 +50,10 @@ export class IngestService {
       .where('source_id', '=', sourceId)
       .execute();
     const existingByExternal = new Map(existing.map((c) => [c.external_id, c]));
+
+    if (options.full && options.guardLinkedChecks) {
+      await this.assertKeepsLinkedChecks(sourceId, byExternalId);
+    }
 
     await this.db.transaction().execute(async (trx) => {
       for (const check of byExternalId.values()) {
@@ -123,6 +136,27 @@ export class IngestService {
     await this.engine.recomputeForChecks(affectedCheckIds);
     await this.engine.recompute(servicesOfRemovedChecks);
     return result;
+  }
+
+  /**
+   * Push counterpart of the poll runner's empty-result guard: a truncated or
+   * forged full payload must not wipe most of the service mappings at once.
+   */
+  private async assertKeepsLinkedChecks(sourceId: string, incoming: Map<string, NormalizedCheck>): Promise<void> {
+    const linked = await this.db
+      .selectFrom('service_checks')
+      .innerJoin('monitor_checks', 'monitor_checks.id', 'service_checks.check_id')
+      .select('monitor_checks.external_id')
+      .distinct()
+      .where('monitor_checks.source_id', '=', sourceId)
+      .execute();
+    const removed = linked.filter((l) => !incoming.has(l.external_id)).length;
+    if (removed > 0 && removed * 2 > linked.length) {
+      throw conflict(
+        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services. ` +
+          'Include these checks, unlink them in the admin UI first, or push without "full".',
+      );
+    }
   }
 
   /** Records the outcome of a poll on the source row. */

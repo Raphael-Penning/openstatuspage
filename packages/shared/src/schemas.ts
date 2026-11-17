@@ -631,7 +631,7 @@ export const GenericIngestPayload = z.object({
     )
     .min(1)
     .max(5000),
-  /** When true, checks of this source missing from the payload are removed. */
+  /** When true, checks of this source missing from the payload are removed (webhook sources only). */
   full: z.boolean().default(false),
 });
 export type GenericIngestPayload = z.infer<typeof GenericIngestPayload>;
