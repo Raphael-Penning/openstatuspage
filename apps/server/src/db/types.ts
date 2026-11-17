@@ -20,6 +20,7 @@ import type {
   ServiceKind,
   ServiceStatus,
   StatusMode,
+  SubscriptionLocale,
   UserRole,
 } from '@openstatuspage/shared';
 
@@ -218,6 +219,10 @@ export interface MaintenancesTable {
   auto_start: Bool;
   auto_complete: Bool;
   is_public: Bool;
+  /** Email subscribers about this maintenance (announcement, reminder, automatic transitions). */
+  notify_subscribers: Bool;
+  /** When the reminder mail was queued; reset when the window moves later. */
+  reminder_sent_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -253,6 +258,49 @@ export interface AuditLogTable {
   created_at: string;
 }
 
+export interface SubscribersTable {
+  id: string;
+  /** Lowercase, unique. */
+  email: string;
+  locale: SubscriptionLocale;
+  all_services: Bool;
+  /** Random salt for the HMAC-derived confirm/manage tokens (tokens are never stored). */
+  token_salt: string;
+  /** null = pending (double opt-in not completed). */
+  confirmed_at: string | null;
+  /** Last confirmation or "manage" mail, for throttling. */
+  confirmation_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubscriberServicesTable {
+  subscriber_id: string;
+  service_id: string;
+}
+
+export type OutboxStatus = 'pending' | 'sent' | 'failed';
+
+export interface EmailOutboxTable {
+  id: string;
+  /** null for mails not tied to a subscriber. */
+  subscriber_id: string | null;
+  recipient: string;
+  /** e.g. `confirm`, `manage`, `incident`, `maintenance`, `maintenance_reminder`. */
+  kind: string;
+  subject: string;
+  text_body: string;
+  html_body: string;
+  /** JSON object of additional headers. */
+  headers: string | null;
+  status: OutboxStatus;
+  attempts: number;
+  next_attempt_at: string;
+  last_error: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
+
 export interface Database {
   settings: SettingsTable;
   users: UsersTable;
@@ -275,6 +323,9 @@ export interface Database {
   maintenance_services: MaintenanceServicesTable;
   maintenance_locations: MaintenanceLocationsTable;
   audit_log: AuditLogTable;
+  subscribers: SubscribersTable;
+  subscriber_services: SubscriberServicesTable;
+  email_outbox: EmailOutboxTable;
 }
 
 export type User = Selectable<UsersTable>;
@@ -285,6 +336,8 @@ export type MonitorSource = Selectable<MonitorSourcesTable>;
 export type MonitorCheck = Selectable<MonitorChecksTable>;
 export type Incident = Selectable<IncidentsTable>;
 export type Maintenance = Selectable<MaintenancesTable>;
+export type Subscriber = Selectable<SubscribersTable>;
+export type OutboxRow = Selectable<EmailOutboxTable>;
 export type NewService = Insertable<ServicesTable>;
 export type ServiceUpdate = Updateable<ServicesTable>;
 

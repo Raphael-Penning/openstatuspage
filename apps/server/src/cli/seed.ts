@@ -277,6 +277,8 @@ async function maintenance(title: string, start: Date, hours: number, services: 
       auto_start: 1,
       auto_complete: 1,
       is_public: 1,
+      notify_subscribers: 1,
+      reminder_sent_at: null,
       created_by: null,
       created_at: ts,
       updated_at: ts,
