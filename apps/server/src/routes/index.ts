@@ -5,6 +5,7 @@ import { registerAuth } from '../plugins/auth.js';
 import { registerAdminRoutes } from './admin/index.js';
 import { registerAuthRoutes } from './auth.js';
 import { registerPublicRoutes } from './public.js';
+import { registerSubscriptionRoutes } from './subscriptions.js';
 
 /**
  * Registers all API route modules. Every module is a Fastify plugin and
@@ -12,6 +13,7 @@ import { registerPublicRoutes } from './public.js';
  *
  *   /api/health          liveness / readiness
  *   /api/public/*        public read API (no auth, only public data)
+ *   /api/public/subscriptions/*  email subscriptions (double opt-in, token based)
  *   /api/auth/*          login, logout, session, OIDC
  *   /api/admin/*         management API (session cookie or API token)
  *   /api/ingest/*        push endpoints for monitoring systems (source token)
@@ -29,6 +31,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   await registerPublicRoutes(app);
+  await registerSubscriptionRoutes(app);
   await registerAuthRoutes(app);
   await registerAdminRoutes(app);
 
