@@ -4,22 +4,9 @@ import { useSearchParams } from 'react-router';
 import { auditSubject, EntityBadge, useAuditLabels } from '../components/AuditEntries';
 import { InlineSelect } from '../components/fields';
 import { Card, EmptyState, PageHeader, Pagination, QueryState, Table, td, th, tr } from '../components/ui';
+import { AUDIT_ENTITY_TYPES } from '../lib/audit';
 import { useFormat } from '../lib/format';
 import { useAuditLog } from '../lib/queries';
-
-const ENTITY_TYPES = [
-  'incident',
-  'maintenance',
-  'service',
-  'service_group',
-  'location',
-  'monitor_source',
-  'check',
-  'settings',
-  'user',
-  'api_token',
-  'subscriber',
-] as const;
 
 const PAGE_SIZE = 25;
 
@@ -50,7 +37,7 @@ export default function AuditLogPage() {
             label={t('audit.filterEntity')}
             value={entityType}
             onValue={(v) => setParams(v ? { entityType: v } : {})}
-            options={[{ value: '', label: t('audit.allEntities') }, ...ENTITY_TYPES.map((e) => ({ value: e, label: labels.entity(e) }))]}
+            options={[{ value: '', label: t('audit.allEntities') }, ...AUDIT_ENTITY_TYPES.map((e) => ({ value: e, label: labels.entity(e) }))]}
             className="sm:w-56"
           />
         </div>
