@@ -86,6 +86,7 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
   });
 
   const sendTest = () => {
+    if (!s.configured || test.isPending) return;
     setResult(null);
     const body = form.validate(TestEmailInput, { to: form.values.to.trim() });
     if (body) test.mutate(body);
