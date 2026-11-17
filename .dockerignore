@@ -5,3 +5,13 @@ data
 .env
 .idea
 .claude
+
+# Local data and secrets anywhere in the tree (e.g. apps/server/data from `pnpm dev`,
+# apps/server/.env, deploy.env): never part of the build context or the image.
+**/data
+**/.env
+**/.env.*
+**/*.env
+**/*.db
+**/*.db-*
+**/deploy.env

@@ -62,7 +62,9 @@ docker compose --env-file deploy.env -f docker/docker-compose.yml up -d --build
 ```
 
 Bewahre diese Datei auf: Bei jedem weiteren `up` brauchst du denselben
-`SECRET_KEY` und dasselbe `POSTGRES_PASSWORD`.
+`SECRET_KEY` und dasselbe `POSTGRES_PASSWORD`. Git ignoriert sie (wie jede
+`*.env`-Datei), und sie gehört nicht zum Docker-Build-Kontext. Sie landet also
+weder in einem Commit noch im Image.
 
 Die Compose-Datei reicht `BASE_URL`, `SECRET_KEY`, `DATABASE_URL`,
 `ADMIN_EMAIL`, `ADMIN_PASSWORD` und die E-Mail-Variablen (`MAIL_TRANSPORT`,

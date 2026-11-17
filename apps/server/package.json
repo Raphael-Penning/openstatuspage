@@ -4,6 +4,9 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/dev.ts",
     "build": "tsup",
