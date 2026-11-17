@@ -78,7 +78,7 @@ describe('subscribe and confirm', () => {
 
     const [mail] = await deliver();
     expect(mail!.to).toBe('jane@example.com');
-    expect(mail!.subject).toBe('[Example Status] Bitte bestätigen Sie Ihr Abonnement');
+    expect(mail!.subject).toBe('[Example Status] Bitte bestätige dein Abonnement');
     const { id, token } = linkParams(mail!, 'confirm');
     expect(id).toBe(row.id);
     expect(token).toBe(confirmToken);
