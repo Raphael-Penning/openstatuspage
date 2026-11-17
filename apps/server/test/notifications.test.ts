@@ -193,7 +193,7 @@ describe('incident notifications', () => {
     await addSubscriber('de@example.com', { locale: 'de' });
     await admin.post('/api/admin/incidents', { title: 'Ausfall', impact: 'critical', message: 'Wir prüfen.' });
     const [mail] = await deliver();
-    expect(mail!.subject).toBe('[Example Status] Störung: Ausfall');
+    expect(mail!.subject).toBe('[Example Status] Vorfall: Ausfall');
     expect(mail!.text).toContain('Auswirkung: Kritisch');
     expect(mail!.text).toContain('Abonnement verwalten');
     expect(mail!.html).toContain('<html lang="de">');
