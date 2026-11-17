@@ -1,11 +1,12 @@
 /**
  * Header controls: time zone toggle, language switcher, theme switcher and
- * the feeds menu.
+ * the subscribe menu (email, feeds, status API).
  */
 import { clsx } from 'clsx';
-import { Braces, ChevronDown, Clock, Globe, Monitor, Moon, Rss, Sun } from 'lucide-react';
+import { Braces, ChevronDown, Clock, Globe, Mail, Monitor, Moon, Rss, Sun } from 'lucide-react';
 import { useCallback, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { LANGUAGES } from '../../lib/i18n';
 import { useTheme, type ThemePreference } from '../../lib/theme';
 import { useDismiss } from '../hooks/dom';
@@ -100,8 +101,14 @@ export function ThemeSwitcher() {
   );
 }
 
-/** Accent button opening a small menu with the RSS/Atom feeds and the status API. */
-export function FeedMenu() {
+const menuItem =
+  'flex items-center gap-2 px-4 py-2 text-sm hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none';
+
+/**
+ * Accent button opening a small menu with email notifications (when offered),
+ * the RSS/Atom feeds and the status API.
+ */
+export function FeedMenu({ email = false }: { email?: boolean }) {
   const { t } = useTranslation('public');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -133,13 +140,17 @@ export function FeedMenu() {
           id={menuId}
           className="absolute left-1/2 z-30 mt-2 w-60 -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-surface py-1 text-left shadow-lg"
         >
+          {email && (
+            <li>
+              <Link to="/subscribe" className={menuItem} onClick={close}>
+                <Mail aria-hidden className="size-4 text-muted" />
+                {t('feeds.email')}
+              </Link>
+            </li>
+          )}
           {items.map(({ href, label, Icon }) => (
             <li key={href}>
-              <a
-                href={href}
-                className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
-                onClick={close}
-              >
+              <a href={href} className={menuItem} onClick={close}>
                 <Icon aria-hidden className="size-4 text-muted" />
                 {label}
               </a>
