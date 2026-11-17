@@ -7,6 +7,7 @@ import { clsx } from 'clsx';
 import {
   Boxes,
   ChevronUp,
+  CircleHelp,
   ExternalLink,
   FolderTree,
   KeyRound,
@@ -48,6 +49,7 @@ interface NavItem {
 
 function useNavSections(): { title?: string; items: NavItem[] }[] {
   const { t } = useTranslation('admin');
+  const { t: tHelp } = useTranslation('help');
   return [
     {
       items: [
@@ -80,6 +82,9 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
         { to: '/admin/api-tokens', label: t('nav.apiTokens'), icon: KeyRound, adminOnly: true },
         { to: '/admin/audit-log', label: t('nav.auditLog'), icon: ScrollText, adminOnly: true },
       ],
+    },
+    {
+      items: [{ to: '/admin/help', label: tHelp('nav'), icon: CircleHelp }],
     },
   ];
 }

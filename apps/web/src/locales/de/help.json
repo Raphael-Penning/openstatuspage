@@ -1,0 +1,15 @@
+{
+  "nav": "Hilfe",
+  "title": "Hilfe",
+  "description": "So richtest du diese Statusseite ein, konfigurierst und betreibst sie.",
+  "topics": "Themen",
+  "allTopics": "Alle Themen",
+  "onThisPage": "Auf dieser Seite",
+  "previous": "Vorheriges Thema",
+  "next": "Nächstes Thema",
+  "anchorLink": "Link zu diesem Abschnitt",
+  "repoFile": "Datei im Repository: {{path}}",
+  "fallbackNotice": "Dieses Thema gibt es noch nicht auf Deutsch, daher wird die englische Fassung angezeigt.",
+  "notFound": "Dieses Hilfethema gibt es nicht.",
+  "loadError": "Die Hilfe konnte nicht geladen werden."
+}
