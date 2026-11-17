@@ -25,6 +25,23 @@ management area.
 - **i18n**: English and German included
 - **Public API and RSS/Atom feeds**
 
+## Quick start (Docker)
+
+```bash
+export SECRET_KEY="$(openssl rand -base64 48)"
+export POSTGRES_PASSWORD="$(openssl rand -hex 16)"
+export ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD='a-long-password'
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+The status page is then served on http://localhost:3000 and the management UI on
+http://localhost:3000/admin. Set `HOST_PORT` to publish a different port and
+`BASE_URL` to the public URL. Optional demo data:
+`docker compose -f docker/docker-compose.yml exec openstatuspage node server/dist/cli/seed.js`.
+
+See [docs/configuration.md](docs/configuration.md) for all settings and
+[CONTRIBUTING.md](CONTRIBUTING.md) for local development.
+
 ## License
 
 [AGPL-3.0](LICENSE)
