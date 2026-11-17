@@ -24,13 +24,74 @@ export interface FeedItem {
   content: string;
 }
 
-function incidentItem(baseUrl: string, i: PublicIncident): FeedItem {
+export type FeedLocale = 'en' | 'de';
+
+/** Human readable feed texts; feed readers show them to customers as-is. */
+const TEXTS = {
+  en: {
+    status: 'Status',
+    impact: 'Impact',
+    affected: 'Affected',
+    scheduled: 'Scheduled',
+    values: {
+      investigating: 'Investigating',
+      identified: 'Identified',
+      monitoring: 'Monitoring',
+      resolved: 'Resolved',
+      none: 'None',
+      minor: 'Minor',
+      major: 'Major',
+      critical: 'Critical',
+      scheduled: 'Scheduled',
+      in_progress: 'In progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    } as Record<string, string>,
+  },
+  de: {
+    status: 'Status',
+    impact: 'Auswirkung',
+    affected: 'Betroffen',
+    scheduled: 'Geplant',
+    values: {
+      investigating: 'Untersuchung',
+      identified: 'Ursache identifiziert',
+      monitoring: 'Beobachtung',
+      resolved: 'Behoben',
+      none: 'Keine',
+      minor: 'Gering',
+      major: 'Erheblich',
+      critical: 'Kritisch',
+      scheduled: 'Geplant',
+      in_progress: 'In Arbeit',
+      completed: 'Abgeschlossen',
+      cancelled: 'Abgesagt',
+    } as Record<string, string>,
+  },
+} as const;
+
+function formatter(locale: FeedLocale) {
+  const t = TEXTS[locale];
+  const dateFormat = new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  });
+  return {
+    t,
+    value: (v: string) => t.values[v] ?? v,
+    date: (iso: string) => `${dateFormat.format(new Date(iso))} UTC`,
+  };
+}
+
+function incidentItem(baseUrl: string, i: PublicIncident, locale: FeedLocale): FeedItem {
+  const f = formatter(locale);
   const services = i.affectedServices.map((s) => s.name).join(', ');
   const lines = [
-    `Status: ${i.status}`,
-    `Impact: ${i.impact}`,
-    ...(services ? [`Affected: ${services}`] : []),
-    ...i.updates.map((u) => `${u.createdAt} [${u.status}] ${u.message}`.trim()),
+    `${f.t.status}: ${f.value(i.status)}`,
+    `${f.t.impact}: ${f.value(i.impact)}`,
+    ...(services ? [`${f.t.affected}: ${services}`] : []),
+    ...i.updates.map((u) => `${f.date(u.createdAt)} – ${f.value(u.status)}: ${u.message}`.trim()),
   ];
   return {
     id: `${baseUrl}/incidents/${i.id}`,
@@ -42,14 +103,21 @@ function incidentItem(baseUrl: string, i: PublicIncident): FeedItem {
   };
 }
 
-function maintenanceItem(baseUrl: string, m: PublicMaintenance, createdAt: string, updatedAt: string): FeedItem {
+function maintenanceItem(
+  baseUrl: string,
+  m: PublicMaintenance,
+  createdAt: string,
+  updatedAt: string,
+  locale: FeedLocale,
+): FeedItem {
+  const f = formatter(locale);
   const services = m.affectedServices.map((s) => s.name).join(', ');
   const lines = [
-    `Status: ${m.status}`,
-    `Scheduled: ${m.scheduledStart} – ${m.scheduledEnd}`,
-    ...(services ? [`Affected: ${services}`] : []),
+    `${f.t.status}: ${f.value(m.status)}`,
+    `${f.t.scheduled}: ${f.date(m.scheduledStart)} – ${f.date(m.scheduledEnd)}`,
+    ...(services ? [`${f.t.affected}: ${services}`] : []),
     ...(m.description ? [m.description] : []),
-    ...m.updates.filter((u) => u.message).map((u) => `${u.createdAt} [${u.status}] ${u.message}`),
+    ...m.updates.filter((u) => u.message).map((u) => `${f.date(u.createdAt)} – ${f.value(u.status)}: ${u.message}`),
   ];
   return {
     id: `${baseUrl}/maintenance/${m.id}`,
@@ -61,7 +129,7 @@ function maintenanceItem(baseUrl: string, m: PublicMaintenance, createdAt: strin
   };
 }
 
-export async function loadFeedItems(db: DB, baseUrl: string): Promise<FeedItem[]> {
+export async function loadFeedItems(db: DB, baseUrl: string, locale: FeedLocale = 'en'): Promise<FeedItem[]> {
   const [incidentRows, maintenanceRows] = await Promise.all([
     db
       .selectFrom('incidents')
@@ -101,10 +169,10 @@ export async function loadFeedItems(db: DB, baseUrl: string): Promise<FeedItem[]
   return newest.flatMap((n) => {
     if (n.type === 'incident') {
       const rec = incidentById.get(n.id);
-      return rec ? [incidentItem(baseUrl, toPublicIncident(rec))] : [];
+      return rec ? [incidentItem(baseUrl, toPublicIncident(rec), locale)] : [];
     }
     const rec = maintenanceById.get(n.id);
-    return rec ? [maintenanceItem(baseUrl, toPublicMaintenance(rec), rec.row.created_at, rec.row.updated_at)] : [];
+    return rec ? [maintenanceItem(baseUrl, toPublicMaintenance(rec), rec.row.created_at, rec.row.updated_at, locale)] : [];
   });
 }
 
@@ -171,18 +239,22 @@ ${body}
 export async function registerFeedRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.ctx;
 
-  async function meta() {
+  // Feed texts use the page's default language.
+  async function load() {
     const settings = await getSettings(db);
-    return { title: settings.siteName, description: settings.description, baseUrl: config.BASE_URL };
+    const meta = { title: settings.siteName, description: settings.description, baseUrl: config.BASE_URL };
+    return { meta, items: await loadFeedItems(db, config.BASE_URL, settings.defaultLocale) };
   }
 
   app.get('/feed.rss', async (_req, reply) => {
-    const xml = renderRss(await meta(), await loadFeedItems(db, config.BASE_URL));
+    const { meta, items } = await load();
+    const xml = renderRss(meta, items);
     return reply.type('application/rss+xml; charset=utf-8').send(xml);
   });
 
   app.get('/feed.atom', async (_req, reply) => {
-    const xml = renderAtom(await meta(), await loadFeedItems(db, config.BASE_URL));
+    const { meta, items } = await load();
+    const xml = renderAtom(meta, items);
     return reply.type('application/atom+xml; charset=utf-8').send(xml);
   });
 }
