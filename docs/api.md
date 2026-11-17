@@ -36,6 +36,40 @@ Upcoming maintenance = `status = scheduled` and `scheduled_end > now`.
 Active maintenance = `status = in_progress`.
 Active incidents = `status != resolved`.
 
+`PublicSummary.emailSubscriptions` is `true` when email subscriptions are enabled in
+the settings and a mail transport is configured (the page then offers the subscribe form).
+
+## Email subscriptions (`/api/public/subscriptions`, no authentication)
+
+Double opt-in; see [notifications.md](notifications.md). Responses are sent with
+`Cache-Control: no-store`. Unknown ids and wrong tokens get the same `404`.
+
+| Method | Path | Body / auth | Response |
+| --- | --- | --- | --- |
+| POST | `/api/public/subscriptions` | `SubscribeInput` | `202 { ok: true }` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public `serviceIds`. Rate limited (5/min per IP). |
+| POST | `/api/public/subscriptions/:id/confirm` | `SubscriptionConfirmInput` (token from the confirmation link) | `{ subscription: PublicSubscription, manageToken: string }`; idempotent |
+| GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` | `PublicSubscription` |
+| PUT | `/api/public/subscriptions/:id` | header as above, `SubscriptionPreferencesInput` | `PublicSubscription` |
+| DELETE | `/api/public/subscriptions/:id` | header as above | `204`, deletes the subscriber completely |
+| POST | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | empty or `List-Unsubscribe=One-Click` (form encoded) | `{ ok: true }`, deletes the subscriber (RFC 8058 one-click, used by the `List-Unsubscribe` header) |
+| GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | – | `303` to the manage page (never deletes) |
+
+Behaviour of `POST /api/public/subscriptions`:
+
+- new address: pending subscriber, confirmation email;
+- pending address: preferences replaced, confirmation email sent again;
+- confirmed address: preferences unchanged, email with the manage link.
+
+At most one confirmation/manage email per address every 10 minutes. The endpoints
+other than subscribe keep working when subscriptions are disabled later, so
+subscribers can always unsubscribe. Rate limit for the token endpoints: 30/min per IP.
+
+Links in emails (web client routes):
+
+- `${BASE_URL}/subscription/confirm?id=<id>&token=<confirmToken>`
+- `${BASE_URL}/subscription/manage?id=<id>&token=<manageToken>` (the unsubscribe link
+  in the email body adds `&unsubscribe=1`)
+
 ## Auth (`/api/auth`)
 
 | Method | Path | Body | Response |
@@ -102,6 +136,11 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | GET | `/api/admin/api-tokens` | – | `AdminApiToken[]` | admin |
 | POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201) | admin |
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
+| GET | `/api/admin/subscribers` | query `SubscriberListQuery` (`page`, `pageSize`, `q` email substring, `status=all\|confirmed\|pending`) | `Paginated<AdminSubscriber>` (newest first) | admin |
+| DELETE | `/api/admin/subscribers/:id` | – | 204 (audit `subscriber.delete` with masked address) | admin |
+| GET | `/api/admin/notifications/status` | – | `NotificationStatus` | admin |
+| POST | `/api/admin/notifications/test` | `TestEmailInput` | `{ ok: boolean, message: string }`; sends immediately (not queued); 409 without transport | admin |
+| POST | `/api/admin/notifications/retry-failed` | – | `{ requeued: number }` | admin |
 
 API tokens are revoked when their creator is deleted; admin tokens are revoked when
 their creator loses the admin role.
@@ -139,6 +178,13 @@ their creator loses the admin role.
   or affecting a service running there. Filters referencing non-public entities
   return an empty page.
 - Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
+- `notify` (default `true`) in `IncidentCreateInput`, `IncidentUpdateInput`,
+  `MaintenanceCreateInput` and `MaintenanceUpdateInput` queues subscriber emails for
+  that event, only for public incidents/maintenance. The maintenance stores the flag
+  (`AdminMaintenance.notify`, changeable with `MaintenancePatchInput.notify`); automatic
+  start/completion and the reminder only notify when it is set.
+  `AdminMaintenance.reminderSentAt` is the time the reminder was queued; it is reset
+  when `scheduledStart` moves later. Notification errors never fail the request.
 
 ## Ingest API (`/api/ingest`)
 
