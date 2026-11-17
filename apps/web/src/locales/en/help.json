@@ -1,0 +1,15 @@
+{
+  "nav": "Help",
+  "title": "Help",
+  "description": "How to set up, configure and run this status page.",
+  "topics": "Topics",
+  "allTopics": "All topics",
+  "onThisPage": "On this page",
+  "previous": "Previous topic",
+  "next": "Next topic",
+  "anchorLink": "Link to this section",
+  "repoFile": "File in the repository: {{path}}",
+  "fallbackNotice": "This topic is not available in your language yet, so the English version is shown.",
+  "notFound": "This help topic does not exist.",
+  "loadError": "The help could not be loaded."
+}

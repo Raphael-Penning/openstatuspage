@@ -23,6 +23,7 @@ management area.
 - **Auth**: local users (admin / editor) and optional OIDC single sign-on
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
+- **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
 - **Public API and RSS/Atom feeds**
 
 ## Quick start (Docker)
@@ -41,6 +42,15 @@ http://localhost:3000/admin. Set `HOST_PORT` to publish a different port and
 
 See [docs/configuration.md](docs/configuration.md) for all settings and
 [CONTRIBUTING.md](CONTRIBUTING.md) for local development.
+
+## Documentation
+
+- [Setup and operations guide](docs/guide/en/01-overview.md): installation,
+  reverse proxy, monitoring integration, daily work, email subscriptions,
+  backups, upgrades and a security checklist (also available in German and
+  inside the management UI under **Help**)
+- [Documentation index](docs/README.md): configuration, API, monitoring
+  adapters, OIDC and architecture
 
 ## License
 
