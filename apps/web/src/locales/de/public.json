@@ -200,16 +200,16 @@
   },
   "subscription": {
     "title": "E-Mail-Benachrichtigungen",
-    "subtitle": "Erhalte eine E-Mail, wenn wir Störungen oder Wartungen veröffentlichen.",
+    "subtitle": "Erhalte eine E-Mail, wenn wir Vorfälle oder Wartungen veröffentlichen.",
     "email": "E-Mail-Adresse",
     "emailPlaceholder": "name@example.com",
     "language": "Sprache der E-Mails",
     "scope": {
       "label": "Worüber möchtest du informiert werden?",
       "all": "Alle Updates",
-      "allHelp": "Alle öffentlichen Störungen und Wartungen.",
+      "allHelp": "Alle öffentlichen Vorfälle und Wartungen.",
       "selected": "Ausgewählte Dienste",
-      "selectedHelp": "Nur Störungen und Wartungen, die die gewählten Dienste betreffen."
+      "selectedHelp": "Nur Vorfälle und Wartungen, die die gewählten Dienste betreffen."
     },
     "services": {
       "selectedCount": "{{count}} von {{total}} ausgewählt",
@@ -240,9 +240,9 @@
       "title": "Abonnement bestätigen",
       "loading": "Dein Abonnement wird bestätigt …",
       "success": "Dein Abonnement ist bestätigt",
-      "scopeAll": "Wir informieren {{email}} über alle öffentlichen Störungen und Wartungen.",
-      "scopeServices_one": "Wir informieren {{email}} über Störungen und Wartungen, die den ausgewählten Dienst betreffen.",
-      "scopeServices_other": "Wir informieren {{email}} über Störungen und Wartungen, die die {{count}} ausgewählten Dienste betreffen.",
+      "scopeAll": "Wir informieren {{email}} über alle öffentlichen Vorfälle und Wartungen.",
+      "scopeServices_one": "Wir informieren {{email}} über Vorfälle und Wartungen, die den ausgewählten Dienst betreffen.",
+      "scopeServices_other": "Wir informieren {{email}} über Vorfälle und Wartungen, die die {{count}} ausgewählten Dienste betreffen.",
       "hint": "Jede E-Mail enthält einen Link, um deine Einstellungen zu ändern oder dich abzumelden.",
       "manage": "Einstellungen verwalten"
     },
