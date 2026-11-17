@@ -203,6 +203,9 @@ Monitoring systems push check results. Authentication: `Authorization: Bearer <i
 of the source (or `?token=` query parameter for systems that cannot set headers; its
 value is redacted in the request log).
 Responses: `{ ok: true, created, updated, removed, stateChanges }`.
+`full: true` (remove checks missing from the payload) is accepted only for sources of type
+`webhook` (`400` otherwise); a full push that would remove more than half of the checks linked
+to services is rejected with `409` and stores nothing (see docs/adapters/README.md).
 
 | Method | Path | Body |
 | --- | --- | --- |

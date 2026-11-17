@@ -61,8 +61,9 @@ storing anything.
 
 **Pushed results do not arrive.**
 Call the ingest URL by hand with `curl` and look at the answer: `401` wrong
-token (rotated?), `404` wrong source ID, `409` source disabled, `413` request
-too large for the reverse proxy, `429` more than 120 requests per minute.
+token (rotated?), `404` wrong source ID, `409` source disabled or full sync
+rejected because it would remove most linked checks, `413` request too large
+for the reverse proxy, `429` more than 120 requests per minute.
 Run the notification scripts with `OSP_DRY_RUN=1` to see the payload.
 
 **A service stays operational although a check is critical.**

@@ -26,12 +26,14 @@ in the public API (not even their number).
   the source. Check states keep their last known value, so a broken
   connection never turns your status page red or green on its own;
 - an empty result while checks exist is treated as an error as well (usually a
-  broken filter or missing permissions), so service links are not lost.
+  broken filter or missing permissions), so service links are not lost;
+- responses larger than 50 MiB (after decompression) are rejected as an error.
 
 **Push** – the monitoring system calls OpenStatusPage on every state change:
 
 - state changes appear within seconds instead of after the next poll;
-- only the reported checks are updated (no removal);
+- only the reported checks are updated (no removal; only `webhook` sources can
+  send a complete set with `full`, see [Generic push API](#generic-push-api));
 - push and pull can be combined on the same source: the external IDs are
   identical, pull provides the complete list and push the fast updates.
 
@@ -98,9 +100,10 @@ POST /api/ingest/<source-id>/openitcockpit   openITCockpit notification command
 - Native endpoints accept payloads for sources of the same type or of type
   `webhook`; the generic endpoint works for every source type.
 - Responses: `200 {"ok":true,"created":0,"updated":1,"removed":0,"stateChanges":1}`,
-  `400` invalid payload, `401` missing or wrong token, `404` unknown source,
-  `409` source disabled, `429` more than 120 requests per minute for the source
-  (see `Retry-After`).
+  `400` invalid payload (or `full` on a source that is not of type `webhook`),
+  `401` missing or wrong token, `404` unknown source, `409` source disabled or
+  full sync rejected (see below), `429` more than 120 requests per minute for
+  the source (see `Retry-After`).
 
 ### Generic push API
 
@@ -127,7 +130,19 @@ curl -fsS https://status.example.com/api/ingest/<source-id> \
 | `checks[].state` | `ok`, `warning`, `critical`, `unknown` or `0`–`3` (Nagios convention) |
 | `checks[].output` | Check output (internal only, max 5000 characters; omitted keeps the stored output unless the state changed) |
 | `checks[].timestamp` | ISO-8601 time of the check (default: now) |
-| `full` | `true` = the payload is the complete set; checks missing from it are removed |
+| `full` | `true` = the payload is the complete set; checks missing from it are removed (sources of type `webhook` only) |
 
 Up to 5000 checks per request (5 MiB body). Sending full metadata once and only
 `id` + `state` afterwards is fine.
+
+**Full sync (`"full": true`).** Removing a check also removes its links to
+services, and the links do not come back when the check is pushed again. To
+protect that configuration:
+
+- `full` is accepted only for sources of type `webhook`. Pull sources get their
+  complete list from polling; a full push to them is rejected with `400`.
+- A full push that would remove **more than half of the checks linked to
+  services** is rejected with `409` and nothing is stored (the push
+  counterpart of the poller's "empty result" guard). Include the missing
+  checks, unlink them in the admin UI first, or push without `full`.
+  Unlinked checks are removed without this limit.
