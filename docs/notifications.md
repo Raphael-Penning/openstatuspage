@@ -35,8 +35,16 @@ server and how to operate and troubleshoot delivery.
   unsubscribe in mail clients (RFC 8058). The unsubscribe link in the body opens
   the manage page with `&unsubscribe=1`, which shows the unsubscribe confirmation
   right away. The one-click header URL unsubscribes on `POST` (what mail clients
-  send); opening it in a browser (`GET`) only redirects to the manage page and
-  never deletes anything.
+  send); opening it in a browser (`GET`) only redirects (`303`) to the manage page
+  with the unsubscribe confirmation and never deletes anything.
+- Links in the email body carry their token in the URL fragment, so the token never
+  reaches the server, proxies or access logs:
+  - confirm: `${BASE_URL}/subscription/confirm?id=<id>#token=<confirmToken>`
+  - manage: `${BASE_URL}/subscription/manage?id=<id>#token=<manageToken>`
+  - unsubscribe: `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>`
+
+  Only the `List-Unsubscribe` header uses the API URL with `?token=` (mail clients
+  post to it directly); the server log redacts it as `token=[REDACTED]`.
 
 ### Who receives what
 
@@ -135,7 +143,16 @@ outbox table (`email_outbox`) and delivered by a background task:
   `POST /api/admin/notifications/retry-failed`), e.g. after fixing the SMTP
   credentials;
 - sent and failed emails are deleted after 30 days;
-- emails of a subscriber who unsubscribes are deleted with the subscriber.
+- emails of a subscriber who unsubscribes are deleted with the subscriber (an email
+  whose subscriber no longer exists at sending time is dropped).
+
+Tokens are never written to the outbox. Subscriber emails are queued with
+placeholders instead of the confirm and manage tokens; the delivery task derives
+the real tokens from `SECRET_KEY`, the subscriber id and its salt right before
+sending and fills them into the body (text and HTML) and the `List-Unsubscribe`
+header. After an email was sent, its bodies and headers are blanked in the outbox;
+recipient, subject, kind and status stay for the status view. Failed emails keep
+their placeholder bodies so that **Retry failed** can send them again.
 
 Background tasks run only where `WORKER_ENABLED=true`. With several replicas, enable
 the worker on exactly one instance (as for monitoring polls). If no instance runs
@@ -152,11 +169,13 @@ For each subscriber the database stores:
 - email address (lowercase), language, *All updates* flag and the selected services;
 - creation and confirmation timestamps and the time of the last confirmation email;
 - a random salt. The confirm and manage tokens in the links are derived from the
-  salt and `SECRET_KEY` (HMAC-SHA256) and are **never stored**. Changing
-  `SECRET_KEY` therefore invalidates all links in emails already sent.
+  salt and `SECRET_KEY` (HMAC-SHA256) and are **never stored**, neither in the
+  subscriber row nor in the outbox. Changing `SECRET_KEY` therefore invalidates all
+  links in emails already sent.
 
-Queued and sent emails (recipient, subject, body) are kept in the outbox for at most
-30 days.
+The outbox keeps recipient, subject, kind and status of every email for at most 30
+days. The body is only kept (with token placeholders) until the email is sent; failed
+emails keep it until they are retried or deleted.
 
 Deletion:
 
@@ -174,6 +193,11 @@ subscribers who subscribe again get an email with their manage link instead; at 
 one confirmation or manage email is sent per address every 10 minutes, and the
 subscribe endpoint is limited to 5 requests per minute per client IP. Behind a
 reverse proxy set `TRUST_PROXY` so the limit applies per visitor.
+
+The form also contains a hidden honeypot field (`website`) that people never fill
+in. When a bot fills it in, the request is answered exactly like a successful
+subscription (`202`), but nothing is stored and no email is sent, so the bot gets
+no hint that it was detected.
 
 Mention the subscription in your privacy policy (purpose, data stored, retention,
 the mail provider you use as processor).
@@ -206,7 +230,9 @@ senders.
 `GET /api/admin/notifications/status`) shows the transport (*SMTP*, *Server log* or
 *Not configured*), the sender, subscriber counts (confirmed/pending), the queue
 (pending/failed), the time of the last sent email and the last delivery error. It
-warns when subscriptions are enabled but no transport is configured.
+warns when subscriptions are enabled but no transport is configured. Email addresses
+in SMTP error messages are masked (`j***@example.com`) before the error is stored or
+logged.
 
 **Test email.** **Send test email** in the **Email delivery** panel (or `POST /api/admin/notifications/test` with
 `{ "to": "you@example.com" }`) sends immediately, bypassing the queue, and returns
@@ -218,7 +244,7 @@ the server log.
 
 **Server log.** Failed deliveries are logged at level `warn`
 (`email delivery failed`, with outbox id, kind, attempt and error, without the
-recipient address). Queued notifications are logged at `info`
+recipient address; addresses inside the SMTP error are masked). Queued notifications are logged at `info`
 (`subscriber notifications queued`).
 
 Common problems:
