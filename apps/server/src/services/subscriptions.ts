@@ -1,7 +1,8 @@
 /**
  * Email subscriptions with double opt-in.
  *
- * Tokens are never stored: every subscriber has a random `token_salt`, and
+ * Tokens are never stored, not even in the mail outbox (queued mails hold
+ * placeholders, see TOKEN_PLACEHOLDERS): every subscriber has a random `token_salt`, and
  *   confirmToken = base64url(HMAC-SHA256(SECRET_KEY, "subscription-confirm:<id>:<salt>"))
  *   manageToken  = base64url(HMAC-SHA256(SECRET_KEY, "subscription-manage:<id>:<salt>"))
  * Tokens are compared in constant time. Unknown ids and wrong tokens produce
@@ -47,27 +48,60 @@ export function verifySubscriptionToken(
   return safeEqual(subscriptionToken(secret, kind, sub.id, sub.token_salt), token);
 }
 
-export interface SubscriberLinkSet {
-  confirmUrl: string;
-  manageUrl: string;
-  /** Unsubscribe link for the mail body (manage page of the web client). */
-  unsubscribeUrl: string;
-  /** RFC 8058 one-click endpoint for the List-Unsubscribe header. */
-  oneClickUrl: string;
-  manageToken: string;
+export interface SubscriptionTokens {
+  confirm: string;
+  manage: string;
 }
 
-export function subscriberLinks(config: Config, sub: Pick<Subscriber, 'id' | 'token_salt'>): SubscriberLinkSet {
-  const id = encodeURIComponent(sub.id);
-  const confirmToken = subscriptionToken(config.SECRET_KEY, 'confirm', sub.id, sub.token_salt);
-  const manageToken = subscriptionToken(config.SECRET_KEY, 'manage', sub.id, sub.token_salt);
-  const manageUrl = `${config.BASE_URL}/subscription/manage?id=${id}&token=${manageToken}`;
+/**
+ * Stand-ins for the real tokens in queued mails. The outbox only ever stores these;
+ * NotificationService substitutes the derived tokens right before sending. They only
+ * contain URL-safe characters, so they survive URL building and HTML escaping.
+ */
+export const TOKEN_PLACEHOLDERS: Readonly<SubscriptionTokens> = {
+  confirm: '__OSP_CONFIRM_TOKEN__',
+  manage: '__OSP_MANAGE_TOKEN__',
+};
+
+/** The real confirm and manage tokens of a subscriber. */
+export function subscriberTokens(config: Config, sub: Pick<Subscriber, 'id' | 'token_salt'>): SubscriptionTokens {
   return {
-    confirmUrl: `${config.BASE_URL}/subscription/confirm?id=${id}&token=${confirmToken}`,
-    manageUrl,
-    unsubscribeUrl: `${manageUrl}&unsubscribe=1`,
-    oneClickUrl: `${config.BASE_URL}/api/public/subscriptions/${id}/unsubscribe?token=${manageToken}`,
-    manageToken,
+    confirm: subscriptionToken(config.SECRET_KEY, 'confirm', sub.id, sub.token_salt),
+    manage: subscriptionToken(config.SECRET_KEY, 'manage', sub.id, sub.token_salt),
+  };
+}
+
+/** Replaces the token placeholders in a mail body or header value with real tokens. */
+export function fillTokens(text: string, tokens: SubscriptionTokens): string {
+  return text
+    .replaceAll(TOKEN_PLACEHOLDERS.confirm, tokens.confirm)
+    .replaceAll(TOKEN_PLACEHOLDERS.manage, tokens.manage);
+}
+
+export interface SubscriberLinkSet {
+  /** Confirm page of the web client; the token is in the URL fragment. */
+  confirmUrl: string;
+  /** Manage page of the web client; the token is in the URL fragment. */
+  manageUrl: string;
+  /** Unsubscribe link for the mail body (manage page with unsubscribe=1). */
+  unsubscribeUrl: string;
+  /** RFC 8058 one-click endpoint for the List-Unsubscribe header (token in the query string). */
+  oneClickUrl: string;
+}
+
+/**
+ * Links of a subscriber. Web client links carry the token in the URL fragment
+ * (`#token=`), so it never reaches the server, proxies or access logs. Mails that
+ * go through the outbox are built with TOKEN_PLACEHOLDERS.
+ */
+export function subscriberLinks(config: Config, subscriberId: string, tokens: SubscriptionTokens): SubscriberLinkSet {
+  const id = encodeURIComponent(subscriberId);
+  const managePage = `${config.BASE_URL}/subscription/manage?id=${id}`;
+  return {
+    confirmUrl: `${config.BASE_URL}/subscription/confirm?id=${id}#token=${tokens.confirm}`,
+    manageUrl: `${managePage}#token=${tokens.manage}`,
+    unsubscribeUrl: `${managePage}&unsubscribe=1#token=${tokens.manage}`,
+    oneClickUrl: `${config.BASE_URL}/api/public/subscriptions/${id}/unsubscribe?token=${tokens.manage}`,
   };
 }
 
@@ -94,6 +128,15 @@ export function maskEmail(email: string): string {
   const at = email.lastIndexOf('@');
   if (at <= 0) return '***';
   return `${email[0]}***${email.slice(at)}`;
+}
+
+/** Email addresses in free text such as SMTP error messages. */
+const EMAIL_IN_TEXT =
+  /[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+/g;
+
+/** Masks every email address in a text: "550 <jane@example.com> unknown" → "550 <j***@example.com> unknown". */
+export function maskEmailsIn(text: string): string {
+  return text.replace(EMAIL_IN_TEXT, (address) => maskEmail(address));
 }
 
 /** Validates that every id is an existing PUBLIC service (400 otherwise). Returns the de-duplicated ids. */
@@ -157,7 +200,8 @@ function throttled(sub: Subscriber, now: Date): boolean {
 async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm' | 'manage', now: Date): Promise<void> {
   const settings = await getSettings(ctx.db);
   const site = { siteName: settings.siteName, baseUrl: ctx.config.BASE_URL, accentColor: settings.accentColor };
-  const links = subscriberLinks(ctx.config, sub);
+  // Placeholders only: the real token is filled in right before sending.
+  const links = subscriberLinks(ctx.config, sub.id, TOKEN_PLACEHOLDERS);
   const mail =
     kind === 'confirm'
       ? confirmationMail(site, sub.locale, links.confirmUrl)

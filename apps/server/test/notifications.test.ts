@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { sql } from 'kysely';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId } from '../src/lib/ids.js';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import { runMaintenanceTransitions } from '../src/services/maintenance-scheduler.js';
-import { MAX_ATTEMPTS } from '../src/services/notifications.js';
-import { subscriptionToken } from '../src/services/subscriptions.js';
+import { MAX_ATTEMPTS, RETRY_BACKOFF_MS } from '../src/services/notifications.js';
+import { subscriptionToken, TOKEN_PLACEHOLDERS } from '../src/services/subscriptions.js';
 import {
   adminClient,
   BASE_URL,
@@ -101,8 +102,21 @@ describe('incident notifications', () => {
       ],
     });
     expect(created.statusCode).toBe(201);
+    // The outbox holds placeholders, never a subscriber's token.
+    const subs = await t.db.selectFrom('subscribers').selectAll().execute();
+    const queued = JSON.stringify(await t.db.selectFrom('email_outbox').selectAll().execute());
+    for (const s of subs) {
+      expect(queued).not.toContain(subscriptionToken(t.config.SECRET_KEY, 'manage', s.id, s.token_salt));
+      expect(queued).not.toContain(subscriptionToken(t.config.SECRET_KEY, 'confirm', s.id, s.token_salt));
+    }
+    expect(queued).toContain(TOKEN_PLACEHOLDERS.manage);
+
     const mails = await deliver();
     expect(recipients(mails)).toEqual(['all@example.com', 'api@example.com']);
+    // Sent rows are blanked.
+    const sentRows = await t.db.selectFrom('email_outbox').selectAll().execute();
+    expect(sentRows.every((r) => r.status === 'sent' && !r.text_body && !r.html_body && r.headers === null)).toBe(true);
+    expect(sentRows.map((r) => r.subject)).toEqual(mails.map(() => '[Example Status] Incident: Elevated error rates'));
 
     const mail = mails[0]!;
     expect(mail.subject).toBe('[Example Status] Incident: Elevated error rates');
@@ -122,6 +136,11 @@ describe('incident notifications', () => {
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       'Auto-Submitted': 'auto-generated',
     });
+    // Body links carry the valid manage token in the URL fragment.
+    expect(mail.text).toContain(`Manage subscription: ${BASE_URL}/subscription/manage?id=${sub.id}#token=${token}`);
+    expect(mail.text).toContain(`Unsubscribe: ${BASE_URL}/subscription/manage?id=${sub.id}&unsubscribe=1#token=${token}`);
+    expect(mail.html).toContain(`href="${BASE_URL}/subscription/manage?id=${sub.id}&amp;unsubscribe=1#token=${token}"`);
+    expect(`${mail.text}${mail.html}`).not.toContain('__OSP_');
 
     // Update moves to another service.
     await admin.post(`/api/admin/incidents/${created.json().id}/updates`, {
@@ -244,6 +263,66 @@ describe('maintenance notifications', () => {
     expect(mails[0]!.subject).toBe('[Example Status] Maintenance Missed: Completed');
   });
 
+  it('applies each automatic transition once when runs overlap', async () => {
+    await addSubscriber('all@example.com');
+    await addSubscriber('web@example.com', { services: [web] });
+    const created = await admin.post('/api/admin/maintenances', { title: 'Overlap', serviceIds: [web], ...window(1) });
+    const id = created.json().id;
+    await deliver();
+    const { db, engine, notifications } = t.app.ctx;
+    const updates = (status: 'in_progress' | 'completed') =>
+      db
+        .selectFrom('maintenance_updates')
+        .selectAll()
+        .where('maintenance_id', '=', id)
+        .where('status', '=', status)
+        .execute();
+
+    // Start: two runs at the same time.
+    const startAt = new Date(Date.now() + 1.5 * HOUR).toISOString();
+    const started = await Promise.all([
+      runMaintenanceTransitions(db, engine, startAt, notifications),
+      runMaintenanceTransitions(db, engine, startAt, notifications),
+    ]);
+    expect(started.sort()).toEqual([0, 1]);
+    expect(await updates('in_progress')).toHaveLength(1);
+    const startMails = await deliver();
+    expect(recipients(startMails)).toEqual(['all@example.com', 'web@example.com']);
+    expect(startMails[0]!.subject).toContain('Overlap: In progress');
+
+    // Completion: again two runs at the same time.
+    const endAt = new Date(Date.now() + 5 * HOUR).toISOString();
+    const completed = await Promise.all([
+      runMaintenanceTransitions(db, engine, endAt, notifications),
+      runMaintenanceTransitions(db, engine, endAt, notifications),
+    ]);
+    expect(completed.sort()).toEqual([0, 1]);
+    expect(await updates('completed')).toHaveLength(1);
+    expect(recipients(await deliver())).toEqual(['all@example.com', 'web@example.com']);
+  });
+
+  it('starts and completes a missed window once when runs overlap', async () => {
+    await addSubscriber('all@example.com');
+    const created = await admin.post('/api/admin/maintenances', { title: 'Missed', ...window(1) });
+    await deliver();
+    const { db, engine, notifications } = t.app.ctx;
+    const at = new Date(Date.now() + 5 * HOUR).toISOString();
+    await Promise.all([
+      runMaintenanceTransitions(db, engine, at, notifications),
+      runMaintenanceTransitions(db, engine, at, notifications),
+    ]);
+    const rows = await db
+      .selectFrom('maintenance_updates')
+      .select('status')
+      .where('maintenance_id', '=', created.json().id)
+      .where('created_by', 'is', null)
+      .execute();
+    expect(rows.map((r) => r.status).sort()).toEqual(['completed', 'in_progress']);
+    const mails = await deliver();
+    expect(mails).toHaveLength(1);
+    expect(mails[0]!.subject).toBe('[Example Status] Maintenance Missed: Completed');
+  });
+
   it('never notifies about private maintenance', async () => {
     await addSubscriber('all@example.com');
     const m = await admin.post('/api/admin/maintenances', { title: 'Private', isPublic: false, ...window(1) });
@@ -303,6 +382,7 @@ describe('outbox delivery', () => {
     const { notifications } = t.app.ctx;
 
     let now = Date.now();
+    notifications.clock = () => new Date(now);
     const row = () => t.db.selectFrom('email_outbox').selectAll().executeTakeFirstOrThrow();
     const expectedWaits = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
     for (const wait of expectedWaits) {
@@ -329,6 +409,77 @@ describe('outbox delivery', () => {
     const after = (await admin.get('/api/admin/notifications/status')).json();
     expect(after.queue).toEqual({ pending: 0, failed: 0 });
     expect(after.lastSentAt).toEqual(expect.any(String));
+  });
+
+  it('uses the time of each row, not the batch start, for backoff and timestamps', async () => {
+    await addSubscriber('a@example.com');
+    await addSubscriber('b@example.com');
+    await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
+    const { notifications } = t.app.ctx;
+    const start = Date.now() + 1000;
+    let clock = start;
+    notifications.clock = () => new Date(clock);
+    // Every SMTP attempt takes 30 s; the first fails, the second succeeds.
+    const slow = mailer.send.bind(mailer);
+    mailer.send = async (message) => {
+      clock += 30_000;
+      return slow(message);
+    };
+    mailer.failNext = 1;
+
+    expect(await notifications.deliverDue(new Date(start))).toEqual({ sent: 1, retried: 1, failed: 0 });
+    const rows = await t.db.selectFrom('email_outbox').selectAll().orderBy('recipient').execute();
+    const [failed, sent] = rows[0]!.status === 'pending' ? [rows[0]!, rows[1]!] : [rows[1]!, rows[0]!];
+    const iso = (ms: number) => new Date(ms).toISOString();
+    expect(failed).toMatchObject({
+      status: 'pending',
+      last_attempt_at: iso(start + 30_000),
+      next_attempt_at: iso(start + 30_000 + RETRY_BACKOFF_MS[0]!),
+    });
+    expect(sent).toMatchObject({
+      status: 'sent',
+      sent_at: iso(start + 60_000),
+      last_attempt_at: iso(start + 60_000),
+      // Claimed when its turn came (after the first row's 30 s), not at the batch start.
+      next_attempt_at: iso(start + 30_000 + 10 * 60_000),
+    });
+  });
+
+  it('masks email addresses in SMTP errors before storing and logging them', async () => {
+    await addSubscriber('jane.doe@example.com');
+    await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
+    const warn = vi.spyOn(t.app.log, 'warn');
+    mailer.send = async () => {
+      throw new Error('550 5.1.1 <jane.doe@example.com>: Recipient address rejected');
+    };
+    expect((await deliver()).length).toBe(0);
+    const row = await t.db.selectFrom('email_outbox').selectAll().executeTakeFirstOrThrow();
+    expect(row.last_error).toBe('550 5.1.1 <j***@example.com>: Recipient address rejected');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('jane.doe@example.com');
+    expect(JSON.stringify(warn.mock.calls)).toContain('j***@example.com');
+    const status = (await admin.get('/api/admin/notifications/status')).json();
+    expect(status.lastError.message).not.toContain('jane.doe');
+  });
+
+  it('drops a queued mail whose subscriber is gone at delivery time', async () => {
+    const id = await addSubscriber('all@example.com');
+    await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
+    // Simulate a delete that the foreign key cascade did not catch (e.g. a race).
+    await sql`PRAGMA foreign_keys = OFF`.execute(t.db);
+    await t.db.deleteFrom('subscribers').where('id', '=', id).execute();
+    await sql`PRAGMA foreign_keys = ON`.execute(t.db);
+    expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(1);
+    expect(await deliver()).toHaveLength(0);
+    expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
+  });
+
+  it('sends mails without subscriber as they are', async () => {
+    await t.app.ctx.notifications.enqueue([
+      { subscriberId: null, recipient: 'ops@example.com', kind: 'test', subject: 'Hello', text: 'Plain', html: '<p>Plain</p>' },
+    ]);
+    const [mail] = await deliver();
+    expect(mail).toMatchObject({ to: 'ops@example.com', subject: 'Hello', text: 'Plain', html: '<p>Plain</p>' });
+    expect(mail!.headers).toEqual({ 'Auto-Submitted': 'auto-generated' });
   });
 
   it('drops queued mails of deleted subscribers', async () => {

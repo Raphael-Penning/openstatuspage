@@ -7,10 +7,18 @@
  * subscribers with "all services" plus those subscribed to at least one
  * affected public service.
  *
+ * Tokens: subscriber mails are queued with TOKEN_PLACEHOLDERS instead of the
+ * confirm/manage tokens. deliverOne derives the real tokens (SECRET_KEY +
+ * subscriber id + token_salt) right before sending, so the outbox never holds
+ * a token. Once a row is sent, its bodies and headers are blanked; subject,
+ * kind and status stay for the status view.
+ *
  * Delivery: a worker task sends due rows in batches and retries failures with
- * backoff (1 min, 5 min, 15 min, 1 h); after MAX_ATTEMPTS a row is marked failed.
- * Sent and failed rows are purged after OUTBOX_RETENTION_MS. Mails of a deleted
- * subscriber are dropped by the foreign key cascade.
+ * backoff (1 min, 5 min, 15 min, 1 h); after MAX_ATTEMPTS a row is marked failed
+ * (and keeps its placeholder bodies, so an admin can retry it). Email addresses
+ * in SMTP errors are masked before they are logged or stored. Sent and failed
+ * rows are purged after OUTBOX_RETENTION_MS. Mails of a deleted subscriber are
+ * dropped (foreign key cascade, and at delivery time).
  */
 import type { NotificationStatus } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
@@ -32,7 +40,16 @@ import type { Worker } from '../worker.js';
 import { loadIncident } from './incidents.js';
 import { loadMaintenance } from './maintenances.js';
 import { getSettings } from './settings.js';
-import { purgeUnconfirmed, subscriberLinks, unsubscribeHeaders } from './subscriptions.js';
+import {
+  fillTokens,
+  maskEmailsIn,
+  purgeUnconfirmed,
+  subscriberLinks,
+  subscriberTokens,
+  TOKEN_PLACEHOLDERS,
+  unsubscribeHeaders,
+  type SubscriberLinkSet,
+} from './subscriptions.js';
 
 export const DELIVERY_TASK = 'email-delivery';
 export const DELIVERY_INTERVAL_MS = 10_000;
@@ -59,7 +76,6 @@ interface Recipient {
   id: string;
   email: string;
   locale: 'en' | 'de';
-  token_salt: string;
 }
 
 export interface DeliveryResult {
@@ -71,6 +87,9 @@ export interface DeliveryResult {
 const BASE_HEADERS = { 'Auto-Submitted': 'auto-generated' };
 
 export class NotificationService {
+  /** Current time; replaced in tests. */
+  clock: () => Date = () => new Date();
+
   constructor(
     private readonly db: DB,
     private readonly config: Config,
@@ -88,8 +107,11 @@ export class NotificationService {
     }
   }
 
-  /** Inserts mails into the outbox and triggers delivery. */
-  async enqueue(mails: OutboxMail[], now = new Date()): Promise<void> {
+  /**
+   * Inserts mails into the outbox and triggers delivery. Subscriber mails must be
+   * rendered with TOKEN_PLACEHOLDERS, never with real tokens.
+   */
+  async enqueue(mails: OutboxMail[], now = this.clock()): Promise<void> {
     if (mails.length === 0) return;
     const nowIso = now.toISOString();
     for (let i = 0; i < mails.length; i += INSERT_CHUNK) {
@@ -135,7 +157,7 @@ export class NotificationService {
   async recipients(publicServiceIds: string[]): Promise<Recipient[]> {
     return this.db
       .selectFrom('subscribers')
-      .select(['id', 'email', 'locale', 'token_salt'])
+      .select(['id', 'email', 'locale'])
       .where('confirmed_at', 'is not', null)
       .where((eb) =>
         publicServiceIds.length === 0
@@ -158,11 +180,12 @@ export class NotificationService {
   private async fanOut(
     kind: string,
     publicServiceIds: string[],
-    render: (r: Recipient, links: { manageUrl: string; unsubscribeUrl: string }) => RenderedMail,
+    render: (r: Recipient, links: SubscriberLinkSet) => RenderedMail,
   ): Promise<number> {
     const recipients = await this.recipients(publicServiceIds);
     const mails = recipients.map((r): OutboxMail => {
-      const links = subscriberLinks(this.config, r);
+      // Placeholders only: deliverOne fills in the real tokens right before sending.
+      const links = subscriberLinks(this.config, r.id, TOKEN_PLACEHOLDERS);
       return {
         subscriberId: r.id,
         recipient: r.email,
@@ -288,55 +311,98 @@ export class NotificationService {
     return reminded;
   }
 
-  /** Sends due outbox rows. Does nothing without a transport (rows stay pending). */
-  async deliverDue(now = new Date(), limit = DELIVERY_BATCH): Promise<DeliveryResult> {
+  /**
+   * Sends due outbox rows. `now` (the batch start) only selects the due rows; claims,
+   * backoff and timestamps use the current time of each row, since sending a batch
+   * can take a while. Does nothing without a transport (rows stay pending).
+   */
+  async deliverDue(now = this.clock(), limit = DELIVERY_BATCH): Promise<DeliveryResult> {
     const result: DeliveryResult = { sent: 0, retried: 0, failed: 0 };
     if (!mailerConfigured(this.mailer)) return result;
-    const nowIso = now.toISOString();
     const rows = await this.db
       .selectFrom('email_outbox')
       .selectAll()
       .where('status', '=', 'pending')
-      .where('next_attempt_at', '<=', nowIso)
+      .where('next_attempt_at', '<=', now.toISOString())
       .orderBy('next_attempt_at')
       .orderBy('created_at')
       .limit(limit)
       .execute();
 
     for (const row of rows) {
+      const claimedAt = this.clock();
       const claimed = await this.db
         .updateTable('email_outbox')
-        .set({ next_attempt_at: new Date(now.getTime() + CLAIM_MS).toISOString() })
+        .set({ next_attempt_at: new Date(claimedAt.getTime() + CLAIM_MS).toISOString() })
         .where('id', '=', row.id)
         .where('status', '=', 'pending')
         .where('next_attempt_at', '=', row.next_attempt_at)
         .executeTakeFirst();
       if (Number(claimed.numUpdatedRows) === 0) continue;
-      await this.deliverOne(row, now, result);
+      await this.deliverOne(row, result);
     }
     if (result.sent + result.retried + result.failed > 0) this.log.debug({ ...result }, 'email outbox processed');
     return result;
   }
 
-  private async deliverOne(row: OutboxRow, now: Date, result: DeliveryResult): Promise<void> {
-    const nowIso = now.toISOString();
+  /**
+   * Bodies and headers of a row with the subscriber's real tokens filled in (derived
+   * here, never stored). Rows without subscriber are used as they are. Returns null
+   * when the subscriber no longer exists.
+   */
+  private async prepare(row: OutboxRow): Promise<{ text: string; html: string; headers?: string } | null> {
+    const headers = row.headers ?? undefined;
+    if (row.subscriber_id === null) return { text: row.text_body, html: row.html_body, headers };
+    const sub = await this.db
+      .selectFrom('subscribers')
+      .select(['id', 'token_salt'])
+      .where('id', '=', row.subscriber_id)
+      .executeTakeFirst();
+    if (!sub) return null;
+    const tokens = subscriberTokens(this.config, sub);
+    return {
+      text: fillTokens(row.text_body, tokens),
+      html: fillTokens(row.html_body, tokens),
+      headers: headers === undefined ? undefined : fillTokens(headers, tokens),
+    };
+  }
+
+  private async deliverOne(row: OutboxRow, result: DeliveryResult): Promise<void> {
     const attempts = row.attempts + 1;
+    const mail = await this.prepare(row);
+    if (!mail) {
+      await this.db.deleteFrom('email_outbox').where('id', '=', row.id).execute();
+      return;
+    }
     try {
       await this.mailer.send({
         to: row.recipient,
         subject: row.subject,
-        text: row.text_body,
-        html: row.html_body,
-        headers: row.headers ? (JSON.parse(row.headers) as Record<string, string>) : undefined,
+        text: mail.text,
+        html: mail.html,
+        headers: mail.headers ? (JSON.parse(mail.headers) as Record<string, string>) : undefined,
       });
+      const sentAt = this.clock().toISOString();
+      // Bodies and headers are not needed any more; subject, kind and status stay for the status view.
       await this.db
         .updateTable('email_outbox')
-        .set({ status: 'sent', attempts, sent_at: nowIso, last_attempt_at: nowIso, last_error: null })
+        .set({
+          status: 'sent',
+          attempts,
+          sent_at: sentAt,
+          last_attempt_at: sentAt,
+          last_error: null,
+          text_body: '',
+          html_body: '',
+          headers: null,
+        })
         .where('id', '=', row.id)
         .execute();
       result.sent++;
     } catch (err) {
-      const message = (err instanceof Error ? err.message : String(err)).slice(0, 1000);
+      const at = this.clock();
+      // SMTP errors often quote the recipient: mask addresses before logging and storing.
+      const message = maskEmailsIn(err instanceof Error ? err.message : String(err)).slice(0, 1000);
       const failed = attempts >= MAX_ATTEMPTS;
       const backoff = RETRY_BACKOFF_MS[Math.min(attempts, RETRY_BACKOFF_MS.length) - 1]!;
       await this.db
@@ -345,8 +411,8 @@ export class NotificationService {
           status: failed ? 'failed' : 'pending',
           attempts,
           last_error: message,
-          last_attempt_at: nowIso,
-          next_attempt_at: failed ? nowIso : new Date(now.getTime() + backoff).toISOString(),
+          last_attempt_at: at.toISOString(),
+          next_attempt_at: failed ? at.toISOString() : new Date(at.getTime() + backoff).toISOString(),
         })
         .where('id', '=', row.id)
         .execute();

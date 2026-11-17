@@ -721,8 +721,11 @@ export const SubscribeInput = z
     email: z.email().max(254),
     locale: zSubscriptionLocale.default('en'),
     ...subscriptionScope,
-    /** Honeypot for bots: must be absent or empty. */
-    website: z.string().max(0).optional(),
+    /**
+     * Honeypot for bots (hidden field, humans leave it empty). A filled-in value is
+     * accepted and answered like a successful subscribe, but nothing is created or sent.
+     */
+    website: z.string().max(500).optional(),
   })
   .refine(requireServices, requireServicesIssue);
 export type SubscribeInput = z.infer<typeof SubscribeInput>;

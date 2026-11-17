@@ -28,6 +28,7 @@ import {
   findByToken,
   subscribe,
   subscriberLinks,
+  subscriberTokens,
   subscriptionsAvailable,
   toPublicSubscription,
   updatePreferences,
@@ -67,6 +68,8 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
       async (req, reply) => {
         if (!(await subscriptionsAvailable(ctx))) throw notFound('Subscriptions');
         const input = parse(SubscribeInput, req.body);
+        // Honeypot filled in (bots): answer like a successful subscribe, but create and send nothing.
+        if (input.website) return reply.status(202).send({ ok: true });
         await subscribe(ctx, input);
         // Same answer for new, pending and confirmed addresses (no enumeration).
         return reply.status(202).send({ ok: true });
@@ -112,7 +115,8 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
       const { id } = parse(IdParams, req.params);
       const { token } = parse(TokenQuery, req.query);
       const sub = await findByToken(ctx, id, 'manage', token);
-      return reply.redirect(subscriberLinks(ctx.config, sub).unsubscribeUrl, 303);
+      // The manage page reads the token from the URL fragment.
+      return reply.redirect(subscriberLinks(ctx.config, sub.id, subscriberTokens(ctx.config, sub)).unsubscribeUrl, 303);
     });
   });
 }
