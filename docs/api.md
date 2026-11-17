@@ -57,13 +57,17 @@ Double opt-in; see [notifications.md](notifications.md). Responses are sent with
 Behaviour of `POST /api/public/subscriptions`:
 
 - new address: pending subscriber, confirmation email;
-- pending address: preferences replaced, confirmation email sent again;
+- pending address: preferences unchanged, confirmation email sent again (the
+  choice can be changed on the manage page after confirming);
 - confirmed address: preferences unchanged, email with the manage link;
 - `website` (honeypot, any string up to 500 characters) not empty: answered exactly
   like a successful subscribe (`202 { ok: true }`), but nothing is created and no
   email is sent. Real visitors never see the field.
 
-At most one confirmation/manage email per address every 10 minutes. The endpoints
+The input is validated (`400`) before answering; everything that depends on the
+address runs after the `202` has been sent, so the response time does not reveal
+whether an address is subscribed either. At most one confirmation/manage email
+per address every 10 minutes. The endpoints
 other than subscribe keep working when subscriptions are disabled later, so
 subscribers can always unsubscribe. Rate limit for the token endpoints: 30/min per IP.
 

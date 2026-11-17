@@ -1,7 +1,7 @@
 /**
  * /api/public/subscriptions: email subscriptions with double opt-in (no login).
  *
- *   POST   /api/public/subscriptions                 subscribe (always 202, rate limited)
+ *   POST   /api/public/subscriptions                 subscribe (always 202, work runs after the answer, rate limited)
  *   POST   /api/public/subscriptions/:id/confirm     confirm with the emailed token
  *   GET    /api/public/subscriptions/:id             \
  *   PUT    /api/public/subscriptions/:id              } manage, token in X-Subscription-Token
@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { notFound } from '../lib/errors.js';
 import { IdParams, parse } from '../lib/http.js';
 import {
+  assertPublicServices,
   confirmSubscription,
   deleteSubscriber,
   findByToken,
@@ -70,8 +71,16 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
         const input = parse(SubscribeInput, req.body);
         // Honeypot filled in (bots): answer like a successful subscribe, but create and send nothing.
         if (input.website) return reply.status(202).send({ ok: true });
-        await subscribe(ctx, input);
-        // Same answer for new, pending and confirmed addresses (no enumeration).
+        // Checked before answering (400 on unknown or hidden services); does not look at subscribers.
+        const serviceIds = input.allServices ? [] : await assertPublicServices(ctx.db, input.serviceIds);
+        // What happens next, and how long it takes, depends on whether the address is
+        // new, pending or confirmed. It runs once the answer has been sent, so neither
+        // the answer nor its timing reveals whether an address is subscribed.
+        const answered = new Promise<void>((resolve) => reply.raw.once('close', () => resolve()));
+        ctx.worker.runDetached('subscribe', async () => {
+          await answered;
+          await subscribe(ctx, { ...input, serviceIds });
+        });
         return reply.status(202).send({ ok: true });
       },
     );
