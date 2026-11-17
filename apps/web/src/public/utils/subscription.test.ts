@@ -1,6 +1,7 @@
 import { SubscribeInput, type PublicService, type PublicServiceGroup } from '@openstatuspage/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  hashParam,
   knownServiceIds,
   linkParams,
   managePath,
@@ -92,21 +93,58 @@ describe('toSubscriptionLocale', () => {
   });
 });
 
+describe('hashParam', () => {
+  it('reads and decodes a fragment parameter', () => {
+    expect(hashParam('#token=a%2Bb', 'token')).toBe('a+b');
+    expect(hashParam('token=x+y&other=1', 'token')).toBe('x+y');
+    expect(hashParam('#other=1&token=t0k', 'token')).toBe('t0k');
+  });
+
+  it('returns null when absent or malformed', () => {
+    expect(hashParam('', 'token')).toBeNull();
+    expect(hashParam('#tokens=x', 'token')).toBeNull();
+    expect(hashParam('#token=%E0%A4%A', 'token')).toBeNull();
+  });
+});
+
 describe('linkParams', () => {
-  it('reads id and token', () => {
+  it('reads the id from the query and the token from the fragment', () => {
+    expect(linkParams(new URLSearchParams('id=abc'), '#token=t0k')).toEqual({ id: 'abc', token: 't0k' });
+    expect(linkParams(new URLSearchParams('id=abc&unsubscribe=1'), '#token=a-b_c')).toEqual({ id: 'abc', token: 'a-b_c' });
+  });
+
+  it('prefers the fragment token over a query token', () => {
+    expect(linkParams(new URLSearchParams('id=abc&token=old'), '#token=new')).toEqual({ id: 'abc', token: 'new' });
+  });
+
+  it('falls back to a token in the query', () => {
     expect(linkParams(new URLSearchParams('id=abc&token=t0k'))).toEqual({ id: 'abc', token: 't0k' });
+    expect(linkParams(new URLSearchParams('id=abc&token=t0k'), '#token=%20')).toEqual({ id: 'abc', token: 't0k' });
+    expect(linkParams(new URLSearchParams('id=abc&token=t0k'), '#token=%E0%A4%A')).toEqual({ id: 'abc', token: 't0k' });
   });
 
   it('returns null when a value is missing or blank', () => {
     expect(linkParams(new URLSearchParams('id=abc'))).toBeNull();
+    expect(linkParams(new URLSearchParams('id=abc'), '#')).toBeNull();
+    expect(linkParams(new URLSearchParams(''), '#token=t0k')).toBeNull();
     expect(linkParams(new URLSearchParams('token=t0k'))).toBeNull();
-    expect(linkParams(new URLSearchParams('id=%20&token=t0k'))).toBeNull();
+    expect(linkParams(new URLSearchParams('id=%20'), '#token=t0k')).toBeNull();
   });
 
-  it('round-trips through managePath', () => {
+  it('round-trips through managePath with the token in the fragment', () => {
     const path = managePath('a b', 'x+y/z=');
     expect(path.startsWith('/subscription/manage?')).toBe(true);
-    expect(linkParams(new URLSearchParams(path.split('?')[1]))).toEqual({ id: 'a b', token: 'x+y/z=' });
+    const url = new URL(path, 'https://status.example.com');
+    expect(url.searchParams.has('token')).toBe(false);
+    expect(url.searchParams.has('unsubscribe')).toBe(false);
+    expect(linkParams(url.searchParams, url.hash)).toEqual({ id: 'a b', token: 'x+y/z=' });
+  });
+
+  it('adds unsubscribe=1 to the query when asked', () => {
+    const url = new URL(managePath('abc', 't0k', { unsubscribe: true }), 'https://status.example.com');
+    expect(url.pathname).toBe('/subscription/manage');
+    expect(url.searchParams.get('unsubscribe')).toBe('1');
+    expect(url.hash).toBe('#token=t0k');
   });
 });
 
