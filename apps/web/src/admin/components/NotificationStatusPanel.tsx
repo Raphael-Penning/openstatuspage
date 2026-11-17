@@ -11,6 +11,7 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../lib/api';
 import { useFormat } from '../lib/format';
+import { testResultMessage, type TestEmailResponse } from '../lib/notifications';
 import { useAdminMutation, useNotificationStatus } from '../lib/queries';
 import { useForm } from '../lib/useForm';
 import { useSession } from '../session';
@@ -20,6 +21,7 @@ import { Badge, Button, QueryState } from './ui';
 
 interface TestResult {
   ok: boolean;
+  /** Localized on success, the server message (SMTP error) on failure. */
   message: string;
 }
 
@@ -70,10 +72,12 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
   const form = useForm({ to: user.email });
   const [result, setResult] = useState<TestResult | null>(null);
 
-  const test = useAdminMutation((body: TestEmailInput) => api.post<TestResult>('/api/admin/notifications/test', body), {
-    onSuccess: (r) => {
-      setResult(r);
-      if (r.ok) toast.success(t('notifications.testSent'));
+  const test = useAdminMutation((body: TestEmailInput) => api.post<TestEmailResponse>('/api/admin/notifications/test', body), {
+    onSuccess: (r, body) => {
+      const msg = testResultMessage(r, s.transport, body.to);
+      const message = 'text' in msg ? msg.text : t(msg.key, msg.values ?? {});
+      setResult({ ok: r.ok, message });
+      if (r.ok) toast.success(message);
       else toast.error(t('notifications.testFailed'));
     },
     onError: (error) => {

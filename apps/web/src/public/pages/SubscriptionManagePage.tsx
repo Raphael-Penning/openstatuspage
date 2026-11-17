@@ -1,13 +1,15 @@
 /**
- * /subscription/manage?id=…&token=…: change language and scope of a
+ * /subscription/manage?id=…#token=…: change language and scope of a
  * subscription or unsubscribe. The token comes from the emails (or the
- * confirmation page) and is sent as X-Subscription-Token header.
+ * confirmation page) in the URL fragment, so it never reaches the server via
+ * the URL, and is sent as X-Subscription-Token header. A token in the query is
+ * still accepted for older links.
  */
 import { SubscriptionPreferencesInput, type PublicSubscription, type SubscriptionLocale } from '@openstatuspage/shared';
 import { CircleCheck, Clock, Loader2, MailMinus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
 import {
   dangerButton,
@@ -36,7 +38,8 @@ export function SubscriptionManagePage() {
   const { t } = useTranslation('public');
   useDocumentTitle(t('subscription.manage.title'));
   const [params] = useSearchParams();
-  const link = linkParams(params);
+  const { hash } = useLocation();
+  const link = linkParams(params, hash);
   return (
     <>
       <NoReferrer />

@@ -70,16 +70,45 @@ export function toSubscriptionLocale(language: string | null | undefined): Subsc
   return (SUBSCRIPTION_LOCALES as readonly string[]).includes(base) ? (base as SubscriptionLocale) : 'en';
 }
 
-/** Reads `id` and `token` of a confirmation or manage link; null when one is missing or blank. */
-export function linkParams(params: URLSearchParams): { id: string; token: string } | null {
+/** Reads a parameter of a URL fragment ("#token=…&x=…"), percent-decoded; null when absent or malformed. */
+export function hashParam(hash: string, name: string): string | null {
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  for (const part of raw.split('&')) {
+    const eq = part.indexOf('=');
+    const key = eq === -1 ? part : part.slice(0, eq);
+    if (key !== name) continue;
+    try {
+      // decodeURIComponent keeps "+" literal (base64 tokens), unlike URLSearchParams.
+      return decodeURIComponent(eq === -1 ? '' : part.slice(eq + 1));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export interface LinkParams {
+  id: string;
+  token: string;
+}
+
+/**
+ * Reads `id` and `token` of a confirmation or manage link; null when one is
+ * missing or blank. The id comes from the query, the token from the URL
+ * fragment (`#token=…`, never sent to the server, proxies or logs). A token in
+ * the query is still accepted as a fallback for older links.
+ */
+export function linkParams(params: URLSearchParams, hash = ''): LinkParams | null {
   const id = params.get('id')?.trim();
-  const token = params.get('token')?.trim();
+  const token = hashParam(hash, 'token')?.trim() || params.get('token')?.trim();
   return id && token ? { id, token } : null;
 }
 
-/** Path of the manage page for a subscription. */
-export function managePath(id: string, token: string): string {
-  return `/subscription/manage?${new URLSearchParams({ id, token }).toString()}`;
+/** Path of the manage page for a subscription; the token goes into the fragment. */
+export function managePath(id: string, token: string, options: { unsubscribe?: boolean } = {}): string {
+  const query = new URLSearchParams({ id });
+  if (options.unsubscribe) query.set('unsubscribe', '1');
+  return `/subscription/manage?${query.toString()}#token=${encodeURIComponent(token)}`;
 }
 
 /** Form fields of the subscription forms that can carry an error. */

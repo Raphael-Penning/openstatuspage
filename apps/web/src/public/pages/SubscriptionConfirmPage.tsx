@@ -1,10 +1,11 @@
 /**
- * /subscription/confirm?id=…&token=…: target of the double opt-in email.
+ * /subscription/confirm?id=…#token=…: target of the double opt-in email. The
+ * token sits in the URL fragment so it never reaches the server or its logs.
  */
 import type { PublicSubscription } from '@openstatuspage/shared';
 import { Loader2, MailCheck, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { InvalidLinkState, NoReferrer, primaryButton, ResultState, secondaryButton } from '../components/Subscription';
 import { ErrorState } from '../components/ui';
 import { useDocumentTitle } from '../hooks/dom';
@@ -16,7 +17,8 @@ export function SubscriptionConfirmPage() {
   const { t } = useTranslation('public');
   useDocumentTitle(t('subscription.confirm.title'));
   const [params] = useSearchParams();
-  const link = linkParams(params);
+  const { hash } = useLocation();
+  const link = linkParams(params, hash);
   return (
     <>
       <NoReferrer />
