@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -48,3 +49,123 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate
       - run: pnpm db:seed
+
+  image:
+    # Builds the container image (docker/Dockerfile). Pull requests only build it
+    # (linux/amd64, nothing is pushed). Pushes to main and version tags publish a
+    # multi-arch image to the GitHub Container Registry, but only after "check"
+    # and "postgres" passed. Tags are described in docs/releasing.md.
+    needs: [check, postgres]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      # One image build per ref. A newer push to a pull request replaces its running
+      # build; builds of main and release tags always finish, so every commit of
+      # main gets its sha- tag.
+      group: image-${{ github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    env:
+      PUSH: ${{ github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Image name
+        id: image
+        # ghcr.io/<owner>/<repo> in lower case, so forks publish to their own namespace.
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Release channels
+        id: release
+        # For a stable tag vX.Y.Z decide which moving tags it may take: "latest",
+        # "X" and "X.Y" only move when this is the highest stable version overall,
+        # in its major line or in its minor line. A backport such as v1.4.9 after
+        # v2.0.0 therefore gets "1.4.9" and "1.4" but leaves "1" and "latest" alone
+        # if a newer 1.x exists. Pre-releases (v1.2.0-rc.1) never take moving tags.
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "$TAG is not a stable release tag, only the exact version is published"
+            exit 0
+          fi
+          major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"
+          # A failing API call must fail the job: without the list every tag would look
+          # like the highest one and a backport would move "latest".
+          refs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --jq '.[].ref')"
+          stable="$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"${refs//refs\/tags\//}" || true)"
+          stable="$(printf '%s\n%s\n' "$stable" "$TAG" | sed '/^$/d' | sort -u -V)"
+          highest() { grep -E "^$1" <<<"$stable" | tail -n 1; }
+          latest=false; major_tag=false; minor_tag=false
+          [[ "$(highest 'v')" == "$TAG" ]] && latest=true
+          # 0.x releases get no bare major tag ("0" would mean nothing).
+          [[ "$major" != 0 && "$(highest "v$major\\.")" == "$TAG" ]] && major_tag=true
+          [[ "$(highest "v$major\\.$minor\\.")" == "$TAG" ]] && minor_tag=true
+          {
+            echo "latest=$latest"
+            echo "major=$major_tag"
+            echo "minor=$minor_tag"
+          } | tee -a "$GITHUB_OUTPUT"
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        env:
+          # Index annotations need a pushed multi-arch image.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: ${{ env.PUSH == 'true' && 'manifest,index' || 'manifest' }}
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=edge,branch=main
+            type=sha,prefix=sha-,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.release.outputs.minor == 'true' }}
+            type=semver,pattern={{major}},enable=${{ steps.release.outputs.major == 'true' }}
+            type=raw,value=latest,enable=${{ steps.release.outputs.latest == 'true' }}
+            type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=OpenStatusPage
+            org.opencontainers.image.description=Self-hosted status page that keeps your infrastructure private
+            org.opencontainers.image.licenses=AGPL-3.0-only
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          annotations: |
+            org.opencontainers.image.title=OpenStatusPage
+            org.opencontainers.image.description=Self-hosted status page that keeps your infrastructure private
+            org.opencontainers.image.licenses=AGPL-3.0-only
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - uses: docker/setup-qemu-action@v4
+        if: env.PUSH == 'true'
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to the GitHub Container Registry
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ env.PUSH == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          # Pull requests read the cache of main but do not write their own.
+          cache-to: ${{ env.PUSH == 'true' && 'type=gha,mode=max' || '' }}
+          provenance: ${{ env.PUSH == 'true' && 'mode=max' || 'false' }}
+          sbom: ${{ env.PUSH == 'true' }}
