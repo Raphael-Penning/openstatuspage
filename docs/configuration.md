@@ -89,8 +89,10 @@ for setup examples, deliverability and troubleshooting.
 | `SMTP_FROM` | – | Sender, e.g. `Example Status <status@example.com>`. Required for `smtp` and `log`. |
 | `SMTP_TLS_REJECT_UNAUTHORIZED` | `true` | Verify the SMTP server certificate. Only set `false` for relays with self-signed certificates inside a trusted network. |
 
-With Docker Compose these variables are passed through from the shell or the env
-file (`--env-file`, or `docker/.env`); the compose file does not need to be edited.
+With Docker Compose every variable goes into the `.env` next to `compose.yaml`
+(`deploy/compose/.env` in a clone); the whole file reaches the container and
+`docker compose up -d` applies changes. Only `DATABASE_URL`, `HOST` and `PORT`
+are set by `compose.yaml` itself (use `HOST_PORT` for the published port).
 
 `BASE_URL` must be the public URL of the status page: all links in emails use it.
 Confirmation and unsubscribe links are signed with `SECRET_KEY`; changing it

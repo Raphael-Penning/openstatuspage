@@ -6,7 +6,8 @@ apps/
   web/      React SPA: public status page (/) and management UI (/admin)
 packages/
   shared/   zod schemas, API types and status vocabulary used by both apps
-docker/     Dockerfile and docker-compose example
+docker/     Dockerfile
+deploy/     compose/ (Docker Compose, release assets) and kubernetes/ manifests
 docs/       documentation
 ```
 

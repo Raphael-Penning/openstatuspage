@@ -26,45 +26,43 @@ management area.
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
 - **Public API and RSS/Atom feeds**
 
-## Quick start (Docker)
+## Quick start (Docker Compose)
 
 Prebuilt multi-arch images (amd64, arm64) are published to the GitHub
-Container Registry as `ghcr.io/raphael-penning/openstatuspage`. Get the compose
-file (or clone the repository), create a private env file and start the stack
-with PostgreSQL:
+Container Registry as `ghcr.io/raphael-penning/openstatuspage`. Every release
+ships a `compose.yaml` (the app and PostgreSQL) and a settings template.
+Install the newest release into a new directory:
 
 ```bash
-mkdir -p openstatuspage/docker && cd openstatuspage
-curl -fsSL -o docker/docker-compose.yml \
-  https://raw.githubusercontent.com/Raphael-Penning/openstatuspage/main/docker/docker-compose.yml
-
-touch deploy.env && chmod 600 deploy.env
-cat >> deploy.env <<EOF
-SECRET_KEY=$(openssl rand -base64 48)
-POSTGRES_PASSWORD=$(openssl rand -hex 16)
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=a-long-password
-OSP_VERSION=latest   # or a release such as 1.2.3; "edge" until the first release
-EOF
-
-docker compose --env-file deploy.env -f docker/docker-compose.yml pull
-docker compose --env-file deploy.env -f docker/docker-compose.yml up -d
+mkdir openstatuspage && cd openstatuspage
+curl -fsSLO https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/compose.yaml
+curl -fsSL -o .env https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/env.example
+printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
+chmod 600 .env
+# edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD (and HOST_PORT / TRUST_PROXY for your proxy)
+docker compose up -d
 ```
 
-The status page is then served on http://localhost:3000 and the management UI on
-http://localhost:3000/admin. Keep `deploy.env`: later commands need the same
-secrets. Add `BASE_URL` (the public URL), `HOST_PORT` (published port) and
-`OSP_VERSION` to it; pinning a release such as `OSP_VERSION=1.2.3` is
-recommended, the default `latest` is the newest stable release and `edge` the
-current `main` branch. Optional demo data:
-`docker compose --env-file deploy.env -f docker/docker-compose.yml exec openstatuspage node server/dist/cli/seed.js`.
+No reverse proxy is included: put your own proxy with HTTPS in front of the
+app, see [Reverse proxy and HTTPS](docs/guide/en/03-reverse-proxy.md), then
+open `BASE_URL/admin` and log in. With an `https://` `BASE_URL` the login
+cookie is Secure, so logging in over plain `http://<host>:3000` does not
+work; before the proxy is ready use `http://localhost:3000` on the host
+(e.g. through `ssh -L 3000:127.0.0.1:3000 <host>`). All settings,
+including mail and single sign-on, go into `.env`; keep a copy of
+`SECRET_KEY` and `POSTGRES_PASSWORD`. The downloaded files are pinned to
+their release via `OSP_VERSION` in `.env`; change it deliberately to
+upgrade. Later commands are plain `docker compose ...` in that directory.
 
-To build the image from a checkout instead, add the build override:
-`docker compose --env-file deploy.env -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d --build`.
+To build the image from a clone instead, create `.env` the same way in
+[`deploy/compose/`](deploy/compose/) and run
+`docker compose -f compose.yaml -f compose.build.yaml up -d --build` there
+(see [building the image yourself](docs/guide/en/02-installation.md#building-the-image-yourself)).
 
 The [installation and deployment guide](docs/guide/en/02-installation.md)
-covers HTTPS, SQLite, Kubernetes ([example manifests](deploy/kubernetes/)) and
-upgrades. See [docs/configuration.md](docs/configuration.md) for all settings,
+covers the Compose setup in detail, SQLite, Kubernetes
+([example manifests](deploy/kubernetes/)) and upgrades. See
+[docs/configuration.md](docs/configuration.md) for all settings,
 [CONTRIBUTING.md](CONTRIBUTING.md) for local development and
 [docs/releasing.md](docs/releasing.md) for how images and releases are made.
 

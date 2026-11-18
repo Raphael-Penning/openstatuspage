@@ -10,15 +10,16 @@ Reverse Proxy, der HTTPS übernimmt. Drei Dinge müssen zusammenpassen:
    damit sie die echte IP des Clients sieht.
 
 Läuft der Proxy auf demselben Host, veröffentlichst du den Port der Anwendung
-nur auf localhost (`HOST_PORT=127.0.0.1:3000` in `deploy.env` mit Docker
+nur auf localhost (`HOST_PORT=127.0.0.1:3000` in `.env` mit Docker
 Compose, `-p 127.0.0.1:3000:3000` beim einzelnen Container, `HOST=127.0.0.1`
 beim Betrieb aus dem Quellcode). So kann niemand den Proxy umgehen. Unter
 Kubernetes übernimmt der [Ingress](#kubernetes-ingress) die Rolle des Proxys.
 
-Die Compose-Datei reicht `TRUST_PROXY` nicht in den Container durch. Ergänze
-die Variable in einer Override-Datei, wie unter
-[Installation](02-installation.md#weitere-umgebungsvariablen) und in den
-Beispielen für Caddy und Traefik unten gezeigt.
+Mit Docker Compose kommen `BASE_URL`, `TRUST_PROXY` und `HOST_PORT` in
+`.env` neben `compose.yaml` (siehe
+[Installation](02-installation.md#einstellungen-in-env)); die Vorlage
+enthält `TRUST_PROXY=1` bereits. Änderungen übernimmst du mit
+`docker compose up -d`.
 
 ## BASE_URL
 
@@ -70,22 +71,18 @@ Konfiguration: `BASE_URL=https://status.example.com`, `TRUST_PROXY=1`.
 ### Caddy im Compose-Setup
 
 Caddy kann auch als dritter Dienst neben der Anwendung laufen. Leg dazu zwei
-Dateien neben `docker/docker-compose.yml` an (relative Pfade in
-Compose-Dateien beziehen sich auf das Verzeichnis der ersten Datei):
+Dateien neben `compose.yaml` an:
 
 ```caddyfile
-# docker/Caddyfile
+# Caddyfile
 status.example.com {
     reverse_proxy openstatuspage:3000
 }
 ```
 
 ```yaml
-# docker/docker-compose.caddy.yml
+# compose.caddy.yaml
 services:
-  openstatuspage:
-    environment:
-      TRUST_PROXY: "1"
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -104,15 +101,18 @@ volumes:
   caddy_config:
 ```
 
-Lass `HOST_PORT=127.0.0.1:3000` in `deploy.env` stehen: Caddy erreicht die
-Anwendung über das Compose-Netz, und der veröffentlichte Port bleibt für
-deine eigenen Prüfungen auf localhost. Starte alles mit beiden Dateien und
-nutze sie bei jedem weiteren Befehl:
+Setze in `.env` `BASE_URL=https://status.example.com`, `TRUST_PROXY=1` und
+`HOST_PORT=127.0.0.1:3000`: Caddy erreicht die Anwendung über das
+Compose-Netz, und der veröffentlichte Port bleibt für deine eigenen
+Prüfungen auf localhost. Starte alles mit beiden Dateien:
 
 ```bash
-docker compose --env-file deploy.env \
-  -f docker/docker-compose.yml -f docker/docker-compose.caddy.yml up -d
+docker compose -f compose.yaml -f compose.caddy.yaml up -d
 ```
+
+Gib beide Dateien bei jedem weiteren Befehl an, oder trag
+`COMPOSE_FILE=compose.yaml:compose.caddy.yaml` in `.env` ein; dann schließen
+auch einfache `docker compose ...`-Befehle Caddy ein.
 
 Der DNS-Name muss auf den Host zeigen, und die Ports 80 und 443 müssen aus
 dem Internet erreichbar sein, damit Caddy das Zertifikat bekommt. Das Volume
@@ -154,15 +154,14 @@ Zertifikate bekommst du z. B. mit certbot oder einem anderen ACME-Client.
 ## Traefik
 
 Läuft Traefik als Docker-Container, ergänzt du am Dienst `openstatuspage`
-in einer Override-Datei Labels. Traefik erreicht den Container direkt; lass
-`HOST_PORT=127.0.0.1:3000` (oder einen anderen Port auf localhost) stehen:
+in einer Override-Datei neben `compose.yaml` Labels. Traefik erreicht den
+Container direkt; lass `HOST_PORT=127.0.0.1:3000` (oder einen anderen Port
+auf localhost) stehen:
 
 ```yaml
-# docker/docker-compose.traefik.yml
+# compose.traefik.yaml
 services:
   openstatuspage:
-    environment:
-      TRUST_PROXY: "1"
     labels:
       - traefik.enable=true
       - traefik.http.routers.openstatuspage.rule=Host(`status.example.com`)
@@ -171,8 +170,9 @@ services:
       - traefik.http.services.openstatuspage.loadbalancer.server.port=3000
 ```
 
-Setze `BASE_URL=https://status.example.com` in `deploy.env` und übergib die
-Datei mit einem zusätzlichen `-f docker/docker-compose.traefik.yml`.
+Setze `BASE_URL=https://status.example.com` und `TRUST_PROXY=1` in `.env`
+und starte mit `docker compose -f compose.yaml -f compose.traefik.yaml up -d`
+(oder `COMPOSE_FILE=compose.yaml:compose.traefik.yaml` in `.env`).
 Entrypoint (`websecure`) und Zertifikats-Resolver (`letsencrypt`) sind die
 Namen aus deiner statischen Traefik-Konfiguration. Der Container muss in
 einem Netz hängen, mit dem Traefik verbunden ist (trag es in der
