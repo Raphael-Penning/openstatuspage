@@ -1,5 +1,7 @@
 # OpenStatusPage
 
+ [LIVE DEMO HERE](https://openstatus.partlabs.de/)
+
 A self-hosted, open-source status page for companies that want to keep their
 customers informed **without exposing their internal infrastructure**.
 
