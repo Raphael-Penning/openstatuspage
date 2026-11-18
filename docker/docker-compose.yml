@@ -1,10 +1,34 @@
-# Example deployment with PostgreSQL. For SQLite, remove the db service and
-# DATABASE_URL; data is then stored in the "data" volume.
+# OpenStatusPage with PostgreSQL, using the prebuilt image from the GitHub
+# Container Registry (built by .github/workflows/ci.yml, see docs/releasing.md).
+#
+# Put your settings into a private env file (e.g. deploy.env, chmod 600):
+#
+#   SECRET_KEY=...            # openssl rand -base64 48, keep it, see docs/guide
+#   POSTGRES_PASSWORD=...     # openssl rand -hex 16, keep it as well
+#   BASE_URL=https://status.example.com
+#   HOST_PORT=127.0.0.1:3000  # localhost only, behind a reverse proxy
+#   OSP_VERSION=1.2.3         # recommended: pin a release instead of "latest"
+#                             # (before the first release only "edge" exists)
+#
+# and start or update the stack with:
+#
+#   docker compose --env-file deploy.env -f docker/docker-compose.yml pull
+#   docker compose --env-file deploy.env -f docker/docker-compose.yml up -d
+#
+# Image tags: "X.Y.Z" (a release), "X.Y" / "X" (newest release in that line),
+# "latest" (newest stable release), "edge" (current main, not for production).
+# OSP_IMAGE selects another registry or a fork's image.
+#
+# To build the image from this checkout instead, add the build override:
+#
+#   docker compose --env-file deploy.env -f docker/docker-compose.yml \
+#     -f docker/docker-compose.build.yml up -d --build
+#
+# For SQLite, remove the db service, depends_on, the pg volume and DATABASE_URL;
+# data is then stored in the "data" volume.
 services:
   openstatuspage:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: ${OSP_IMAGE:-ghcr.io/raphael-penning/openstatuspage}:${OSP_VERSION:-latest}
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-3000}:3000"
