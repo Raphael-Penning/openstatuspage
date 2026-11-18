@@ -101,9 +101,9 @@ describe('help link mapping', () => {
       kind: 'repo',
       path: 'docs/adapters/README.md',
     });
-    expect(resolveHelpLink('../../../docker/docker-compose.yml', 'en')).toEqual({
+    expect(resolveHelpLink('../../../docker/Dockerfile', 'en')).toEqual({
       kind: 'repo',
-      path: 'docker/docker-compose.yml',
+      path: 'docker/Dockerfile',
     });
     expect(resolveHelpLink('../../../../outside.md', 'en')).toEqual({ kind: 'repo', path: 'outside.md' });
   });

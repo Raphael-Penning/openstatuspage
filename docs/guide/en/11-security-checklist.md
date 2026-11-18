@@ -28,8 +28,10 @@ Go through this list before going live and after larger changes.
       installation and stored safely outside the server as well.
 - [ ] `POSTGRES_PASSWORD`, `SMTP_PASSWORD` and the OIDC client secret are
       random and not reused elsewhere.
-- [ ] Environment files (`deploy.env`) are readable only by root or the
-      service user (`chmod 600`) and not committed to any repository.
+- [ ] `.env` (and any other environment file) is readable only by root or
+      the service user (`chmod 600`) and not committed to any repository.
+- [ ] A copy of `.env`, or at least `SECRET_KEY` and `POSTGRES_PASSWORD`, is
+      kept in a safe place outside the server.
 - [ ] On Kubernetes the secret `openstatuspage` is created with `kubectl` or
       a secret manager, never stored in plain text in Git, and only few
       people may read secrets in the namespace.

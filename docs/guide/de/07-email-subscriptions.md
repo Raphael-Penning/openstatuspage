@@ -56,15 +56,13 @@ SMTP_PORT=25
 SMTP_FROM="Example Status <status@example.com>"
 ```
 
-Die Docker-Compose-Datei reicht `MAIL_TRANSPORT` und alle `SMTP_*`-Variablen
-bereits in den Container durch; du musst sie nicht anpassen. Trag die
-Variablen in dieselbe Env-Datei wie `SECRET_KEY` ein (z. B. `deploy.env`, die
-du mit `--env-file` übergibst, siehe
-[Installation](02-installation.md#env-datei-anlegen)), in eine
-`.env`-Datei neben der Compose-Datei (`docker/.env`, wird gelesen, wenn du
-kein `--env-file` angibst) oder exportiere sie in der Shell. Erstelle den
-Container danach mit demselben Befehl wie bei der Installation neu, z. B.
-`docker compose --env-file deploy.env -f docker/docker-compose.yml up -d`.
+Mit Docker Compose trägst du die Variablen in `.env` neben `compose.yaml`
+ein (die Vorlage hat dafür einen Mail-Abschnitt, siehe
+[Installation](02-installation.md#einstellungen-in-env)); `compose.yaml`
+musst du nicht anpassen. Erstelle den Container danach mit
+`docker compose up -d` neu. Setz `SMTP_FROM` in Anführungszeichen, wenn es
+Leerzeichen oder spitze Klammern enthält, und ein `SMTP_PASSWORD` mit `$` in
+einfache Anführungszeichen.
 Unter Kubernetes ergänzt du die Variablen im Secret `openstatuspage` und
 startest den Pod mit
 `kubectl -n openstatuspage rollout restart deployment/openstatuspage` neu.

@@ -14,7 +14,7 @@ data/
 *.db-wal
 *.db-shm
 
-# Environment (also deploy.env from the installation guide and other *.env files)
+# Environment (deploy/compose/.env, deploy.env and other *.env files; templates stay tracked)
 .env
 .env.*
 *.env

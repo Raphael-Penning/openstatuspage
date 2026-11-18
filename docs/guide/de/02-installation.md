@@ -12,7 +12,7 @@ Du hast diese Möglichkeiten:
 
 | Variante | Datenbank | Geeignet für |
 | --- | --- | --- |
-| [Docker Compose mit dem fertigen Image](#docker-compose-mit-dem-fertigen-image) | PostgreSQL-17-Container | die meisten Produktivumgebungen |
+| [Docker Compose](#docker-compose) | PostgreSQL-17-Container | die meisten Produktivumgebungen |
 | [Einzelner Container mit SQLite](#einzelner-container-mit-sqlite) | SQLite-Datei in einem Volume | kleine Setups mit einer Instanz |
 | [Kubernetes](#kubernetes) | externes PostgreSQL (oder SQLite auf einem Volume) | Cluster mit Ingress-Controller |
 | [Image selbst bauen](#image-selbst-bauen) | wie bei Compose | eigene Änderungen, andere Plattformen |
@@ -32,6 +32,176 @@ Jede Installation braucht mindestens diese Umgebungsvariablen:
 du sie selbst. Alle weiteren Optionen beschreibt
 [Konfiguration](04-configuration.md).
 
+## Docker Compose
+
+Empfohlen ist ein Verzeichnis mit zwei Dateien, das die Anwendung und eine
+PostgreSQL-17-Datenbank betreibt. Beide Dateien hängen an jedem
+[Release](https://github.com/Raphael-Penning/openstatuspage/releases):
+
+| Datei | Inhalt |
+| --- | --- |
+| `compose.yaml` | Die Dienste `openstatuspage` (das fertige Image) und `db` (PostgreSQL 17, auf dem Host nicht veröffentlicht). Du musst sie nicht anpassen. |
+| `.env` | Deine Einstellungen und Geheimnisse, angelegt aus der Vorlage `env.example`. Jede Variable darin kommt in der Anwendung an. |
+
+Ein Reverse Proxy ist nicht dabei: Die Anwendung veröffentlicht reines HTTP
+auf Port 3000, und du stellst deinen eigenen Proxy mit HTTPS davor, siehe
+[Reverse Proxy](03-reverse-proxy.md).
+
+### Installieren
+
+Du brauchst Docker mit dem Compose-Plugin (`docker compose version` zeigt
+es an). Auf dem Host führst du aus:
+
+```bash
+mkdir openstatuspage && cd openstatuspage
+curl -fsSLO https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/compose.yaml
+curl -fsSL -o .env https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/env.example
+printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
+chmod 600 .env
+# edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD (and HOST_PORT / TRUST_PROXY for your proxy)
+docker compose up -d
+```
+
+Was die Schritte tun:
+
+1. Das neue Verzeichnis enthält deine Installation; sein Name spielt keine
+   Rolle. Die Compose-Datei legt den Projektnamen `openstatuspage` fest,
+   deshalb heißen die Volumes immer `openstatuspage_data` und
+   `openstatuspage_pg`.
+2. Die beiden Downloads stammen aus dem neuesten stabilen Release. Dessen
+   `compose.yaml` und `env.example` sind auf dieses Release festgelegt
+   (`OSP_VERSION=1.2.3`), die Installation wechselt also nicht von selbst die
+   Version.
+3. `printf` hängt zwei zufällige Geheimnisse an `.env` an: `SECRET_KEY` und
+   das Datenbankpasswort `POSTGRES_PASSWORD`. Führ das nur einmal aus und
+   **bewahre eine Kopie beider Werte auf**, siehe
+   [SECRET_KEY](09-operations.md#secret_key).
+4. `chmod 600` macht `.env` nur für dich lesbar.
+5. Nachdem du `.env` bearbeitet hast (siehe unten), holt
+   `docker compose up -d` die Images, startet die Datenbank, wartet, bis sie
+   bereit ist, und startet die Anwendung. Datenbankmigrationen laufen
+   automatisch.
+
+### Einstellungen in .env
+
+Die Vorlage ist gruppiert und kommentiert. Setze mindestens:
+
+```bash
+BASE_URL=https://status.example.com
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=ein-langes-passwort
+```
+
+| Variable | Bedeutung |
+| --- | --- |
+| `BASE_URL` | Die öffentliche URL, wie [oben](#minimale-konfiguration) beschrieben. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Der [erste Administrator](#der-erste-administrator); wird nur angelegt, solange die Datenbank keinen Benutzer enthält. |
+| `HOST_PORT` | Port auf dem Host, Standard `3000`, siehe [HOST_PORT](#host_port). |
+| `TRUST_PROXY` | Anzahl der Reverse Proxys vor der Anwendung, `1` in der Vorlage. Ohne Proxy lässt du den Wert leer, siehe [TRUST_PROXY](03-reverse-proxy.md#trust_proxy). |
+| `OSP_VERSION` | [Image-Tag](#image-tags), der laufen soll. Leg dich auf ein Release fest. |
+| `OSP_IMAGE` | Image ohne Tag, Standard `ghcr.io/raphael-penning/openstatuspage`. Ändere es für einen Fork oder einen eigenen Registry-Mirror. |
+| `SECRET_KEY`, `POSTGRES_PASSWORD` | Erzeugt vom Installationsbefehl. Ändere sie später nicht: Ein neuer `SECRET_KEY` macht gespeicherte Monitoring-Zugangsdaten unlesbar, und `POSTGRES_PASSWORD` wirkt nur beim Anlegen der Datenbank. |
+
+Jede weitere Option aus [Konfiguration](04-configuration.md), zum Beispiel
+der [Mailserver](07-email-subscriptions.md#mailserver), Single Sign-on oder
+`LOG_LEVEL`, kommt ebenfalls in `.env`: `compose.yaml` reicht die ganze Datei
+an die Anwendung weiter. Nur `DATABASE_URL` setzt `compose.yaml` selbst (sie
+zeigt auf den Dienst `db`), und dieser Wert gewinnt gegen einen Eintrag in
+`.env`.
+
+Hinweise zum Dateiformat:
+
+- Eine Zeile `NAME=wert` pro Variable, `#` leitet einen Kommentar ein. Leere
+  Werte (`LOG_LEVEL=`) gelten als nicht gesetzt.
+- Compose wertet `$` in Werten aus. Vermeide es, oder setz den ganzen Wert in
+  einfache Anführungszeichen: `SMTP_PASSWORD='pa$$wort'`.
+- Nach einer Änderung führst du `docker compose up -d` aus: Compose erstellt
+  den Container mit den neuen Einstellungen neu. `docker compose restart`
+  liest `.env` **nicht** neu ein.
+
+Git ignoriert `.env`-Dateien, und sie gehören nicht zum Docker-Build-Kontext.
+Die Datei landet also weder in einem Commit noch in einem Image.
+
+### HOST_PORT
+
+Im Container lauscht die Anwendung auf Port 3000. `HOST_PORT` (Standard
+`3000`) legt fest, unter welchem Port sie auf dem Host erreichbar ist:
+
+- `HOST_PORT=8080` veröffentlicht Port 8080 auf allen Schnittstellen.
+- `HOST_PORT=127.0.0.1:3000` veröffentlicht ihn nur auf localhost. Das ist
+  richtig, wenn ein Reverse Proxy auf demselben Host HTTPS übernimmt: Der
+  unverschlüsselte Port ist dann von außen nicht erreichbar.
+
+### Start prüfen
+
+```bash
+docker compose ps
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+Nach ein paar Sekunden zeigt `ps` die Anwendung als `healthy`, und der
+Health-Endpunkt liefert `{"status":"ok"}`. Sobald der Proxy steht, öffnest
+du deine `BASE_URL` mit `/admin` und meldest dich an. Mit einer
+`https://`-`BASE_URL` ist das Login-Cookie Secure, über unverschlüsseltes
+`http://<host>:3000` klappt die Anmeldung deshalb nicht. Willst du dich
+vorher anmelden, nutz `http://localhost:3000` auf dem Host selbst (etwa über
+`ssh -L 3000:127.0.0.1:3000 <host>`). Bricht Compose mit „set SECRET_KEY in .env“ ab, hilft die
+[Fehlerbehebung](10-troubleshooting.md#start). Für HTTPS geht es mit dem
+[Reverse Proxy](03-reverse-proxy.md) weiter.
+
+### Befehle für den Alltag
+
+Führ alle Befehle im Verzeichnis mit `compose.yaml` und `.env` aus. Compose
+findet dort beide Dateien, weitere Optionen brauchst du nicht:
+
+```bash
+docker compose ps                              # Zustand der Dienste
+docker compose logs -f openstatuspage          # Log der Anwendung verfolgen
+docker compose pull && docker compose up -d    # neue Images, .env übernehmen
+docker compose exec openstatuspage node server/dist/cli/create-user.js ...
+docker compose down                            # Container stoppen und entfernen
+```
+
+`down` lässt die Volumes stehen. Hänge nie `-v` an, außer du willst die
+Datenbank löschen. Sicherungen und Updates beschreibt
+[Betrieb](09-operations.md).
+
+Eine zweite Instanz auf demselben Host braucht ein eigenes Verzeichnis,
+einen eigenen `HOST_PORT` und einen eigenen Projektnamen: Starte sie mit
+`docker compose -p openstatuspage2 up -d` und gib `-p openstatuspage2` bei
+jedem Befehl an, oder trag `COMPOSE_PROJECT_NAME=openstatuspage2` in ihre
+`.env` ein.
+
+### Aus einem Klon des Repositorys
+
+Dieselben Dateien liegen im Repository unter `deploy/compose/`; die Vorlage
+heißt dort `.env.example`:
+
+```bash
+git clone https://github.com/Raphael-Penning/openstatuspage.git
+cd openstatuspage/deploy/compose
+cp .env.example .env
+printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
+chmod 600 .env
+# .env bearbeiten wie oben
+docker compose up -d
+```
+
+Diese Dateien folgen dem Branch `main` und nutzen standardmäßig
+`OSP_VERSION=latest`; leg in `.env` ein Release fest. Alle Befehle führst du
+in `deploy/compose` aus.
+
+### Optionale Demodaten
+
+Zum Ausprobieren mit fiktiven Daten füllst du eine **leere** Datenbank einmalig:
+
+```bash
+docker compose exec openstatuspage node server/dist/cli/seed.js
+```
+
+Der Befehl bricht ab, wenn schon Services existieren. Verwende ihn nicht auf
+einer produktiven Instanz.
+
 ## Image-Tags
 
 | Tag | Enthält | Wofür |
@@ -44,161 +214,17 @@ du sie selbst. Alle weiteren Optionen beschreibt
 | `sha-<Commit>` | einen Commit des Branches `main` | einer Regression auf die Spur kommen |
 
 Vorabversionen wie `1.3.0-rc.1` bekommen nur ihren eigenen Tag; `latest`,
-`1.3` und `1` bleiben davon unberührt. Bis das erste Release erschienen ist,
-gibt es nur `edge` und die `sha-`-Tags.
+`1.3` und `1` bleiben davon unberührt.
 
 **Leg dich im Produktivbetrieb auf ein Release fest** (`1.2.3`) und update
 bewusst, nachdem du die Release Notes gelesen und eine Sicherung gemacht hast
-(siehe [Updates](09-operations.md#updates)). Mit `latest` oder einem anderen
-mitwandernden Tag kann schon ein Neustart oder `pull` die Datenbank ohne
-Vorwarnung migrieren, und
+(siehe [Updates](09-operations.md#updates)). Mit einem mitwandernden Tag kann
+schon ein `pull` die Datenbank ohne Vorwarnung migrieren, und
 [Migrationen gehen nur vorwärts](09-operations.md#zurückrollen). Am
 strengsten pinnst du mit dem Digest des Images statt eines Tags
 (`ghcr.io/raphael-penning/openstatuspage@sha256:...`, angezeigt von
-`docker buildx imagetools inspect`).
-
-Die Images baut und veröffentlicht die CI-Pipeline des Repositorys, siehe
-[`docs/releasing.md`](../../releasing.md).
-
-## Docker Compose mit dem fertigen Image
-
-Im Repository liegt eine einsatzbereite [`docker/docker-compose.yml`](../../../docker/docker-compose.yml)
-mit zwei Diensten: `openstatuspage` (das fertige Image) und `db`
-(PostgreSQL 17). Die Daten liegen in den benannten Volumes `pg` (Datenbank)
-und `data`.
-
-### Compose-Datei holen
-
-Entweder klonst du das Repository:
-
-```bash
-git clone https://github.com/Raphael-Penning/openstatuspage.git
-cd openstatuspage
-```
-
-oder du lädst nur die Compose-Datei herunter, und zwar in ein Verzeichnis
-`docker`, damit die Befehle in dieser Anleitung unverändert funktionieren:
-
-```bash
-mkdir -p openstatuspage/docker && cd openstatuspage
-curl -fsSL -o docker/docker-compose.yml \
-  https://raw.githubusercontent.com/Raphael-Penning/openstatuspage/main/docker/docker-compose.yml
-```
-
-Willst du die Datei genau so, wie sie zu einem Release gehört, ersetzt du
-`main` in der URL durch den Release-Tag (z. B. `v1.2.3`).
-
-### Env-Datei anlegen
-
-Deine Einstellungen kommen in eine vertrauliche Datei `deploy.env` neben dem
-Verzeichnis `docker`. Erzeuge die Geheimnisse einmalig:
-
-```bash
-touch deploy.env && chmod 600 deploy.env
-echo "SECRET_KEY=$(openssl rand -base64 48)" >> deploy.env
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> deploy.env
-```
-
-Den Rest ergänzt du mit einem Editor:
-
-```bash
-# deploy.env (vertraulich: chmod 600, nie committen)
-SECRET_KEY=<erzeugt>
-POSTGRES_PASSWORD=<erzeugt>
-OSP_VERSION=1.2.3
-BASE_URL=https://status.example.com
-HOST_PORT=127.0.0.1:3000
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=ein-langes-passwort
-```
-
-| Variable | Bedeutung |
-| --- | --- |
-| `OSP_VERSION` | [Image-Tag](#image-tags), der laufen soll, Standard `latest`. Leg dich auf ein Release fest. |
-| `OSP_IMAGE` | Image ohne Tag, Standard `ghcr.io/raphael-penning/openstatuspage`. Ändere es für einen Fork oder einen eigenen Registry-Mirror. |
-| `HOST_PORT` | Port auf dem Host, siehe [HOST_PORT](#host_port). |
-
-Bewahre diese Datei auf: Bei jedem weiteren Befehl brauchst du denselben
-`SECRET_KEY` und dasselbe `POSTGRES_PASSWORD`. Git ignoriert sie (wie jede
-`*.env`-Datei), und sie gehört nicht zum Docker-Build-Kontext. Sie landet also
-weder in einem Commit noch in einem Image.
-
-### Starten
-
-```bash
-docker compose --env-file deploy.env -f docker/docker-compose.yml pull
-docker compose --env-file deploy.env -f docker/docker-compose.yml up -d
-```
-
-Fehlt `SECRET_KEY` oder `POSTGRES_PASSWORD`, startet Compose nicht. Compose
-liest die Datei bei **jedem** Befehl (`ps`, `logs`, `exec`, ...), übergib
-deshalb immer `--env-file deploy.env`, so wie alle Befehle in dieser
-Anleitung. Weniger tippen musst du, wenn du in deiner Shell
-`COMPOSE_ENV_FILES=deploy.env` und `COMPOSE_FILE=docker/docker-compose.yml`
-setzt; dann nutzt auch ein einfaches `docker compose up -d` beides.
-
-Prüfe, ob alles läuft:
-
-```bash
-docker compose --env-file deploy.env -f docker/docker-compose.yml ps
-curl -fsS http://127.0.0.1:3000/api/health
-```
-
-Nach ein paar Sekunden zeigt `ps` die Anwendung als `healthy`, und der
-Health-Endpunkt liefert `{"status":"ok"}`. Öffne anschließend
-`http://localhost:3000/admin` (oder deine `BASE_URL`) und melde dich an. Für
-HTTPS geht es mit dem [Reverse Proxy](03-reverse-proxy.md) weiter.
-
-### Weitere Umgebungsvariablen
-
-Die Compose-Datei reicht `BASE_URL`, `SECRET_KEY`, `DATABASE_URL`,
-`ADMIN_EMAIL`, `ADMIN_PASSWORD` und die E-Mail-Variablen (`MAIL_TRANSPORT`,
-`SMTP_*`, siehe [E-Mail-Abonnements](07-email-subscriptions.md#mailserver)) in
-den Container durch; diese setzt du also einfach in `deploy.env`. Weitere
-Optionen (zum Beispiel `TRUST_PROXY`, `LOG_LEVEL` oder die OIDC-Variablen)
-müssen in den Abschnitt `environment:` des Dienstes `openstatuspage`. Das
-machst du am besten in einer kleinen eigenen Override-Datei: Dann bleibt die
-mitgelieferte Compose-Datei unverändert, und du kannst sie bei Updates
-einfach ersetzen.
-
-```yaml
-# docker/docker-compose.local.yml
-services:
-  openstatuspage:
-    environment:
-      TRUST_PROXY: "1"
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-```
-
-`${...}` übernimmt den Wert aus `deploy.env`. Die Override-Datei übergibst du
-bei jedem Befehl mit einem zweiten `-f`:
-
-```bash
-docker compose --env-file deploy.env \
-  -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d
-```
-
-### HOST_PORT
-
-Im Container lauscht die Anwendung auf Port 3000. `HOST_PORT` (Standard
-`3000`) legt fest, unter welchem Port sie auf dem Host erreichbar ist:
-
-- `HOST_PORT=8080` veröffentlicht Port 8080 auf allen Schnittstellen.
-- `HOST_PORT=127.0.0.1:3000` veröffentlicht ihn nur auf localhost. Das ist
-  richtig, wenn ein Reverse Proxy auf demselben Host HTTPS übernimmt: Der
-  unverschlüsselte Port ist dann von außen nicht erreichbar.
-
-### Optionale Demodaten
-
-Zum Ausprobieren mit fiktiven Daten füllst du eine **leere** Datenbank einmalig:
-
-```bash
-docker compose --env-file deploy.env -f docker/docker-compose.yml \
-  exec openstatuspage node server/dist/cli/seed.js
-```
-
-Der Befehl bricht ab, wenn schon Services existieren. Verwende ihn nicht auf
-einer produktiven Instanz.
+`docker buildx imagetools inspect`). Wie Images und Releases entstehen,
+beschreibt [`docs/releasing.md`](../../releasing.md).
 
 ## Einzelner Container mit SQLite
 
@@ -228,8 +254,9 @@ Monitoring-Zugangsdaten unlesbar. Für ein Update holst du den neuen Tag mit
 `docker pull`, entfernst den Container (`docker rm -f openstatuspage`; das
 Volume bleibt) und startest den Befehl erneut mit dem neuen Tag.
 
-Die Compose-Datei funktioniert auch mit SQLite: Entferne den Dienst `db`, den
-Block `depends_on`, das Volume `pg` und die Zeile `DATABASE_URL`.
+Auch `compose.yaml` funktioniert mit SQLite: Entferne den Dienst `db`, den
+Block `depends_on`, das Volume `pg` und die Zeile `DATABASE_URL`. Die Daten
+liegen dann im Volume `data`.
 
 SQLite unterstützt genau eine laufende Instanz. Für
 [weitere Instanzen](09-operations.md#mehrere-instanzen-betreiben) brauchst du
@@ -338,18 +365,20 @@ z. B. `kubectl -n openstatuspage exec deployment/openstatuspage -- node server/d
 
 Bau das Image aus dem Repository, wenn du den Code geändert hast oder eine
 andere Plattform als `linux/amd64` und `linux/arm64` brauchst. Die
-Override-Datei [`docker/docker-compose.build.yml`](../../../docker/docker-compose.build.yml)
-ergänzt den Build-Abschnitt und nennt das Image `openstatuspage:local`:
+Override-Datei `deploy/compose/compose.build.yaml` baut das Image aus dem
+Klon (`docker/Dockerfile`) und nennt es `openstatuspage:local`. Leg `.env`
+an wie [aus einem Klon](#aus-einem-klon-des-repositorys) beschrieben, dann:
 
 ```bash
-git clone https://github.com/Raphael-Penning/openstatuspage.git
-cd openstatuspage
-docker compose --env-file deploy.env \
-  -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d --build
+cd openstatuspage/deploy/compose
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
-Nutze beide `-f`-Dateien bei jedem weiteren Befehl und führe nach jedem
-`git pull` erneut `up -d --build` aus. Ohne Compose baust du mit
+Gib beide `-f`-Dateien bei jedem weiteren Befehl an, oder trag
+`COMPOSE_FILE=compose.yaml:compose.build.yaml` in `.env` ein; dann nutzen
+auch einfache `docker compose ...`-Befehle beide. Nach jedem `git pull`
+führst du erneut `up -d --build` aus. Ohne Compose baust du im
+Wurzelverzeichnis des Repositorys mit
 `docker build -f docker/Dockerfile -t openstatuspage:local .`
 
 ## Aus dem Quellcode
@@ -416,15 +445,16 @@ Für das erste Konto gibt es zwei Wege:
 1. **`ADMIN_EMAIL` und `ADMIN_PASSWORD`**: Enthält die Datenbank beim Start
    noch keinen Benutzer, wird ein Administrator mit diesen Daten angelegt.
    Bei späteren Starts werden die Variablen ignoriert. Entferne
-   `ADMIN_PASSWORD` nach der ersten Anmeldung aus der Umgebung (`deploy.env`
-   oder dem Kubernetes-Secret) und ändere das Passwort im Benutzermenü.
+   `ADMIN_PASSWORD` nach der ersten Anmeldung aus der Umgebung (aus `.env`
+   mit anschließendem `docker compose up -d` oder aus dem Kubernetes-Secret)
+   und ändere das Passwort im Benutzermenü.
 2. **Der Befehl `create-user`** legt einen Benutzer an oder setzt, wenn die
    Adresse schon existiert, ein neues Passwort und die Rolle und beendet die
    Sitzungen des Benutzers:
 
    ```bash
    # Docker Compose
-   docker compose --env-file deploy.env -f docker/docker-compose.yml exec openstatuspage \
+   docker compose exec openstatuspage \
      node server/dist/cli/create-user.js admin@example.com 'ein-langes-passwort' admin 'Erika Mustermann'
 
    # einzelner Container

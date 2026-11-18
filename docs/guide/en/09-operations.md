@@ -1,10 +1,11 @@
 # Operations
 
 This page covers backups, upgrades, health checks, logs and the handling of
-`SECRET_KEY`. The commands assume the Docker Compose setup from
-[Installation](02-installation.md) with the settings in `deploy.env`; adapt
-service and volume names to your deployment. If you use override files
-(e.g. for Caddy), add their `-f` options to every command.
+`SECRET_KEY`. The commands assume the
+[Docker Compose](02-installation.md#docker-compose) setup and run in the
+directory with `compose.yaml` and `.env`; adapt service and volume names to
+your deployment. If you use override files (e.g. for Caddy), add their `-f`
+options to every command or set `COMPOSE_FILE` in `.env`.
 
 ## Backup and restore
 
@@ -12,10 +13,10 @@ service and volume names to your deployment. If you use override files
 
 1. **The database**: PostgreSQL database or SQLite file. It contains
    everything: services, incidents, history, users, settings, subscribers.
-2. **`SECRET_KEY`** (and the rest of your environment file). Without the same
+2. **`SECRET_KEY`** (and the rest of your `.env`). Without the same
    key, a restored database cannot decrypt the stored monitoring credentials.
    Keep it separate from the database backup, e.g. in your password manager.
-3. Your own changes to the compose file or proxy configuration.
+3. Your own override files and proxy configuration.
 
 Back up at least daily and before every upgrade, keep several generations,
 store copies outside the host, and test a restore now and then.
@@ -25,17 +26,17 @@ store copies outside the host, and test a restore now and then.
 Backup (custom format, compressed):
 
 ```bash
-docker compose --env-file deploy.env -f docker/docker-compose.yml exec -T db \
+docker compose exec -T db \
   pg_dump -U openstatuspage -Fc openstatuspage > openstatuspage-$(date +%F).dump
 ```
 
 Restore:
 
 ```bash
-docker compose --env-file deploy.env -f docker/docker-compose.yml stop openstatuspage
-docker compose --env-file deploy.env -f docker/docker-compose.yml exec -T db \
+docker compose stop openstatuspage
+docker compose exec -T db \
   pg_restore -U openstatuspage -d openstatuspage --clean --if-exists < openstatuspage-2026-01-31.dump
-docker compose --env-file deploy.env -f docker/docker-compose.yml start openstatuspage
+docker compose start openstatuspage
 ```
 
 For an external PostgreSQL server (and on Kubernetes) use `pg_dump` /
@@ -63,7 +64,7 @@ docker exec openstatuspage rm /data/backup.db
 ```
 
 Replace `openstatuspage` with the container name (`docker ps` shows it; with
-Compose use `docker compose --env-file deploy.env -f docker/docker-compose.yml exec -w /app/server openstatuspage ...`).
+Compose use `docker compose exec -w /app/server openstatuspage ...`).
 On a host with the `sqlite3` command line tool you can use
 `sqlite3 /var/lib/openstatuspage/openstatuspage.db ".backup '/backup/openstatuspage.db'"`
 instead.
@@ -91,7 +92,8 @@ docker start openstatuspage
 
 The app runs as user `node` (UID 1000) in the container and needs write access
 to the file. Named volumes created by Compose are prefixed with the project
-name (e.g. `docker_data`); `docker volume ls` shows the exact name.
+name (`openstatuspage_data` with `compose.yaml`); `docker volume ls` shows
+the exact name.
 
 ## Upgrades
 
@@ -106,27 +108,57 @@ Every upgrade follows the same steps:
 
 ### Docker Compose
 
-Set the new release in `deploy.env`, pull the image and recreate the
-container:
+Set the new release in `.env`, pull the image and recreate the container:
 
 ```bash
-# deploy.env
+# .env
 OSP_VERSION=1.3.0
 ```
 
 ```bash
-docker compose --env-file deploy.env -f docker/docker-compose.yml pull
-docker compose --env-file deploy.env -f docker/docker-compose.yml up -d
+docker compose pull
+docker compose up -d
 ```
 
-If you follow a moving tag (`1.3`, `latest`), `pull` and `up -d` alone fetch
-and start the newest image of that tag. Release notes may also mention changes
-to `docker/docker-compose.yml`; then replace your copy with the file of the
-new release (`git pull` or download it again, see
-[Installation](02-installation.md#get-the-compose-file)). Your own settings
-stay untouched in `deploy.env` and your override files.
+`OSP_VERSION` in `.env` decides the version; the default in `compose.yaml`
+only applies when the line is missing. If you follow a moving tag (`1.3`,
+`latest`), `pull` and `up -d` alone fetch and start the newest image of that
+tag.
+
+When the release notes mention changes to `compose.yaml`, also replace it
+with the file of the new release; your settings stay untouched in `.env`:
+
+```bash
+curl -fsSLO https://github.com/Raphael-Penning/openstatuspage/releases/download/v1.3.0/compose.yaml
+```
+
+New options are listed in the `env.example` of the release; add the ones you
+need to `.env`. In a clone of the repository `git pull` updates
+`deploy/compose/` instead.
 
 `docker image prune` removes old images afterwards.
+
+### Moving from the 0.1.0 compose file
+
+Release 0.1.0 shipped `docker/docker-compose.yml`, used with `deploy.env` and
+`--env-file`. That project was named after its directory (`docker`), so its
+volumes are `docker_data` and `docker_pg`. The new `compose.yaml` uses the
+project name `openstatuspage` and would start with an empty database. To keep
+your data:
+
+1. Make a backup (see above) and stop the old stack with its old command:
+   `docker compose --env-file deploy.env -f docker/docker-compose.yml down`
+   (without `-v`).
+2. Download `compose.yaml` as in [Installation](02-installation.md#install)
+   and use your `deploy.env` as `.env` (same `SECRET_KEY` and
+   `POSTGRES_PASSWORD`). Settings from your own override files, such as
+   `TRUST_PROXY`, now go into `.env` as well.
+3. Keep the old project name: add `COMPOSE_PROJECT_NAME=docker` to `.env`
+   (or pass `-p docker` to every command), then run `docker compose up -d`.
+
+Alternatively start the new stack under its own name and move the database
+with `pg_dump` and `pg_restore` as described in
+[Backup and restore](#backup-and-restore).
 
 ### Single container
 
@@ -152,12 +184,11 @@ migrations never run while the old version is still active.
 
 ### Building yourself and from source
 
-With the build override:
+With the build override, in `deploy/compose` of your clone:
 
 ```bash
 git pull
-docker compose --env-file deploy.env \
-  -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d --build
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
 From source: `git pull && pnpm install --frozen-lockfile && pnpm build`, then
@@ -172,7 +203,7 @@ newer version has migrated. To roll back an upgrade:
 1. Stop the app.
 2. Restore the backup made before the upgrade.
 3. Start the **previous** version again: the old `OSP_VERSION` in
-   `deploy.env`, the old `newTag` in `kustomization.yaml`, or the previous
+   `.env`, the old `newTag` in `kustomization.yaml`, or the previous
    Git tag when you build yourself.
 
 Changes made since the upgrade are lost, so decide quickly.
@@ -215,9 +246,9 @@ The app writes structured JSON logs (one object per line) to stdout; with
 `NODE_ENV=development` they are formatted for humans.
 
 ```bash
-docker compose --env-file deploy.env -f docker/docker-compose.yml logs -f openstatuspage
+docker compose logs -f openstatuspage                         # Docker Compose
 kubectl -n openstatuspage logs -f deployment/openstatuspage   # Kubernetes
-journalctl -u openstatuspage -f                                # systemd
+journalctl -u openstatuspage -f                               # systemd
 ```
 
 `LOG_LEVEL` (default `info`) selects the detail: `fatal`, `error`, `warn`,

@@ -1,8 +1,9 @@
 # Fehlerbehebung
 
-Fang mit den Logs an (`docker compose --env-file deploy.env -f docker/docker-compose.yml logs -f openstatuspage`,
-unter Kubernetes `kubectl -n openstatuspage logs deployment/openstatuspage`)
-und mit `GET /api/health`. Für mehr Details setzt du vorübergehend
+Fang mit den Logs an (`docker compose logs -f openstatuspage` im Verzeichnis
+mit `compose.yaml`, unter Kubernetes
+`kubectl -n openstatuspage logs deployment/openstatuspage`) und mit
+`GET /api/health`. Für mehr Details setzt du vorübergehend
 `LOG_LEVEL=debug`.
 
 ## Container-Image
@@ -45,10 +46,38 @@ Die Meldung nennt jede ungültige Variable, z. B. `BASE_URL: Invalid URL` oder
 Im Produktivbetrieb (dem Standard für `NODE_ENV`) ist der Schlüssel Pflicht.
 Erzeuge einen mit `openssl rand -base64 48`.
 
-**`docker compose` meldet „set SECRET_KEY“ oder „set POSTGRES_PASSWORD“.**
-Die Variablen fehlen in der Shell oder in der `--env-file`, die du verwendet
-hast. Compose braucht sie bei jedem Befehl (`up`, `pull`, `logs`, `exec`,
-...), nicht nur beim ersten `up`: Übergib immer `--env-file deploy.env`.
+**`docker compose` meldet „set SECRET_KEY in .env“ oder „set
+POSTGRES_PASSWORD in .env“.**
+Die Variable fehlt in `.env` oder ist leer. Bei einer neuen Installation
+hängst du beide mit der `printf`-Zeile aus der
+[Installation](02-installation.md#installieren) an. Bei einer bestehenden
+Installation holst du die alten Werte aus deiner Sicherung, statt neue zu
+erzeugen: Ein neuer `SECRET_KEY` macht gespeicherte Monitoring-Zugangsdaten
+unlesbar, und ein neues `POSTGRES_PASSWORD` passt nicht zur bestehenden
+Datenbank.
+
+**`docker compose` meldet „no configuration file provided“, „env file
+... not found“ oder „set SECRET_KEY in .env“.**
+Der Befehl läuft im falschen Verzeichnis, oder `.env` gibt es noch nicht
+(ohne sie bricht Compose an der ersten Pflichtvariable ab).
+Wechsle in das Verzeichnis mit `compose.yaml` und `.env` (in einem Klon:
+`deploy/compose`) und leg `.env` an, wie in der
+[Installation](02-installation.md#installieren) beschrieben.
+
+**Ein Wert aus `.env` kommt gekürzt an, oder Compose warnt „The ... variable
+is not set“.**
+Compose wertet `$` in `.env` aus: Aus `pa$wort` wird `pa`. Setz den ganzen
+Wert in einfache Anführungszeichen (`SMTP_PASSWORD='pa$wort'`) und führ
+`docker compose up -d` aus.
+
+**Eine Änderung in `.env` wirkt nicht.**
+Führ `docker compose up -d` aus; `docker compose restart` behält die alte
+Umgebung. `docker compose exec openstatuspage env` zeigt, was im Container
+ankommt. `DATABASE_URL` setzt immer `compose.yaml`.
+
+**Nach dem Wechsel auf `compose.yaml` ist die Installation leer.**
+Die neue Datei nutzt einen anderen Projektnamen und damit neue Volumes. Siehe
+[Umstieg von der Compose-Datei aus 0.1.0](09-operations.md#umstieg-von-der-compose-datei-aus-010).
 
 **„DATABASE_URL must start with sqlite: or postgres://“.**
 Verwende `sqlite:/pfad/zur/datei.db` oder

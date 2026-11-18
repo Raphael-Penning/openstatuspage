@@ -45,14 +45,12 @@ Für alle Variablen gilt:
   nimmst du `development` (`pnpm dev` setzt das): Dann darf `SECRET_KEY`
   fehlen und die Logs sind für Menschen formatiert.
 
-Bei Docker Compose gilt: Nur Variablen, die im Abschnitt `environment:` des
-Dienstes `openstatuspage` stehen, kommen im Container an. Die E-Mail-Variablen
-(`MAIL_TRANSPORT`, `SMTP_*`) stehen dort bereits; du setzt sie also wie
-`SECRET_KEY` in deiner Env-Datei oder in der Shell. Andere Variablen ergänzt
-du in einer Override-Datei, siehe
-[Installation](02-installation.md#weitere-umgebungsvariablen). Unter
-Kubernetes kommen sie in das Secret `openstatuspage` oder in die
-`env:`-Liste von `deployment.yaml`.
+Bei Docker Compose kommt jede Variable in `.env` neben `compose.yaml`; die
+ganze Datei landet im Container, und `docker compose up -d` übernimmt eine
+Änderung (siehe [Installation](02-installation.md#einstellungen-in-env)).
+Nur `DATABASE_URL` setzt `compose.yaml` selbst. Unter Kubernetes kommen die
+Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
+`deployment.yaml`.
 
 ## Die Einstellungsseite
 
@@ -91,6 +89,5 @@ einen Wert:
 - Der Kasten **E-Mail-Versand** auf der Einstellungsseite zeigt Versandart
   und Absender
   (siehe [E-Mail-Abonnements](07-email-subscriptions.md#fehlersuche)).
-- `docker compose --env-file deploy.env -f docker/docker-compose.yml exec openstatuspage env` zeigt,
-  was tatsächlich im Container ankommt (enthält Geheimnisse, also nirgends
-  einfügen).
+- `docker compose exec openstatuspage env` zeigt, was tatsächlich im
+  Container ankommt (enthält Geheimnisse, also nirgends einfügen).

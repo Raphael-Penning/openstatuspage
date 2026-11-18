@@ -117,17 +117,23 @@ network, since it allows interception of the connection.
 
 ### Docker Compose
 
-`docker/docker-compose.yml` passes `MAIL_TRANSPORT` and all `SMTP_*` variables
-through from the shell, from the file given with `--env-file` (e.g. the
-`deploy.env` of the installation guide) or, without `--env-file`, from a `.env`
-file next to the compose file (`docker/.env`). The compose file itself does not
-need to be edited:
+The [Compose setup](guide/en/02-installation.md) hands every setting of the
+`.env` next to `compose.yaml` to the app, so `MAIL_TRANSPORT` and the `SMTP_*`
+variables only have to be set there; the compose file itself does not need to
+be edited. The template ([`deploy/compose/.env.example`](../deploy/compose/.env.example))
+already contains them as comments:
 
 ```bash
-export SMTP_HOST=smtp.example.com SMTP_USER=status@example.com SMTP_PASSWORD='change-me'
-export SMTP_FROM='Example Status <status@example.com>'
-docker compose -f docker/docker-compose.yml up -d
+MAIL_TRANSPORT=smtp
+SMTP_HOST=smtp.example.com
+SMTP_USER=status@example.com
+SMTP_PASSWORD='change-me'
+SMTP_FROM='Example Status <status@example.com>'
 ```
+
+Wrap values containing `$` in single quotes, Compose would interpolate them
+otherwise. Apply changes with `docker compose up -d` in the directory of
+`compose.yaml` (it recreates the container when the settings changed).
 
 ## Delivery
 

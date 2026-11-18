@@ -36,13 +36,20 @@ publishes it to the GitHub Container Registry from `main` and release tags, see
 docker build -f docker/Dockerfile -t openstatuspage:local .
 
 # or the full stack with PostgreSQL, built from the checkout:
-export SECRET_KEY="$(openssl rand -base64 48)" POSTGRES_PASSWORD=dev-only-password
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d --build
+cd deploy/compose
+cp .env.example .env
+printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
-`docker/docker-compose.yml` alone runs the prebuilt image; the
-`docker-compose.build.yml` override replaces it with `openstatuspage:local`
-built from `docker/Dockerfile`.
+`deploy/compose/compose.yaml` alone runs the prebuilt image (it is also the file
+operators download from the release assets); the `compose.build.yaml` override
+replaces it with `openstatuspage:local` built from `docker/Dockerfile`. The
+`.env` in `deploy/compose` is ignored by git. For local testing set
+`BASE_URL=http://localhost:3000` and an empty `TRUST_PROXY` in it. The project
+is named `openstatuspage` (volumes `openstatuspage_data`, `openstatuspage_pg`);
+pass `-p <name>` to keep a test stack apart from another instance on the same
+machine. `docker compose down -v` removes the stack including its data.
 
 ## Guidelines
 

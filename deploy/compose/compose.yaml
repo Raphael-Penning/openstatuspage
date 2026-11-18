@@ -1,0 +1,68 @@
+# OpenStatusPage with PostgreSQL, using the prebuilt image from the GitHub
+# Container Registry. No reverse proxy is included: put your own proxy (nginx,
+# Caddy, Traefik, ...) in front of the published port for HTTPS.
+#
+# Setup (the same commands are in the installation guide):
+#
+#   1. mkdir openstatuspage && cd openstatuspage
+#   2. Download this file as compose.yaml and the settings template as .env:
+#        curl -fsSLO https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/compose.yaml
+#        curl -fsSL -o .env https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/env.example
+#   3. Append generated secrets (keep a copy, they cannot be changed freely):
+#        printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
+#        chmod 600 .env
+#   4. Edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD (and HOST_PORT /
+#      TRUST_PROXY for your proxy).
+#   5. docker compose up -d
+#
+# All settings live in .env next to this file; every option of the
+# configuration reference can be set there without editing this file.
+# Documentation: https://github.com/Raphael-Penning/openstatuspage/tree/main/docs/guide
+#
+# The fixed project name below gives the volumes stable names
+# (openstatuspage_data, openstatuspage_pg) regardless of the directory.
+# "docker compose -p <name>" overrides it, e.g. for a second instance.
+name: openstatuspage
+
+services:
+  openstatuspage:
+    image: ${OSP_IMAGE:-ghcr.io/raphael-penning/openstatuspage}:${OSP_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    # Every setting from .env reaches the app.
+    env_file: .env
+    environment:
+      # The container always listens on 0.0.0.0:3000; HOST_PORT in .env
+      # changes the published port instead.
+      HOST: 0.0.0.0
+      PORT: "3000"
+      # Fail early with a clear message instead of starting without a key.
+      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY in .env}"
+      # Always points to the db service below (overrides DATABASE_URL from .env).
+      DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
+    volumes:
+      - data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # No env_file here: the database must not receive the app's secrets.
+    environment:
+      POSTGRES_DB: openstatuspage
+      POSTGRES_USER: openstatuspage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openstatuspage -d openstatuspage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  data:
+  pg:

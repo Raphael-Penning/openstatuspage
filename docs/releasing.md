@@ -1,7 +1,7 @@
 # Releasing and container images
 
-This page is for maintainers. It describes how the container image is built
-and published and how to cut a release. Operators find the deployment steps in
+This page is for maintainers. It describes how the container image and the
+release assets are built and published and how to cut a release. Operators find the deployment steps in
 the [installation guide](guide/en/02-installation.md).
 
 ## How the image pipeline works
@@ -56,6 +56,74 @@ backport release such as `v1.4.9`, tagged after `v2.0.0`, gets `1.4.9` and
 `1.4`, but leaves `1` alone if a newer 1.x release exists and never takes
 `latest`.
 
+## Release assets (Compose deployment)
+
+Operators deploy with two files that are attached to every GitHub release:
+
+| Asset | Source in the repository | Content |
+| --- | --- | --- |
+| `compose.yaml` | [`deploy/compose/compose.yaml`](../deploy/compose/compose.yaml) | App and PostgreSQL, no reverse proxy. The image default `${OSP_VERSION:-latest}` is rewritten to `${OSP_VERSION:-X.Y.Z}`. |
+| `env.example` | [`deploy/compose/.env.example`](../deploy/compose/.env.example) | Settings template, saved as `.env` by the operator. `OSP_VERSION=latest` is rewritten to `OSP_VERSION=X.Y.Z`. |
+
+The asset is called `env.example` because file names starting with a dot are
+awkward to download and to see in the release UI. The installation guide fetches
+both from `https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/<asset>`,
+so that URL always has to serve the newest **stable** release, pinned to its own
+version.
+
+The `release` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+takes care of that. It runs for every pushed `v*` tag after the `image` job
+succeeded (so the assets never point to an image that does not exist):
+
+1. Renders both assets into a temporary directory with `sed`, using the tag
+   without the leading `v` as version, and fails if a substitution no longer
+   matches (e.g. after the templates were reworded).
+2. Creates the GitHub release for the tag if it does not exist yet
+   (`gh release create --verify-tag --generate-notes --title vX.Y.Z`), or
+   updates an existing one (`gh release edit`). Tags with a `-` (pre-releases)
+   are marked as pre-release. The release is marked **latest** only when the
+   `image` job moved the `latest` image tag (see [Tags](#tags)); a pre-release
+   or a backport such as `v1.4.9` after `v2.0.0` gets `--latest=false`, so
+   `releases/latest` keeps pointing to the highest stable release.
+3. Uploads `compose.yaml` and `env.example` with `--clobber`, replacing assets
+   of an earlier run.
+
+The job only needs `contents: write` and the automatic `GITHUB_TOKEN`. In
+`deploy/compose/` the files keep `latest` as default, so a git checkout
+follows the newest release. `compose.build.yaml` next to them is not published;
+it builds the image from the checkout (see [Building locally](#building-locally)).
+
+### Re-running the asset upload
+
+The upload is idempotent. To publish the assets again for an existing tag (for
+example after the release was created by hand, or after a failed run), re-run
+the `release` job of the tag's CI run in the Actions tab ("Re-run jobs" >
+`release`). Manually, from a checkout of the tag:
+
+```bash
+tag=v1.2.3; version="${tag#v}"; out="$(mktemp -d)"
+sed "s/\${OSP_VERSION:-latest}/\${OSP_VERSION:-$version}/" deploy/compose/compose.yaml > "$out/compose.yaml"
+sed "s/^OSP_VERSION=latest\$/OSP_VERSION=$version/" deploy/compose/.env.example > "$out/env.example"
+gh release upload "$tag" "$out/compose.yaml" "$out/env.example" --clobber
+```
+
+Fixes to the templates reach operators only with the next release; never
+re-upload changed files to an old release.
+
+### Former `docker/docker-compose.yml`
+
+Up to v0.1.0 the repository shipped `docker/docker-compose.yml` and the
+`docker/docker-compose.build.yml` override, used with `--env-file deploy.env -f
+docker/docker-compose.yml`. Both were replaced by `deploy/compose/compose.yaml`
+and `deploy/compose/compose.build.yaml`. Settings now live in a `.env` next to
+the compose file. The old project took its name from the directory (`docker`),
+so its volumes are `docker_data` and `docker_pg`, while the new file uses the
+fixed project name `openstatuspage`. Existing installations keep their data by
+running the new file as `docker compose -p docker up -d` (and `-p docker` for
+every further command), or migrate the database with `pg_dump`/restore, see
+[Operations](guide/en/09-operations.md). Mention this in the release notes of
+the first release with the new file.
+
 ## Cutting a release
 
 1. Make sure `main` is green and contains everything for the release.
@@ -70,15 +138,19 @@ backport release such as `v1.4.9`, tagged after `v2.0.0`, gets `1.4.9` and
    ```
 
 4. Wait for the CI run of the tag. The `image` job pushes `1.2.3`, `1.2`, `1`
-   and `latest` (see [Tags](#tags)).
-5. Create a GitHub release for the tag with the release notes, mention
-   upgrade notes (configuration changes, migrations) prominently.
+   and `latest` (see [Tags](#tags)); the `release` job then creates the GitHub
+   release with generated notes and attaches `compose.yaml` and `env.example`
+   (see [Release assets](#release-assets-compose-deployment)).
+5. Edit the release notes on GitHub and put upgrade notes (configuration
+   changes, migrations) at the top. Check that the assets are attached and
+   that `releases/latest/download/compose.yaml` shows the new version.
 
-For a pre-release use a tag with a suffix, e.g. `v1.3.0-rc.1`. It is published
-as `1.3.0-rc.1` only.
+For a pre-release use a tag with a suffix, e.g. `v1.3.0-rc.1`. The image is
+published as `1.3.0-rc.1` only, and the GitHub release is marked as pre-release
+(its assets pin `1.3.0-rc.1`, `releases/latest` is not affected).
 
 A `v*` tag that is not a valid semantic version (e.g. `v1.2`) produces no
-image tag, so the `image` job fails. Delete such a tag (`git push origin :refs/tags/<tag>`)
+image tag, so the `image` job fails and no release is created. Delete such a tag (`git push origin :refs/tags/<tag>`)
 and push a correct one. Never move or re-push an existing release tag; publish
 a new patch release instead.
 
@@ -105,8 +177,10 @@ After the first successful push:
 
 A fork publishes to `ghcr.io/<fork owner>/<fork repo>` as soon as Actions are
 enabled in the fork and something is pushed to its `main` or a `v*` tag; the
-same visibility step applies. To deploy a fork's image, set `OSP_IMAGE` in the
-Compose env file or adjust the `images:` entry in
+same visibility step applies. A fork's tags also get GitHub releases with the
+Compose assets, but those assets still name this repository's image as default.
+To deploy a fork's image, set `OSP_IMAGE` in the
+Compose `.env` or adjust the `images:` entry in
 [`deploy/kubernetes/kustomization.yaml`](../deploy/kubernetes/kustomization.yaml).
 
 ## Verifying an image
@@ -144,9 +218,9 @@ unreleased changes or for a platform without a published image:
 
 ```bash
 docker build -f docker/Dockerfile -t openstatuspage:local .
-# or with Compose:
-docker compose --env-file deploy.env -f docker/docker-compose.yml \
-  -f docker/docker-compose.build.yml up -d --build
+# or the Compose stack, from deploy/compose with a .env (see CONTRIBUTING.md):
+cd deploy/compose
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
 To reproduce the multi-arch build of the pipeline you need QEMU/binfmt (built
