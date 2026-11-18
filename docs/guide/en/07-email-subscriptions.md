@@ -58,11 +58,13 @@ SMTP_FROM="Example Status <status@example.com>"
 The Docker Compose file already passes `MAIL_TRANSPORT` and all `SMTP_*`
 variables into the container; you do not need to edit it. Put the variables
 into the same env file as `SECRET_KEY` (e.g. `deploy.env`, passed with
-`--env-file`, see [Installation](02-installation.md#docker-compose-with-postgresql)),
+`--env-file`, see [Installation](02-installation.md#create-the-env-file)),
 into a `.env` file next to the compose file (`docker/.env`, read when you do
 not pass `--env-file`), or export them in the shell. Then recreate the
 container with the same command you used for the installation, e.g.
 `docker compose --env-file deploy.env -f docker/docker-compose.yml up -d`.
+On Kubernetes add the variables to the secret `openstatuspage` and restart
+the pod with `kubectl -n openstatuspage rollout restart deployment/openstatuspage`.
 
 ## Test email
 

@@ -9,9 +9,16 @@ it that terminates HTTPS. Three things must fit together:
 3. `TRUST_PROXY` tells the app how many proxies to trust, so it sees the real
    client IP.
 
-Publish the app port on localhost only (`HOST_PORT=127.0.0.1:3000` with
-Docker Compose, `HOST=127.0.0.1` from source) when the proxy runs on the same
-host, so nobody can bypass the proxy.
+Publish the app port on localhost only (`HOST_PORT=127.0.0.1:3000` in
+`deploy.env` with Docker Compose, `-p 127.0.0.1:3000:3000` with a single
+container, `HOST=127.0.0.1` from source) when the proxy runs on the same
+host, so nobody can bypass the proxy. On Kubernetes the
+[ingress](#kubernetes-ingress) takes the role of the proxy.
+
+The compose file does not pass `TRUST_PROXY` into the container. Add it in
+an override file, as shown in
+[Installation](02-installation.md#more-environment-variables) and in the
+Caddy and Traefik examples below.
 
 ## BASE_URL
 
@@ -58,6 +65,57 @@ status.example.com {
 
 Configuration: `BASE_URL=https://status.example.com`, `TRUST_PROXY=1`.
 
+### Caddy in the compose setup
+
+Caddy can also run as a third service next to the app. Create two files next
+to `docker/docker-compose.yml` (relative paths in compose files are resolved
+against the directory of the first file):
+
+```caddyfile
+# docker/Caddyfile
+status.example.com {
+    reverse_proxy openstatuspage:3000
+}
+```
+
+```yaml
+# docker/docker-compose.caddy.yml
+services:
+  openstatuspage:
+    environment:
+      TRUST_PROXY: "1"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - openstatuspage
+
+volumes:
+  caddy_data:
+  caddy_config:
+```
+
+Keep `HOST_PORT=127.0.0.1:3000` in `deploy.env`: Caddy reaches the app over
+the compose network, and the published port stays on localhost for your own
+checks. Start everything with both files, and use them for every later
+command:
+
+```bash
+docker compose --env-file deploy.env \
+  -f docker/docker-compose.yml -f docker/docker-compose.caddy.yml up -d
+```
+
+The DNS name must point to the host and ports 80 and 443 must be reachable
+from the internet, so Caddy can obtain the certificate. The volume
+`caddy_data` keeps the certificates; do not delete it.
+
 ## nginx
 
 ```nginx
@@ -93,18 +151,16 @@ Certificates can be obtained with certbot or any other ACME client.
 
 ## Traefik
 
-With Traefik as a Docker container in the same network, add labels to the
-`openstatuspage` service in the compose file (and drop the `ports:` mapping,
-Traefik reaches the container directly):
+With Traefik as a Docker container, add labels to the `openstatuspage`
+service in an override file. Traefik reaches the container directly, so keep
+`HOST_PORT=127.0.0.1:3000` (or any other port bound to localhost):
 
 ```yaml
+# docker/docker-compose.traefik.yml
 services:
   openstatuspage:
-    # ... as in docker/docker-compose.yml
     environment:
-      BASE_URL: https://status.example.com
       TRUST_PROXY: "1"
-      # ...
     labels:
       - traefik.enable=true
       - traefik.http.routers.openstatuspage.rule=Host(`status.example.com`)
@@ -113,9 +169,34 @@ services:
       - traefik.http.services.openstatuspage.loadbalancer.server.port=3000
 ```
 
-The entry point (`websecure`) and the certificate resolver (`letsencrypt`)
-are the names from your Traefik static configuration. The container must be
-in a network Traefik is attached to.
+Set `BASE_URL=https://status.example.com` in `deploy.env` and pass the file
+with an additional `-f docker/docker-compose.traefik.yml`. The entry point
+(`websecure`) and the certificate resolver (`letsencrypt`) are the names from
+your Traefik static configuration. The container must be in a network Traefik
+is attached to (add it under `networks:` in the override file if Traefik runs
+in a different compose project).
+
+## Kubernetes ingress
+
+With the [Kubernetes manifests](02-installation.md#kubernetes) the ingress
+controller terminates HTTPS and forwards to the service. The same rules
+apply:
+
+- `BASE_URL` in `deployment.yaml` must be the host from `ingress.yaml`, with
+  `https://`.
+- `TRUST_PROXY` must equal the number of proxies in front of the app. The
+  example assumes one: the ingress controller. If a load balancer or CDN in
+  front of the controller passes the client address on in
+  `X-Forwarded-For` as well, increase the value by one for each of them, and
+  configure the controller to keep the incoming header (ingress-nginx:
+  `use-forwarded-headers: "true"`); otherwise it replaces the header and the
+  app only sees the load balancer's address.
+- The service is only reachable inside the cluster; do not expose it as
+  `NodePort` or `LoadBalancer` in addition to the ingress.
+- Bulk uploads from monitoring systems may be up to 5 MiB. ingress-nginx
+  allows 1 MiB by default; raise it with the annotation
+  `nginx.ingress.kubernetes.io/proxy-body-size: 6m` if you push large
+  batches.
 
 ## Embedding the public page
 

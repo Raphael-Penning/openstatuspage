@@ -46,7 +46,11 @@ Rules that apply to all variables:
 With Docker Compose remember that only the variables listed in the
 `environment:` section of the `openstatuspage` service reach the container.
 The email variables (`MAIL_TRANSPORT`, `SMTP_*`) are already listed there, so
-you set them in your env file or shell like `SECRET_KEY`.
+you set them in your env file or shell like `SECRET_KEY`. Add other variables
+in an override file, see
+[Installation](02-installation.md#more-environment-variables). On Kubernetes
+put them into the secret `openstatuspage` or the `env:` list of
+`deployment.yaml`.
 
 ## The settings page
 
@@ -84,6 +88,6 @@ There is no page that prints the environment, on purpose. To check a value:
 - the **Email delivery** panel on the settings page shows the mail transport
   and sender
   (see [Email subscriptions](07-email-subscriptions.md#troubleshooting));
-- `docker compose -f docker/docker-compose.yml exec openstatuspage env` lists
+- `docker compose --env-file deploy.env -f docker/docker-compose.yml exec openstatuspage env` lists
   what the container actually received (it contains secrets, do not paste the
   output anywhere).

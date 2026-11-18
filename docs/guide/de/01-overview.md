@@ -17,7 +17,9 @@ Sprache, die du dort eingestellt hast.
 
 Beides liefert ein einziger Node.js-Prozess aus, zusammen mit der HTTP-API
 (`/api/...`), den RSS- und Atom-Feeds (`/feed.rss`, `/feed.atom`) und einem
-Hintergrund-Worker für zeitgesteuerte Aufgaben.
+Hintergrund-Worker für zeitgesteuerte Aufgaben. Er erscheint als
+Container-Image für Docker Compose, einen einzelnen Container oder
+Kubernetes und läuft auch direkt aus dem Quellcode.
 
 ## Bausteine
 
@@ -113,7 +115,7 @@ Das Grundversprechen lautet: **Kunden sehen Services, niemals Infrastruktur.**
 
 ## Wie es weitergeht
 
-1. [Installiere](02-installation.md) die Anwendung.
+1. [Installiere und deploye](02-installation.md) die Anwendung.
 2. Stelle sie [hinter einen Reverse Proxy mit HTTPS](03-reverse-proxy.md).
 3. Prüfe die [Konfiguration](04-configuration.md) und die Einstellungsseite.
 4. Binde dein [Monitoring](05-monitoring.md) an und lege Services an.

@@ -8,7 +8,7 @@ It is also shown in the management UI under **Help**, in English or German.
 | Topic | English | Deutsch |
 | --- | --- | --- |
 | Overview and concepts | [en](guide/en/01-overview.md) | [de](guide/de/01-overview.md) |
-| Installation | [en](guide/en/02-installation.md) | [de](guide/de/02-installation.md) |
+| Installation and deployment | [en](guide/en/02-installation.md) | [de](guide/de/02-installation.md) |
 | Reverse proxy and HTTPS | [en](guide/en/03-reverse-proxy.md) | [de](guide/de/03-reverse-proxy.md) |
 | Configuration | [en](guide/en/04-configuration.md) | [de](guide/de/04-configuration.md) |
 | Monitoring integration | [en](guide/en/05-monitoring.md) | [de](guide/de/05-monitoring.md) |
@@ -29,6 +29,8 @@ It is also shown in the management UI under **Help**, in English or German.
 | [adapters/](adapters/README.md) | Monitoring adapters: Icinga 2, Uptime Kuma, openITCockpit, generic webhook |
 | [oidc.md](oidc.md) | Single sign-on with OpenID Connect, role mapping, provider notes |
 | [architecture.md](architecture.md) | Code layout, privacy model, status model, database, worker |
+| [releasing.md](releasing.md) | Container image pipeline, image tags, cutting a release, GHCR setup (maintainers) |
+| [../deploy/kubernetes/](../deploy/kubernetes/) | Example Kubernetes manifests (Kustomize), see [installation](guide/en/02-installation.md#kubernetes) |
 
 ## Writing the guide
 

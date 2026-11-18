@@ -10,8 +10,15 @@ Go through this list before going live and after larger changes.
       `Secure`.
 - [ ] `TRUST_PROXY` equals the number of proxies in front of the app, never
       more.
-- [ ] The host, Docker and the base images receive security updates; the app
-      is rebuilt regularly (`docker compose ... up -d --build`).
+- [ ] The host, Docker and the cluster receive security updates.
+- [ ] The image is pinned to a release (`OSP_VERSION=1.2.3`, `newTag` in
+      Kubernetes), optionally to its digest, and never `edge` in
+      production.
+- [ ] New releases are installed regularly (they also contain updated base
+      images and dependencies); someone watches the releases of the
+      repository. If you build the image yourself, rebuild it regularly.
+- [ ] Images come only from `ghcr.io/raphael-penning/openstatuspage`, your
+      own build or a mirror you control.
 - [ ] Only the proxy ports (80/443) are open to the internet. PostgreSQL is
       not published.
 
@@ -21,9 +28,23 @@ Go through this list before going live and after larger changes.
       installation and stored safely outside the server as well.
 - [ ] `POSTGRES_PASSWORD`, `SMTP_PASSWORD` and the OIDC client secret are
       random and not reused elsewhere.
-- [ ] Environment files are readable only by root or the service user
-      (`chmod 600`) and not committed to any repository.
+- [ ] Environment files (`deploy.env`) are readable only by root or the
+      service user (`chmod 600`) and not committed to any repository.
+- [ ] On Kubernetes the secret `openstatuspage` is created with `kubectl` or
+      a secret manager, never stored in plain text in Git, and only few
+      people may read secrets in the namespace.
 - [ ] `ADMIN_PASSWORD` was removed from the environment after the first start.
+
+## Kubernetes
+
+- [ ] The security context of `deployment.yaml` is kept as shipped: non-root
+      user 1000, no privilege escalation, all capabilities dropped,
+      read-only root file system, `RuntimeDefault` seccomp profile.
+- [ ] Only the ingress is exposed; the service stays `ClusterIP`.
+- [ ] One replica, or several only as described in
+      [Running several instances](09-operations.md#running-several-instances).
+- [ ] The database is not reachable from outside the cluster or the
+      database network.
 
 ## Accounts and access
 
