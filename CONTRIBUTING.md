@@ -26,6 +26,24 @@ pnpm test
 pnpm build
 ```
 
+## Docker image
+
+CI builds the image on every pull request (amd64 only, nothing is pushed) and
+publishes it to the GitHub Container Registry from `main` and release tags, see
+[docs/releasing.md](docs/releasing.md). To build and run it from your checkout:
+
+```bash
+docker build -f docker/Dockerfile -t openstatuspage:local .
+
+# or the full stack with PostgreSQL, built from the checkout:
+export SECRET_KEY="$(openssl rand -base64 48)" POSTGRES_PASSWORD=dev-only-password
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d --build
+```
+
+`docker/docker-compose.yml` alone runs the prebuilt image; the
+`docker-compose.build.yml` override replaces it with `openstatuspage:local`
+built from `docker/Dockerfile`.
+
 ## Guidelines
 
 - Code, comments and docs in English. UI texts go through i18n

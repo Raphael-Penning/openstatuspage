@@ -1,7 +1,35 @@
 # Troubleshooting
 
-Start with the logs (`docker compose -f docker/docker-compose.yml logs -f openstatuspage`)
+Start with the logs (`docker compose --env-file deploy.env -f docker/docker-compose.yml logs -f openstatuspage`,
+on Kubernetes `kubectl -n openstatuspage logs deployment/openstatuspage`)
 and `GET /api/health`. Set `LOG_LEVEL=debug` temporarily for more detail.
+
+## Container image
+
+**`docker compose pull` or `docker pull` fails with "manifest unknown" or
+"not found".**
+The tag does not exist. Check `OSP_VERSION` (`1.2.3`, without `v`).
+`latest` and the version tags only exist after the first release; until
+then use `edge` or a `sha-` tag. The available tags are listed on the
+package page of the repository on GitHub. On Kubernetes the pod shows
+`ErrImagePull` / `ImagePullBackOff`; `kubectl -n openstatuspage describe pod`
+shows the message.
+
+**The pull fails with "denied" or "unauthorized".**
+The package is private. New packages on the GitHub Container Registry often
+start private (for example on a fork). Make it public in the package
+settings, or log in with a token that may read packages:
+`docker login ghcr.io` (on Kubernetes an `imagePullSecret`). An expired
+login in `~/.docker/config.json` causes the same error for public images;
+`docker logout ghcr.io` fixes it.
+
+**"no matching manifest for linux/arm/v7" or "exec format error".**
+Images are published for `linux/amd64` and `linux/arm64` only. On other
+platforms [build the image yourself](02-installation.md#building-the-image-yourself).
+
+**After a restart a different version runs.**
+`OSP_VERSION` is a moving tag (`latest`, `1.2`) and a newer image was pulled.
+Pin a release, see [Image tags](02-installation.md#image-tags).
 
 ## Start-up
 
@@ -16,7 +44,8 @@ In production (the default `NODE_ENV`) the key is mandatory. Generate one with
 
 **`docker compose` says "set SECRET_KEY" or "set POSTGRES_PASSWORD".**
 The variables are not set in the shell or the `--env-file` you used. Compose
-needs them on every `up`, not only the first.
+needs them for every command (`up`, `pull`, `logs`, `exec`, ...), not only
+the first `up`: always pass `--env-file deploy.env`.
 
 **"DATABASE_URL must start with sqlite: or postgres://".**
 Use `sqlite:/path/to/file.db` or `postgres://user:password@host:5432/db`.
@@ -105,6 +134,7 @@ See the troubleshooting table in
 
 ## Getting help
 
-When you report a problem, include the version (Git commit), the deployment
-method, the relevant log lines and the steps to reproduce it. Remove secrets,
-host names and email addresses first.
+When you report a problem, include the version (image tag, or the Git commit
+when you build yourself), the deployment method, the relevant log lines and
+the steps to reproduce it. Remove secrets, host names and email addresses
+first.

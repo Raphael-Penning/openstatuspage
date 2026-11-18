@@ -16,7 +16,9 @@ language you selected there.
 
 Both are served by a single Node.js process together with the HTTP API
 (`/api/...`), RSS and Atom feeds (`/feed.rss`, `/feed.atom`) and a background
-worker for scheduled jobs.
+worker for scheduled jobs. It is published as a container image for Docker
+Compose, a single container or Kubernetes, and also runs directly from
+source.
 
 ## Building blocks
 
@@ -104,7 +106,7 @@ The core promise is: **customers see services, never infrastructure.**
 
 ## Where to go next
 
-1. [Install](02-installation.md) the application.
+1. [Install and deploy](02-installation.md) the application.
 2. Put it [behind a reverse proxy with HTTPS](03-reverse-proxy.md).
 3. Review the [configuration](04-configuration.md) and the settings page.
 4. Connect your [monitoring](05-monitoring.md) and create services.

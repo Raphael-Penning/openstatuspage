@@ -5,6 +5,10 @@ data
 .env
 .idea
 .claude
+# CI and deployment files are not needed to build the image (docs/ is: the web
+# client bundles docs/guide as the in-app help).
+.github
+deploy
 
 # Local data and secrets anywhere in the tree (e.g. apps/server/data from `pnpm dev`,
 # apps/server/.env, deploy.env): never part of the build context or the image.

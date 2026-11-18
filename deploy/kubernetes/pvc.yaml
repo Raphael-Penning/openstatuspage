@@ -1,0 +1,12 @@
+# Volume for /data. Required for SQLite (the default when DATABASE_URL is not
+# set); with PostgreSQL it stays almost empty but does no harm.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openstatuspage-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: standard

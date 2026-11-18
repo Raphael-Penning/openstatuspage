@@ -11,8 +11,16 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
       markiert sind.
 - [ ] `TRUST_PROXY` entspricht der Anzahl der Proxys vor der Anwendung, nie
       mehr.
-- [ ] Host, Docker und die Basis-Images bekommen Sicherheitsupdates; die
-      Anwendung wird regelmäßig neu gebaut (`docker compose ... up -d --build`).
+- [ ] Host, Docker und der Cluster bekommen Sicherheitsupdates.
+- [ ] Das Image ist auf ein Release festgelegt (`OSP_VERSION=1.2.3`, `newTag`
+      unter Kubernetes), optional auf seinen Digest, und im Produktivbetrieb
+      nie `edge`.
+- [ ] Neue Releases werden regelmäßig eingespielt (sie enthalten auch
+      aktualisierte Basis-Images und Abhängigkeiten); jemand verfolgt die
+      Releases des Repositorys. Baust du das Image selbst, baust du es
+      regelmäßig neu.
+- [ ] Images kommen nur von `ghcr.io/raphael-penning/openstatuspage`, aus
+      deinem eigenen Build oder aus einem Mirror, den du kontrollierst.
 - [ ] Nur die Ports des Proxys (80/443) sind aus dem Internet erreichbar.
       PostgreSQL ist nicht veröffentlicht.
 
@@ -22,9 +30,25 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
       eindeutig und zusätzlich sicher außerhalb des Servers aufbewahrt.
 - [ ] `POSTGRES_PASSWORD`, `SMTP_PASSWORD` und das OIDC-Client-Secret sind
       zufällig und werden nirgends sonst verwendet.
-- [ ] Env-Dateien sind nur für root oder den Dienstbenutzer lesbar
-      (`chmod 600`) und in keinem Repository eingecheckt.
+- [ ] Env-Dateien (`deploy.env`) sind nur für root oder den Dienstbenutzer
+      lesbar (`chmod 600`) und in keinem Repository eingecheckt.
+- [ ] Unter Kubernetes ist das Secret `openstatuspage` mit `kubectl` oder
+      einem Secret-Manager angelegt, liegt nie im Klartext in Git, und nur
+      wenige Personen dürfen Secrets im Namespace lesen.
 - [ ] `ADMIN_PASSWORD` wurde nach dem ersten Start aus der Umgebung entfernt.
+
+## Kubernetes
+
+- [ ] Der Security Context aus `deployment.yaml` ist unverändert: Benutzer
+      1000 statt root, keine Rechteausweitung, alle Capabilities entfernt,
+      schreibgeschütztes Root-Dateisystem, Seccomp-Profil `RuntimeDefault`.
+- [ ] Nur der Ingress ist von außen erreichbar; der Service bleibt
+      `ClusterIP`.
+- [ ] Ein Replikat, oder mehrere nur wie unter
+      [Mehrere Instanzen betreiben](09-operations.md#mehrere-instanzen-betreiben)
+      beschrieben.
+- [ ] Die Datenbank ist von außerhalb des Clusters bzw. des Datenbanknetzes
+      nicht erreichbar.
 
 ## Konten und Zugriff
 

@@ -1,0 +1,14 @@
+# Override for docker/docker-compose.yml: builds the image from this checkout
+# instead of pulling the prebuilt one. Use it for development, for testing
+# unreleased changes or on platforms without a published image:
+#
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d --build
+#
+# Pass the same --env-file (or exported variables) as without the override.
+services:
+  openstatuspage:
+    image: openstatuspage:local
+    pull_policy: build
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile

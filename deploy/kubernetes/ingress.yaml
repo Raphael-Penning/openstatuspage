@@ -1,0 +1,25 @@
+# HTTPS is terminated by the ingress controller. Replace status.example.com and
+# provide the TLS certificate in the secret openstatuspage-tls, for example with
+# cert-manager by adding an annotation such as:
+#   cert-manager.io/cluster-issuer: letsencrypt
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openstatuspage
+  annotations: {}
+spec:
+  # ingressClassName: nginx
+  tls:
+    - hosts: [status.example.com]
+      secretName: openstatuspage-tls
+  rules:
+    - host: status.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openstatuspage
+                port:
+                  name: http

@@ -1,0 +1,83 @@
+# One instance serving the public page, the management UI and the API, and
+# running the background worker. Settings: docs/configuration.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openstatuspage
+spec:
+  # Keep exactly one replica with SQLite. Several replicas need PostgreSQL and
+  # WORKER_ENABLED=false on all but one (docs/guide/en/09-operations.md).
+  replicas: 1
+  # The volume is ReadWriteOnce and SQLite allows one writer: stop the old pod
+  # before the new one starts.
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" user of the image
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openstatuspage
+          image: ghcr.io/raphael-penning/openstatuspage # tag set in kustomization.yaml
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: BASE_URL
+              value: https://status.example.com
+            # Requests arrive through the ingress controller, one proxy hop.
+            # Use 2 if another HTTP load balancer sits in front of it and the
+            # controller keeps its X-Forwarded-For (ingress-nginx:
+            # use-forwarded-headers), or the controller's pod CIDR (e.g.
+            # 10.0.0.0/8) instead of a hop count.
+            - name: TRUST_PROXY
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: openstatuspage # SECRET_KEY, DATABASE_URL, ADMIN_*, SMTP_*
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openstatuspage-data
+        - name: tmp
+          emptyDir: {}

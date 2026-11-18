@@ -1,8 +1,37 @@
 # Fehlerbehebung
 
-Fang mit den Logs an (`docker compose -f docker/docker-compose.yml logs -f openstatuspage`)
+Fang mit den Logs an (`docker compose --env-file deploy.env -f docker/docker-compose.yml logs -f openstatuspage`,
+unter Kubernetes `kubectl -n openstatuspage logs deployment/openstatuspage`)
 und mit `GET /api/health`. Für mehr Details setzt du vorübergehend
 `LOG_LEVEL=debug`.
+
+## Container-Image
+
+**`docker compose pull` oder `docker pull` scheitert mit „manifest unknown“
+oder „not found“.**
+Den Tag gibt es nicht. Prüfe `OSP_VERSION` (`1.2.3`, ohne `v`). `latest` und
+die Versions-Tags gibt es erst nach dem ersten Release; bis dahin nimmst du
+`edge` oder einen `sha-`-Tag. Die vorhandenen Tags stehen auf der
+Package-Seite des Repositorys bei GitHub. Unter Kubernetes zeigt der Pod
+`ErrImagePull` / `ImagePullBackOff`; die Meldung siehst du mit
+`kubectl -n openstatuspage describe pod`.
+
+**Der Pull scheitert mit „denied“ oder „unauthorized“.**
+Das Package ist privat. Neue Packages in der GitHub Container Registry sind
+oft zunächst privat (etwa bei einem Fork). Stell es in den Package-Einstellungen auf
+öffentlich, oder melde dich mit einem Token an, das Packages lesen darf:
+`docker login ghcr.io` (unter Kubernetes ein `imagePullSecret`). Eine
+abgelaufene Anmeldung in `~/.docker/config.json` führt auch bei öffentlichen
+Images zu diesem Fehler; `docker logout ghcr.io` behebt das.
+
+**„no matching manifest for linux/arm/v7“ oder „exec format error“.**
+Images gibt es nur für `linux/amd64` und `linux/arm64`. Auf anderen
+Plattformen [baust du das Image selbst](02-installation.md#image-selbst-bauen).
+
+**Nach einem Neustart läuft eine andere Version.**
+`OSP_VERSION` ist ein mitwandernder Tag (`latest`, `1.2`), und es wurde ein
+neueres Image geholt. Leg dich auf ein Release fest, siehe
+[Image-Tags](02-installation.md#image-tags).
 
 ## Start
 
@@ -18,7 +47,8 @@ Erzeuge einen mit `openssl rand -base64 48`.
 
 **`docker compose` meldet „set SECRET_KEY“ oder „set POSTGRES_PASSWORD“.**
 Die Variablen fehlen in der Shell oder in der `--env-file`, die du verwendet
-hast. Compose braucht sie bei jedem `up`, nicht nur beim ersten.
+hast. Compose braucht sie bei jedem Befehl (`up`, `pull`, `logs`, `exec`,
+...), nicht nur beim ersten `up`: Übergib immer `--env-file deploy.env`.
 
 **„DATABASE_URL must start with sqlite: or postgres://“.**
 Verwende `sqlite:/pfad/zur/datei.db` oder
@@ -112,6 +142,7 @@ Siehe die Tabelle zur Fehlersuche unter
 
 ## Hilfe bekommen
 
-Wenn du ein Problem meldest, gib die Version (Git-Commit), die Art der
-Installation, die relevanten Log-Zeilen und die Schritte zum Nachstellen an.
-Entferne vorher Geheimnisse, Hostnamen und E-Mail-Adressen.
+Wenn du ein Problem meldest, gib die Version (Image-Tag, oder den Git-Commit,
+wenn du selbst baust), die Art der Installation, die relevanten Log-Zeilen
+und die Schritte zum Nachstellen an. Entferne vorher Geheimnisse, Hostnamen
+und E-Mail-Adressen.
