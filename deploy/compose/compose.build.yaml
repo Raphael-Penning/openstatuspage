@@ -1,0 +1,14 @@
+# Override for compose.yaml: builds the image from this checkout instead of
+# pulling the prebuilt one. Use it for development, for testing unreleased
+# changes or on platforms without a published image. From deploy/compose:
+#
+#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+#
+# Settings come from the same .env as without the override.
+services:
+  openstatuspage:
+    image: openstatuspage:local
+    pull_policy: build
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
