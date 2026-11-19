@@ -2,12 +2,12 @@
  * Session handling for the management UI: auth guard, role helpers and the
  * shared admin root (toasts, accent color).
  */
-import { deserialize, JSONAPI_MEDIA_TYPE, type DataDocument, type PublicPageSettings, type SessionInfo } from '@openstatuspage/shared';
+import type { PublicPageSettings, SessionInfo } from '@openstatuspage/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Outlet, useLocation } from 'react-router';
-import { ApiError } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { useAccentColor } from '../lib/theme';
 import { ToastProvider } from './components/Toast';
 import { ErrorState, LoadingState } from './components/ui';
@@ -30,15 +30,7 @@ export function useBranding() {
   return useQuery({
     queryKey: ['public', 'settings'],
     // Public responses are cacheable for 30 s; revalidate so saved settings show up immediately.
-    queryFn: async () => {
-      const res = await fetch('/api/public/settings', {
-        cache: 'no-cache',
-        credentials: 'same-origin',
-        headers: { accept: JSONAPI_MEDIA_TYPE },
-      });
-      if (!res.ok) throw new ApiError(res.status, null);
-      return deserialize<PublicPageSettings>((await res.json()) as DataDocument);
-    },
+    queryFn: () => api.get<PublicPageSettings>('/api/public/settings', undefined, { cache: 'no-cache' }),
     staleTime: 5 * 60_000,
     retry: false,
   });

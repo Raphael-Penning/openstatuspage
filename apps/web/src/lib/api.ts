@@ -52,6 +52,8 @@ export interface RequestOptions {
   id?: string;
   /** Plain fields sent as relationships, mapped to the related type: `{ serviceIds: 'services' }`. */
   relationships?: Record<string, string>;
+  /** fetch cache mode (e.g. 'no-cache' to revalidate a cacheable public response). */
+  cache?: RequestCache;
 }
 
 function buildUrl(path: string, query?: Query): string {
@@ -98,6 +100,7 @@ async function send(method: string, path: string, body?: unknown, query?: Query,
   const res = await fetch(buildUrl(path, query), {
     method,
     credentials: 'same-origin',
+    ...(options?.cache ? { cache: options.cache } : {}),
     headers: {
       accept: JSONAPI_MEDIA_TYPE,
       ...options?.headers,
