@@ -175,7 +175,7 @@ describe('JSON:API routes', () => {
       useJsonApi(scope, { requestBody: 'native' });
       scope.post('/ingest', async (req) => metaDocument({ received: req.body }));
     });
-    app.post('/legacy', async (req) => ({ body: req.body }));
+    app.post('/plain', async (req) => ({ body: req.body }));
     await app.ready();
   });
 
@@ -271,10 +271,8 @@ describe('JSON:API routes', () => {
     expect(res.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { received: { heartbeat: { status: 1 } } } });
   });
 
-  it('unwraps documents for routes that are not converted yet', async () => {
-    const res = await send('POST', '/legacy', { data: { type: 'x', attributes: { a: 1 } } });
-    expect(res.json()).toEqual({ body: { a: 1 } });
-    const plain = await app.inject({ method: 'POST', url: '/legacy', payload: { a: 1 } });
-    expect(plain.json()).toEqual({ body: { a: 1 } });
+  it('leaves request bodies of routes outside JSON:API alone', async () => {
+    const res = await send('POST', '/plain', { data: { type: 'x', attributes: { a: 1 } } });
+    expect(res.json()).toEqual({ body: { data: { type: 'x', attributes: { a: 1 } } } });
   });
 });

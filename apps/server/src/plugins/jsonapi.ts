@@ -58,8 +58,6 @@ export function jsonApiConfig(req: FastifyRequest): JsonApiRouteConfig | undefin
   return (req.routeOptions?.config as { jsonapi?: JsonApiRouteConfig } | undefined)?.jsonapi;
 }
 
-export const isJsonApiRoute = (req: FastifyRequest): boolean => jsonApiConfig(req) !== undefined;
-
 /** Relationship names of the request document (used to point errors at relationships). */
 const requestRelationships = new WeakMap<FastifyRequest, ReadonlySet<string>>();
 
@@ -132,17 +130,14 @@ const invalidDocument = (detail: string, pointer: string) =>
   new HttpError(400, 'invalid_document', detail, undefined, { source: { pointer } });
 
 /** Replaces a JSON:API request document by the flattened resource. */
-function unwrap(req: FastifyRequest, config: JsonApiRouteConfig | undefined): void {
+function unwrap(req: FastifyRequest, config: JsonApiRouteConfig): void {
   const body = req.body;
-  const strict = config !== undefined && config.requestBody !== 'native';
   if (!isObject(body) || !('data' in body)) {
-    if (strict) throw invalidDocument('The request document must contain a "data" member', '');
-    return;
+    throw invalidDocument('The request document must contain a "data" member', '');
   }
   const data = body.data;
   if (!isObject(data) || typeof data.type !== 'string' || data.type === '') {
-    if (strict) throw invalidDocument('"data" must be a resource object with a "type"', '/data');
-    if (!isObject(data)) return;
+    throw invalidDocument('"data" must be a resource object with a "type"', '/data');
   }
   if (data.attributes !== undefined && !isObject(data.attributes)) {
     throw invalidDocument('"attributes" must be an object', '/data/attributes');
@@ -150,13 +145,13 @@ function unwrap(req: FastifyRequest, config: JsonApiRouteConfig | undefined): vo
   if (data.relationships !== undefined && !isObject(data.relationships)) {
     throw invalidDocument('"relationships" must be an object', '/data/relationships');
   }
-  if (strict && config.type && data.type !== config.type) {
+  if (config.type && data.type !== config.type) {
     throw new HttpError(409, 'type_mismatch', `Expected a resource of type "${config.type}"`, undefined, {
       source: { pointer: '/data/type' },
     });
   }
   const paramId = (req.params as Record<string, unknown> | undefined)?.id;
-  if (strict && typeof paramId === 'string' && data.id !== undefined && data.id !== paramId) {
+  if (typeof paramId === 'string' && data.id !== undefined && data.id !== paramId) {
     throw new HttpError(409, 'id_mismatch', 'data.id does not match the URL', undefined, { source: { pointer: '/data/id' } });
   }
   requestRelationships.set(req, new Set(Object.keys((data.relationships as object | undefined) ?? {})));
@@ -197,8 +192,7 @@ export function registerJsonApi(app: FastifyInstance): void {
 
   app.addHook('preValidation', async (req) => {
     const config = jsonApiConfig(req);
-    if (config?.requestBody === 'native') return;
-    // Routes not converted yet accept wrapped documents too (the body is flattened).
+    if (!config || config.requestBody === 'native') return;
     if (isJsonApiContent(req) && req.body !== undefined) unwrap(req, config);
   });
 

@@ -4,14 +4,12 @@ import { fileURLToPath } from 'node:url';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
-import { ZodError } from 'zod';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
-import { HttpError } from './lib/errors.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
 import type { Mailer } from './mail/mailer.js';
-import { isJsonApiRoute, registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
+import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { registerRoutes } from './routes/index.js';
 
 export interface BuildAppOptions {
@@ -102,23 +100,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
 
   registerJsonApi(app);
 
-  app.setErrorHandler((err, req, reply) => {
-    // JSON:API routes (see plugins/jsonapi.ts) answer with JSON:API error documents.
-    if (isJsonApiRoute(req)) return sendJsonApiError(err, req, reply);
-    // Legacy format of route groups not converted to JSON:API yet.
-    if (err instanceof HttpError) {
-      return reply.status(err.statusCode).send({ error: err.code, message: err.message, issues: err.issues });
-    }
-    if (err instanceof ZodError) {
-      return reply.status(400).send({ error: 'validation_error', message: 'Invalid request', issues: err.issues });
-    }
-    const status = (err as { statusCode?: number }).statusCode ?? 500;
-    if (status >= 500) req.log.error({ err }, 'request failed');
-    return reply.status(status).send({
-      error: status >= 500 ? 'internal_error' : 'request_error',
-      message: status >= 500 ? 'Internal server error' : (err as Error).message,
-    });
-  });
+  // Every error answer is a JSON:API error document, also on the few non-JSON:API
+  // routes (health check, status.json, feeds, OIDC and browser redirects).
+  app.setErrorHandler((err, req, reply) => sendJsonApiError(err, req, reply));
 
   await registerRoutes(app);
 
