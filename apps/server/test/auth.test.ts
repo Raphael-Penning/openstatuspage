@@ -3,7 +3,7 @@ import { loadConfig } from '../src/config.js';
 import { sha256 } from '../src/lib/crypto.js';
 import { cleanupExpiredSessions } from '../src/services/sessions.js';
 import { createOrResetLocalUser } from '../src/services/users.js';
-import { PASSWORD, client, createTestApp, createUser, login, type TestApp } from './helpers.js';
+import { PASSWORD, client, createTestApp, createUser, data, doc, errors, login, loginRequest, type TestApp } from './helpers.js';
 
 const HOUR_MS = 3600_000;
 
@@ -19,13 +19,15 @@ describe('login / logout / session', () => {
   it('logs in, reports the session and logs out', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin', name: 'Ada Admin' });
 
-    const res = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'Admin@Example.com', password: PASSWORD },
-    });
+    const res = await t.app.inject(loginRequest('Admin@Example.com', PASSWORD));
     expect(res.statusCode).toBe(200);
-    expect(res.json().user).toMatchObject({ email: 'admin@example.com', role: 'admin', hasPassword: true });
+    expect(res.headers['content-type']).toBe('application/vnd.api+json');
+    expect(res.json()).toMatchObject({
+      jsonapi: { version: '1.1' },
+      data: { type: 'sessions', id: 'current', relationships: { user: { data: { type: 'users' } } } },
+      included: [{ type: 'users', attributes: { email: 'admin@example.com' } }],
+    });
+    expect(data<{ user: object }>(res).user).toMatchObject({ email: 'admin@example.com', role: 'admin', hasPassword: true });
     const cookie = res.cookies.find((c) => c.name === 'osp_session')!;
     expect(cookie.httpOnly).toBe(true);
     expect(cookie.sameSite).toBe('Lax');
@@ -37,7 +39,7 @@ describe('login / logout / session', () => {
     const headers = { cookie: `osp_session=${cookie.value}` };
     const session = await t.app.inject({ method: 'GET', url: '/api/auth/session', headers });
     expect(session.statusCode).toBe(200);
-    expect(session.json()).toMatchObject({ user: { name: 'Ada Admin' }, oidcEnabled: false });
+    expect(data(session)).toMatchObject({ id: 'current', user: { name: 'Ada Admin' }, oidcEnabled: false });
 
     const logout = await t.app.inject({
       method: 'POST',
@@ -52,39 +54,46 @@ describe('login / logout / session', () => {
 
   it('returns the same generic error for unknown users and wrong passwords', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
-    const wrong = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'admin@example.com', password: 'nope-nope-nope' },
-    });
-    const unknown = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'ghost@example.com', password: 'nope-nope-nope' },
-    });
+    const wrong = await t.app.inject(loginRequest('admin@example.com', 'nope-nope-nope'));
+    const unknown = await t.app.inject(loginRequest('ghost@example.com', 'nope-nope-nope'));
     expect(wrong.statusCode).toBe(401);
     expect(unknown.statusCode).toBe(401);
     expect(wrong.json()).toEqual(unknown.json());
+    expect(errors(wrong)).toEqual([expect.objectContaining({ status: '401', code: 'invalid_credentials' })]);
+  });
+
+  it('only accepts a JSON:API "sessions" document for login', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const plain = await t.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'admin@example.com', password: PASSWORD },
+    });
+    expect(plain.statusCode).toBe(415);
+    expect(errors(plain)[0]).toMatchObject({ code: 'unsupported_media_type' });
+
+    const wrongType = await t.app.inject({
+      ...loginRequest('admin@example.com', PASSWORD),
+      payload: JSON.stringify(doc('users', { email: 'admin@example.com', password: PASSWORD })),
+    });
+    expect(wrongType.statusCode).toBe(409);
+    expect(errors(wrongType)[0]).toMatchObject({ code: 'type_mismatch', source: { pointer: '/data/type' } });
+
+    const invalid = await t.app.inject(loginRequest('not-an-email', PASSWORD));
+    expect(invalid.statusCode).toBe(400);
+    expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/email' } });
   });
 
   it('rejects users without a local password', async () => {
     await createUser(t.db, { email: 'sso@example.com', role: 'editor', password: null });
-    const res = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'sso@example.com', password: PASSWORD },
-    });
+    const res = await t.app.inject(loginRequest('sso@example.com', PASSWORD));
     expect(res.statusCode).toBe(401);
   });
 
   it('rate limits login attempts', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 11; i++) {
-      const res = await t.app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        payload: { email: 'ghost@example.com', password: 'nope' },
-      });
+      const res = await t.app.inject(loginRequest('ghost@example.com', 'nope'));
       codes.push(res.statusCode);
     }
     expect(codes.slice(0, 10).every((c) => c === 401)).toBe(true);
@@ -183,7 +192,8 @@ describe('login / logout / session', () => {
 
   it('exposes the auth configuration', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/auth/config' });
-    expect(res.json()).toEqual({ oidcEnabled: false, oidcLabel: 'Single Sign-On', localLoginEnabled: true });
+    expect(res.json().data).toMatchObject({ type: 'auth-configs', id: 'current' });
+    expect(data(res)).toEqual({ id: 'current', oidcEnabled: false, oidcLabel: 'Single Sign-On', localLoginEnabled: true });
     const oidc = await t.app.inject({ method: 'GET', url: '/api/auth/oidc/login' });
     expect(oidc.statusCode).toBe(404);
   });
@@ -193,7 +203,7 @@ describe('authorization', () => {
   it('requires authentication for the admin API', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/admin/services' });
     expect(res.statusCode).toBe(401);
-    expect(res.json().error).toBe('unauthorized');
+    expect(errors(res)[0]?.code ?? res.json().error).toBe('unauthorized');
   });
 
   it('enforces roles (editor < admin)', async () => {
