@@ -5,6 +5,7 @@
 import type {
   AdminApiToken,
   AdminCheckBundle,
+  AdminCorrection,
   AdminIncident,
   AdminLocation,
   AdminMaintenance,
@@ -12,6 +13,7 @@ import type {
   AdminMonitorSource,
   AdminService,
   AdminServiceGroup,
+  AdminServiceHistory,
   AdminSubscriber,
   AdminUser,
   AuditLogEntry,
@@ -54,6 +56,14 @@ export interface ChecksFilter {
   unlinked?: boolean;
 }
 
+export interface CorrectionsFilter {
+  serviceId?: string;
+  /** ISO timestamps; only corrections overlapping [from, to). */
+  from?: string;
+  to?: string;
+  page: number;
+}
+
 export const keys = {
   session: ['auth', 'session'] as const,
   authConfig: ['auth', 'config'] as const,
@@ -78,6 +88,8 @@ export const keys = {
   audit: (page: number, entityType: string) => ['admin', 'audit-log', page, entityType] as const,
   subscribers: (query: SubscriberListQuery) => ['admin', 'subscribers', query] as const,
   notificationStatus: ['admin', 'notifications', 'status'] as const,
+  corrections: (filter: CorrectionsFilter) => ['admin', 'corrections', 'list', filter] as const,
+  serviceHistory: (id: string, from: string, to: string) => ['admin', 'services', id, 'history', from, to] as const,
 };
 
 const notRetryingClientErrors = (failureCount: number, error: unknown) =>
@@ -161,6 +173,16 @@ export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
     pageSize,
     entityType: entityType || undefined,
   });
+
+export const useCorrections = (filter: CorrectionsFilter, pageSize = 20) =>
+  useQuery({
+    queryKey: keys.corrections(filter),
+    queryFn: () => api.get<Paginated<AdminCorrection>>('/api/admin/corrections', { ...filter, pageSize }),
+    retry: notRetryingClientErrors,
+    placeholderData: keepPreviousData,
+  });
+export const useServiceHistory = (id: string, from: string, to: string, enabled = true) =>
+  useAdminQuery<AdminServiceHistory>(keys.serviceHistory(id, from, to), `/api/admin/services/${id}/history`, { from, to }, enabled);
 
 export const useSubscribers = (query: SubscriberListQuery) =>
   useQuery({

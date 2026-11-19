@@ -196,9 +196,32 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
     const { id } = parse(IdParams, req.params);
     const svc = await db.selectFrom('services').select(['name']).where('id', '=', id).executeTakeFirst();
     if (!svc) throw notFound('Service');
-    // Links, history and incident/maintenance associations cascade.
-    await db.deleteFrom('services').where('id', '=', id).execute();
-    await auditRequest(db, req, 'service.delete', 'service', id, { name: svc.name });
+    // Links, history and incident/maintenance/correction associations cascade.
+    const deletedCorrections = await db.transaction().execute(async (trx) => {
+      await trx.deleteFrom('services').where('id', '=', id).execute();
+      // Corrections left without any service have no effect any more: remove them.
+      const orphans = await trx
+        .selectFrom('status_corrections')
+        .select('id')
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('status_correction_services')
+                .select('status_correction_services.correction_id')
+                .whereRef('status_correction_services.correction_id', '=', 'status_corrections.id'),
+            ),
+          ),
+        )
+        .execute();
+      const ids = orphans.map((o) => o.id);
+      if (ids.length > 0) await trx.deleteFrom('status_corrections').where('id', 'in', ids).execute();
+      return ids;
+    });
+    await auditRequest(db, req, 'service.delete', 'service', id, {
+      name: svc.name,
+      ...(deletedCorrections.length > 0 ? { deletedCorrections } : {}),
+    });
     return reply.status(204).send();
   });
 }

@@ -22,7 +22,8 @@
     "users": "Users",
     "apiTokens": "API tokens",
     "auditLog": "Audit log",
-    "subscribers": "Subscribers"
+    "subscribers": "Subscribers",
+    "corrections": "Corrections"
   },
   "userMenu": {
     "label": "Account and preferences",
@@ -98,7 +99,9 @@
     "slugTaken": "This slug is already in use.",
     "emailTaken": "A user with this e-mail already exists.",
     "passwordMismatch": "The passwords do not match.",
-    "wrongPassword": "The current password is incorrect."
+    "wrongPassword": "The current password is incorrect.",
+    "rangeTooLong": "The range may span at most 366 days.",
+    "notInFuture": "Corrections only change the past: the end must not be in the future."
   },
   "form": {
     "isPublic": "Visible on the public status page",
@@ -285,7 +288,67 @@
       "cancelled": "The maintenance has been cancelled."
     },
     "deleteTitle": "Delete maintenance",
-    "deleteConfirm": "Delete \"{{title}}\" with all updates? This cannot be undone."
+    "deleteConfirm": "Delete \"{{title}}\" with all updates? This cannot be undone.",
+    "retroactive": "Entered afterwards",
+    "record": "Record maintenance",
+    "retroactiveHint": {
+      "past": "This window is already over. It is recorded as completed, no email is sent, and its time counts as maintenance (not as downtime) in the uptime history.",
+      "started": "This window has already started. It starts right away; subscribers only get the \"in progress\" email (no announcement), and the time since the start counts as maintenance in the uptime history.",
+      "hidden": "Note: a hidden maintenance does not change statuses, so it does not correct the uptime history. Use a status correction with the status \"Maintenance\" for an internal window."
+    }
+  },
+  "corrections": {
+    "title": "Corrections",
+    "description": "Fix the uptime history afterwards, e.g. a false alarm or an outage the monitoring missed. The measured data is kept; corrections are applied on top and can be edited or deleted at any time.",
+    "new": "New correction",
+    "editTitle": "Edit correction",
+    "created": "Correction created.",
+    "saved": "Correction saved.",
+    "deleted": "Correction deleted.",
+    "empty": "No corrections found.",
+    "allServices": "All services",
+    "filterLabel": "Filter corrections",
+    "filterFrom": "From",
+    "filterTo": "To",
+    "until": "until {{time}}",
+    "createdBy": "By {{name}}, {{time}}",
+    "public": "Marked publicly",
+    "internal": "Internal only",
+    "editLabel": "Edit correction from {{time}}",
+    "deleteLabel": "Delete correction from {{time}}",
+    "deleteTitle": "Delete correction",
+    "deleteConfirm": "Delete this correction? The uptime history shows the measured data again for this range.",
+    "dialogIntro": "The selected services get this status for the time range. Where corrections overlap, the one created last wins. A forgotten maintenance is better entered as maintenance with its real window.",
+    "endsAtHelp": "Not in the future.",
+    "statusHelp": "\"Operational\" marks a false alarm; an outage status records a missed outage.",
+    "reasonHelp": "Internal, never shown publicly. Also recorded in the audit log.",
+    "showPublicHelp": "Days containing this correction are marked \"corrected afterwards\" on the public status page.",
+    "publicNoteHelp": "Optional. Shown with the marker, e.g. \"False alarm of the monitoring system.\"",
+    "fields": {
+      "service": "Service",
+      "services": "Services",
+      "range": "Time range",
+      "status": "Status",
+      "reason": "Reason",
+      "visibility": "Public page",
+      "startsAt": "Start",
+      "endsAt": "End",
+      "showPublic": "Show a note on the public page",
+      "publicNote": "Public note"
+    },
+    "compare": {
+      "title": "History: measured and corrected",
+      "add": "Add correction",
+      "intro": "Compares the measured status history with the history after corrections and retroactive maintenance. Uptime counts degraded performance and maintenance as up.",
+      "measured": "Measured",
+      "corrected": "Corrected",
+      "none": "No corrections in this range.",
+      "changes": "Corrected periods",
+      "correctedStatus": "Corrected status",
+      "source": "Source",
+      "maintenance": "Maintenance \"{{title}}\"",
+      "correction": "Correction"
+    }
   },
   "services": {
     "title": "Services & sites",
@@ -740,7 +803,8 @@
       "user": "User",
       "api_token": "API token",
       "subscriber": "Subscriber",
-      "notifications": "Email notifications"
+      "notifications": "Email notifications",
+      "correction": "Correction"
     },
     "actions": {
       "auth_login": "Signed in",
@@ -783,7 +847,10 @@
       "api_token_delete": "API token revoked",
       "subscriber_delete": "Subscriber deleted",
       "notifications_test": "Test email sent",
-      "notifications_retry_failed": "Failed emails requeued"
+      "notifications_retry_failed": "Failed emails requeued",
+      "correction_create": "Correction created",
+      "correction_update": "Correction edited",
+      "correction_delete": "Correction deleted"
     }
   },
   "notify": {

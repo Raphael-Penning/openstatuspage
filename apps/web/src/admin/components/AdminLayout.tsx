@@ -11,6 +11,7 @@ import {
   CircleHelp,
   ExternalLink,
   FolderTree,
+  History,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -57,6 +58,7 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
         { to: '/admin', label: t('nav.dashboard'), icon: LayoutDashboard, end: true },
         { to: '/admin/incidents', label: t('nav.incidents'), icon: TriangleAlert },
         { to: '/admin/maintenance', label: t('nav.maintenance'), icon: Wrench },
+        { to: '/admin/corrections', label: t('nav.corrections'), icon: History },
       ],
     },
     {

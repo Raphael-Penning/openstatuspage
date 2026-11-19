@@ -165,6 +165,7 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
               error={form.error('scheduledEnd')}
               required
             />
+            {!maintenance && <RetroactiveHint start={v.scheduledStart} end={v.scheduledEnd} autoStart={v.autoStart} isPublic={v.isPublic} />}
             <CheckboxField
               label={t('maintenance.fields.autoStart')}
               help={t('maintenance.autoStartHelp')}
@@ -210,12 +211,52 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
             <div className="flex justify-end gap-2">
               <LinkButton to={backTo}>{t('common:actions.cancel')}</LinkButton>
               <Button type="submit" variant="primary" pending={save.isPending}>
-                {maintenance ? t('common:actions.save') : t('maintenance.schedule')}
+                {maintenance ? t('common:actions.save') : isPast(v.scheduledEnd) ? t('maintenance.record') : t('maintenance.schedule')}
               </Button>
             </div>
           </div>
         </Card>
       </form>
     </>
+  );
+}
+
+/** Windows starting less than this before now are treated as starting now (see the server). */
+const RETROACTIVE_GRACE_MS = 5 * 60_000;
+
+function isPast(localEnd: string): boolean {
+  const end = localInputToIso(localEnd);
+  return end !== null && new Date(end).getTime() <= Date.now();
+}
+
+/** Explains what happens when a window that already started or ended is entered. */
+function RetroactiveHint({
+  start,
+  end,
+  autoStart,
+  isPublic,
+}: {
+  start: string;
+  end: string;
+  autoStart: boolean;
+  isPublic: boolean;
+}) {
+  const { t } = useTranslation('admin');
+  const startIso = localInputToIso(start);
+  const endIso = localInputToIso(end);
+  if (!startIso || !endIso || endIso <= startIso) return null;
+  const now = Date.now();
+  const kind =
+    new Date(endIso).getTime() <= now
+      ? 'past'
+      : autoStart && now - new Date(startIso).getTime() >= RETROACTIVE_GRACE_MS
+        ? 'started'
+        : null;
+  if (!kind) return null;
+  return (
+    <p role="note" className="rounded-lg border border-status-maintenance/40 bg-status-maintenance/10 p-3 text-sm md:col-span-2">
+      {t(`maintenance.retroactiveHint.${kind}`)}
+      {!isPublic && <> {t('maintenance.retroactiveHint.hidden')}</>}
+    </p>
   );
 }

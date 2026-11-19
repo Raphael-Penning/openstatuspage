@@ -110,7 +110,9 @@
     "maintenance": "Active and upcoming maintenance",
     "incidents": "Incidents in the last 90 days",
     "fullHistory": "Full history",
-    "noIncidents": "No incidents in the last 90 days."
+    "noIncidents": "No incidents in the last 90 days.",
+    "corrections": "Corrected afterwards",
+    "correctionsIntro": "The data of these days was corrected after the fact, for example after a false alarm of the monitoring. The uptime above already includes the correction."
   },
   "uptime": {
     "roleDescription": "uptime bar",
@@ -120,7 +122,11 @@
     "noDowntime": "No downtime recorded.",
     "daysAgo_one": "{{count}} day ago",
     "daysAgo_other": "{{count}} days ago",
-    "today": "Today"
+    "today": "Today",
+    "corrected": "Corrected afterwards",
+    "correctedLegend": "Marked days were corrected afterwards",
+    "correctedCount_one": "{{count}} day was corrected afterwards.",
+    "correctedCount_other": "{{count}} days were corrected afterwards."
   },
   "locations": {
     "title": "Locations",
