@@ -29,6 +29,7 @@ import type {
   SessionInfo,
   SubscriberListQuery,
 } from '@openstatuspage/shared';
+import { toQueryParams } from '@openstatuspage/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../components/Toast';
@@ -171,7 +172,9 @@ export const useChecks = (filter: ChecksFilter, enabled = true) =>
   useAdminQuery<AdminMonitorCheck[]>(
     keys.checks(filter),
     '/api/admin/checks',
-    { sourceId: filter.sourceId, q: filter.q, state: filter.state, unlinked: filter.unlinked ? 'true' : undefined },
+    toQueryParams({
+      filter: { source: filter.sourceId, q: filter.q, state: filter.state, unlinked: filter.unlinked ? 'true' : undefined },
+    }),
     enabled,
   );
 /** Bundles with their live vote; refreshed regularly so the breakdown stays current. */
@@ -183,9 +186,11 @@ export const useBundles = () =>
     refetchInterval: 30_000,
   });
 export const useBundleCandidates = (type: ConfigurableSourceType | '') =>
-  useAdminQuery<BundleCandidateSource[]>(keys.bundleCandidates(type), '/api/admin/check-bundles/candidates', {
-    type: type || undefined,
-  });
+  useAdminQuery<BundleCandidateSource[]>(
+    keys.bundleCandidates(type),
+    '/api/admin/check-bundles/candidates',
+    toQueryParams({ filter: { sourceType: type || undefined } }),
+  );
 export const useSettings = () => useAdminQuery<PublicPageSettings>(keys.settings, '/api/admin/settings');
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
