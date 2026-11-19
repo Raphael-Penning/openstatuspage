@@ -3,6 +3,13 @@ import { registerAuth } from '../plugins/auth.js';
 import { roleFeatures } from '../role.js';
 
 /**
+ * Clients (keys) each rate-limited route remembers. @fastify/rate-limit keeps an
+ * LRU per route with 5000 entries by default; this bounds the memory a flood from
+ * many addresses can take on one instance.
+ */
+export const RATE_LIMIT_KEYS = 1000;
+
+/**
  * Registers all API route modules. Every module is a Fastify plugin and
  * receives the shared context via `app.ctx`.
  *
@@ -27,6 +34,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // Not global: routes opt in with `config: { rateLimit: { max, timeWindow } }`.
     // Registered once here so every route module (incl. adapters) can use it.
     const { default: rateLimit } = await import('@fastify/rate-limit');
+    // Before the plugin's own onRoute hook, which creates the store of the route.
+    app.addHook('onRoute', (route) => {
+      const limit = (route.config as { rateLimit?: unknown } | undefined)?.rateLimit;
+      if (limit && typeof limit === 'object' && !('cache' in limit)) Object.assign(limit, { cache: RATE_LIMIT_KEYS });
+    });
     await app.register(rateLimit, { global: false });
   }
   // Sessions and API tokens are only resolved where the admin API exists.
