@@ -16,6 +16,8 @@ interface Task {
   run: (signal: AbortSignal) => Promise<void>;
   /** Runs on every instance without a lease (e.g. syncing this instance's own schedule). */
   local: boolean;
+  /** See ScheduleOptions.changedAt; used by the first scheduled run only. */
+  changedAt?: number;
   timer?: NodeJS.Timeout;
   running: boolean;
 }
@@ -23,6 +25,12 @@ interface Task {
 export interface ScheduleOptions {
   /** Run on every instance, without a lease. Default false (one instance at a time). */
   local?: boolean;
+  /**
+   * When the task's settings last changed (ms since the epoch). The run right after
+   * scheduling is then due if no instance started the task since, even before the
+   * interval has passed (an edited monitoring source is polled right away once).
+   */
+  changedAt?: number;
 }
 
 export class Worker {
@@ -45,7 +53,14 @@ export class Worker {
     options: ScheduleOptions = {},
   ): void {
     this.unschedule(name);
-    const task: Task = { name, intervalMs, run, local: options.local === true, running: false };
+    const task: Task = {
+      name,
+      intervalMs,
+      run,
+      local: options.local === true,
+      changedAt: options.changedAt,
+      running: false,
+    };
     this.tasks.set(name, task);
     if (this.started) this.arm(task, true);
   }
@@ -119,13 +134,19 @@ export class Worker {
   private async exec(task: Task, scheduled: boolean): Promise<void> {
     if (task.running || this.abort.signal.aborted) return;
     task.running = true;
+    const changedAt = scheduled ? task.changedAt : undefined;
+    task.changedAt = undefined;
     try {
       await withLease(
         task.local ? null : this.coordinator,
         task.name,
-        scheduled ? task.intervalMs : null,
+        {
+          intervalMs: scheduled ? task.intervalMs : null,
+          changedAt,
+          onLost: () =>
+            this.log.warn({ task: task.name }, 'background task lease lost; another instance may run it as well'),
+        },
         () => task.run(this.abort.signal),
-        () => this.log.warn({ task: task.name }, 'background task lease lost; another instance may run it as well'),
       );
     } catch (err) {
       this.log.error({ err, task: task.name }, 'background task failed');

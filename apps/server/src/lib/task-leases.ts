@@ -27,17 +27,27 @@ export const LEASE_TTL_MS = 60_000;
 /** Leases unused for this long are removed (e.g. polls of deleted sources). */
 export const LEASE_RETENTION_MS = 7 * 86400_000;
 
+export interface ClaimOptions {
+  /**
+   * Scheduled run: the task must also be due (started at least this long ago).
+   * Null or omitted: only the lock counts (run now, manual poll).
+   */
+  intervalMs?: number | null;
+  /**
+   * The task changed at this time (ms since the epoch, e.g. a monitoring source
+   * was edited): it is also due when its last start was before that.
+   */
+  changedAt?: number;
+}
+
 /** Coordinates task runs between instances; implemented by TaskLeases. */
 export interface TaskCoordinator {
   /** Instance id stored as the lease owner. */
   readonly owner: string;
   /** How often a running task renews its lease. */
   readonly renewEveryMs: number;
-  /**
-   * Claims the lease of `name`. With `intervalMs` the task must also be due
-   * (scheduled run); with null only the lock counts (run now, manual poll).
-   */
-  claim(name: string, intervalMs: number | null): Promise<boolean>;
+  /** Claims the lease of `name` (see ClaimOptions for when a scheduled run is due). */
+  claim(name: string, options?: ClaimOptions): Promise<boolean>;
   /** Extends a held lease; false when it was lost (expired and taken over). */
   renew(name: string): Promise<boolean>;
   release(name: string): Promise<void>;
@@ -67,8 +77,13 @@ export class TaskLeases implements TaskCoordinator {
     this.renewEveryMs = Math.max(100, Math.floor(this.ttlMs / 3));
   }
 
-  async claim(name: string, intervalMs: number | null): Promise<boolean> {
+  async claim(name: string, options: ClaimOptions = {}): Promise<boolean> {
+    const { intervalMs = null, changedAt } = options;
     const minGap = intervalMs === null ? 0 : Math.max(0, intervalMs - scheduleSlackMs(intervalMs));
+    const changed =
+      changedAt === undefined || !Number.isFinite(changedAt)
+        ? sql`false`
+        : sql`l.last_started_at < ${Math.floor(changedAt)}::bigint`;
     const { rows } = await sql<{ name: string }>`
       insert into task_leases as l (name, owner, locked_until, last_started_at, last_finished_at)
       select ${name}, ${this.owner}, t.now + ${this.ttlMs}::bigint, t.now, null
@@ -77,7 +92,7 @@ export class TaskLeases implements TaskCoordinator {
         set owner = excluded.owner, locked_until = excluded.locked_until, last_started_at = excluded.last_started_at
         where (l.locked_until is null or l.locked_until < excluded.last_started_at)
           and (${sql.raw(intervalMs === null ? 'true' : 'false')} or l.last_started_at is null
-               or l.last_started_at <= excluded.last_started_at - ${minGap}::bigint)
+               or l.last_started_at <= excluded.last_started_at - ${minGap}::bigint or ${changed})
       returning l.name`.execute(this.db);
     return rows.length > 0;
   }
@@ -115,17 +130,17 @@ export class TaskLeases implements TaskCoordinator {
 /**
  * Runs `fn` while holding the lease of `name` (renewed in the background).
  * Without coordinator (SQLite) `fn` simply runs. Returns `{ ran: false }` when
- * another instance holds the lease or (with `intervalMs`) the task is not due.
+ * another instance holds the lease or (scheduled run) the task is not due.
  */
 export async function withLease<T>(
   coordinator: TaskCoordinator | null | undefined,
   name: string,
-  intervalMs: number | null,
+  options: ClaimOptions & { onLost?: () => void },
   fn: () => Promise<T>,
-  onLost?: () => void,
 ): Promise<{ ran: true; value: T } | { ran: false }> {
   if (!coordinator) return { ran: true, value: await fn() };
-  if (!(await coordinator.claim(name, intervalMs))) return { ran: false };
+  const { onLost, ...claim } = options;
+  if (!(await coordinator.claim(name, claim))) return { ran: false };
   let lost = false;
   const timer = setInterval(() => {
     coordinator.renew(name).then(
