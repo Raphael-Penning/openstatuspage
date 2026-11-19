@@ -342,6 +342,42 @@ describe('public history', () => {
   });
 });
 
+describe('public status', () => {
+  it('returns the status as a JSON:API singleton with relationships', async () => {
+    const res = await get('/api/public/status');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('public, max-age=30');
+    const body = res.json();
+    expect(body.jsonapi).toEqual({ version: '1.1' });
+    expect(body.links).toEqual({ self: '/api/public/status' });
+    expect(body.data).toMatchObject({
+      type: 'statuses',
+      id: 'current',
+      attributes: { overall: 'major_outage' },
+      links: { self: '/api/public/status' },
+    });
+    expect(body.data.attributes.updatedAt).toEqual(expect.any(String));
+    // Display order: grouped services first, then ungrouped ones.
+    expect(body.data.relationships.services.data).toEqual([
+      { type: 'services', id: ids.api },
+      { type: 'services', id: ids.inHiddenGroup },
+      { type: 'services', id: ids.web },
+    ]);
+    expect(body.data.relationships.activeIncidents.data).toEqual([{ type: 'incidents', id: ids.incident }]);
+    expect(body.data.relationships.activeMaintenances.data).toEqual([]);
+    const included = body.included as { type: string; id: string; attributes?: Record<string, unknown> }[];
+    expect(included.find((r) => r.type === 'service-groups' && r.id === ids.group)?.attributes).toMatchObject({ name: 'Platform' });
+    expect(included.find((r) => r.type === 'services' && r.id === ids.api)?.attributes).toMatchObject({
+      name: 'Public API',
+      status: 'major_outage',
+    });
+    expect(included.find((r) => r.type === 'incidents' && r.id === ids.incident)?.attributes).toMatchObject({
+      title: 'Database outage',
+      status: 'investigating',
+    });
+  });
+});
+
 describe('status.json and feeds', () => {
   it('returns compact status', async () => {
     const res = (await get('/api/public/status.json')).json();

@@ -22,6 +22,7 @@ const BASE = '/api/public';
 export const PUBLIC_TYPES = {
   settings: 'settings',
   summary: 'summaries',
+  status: 'statuses',
   service: 'services',
   group: 'service-groups',
   location: 'locations',

@@ -185,6 +185,41 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       return document(summary, { included, links: { self: selfLink(req) } });
     });
 
+    /**
+     * Compact status for widgets and monitoring: overall status and the public
+     * services, active incidents and active maintenances as relationships.
+     */
+    scope.get('/api/public/status', async (req) => {
+      const now = new Date();
+      const settings = await getSettings(db);
+      // Uptime is not part of the status; skip computing it.
+      const catalog = await loadPublicCatalog(db, { ...settings, showUptime: false }, now);
+      const [incidents, maintenances] = await Promise.all([
+        activeIncidentIds(db).then((ids) => publicIncidents(db, ids)),
+        activeMaintenanceIds(db).then((ids) => publicMaintenances(db, ids)),
+      ]);
+      const included = new Included();
+      included.add(...catalog.groups.map((g) => groupResource(g, included)));
+      included.add(...catalog.ungrouped.map((s) => serviceResource(s)));
+      for (const inc of incidents) included.add(incidentResource(inc, included));
+      for (const m of maintenances) included.add(maintenanceResource(m, included));
+      const ids = (list: { id: string }[]) => list.map((x) => x.id);
+      const status = resource(
+        PUBLIC_TYPES.status,
+        'current',
+        { overall: overallStatus(catalog.services.map((s) => s.status)), updatedAt: now.toISOString() },
+        {
+          relationships: {
+            services: toMany(PUBLIC_TYPES.service, ids(catalog.services)),
+            activeIncidents: toMany(PUBLIC_TYPES.incident, ids(incidents)),
+            activeMaintenances: toMany(PUBLIC_TYPES.maintenance, ids(maintenances)),
+          },
+          links: { self: '/api/public/status' },
+        },
+      );
+      return document(status, { included, links: { self: selfLink(req) } });
+    });
+
     /** Public services in display order (grouped ones in group order, then ungrouped); groups in `included`. */
     scope.get('/api/public/services', async (req) => {
       const settings = await getSettings(db);
