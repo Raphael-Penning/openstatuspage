@@ -1,20 +1,23 @@
 /**
- * TanStack Query hooks for the public API. Every query refreshes every 60 s
- * so an open status page stays current without a reload.
+ * TanStack Query hooks for the public API (JSON:API). Every query refreshes
+ * every 60 s so an open status page stays current without a reload. The hooks
+ * return the plain shapes of @openstatuspage/shared (see lib/api.ts).
  */
-import type {
-  DailyUptime,
-  HistoryItem,
-  HistoryQuery,
-  Paginated,
-  PublicIncident,
-  PublicLocationsResponse,
-  PublicMaintenance,
-  PublicPageSettings,
-  PublicService,
-  PublicServiceGroup,
-  PublicSummary,
-  ServiceStatus,
+import {
+  resourceType,
+  type DailyUptime,
+  type HistoryItem,
+  type HistoryQuery,
+  type Paginated,
+  type PublicIncident,
+  type PublicLocation,
+  type PublicLocationsResponse,
+  type PublicMaintenance,
+  type PublicPageSettings,
+  type PublicService,
+  type PublicServiceGroup,
+  type PublicSummary,
+  type ServiceStatus,
 } from '@openstatuspage/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/api';
@@ -45,6 +48,44 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+/** Services in display order, regrouped by the groups of the compound document. */
+export async function fetchServices(): Promise<PublicServicesResponse> {
+  const { data, included, meta } = await api.getDocument<PublicService[]>('/api/public/services');
+  const groups = included.filter((r) => resourceType(r) === 'service-groups') as unknown as PublicServiceGroup[];
+  return {
+    groups,
+    ungrouped: data.filter((s) => s.groupId === null),
+    counts: meta.counts as Record<ServiceStatus, number>,
+  };
+}
+
+export async function fetchLocations(): Promise<PublicLocationsResponse> {
+  const { data, meta } = await api.getDocument<PublicLocation[]>('/api/public/locations');
+  return { locations: data, counts: meta.counts as Record<ServiceStatus, number> };
+}
+
+/** History page: incidents and maintenance windows as HistoryItems. */
+export async function fetchHistory(query: Partial<HistoryQuery>): Promise<Paginated<HistoryItem>> {
+  const page = await api.getPage<PublicIncident | PublicMaintenance>('/api/public/history', {
+    page: { number: query.page, size: query.pageSize },
+    filter: {
+      type: query.type === 'all' ? undefined : query.type,
+      service: query.serviceId,
+      location: query.locationId,
+      month: query.month,
+    },
+  });
+  const items = page.items.map((item): HistoryItem => {
+    if (resourceType(item) === 'maintenances') {
+      const maintenance = item as PublicMaintenance;
+      return { type: 'maintenance', date: maintenance.scheduledStart, maintenance };
+    }
+    const incident = item as PublicIncident;
+    return { type: 'incident', date: incident.startedAt, incident };
+  });
+  return { ...page, items };
+}
+
 export function usePublicSettings() {
   return useQuery({
     queryKey: ['public', 'settings'],
@@ -64,7 +105,7 @@ export function useSummary() {
 export function useServices() {
   return useQuery({
     queryKey: ['public', 'services'],
-    queryFn: () => api.get<PublicServicesResponse>('/api/public/services'),
+    queryFn: () => fetchServices(),
     ...common,
   });
 }
@@ -80,7 +121,7 @@ export function useService(idOrSlug: string) {
 export function useLocations(enabled = true) {
   return useQuery({
     queryKey: ['public', 'locations'],
-    queryFn: () => api.get<PublicLocationsResponse>('/api/public/locations'),
+    queryFn: () => fetchLocations(),
     enabled,
     ...common,
   });
@@ -105,7 +146,7 @@ export function useMaintenance(id: string) {
 export function useHistory(query: Partial<HistoryQuery>) {
   return useQuery({
     queryKey: ['public', 'history', query],
-    queryFn: () => api.get<Paginated<HistoryItem>>('/api/public/history', query),
+    queryFn: () => fetchHistory(query),
     placeholderData: keepPreviousData,
     ...common,
   });

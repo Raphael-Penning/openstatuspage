@@ -43,7 +43,7 @@ export function installBrowserStubs(): void {
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' ? input : input.toString(), 'http://localhost');
     const { status, body } = respond(init?.method ?? 'GET', url.pathname);
-    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/vnd.api+json' } });
   };
 }
 
