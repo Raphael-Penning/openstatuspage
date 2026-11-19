@@ -32,13 +32,13 @@ export const adapters: Record<MonitorSourceType, AdapterDefinition> = {
     configSchema: Icinga2Config,
     poll: icinga2PollAdapter,
     push: icinga2PushParser,
-    secretKeys: ['password'],
+    secretKeys: ['password', 'icingaDbUrl'],
   },
   uptimekuma: {
     configSchema: UptimeKumaConfig,
     poll: uptimeKumaPollAdapter,
     push: uptimeKumaPushParser,
-    secretKeys: ['apiKey'],
+    secretKeys: ['apiKey', 'historyPassword'],
   },
   openitcockpit: {
     configSchema: OpenItCockpitConfig,

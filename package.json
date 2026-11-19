@@ -22,6 +22,9 @@
       "better-sqlite3",
       "@node-rs/argon2",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "mysql2>sql-escaper": "1.5.2"
+    }
   }
 }

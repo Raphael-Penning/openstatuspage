@@ -530,6 +530,14 @@ export interface AdminMaintenance extends PublicMaintenance {
 // Monitoring sources & checks (internal only)
 // ---------------------------------------------------------------------------
 
+/** Connection string of a MySQL/MariaDB or PostgreSQL database. */
+export const zDatabaseUrl = z
+  .string()
+  .max(2000)
+  .refine((v) => /^(mysql|mariadb|postgres|postgresql):\/\/[^\s]+$/i.test(v) || v === SECRET_MASK, {
+    message: 'must be a mysql://, mariadb:// or postgres:// URL',
+  });
+
 const zHttpBase = z.object({
   baseUrl: zHttpUrl,
   /** Disable only for self-signed certificates in trusted networks. */
@@ -543,11 +551,20 @@ export const Icinga2Config = zHttpBase.extend({
   filter: z.string().max(2000).nullish(),
   /** Import host checks in addition to service checks. */
   includeHosts: z.boolean().default(true),
+  /**
+   * Icinga DB database for history imports (secret), e.g.
+   * `mysql://reader:secret@db.example.com:3306/icingadb` or `postgres://...`.
+   */
+  icingaDbUrl: zDatabaseUrl.nullish(),
 });
 
 export const UptimeKumaConfig = zHttpBase.extend({
   /** API key from Uptime Kuma (Settings → API Keys), used for the /metrics endpoint. */
   apiKey: z.string().min(1).max(500),
+  /** Uptime Kuma login for history imports (the API key cannot read heartbeats). */
+  historyUsername: z.string().max(200).nullish(),
+  /** Secret. */
+  historyPassword: z.string().max(500).nullish(),
 });
 
 export const OpenItCockpitConfig = zHttpBase.extend({
@@ -614,6 +631,139 @@ export interface MonitorSourceTestResult {
   ok: boolean;
   message: string;
   checkCount?: number;
+}
+
+// ---------------------------------------------------------------------------
+// History import (internal only)
+// ---------------------------------------------------------------------------
+
+/** Longest time range of one history import. */
+export const HISTORY_IMPORT_MAX_DAYS = 731;
+/** Upper bound for an uploaded CSV file (characters). */
+export const HISTORY_CSV_MAX_CHARS = 5 * 1024 * 1024;
+/** Upper bound for the data rows of a CSV import. */
+export const HISTORY_CSV_MAX_ROWS = 100_000;
+
+export const HISTORY_IMPORT_STATUSES = ['fetching', 'ready', 'applying', 'completed', 'failed', 'cancelled'] as const;
+export type HistoryImportStatus = (typeof HISTORY_IMPORT_STATUSES)[number];
+
+/** One-off credentials for an import; never stored beyond the fetch and never returned. */
+export const HistoryImportCredentials = z.object({
+  /** Uptime Kuma login. */
+  username: z.string().min(1).max(200).optional(),
+  password: z.string().min(1).max(500).optional(),
+  /** Uptime Kuma 2FA code (6 digits) when the account uses two-factor authentication. */
+  totp: z
+    .string()
+    .regex(/^\d{6}$/, 'must be a 6-digit code')
+    .optional(),
+  /** Icinga DB connection string. */
+  databaseUrl: zDatabaseUrl.optional(),
+});
+export type HistoryImportCredentials = z.infer<typeof HistoryImportCredentials>;
+
+/** POST /api/admin/monitor-sources/:id/history-imports */
+export const HistoryImportCreateInput = z
+  .object({
+    from: zTimestamp,
+    to: zTimestamp,
+    /** Only checks that feed a service or a check bundle (fewer requests). */
+    onlyLinkedChecks: z.boolean().default(true),
+    credentials: HistoryImportCredentials.optional(),
+    /** CSV content (source type "webhook" or any source when given). */
+    csv: z.string().min(1).max(HISTORY_CSV_MAX_CHARS).optional(),
+  })
+  .refine((v) => Date.parse(v.from) < Date.parse(v.to), { message: '"from" must be before "to"', path: ['to'] })
+  .refine((v) => Date.parse(v.to) - Date.parse(v.from) <= HISTORY_IMPORT_MAX_DAYS * 86_400_000, {
+    message: `the range must not exceed ${HISTORY_IMPORT_MAX_DAYS} days`,
+    path: ['from'],
+  });
+export type HistoryImportCreateInput = z.infer<typeof HistoryImportCreateInput>;
+
+export interface HistoryImportProgress {
+  /** connecting | fetching | planning | writing */
+  phase: string;
+  done: number;
+  total: number;
+}
+
+export interface HistoryImportCheckPreview {
+  checkId: string;
+  name: string;
+  host: string | null;
+  externalId: string;
+  /** Intervals that would be written (inside periods without check history). */
+  intervals: number;
+  /** Time covered by those intervals in ms. */
+  coveredMs: number;
+  /** First and last imported instant, null when nothing is written. */
+  firstAt: string | null;
+  lastAt: string | null;
+  /** Time per state in ms (written intervals only). */
+  stateMs: Partial<Record<CheckState, number>>;
+}
+
+export interface HistoryImportSegment {
+  status: ServiceStatus;
+  startedAt: string;
+  endedAt: string;
+}
+
+export interface HistoryImportServicePreview {
+  serviceId: string;
+  name: string;
+  /** "manual": status mode is manual, nothing is rebuilt. "no_data": no usable check history in the gaps. */
+  skipped: 'manual' | 'no_data' | null;
+  /** Time in the range without recorded (live) history, in ms. */
+  gapMs: number;
+  /** Time that gets a status from the import, in ms. */
+  filledMs: number;
+  /** Time counted as down (partial or major outage) in the filled periods, in ms. */
+  downMs: number;
+  /** Uptime over the whole range after the import (recorded + imported), null without data. */
+  uptime: number | null;
+  /** Uptime over the range before the import, null without data. */
+  uptimeBefore: number | null;
+  segmentCount: number;
+  /** The first segments (up to 100) for display. */
+  segments: HistoryImportSegment[];
+}
+
+export interface HistoryImportPreview {
+  from: string;
+  to: string;
+  checks: HistoryImportCheckPreview[];
+  services: HistoryImportServicePreview[];
+  /** External ids returned by the source that match no check of this source (first 50). */
+  unmatched: string[];
+  unmatchedCount: number;
+  /** Local checks that were requested but returned no history. */
+  checksWithoutData: number;
+  warnings: string[];
+}
+
+export interface HistoryImportResult {
+  checkIntervals: number;
+  serviceSegments: number;
+  services: number;
+}
+
+/** GET /api/admin/monitor-sources/:id/history-imports[/:importId] */
+export interface AdminHistoryImport {
+  id: string;
+  sourceId: string;
+  status: HistoryImportStatus;
+  from: string;
+  to: string;
+  onlyLinkedChecks: boolean;
+  progress: HistoryImportProgress | null;
+  preview: HistoryImportPreview | null;
+  result: HistoryImportResult | null;
+  error: string | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
 }
 
 // ---------------------------------------------------------------------------
