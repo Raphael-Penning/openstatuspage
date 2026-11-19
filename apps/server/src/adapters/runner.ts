@@ -140,7 +140,8 @@ export async function testSource(
   }
 }
 
-const inFlight = new Map<string, Promise<PollOutcome>>();
+/** Per context (app instance): source id -> running poll. */
+const inFlightByCtx = new WeakMap<AppContext, Map<string, Promise<PollOutcome>>>();
 
 /**
  * Polls a source and stores the result (full sync). A failed poll only records
@@ -150,6 +151,11 @@ const inFlight = new Map<string, Promise<PollOutcome>>();
  * the same source on another instance.
  */
 export function pollAndStore(ctx: AppContext, sourceId: string, options: RunnerOptions = {}): Promise<PollOutcome> {
+  let inFlight = inFlightByCtx.get(ctx);
+  if (!inFlight) {
+    inFlight = new Map();
+    inFlightByCtx.set(ctx, inFlight);
+  }
   const running = inFlight.get(sourceId);
   if (running) return running;
   const { leaseHeld, ...rest } = options;
