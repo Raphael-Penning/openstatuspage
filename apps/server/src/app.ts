@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
@@ -21,6 +21,8 @@ export interface BuildAppOptions {
   mailer?: Mailer;
   /** Writes the log as JSON lines to this stream, also with NODE_ENV=test (tests). */
   logStream?: { write(line: string): void };
+  /** Called for every registered route, after its plugin scope applied its hooks (tests). */
+  onRoute?: (route: RouteOptions) => void;
 }
 
 /** Replaces the value of every `token` query parameter: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1". */
@@ -52,7 +54,7 @@ export function serializeRequest(req: LoggedRequest) {
   };
 }
 
-export async function buildApp({ config, db, serveWeb = true, mailer, logStream }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, db, serveWeb = true, mailer, logStream, onRoute }: BuildAppOptions): Promise<FastifyInstance> {
   const loggerBase = {
     level: config.LOG_LEVEL,
     redact: ['req.headers.authorization', 'req.headers.cookie'],
@@ -73,6 +75,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
     // 1 MiB; routes that need more (bulk ingest) raise it per route.
     bodyLimit: 1024 * 1024,
   });
+
+  if (onRoute) app.addHook('onRoute', onRoute);
 
   const ctx: AppContext = createContext(config, db, app.log, { mailer });
   app.decorate('ctx', ctx);

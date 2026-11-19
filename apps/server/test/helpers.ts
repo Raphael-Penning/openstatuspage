@@ -13,7 +13,7 @@ import {
   type ToResourceOptions,
   type UserRole,
 } from '@openstatuspage/shared';
-import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse, RouteOptions } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { createDb, migrateToLatest, type DB } from '../src/db/index.js';
@@ -34,7 +34,7 @@ export interface TestApp {
 
 export async function createTestApp(
   env: Record<string, string> = {},
-  options: { mailer?: Mailer } = {},
+  options: { mailer?: Mailer; onRoute?: (route: RouteOptions) => void } = {},
 ): Promise<TestApp> {
   const config = loadConfig({
     NODE_ENV: 'test',
@@ -45,7 +45,7 @@ export async function createTestApp(
   });
   const db = await createDb(config);
   await migrateToLatest(db);
-  const app = await buildApp({ config, db, serveWeb: false, mailer: options.mailer });
+  const app = await buildApp({ config, db, serveWeb: false, mailer: options.mailer, onRoute: options.onRoute });
   await app.ready();
   return {
     app,
