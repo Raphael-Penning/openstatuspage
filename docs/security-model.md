@@ -1,0 +1,232 @@
+# Security model of a split deployment
+
+This page describes what protects the data of OpenStatusPage when the public
+status page and the management side run as separate instances on PostgreSQL
+(`APP_ROLE=public`, `admin`, `worker`, see
+[configuration.md](configuration.md#split-deployment)). It covers what the
+database role of the public instance can and cannot do, how that is enforced and
+which attacks it is meant to contain.
+
+A single instance with `APP_ROLE=all` (and every SQLite setup) has none of these
+database-side boundaries: the application code is the only boundary there.
+
+## Overview
+
+```
+ internet                         internal network / VPN
+ ─────────                        ──────────────────────────────────────────────
+ status.example.org               status.admin.example.org        worker
+ APP_ROLE=public                  APP_ROLE=admin                  APP_ROLE=worker
+ login: osp_public  ──┐           login: osp_app ──┐              login: osp_app ──┐
+                      │                            │                               │
+                      ▼                            ▼                               ▼
+               ┌────────────────────────── PostgreSQL ─────────────────────────────┐
+               │ schema osp_public          schema public (tables, owned by osp_app) │
+               │  views of public rows ───► services, incidents, ... (RLS)           │
+               │  functions (definer) ────► subscribers, subscriber_services, outbox │
+               └────────────────────────────────────────────────────────────────────┘
+                                                                     │
+                                          monitoring systems, SMTP ◄─┘ (worker only)
+```
+
+- **Public instance**: serves the status page, the public API, feeds and the
+  subscription endpoints. It connects with its own login role (`DB_PUBLIC_ROLE`,
+  default `osp_public`), has no connection to monitoring systems or the SMTP
+  server, and never runs migrations.
+- **Admin and worker instances**: connect with the role that owns the tables
+  (called `osp_app` here). They run the migrations, grant the public role its
+  access on every start and do everything else. Their database access is **not**
+  restricted beyond owning the tables: protect them by network (internal only),
+  login (OIDC, strong passwords) and by keeping the admin host off the internet.
+
+## What the public role can do
+
+| Access | How |
+| --- | --- |
+| Read public services, service groups and locations | views in `osp_public` |
+| Read public incidents and maintenance with their updates, affected public services and public locations | views |
+| Read the status history of public services and the history corrections that affect them (status and time range only) | views |
+| Read the page settings (`settings` row `page`: site name, colors, which features are shown) | view |
+| Read the applied schema version (`kysely_migration`) | view |
+| Subscribe an address (double opt-in) | `osp_public.subscribe(...)` |
+| Confirm, read, change and delete one subscription, **only with its token** | `osp_public.subscription_confirm/get/update/delete(...)` |
+| Check whether its own login is restricted | `osp_public.connection_restricted()` |
+
+The views have the same names as the tables, and the public instance connects
+with `search_path=osp_public`, so the public code runs unchanged against them.
+
+## What the public role cannot do
+
+- **Read anything private.** It has no privilege at all on `users`, `sessions`,
+  `api_tokens`, `audit_log`, `subscribers`, `subscriber_services`,
+  `email_outbox`, `monitor_sources`, `monitor_checks`, `monitor_check_history`,
+  `service_checks`, `check_bundles`, `check_bundle_members`, `history_imports`,
+  `history_import_intervals` and the role registry `osp_public_roles`.
+- **Read hidden rows**: hidden services, groups, locations, incidents and
+  maintenance, and everything linked only to them, are not in the views.
+- **Read internal columns**: e.g. how a service status is made (`status_mode`,
+  `manual_status`, `aggregation`, `monitor_status`), who created an incident,
+  the internal `reason` of a history correction, unpublished correction notes,
+  the notification flags of maintenance windows, any other settings row.
+- **Write anything directly.** No `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE` on
+  any table or view, no `CREATE` in any schema.
+- **Call internal functions** such as `osp_grant_public_role`, or the helpers
+  that queue mails.
+- **Choose what a mail says.** The subscription functions queue confirmation and
+  "manage" mails without content; the worker renders them from its own templates.
+  The recipient is always the subscriber's stored address.
+- **Use a subscription without its token.** The functions compare the SHA-256 of
+  the given token with the stored hash (migration `0006`). The database never
+  sees `SECRET_KEY` and never hands out a salt except to the holder of a valid
+  confirm token (who could derive the manage token anyway).
+
+## How it is enforced
+
+Migration `0007_public_role` (a no-op on SQLite) sets up four layers. Each would
+stop a leak on its own; together they are defense in depth:
+
+1. **Privileges.** `osp_grant_public_role(role)` first revokes everything from
+   the role on the table schema, then grants `USAGE` on `osp_public`, `SELECT` on
+   its views, `EXECUTE` on its functions, and column-level `SELECT` on exactly the
+   public columns of the tables behind the views (the views are
+   `security_invoker`, so they run with the rights of the public role). Admin and
+   worker instances call it on every start (and `pnpm db:migrate` does), so the
+   grants follow every migration. It refuses a role that is the connecting role,
+   a superuser, has `BYPASSRLS` or is a member of the owner.
+2. **Views.** The views select only public rows (`is_public = 1`, links whose
+   both ends are public, the `page` settings row) and only public columns; hidden
+   group ids and unpublished notes are blanked.
+3. **Row level security.** Every table has RLS enabled with a permissive
+   `osp_access` policy (all other roles keep full access; the table owner
+   bypasses RLS anyway) and a restrictive `osp_public_role` policy: for a role
+   registered in `osp_public_roles` (current user or session user, so `SET ROLE`
+   does not escape it) only public rows are visible and no row can be written.
+   Tables without public data have no visible row at all. Even a privilege
+   granted by mistake therefore exposes nothing hidden.
+4. **Functions.** The only writes are `SECURITY DEFINER` functions owned by the
+   table owner, with `search_path` pinned to the table schema and `pg_temp`
+   (so objects the caller creates cannot hijack them). They validate every input
+   themselves (address format and length, locale, ids, only existing public
+   services, hash formats), check tokens, throttle mails like the application
+   (one confirmation or manage mail per address per 10 minutes), never reveal
+   whether an address is subscribed, and raise SQLSTATE `22023` for invalid input
+   and `55000` while subscriptions are disabled.
+
+`deploy/postgres/roles.sql` creates the login roles. It also sets a
+`statement_timeout`, an idle-in-transaction timeout and a connection limit for
+the public role, to bound what a compromised public instance can make the
+database do.
+
+PostgreSQL 15 or newer is recommended: older servers do not support
+`security_invoker` views. There the views run with the owner's rights; layers 1,
+2 and 4 still apply, but RLS does not apply through the views.
+
+## Setting it up
+
+1. Create the roles once (as a superuser, placeholders for the passwords):
+
+   ```sh
+   psql "postgres://postgres@db.example.org/openstatuspage" \
+     -v public_password='<public password>' \
+     -v app_password='<app password>' \
+     -f deploy/postgres/roles.sql
+   ```
+
+   `-v public_role=<name>` and `-v app_role=<name>` change the names
+   (defaults `osp_public` and `osp_app`). Leave out `app_password` to keep using
+   an existing owner role for the admin and worker instances.
+
+2. Admin and worker instances: `DATABASE_URL=postgres://osp_app:...@db/openstatuspage`
+   and, if you changed it, `DB_PUBLIC_ROLE=<name>`. On start they migrate and log
+   `public database role granted`.
+
+3. Public instance: `APP_ROLE=public` and
+   `DATABASE_URL=postgres://osp_public:...@db/openstatuspage`. It waits for the
+   schema, then checks its login: if it is **not** a registered public role (e.g.
+   it was given the owner's credentials by mistake) it logs a warning
+   *"the database login of this public instance is not a registered public role"*.
+   Treat that warning as a configuration error.
+
+All instances need the same `SECRET_KEY`: the public instance derives the token
+hashes of new subscriptions and the manage token it returns on confirmation from
+it. When `SECRET_KEY` changes, the admin and worker instances refresh the stored
+hashes on their next start (existing mail links stop working, as before).
+
+## Threat model
+
+### A compromised public instance
+
+An attacker runs code on the public host (vulnerable dependency, remote code
+execution) and holds its environment: the public database login and
+`SECRET_KEY`.
+
+- **Contained**: the attacker reads nothing the public page does not already
+  show. Subscriber addresses, users, password hashes, sessions, API tokens,
+  monitoring credentials and hosts, ingest token hashes, audit entries and
+  internal notes stay out of reach. The attacker can neither change the status
+  page nor delete data, and cannot reach the monitoring systems (no route,
+  no credentials) or send mail with own content.
+- **Not contained**:
+  - The attacker can serve a fake status page or alter answers of the public
+    instance itself.
+  - With `SECRET_KEY` the attacker can subscribe addresses and, from the hashes
+    it chooses for new subscribers, confirm them; mails still only go to the given
+    address and are throttled. It observes the subscribers who use the instance
+    while it is compromised (their address and tokens pass through it).
+  - `SECRET_KEY` also encrypts monitoring credentials and signs cookies. The
+    encrypted credentials are not readable by the public role, but rotate the key
+    (and the public role's password) after a compromise.
+  - Denial of service against the database is bounded by the role's timeouts and
+    connection limit, not prevented.
+
+### SQL injection in the public code
+
+The public code uses Kysely with bound parameters, so injection is not expected;
+if it happened, the injected SQL runs as the public role. It is then limited
+exactly as above: the views, functions and RLS policies are the boundary, not
+the query that was injected. Hidden rows and private tables stay unreadable, and
+direct writes fail. The functions themselves validate their arguments and use
+no dynamic SQL.
+
+### A compromised admin account
+
+An attacker logs in to the management UI (stolen password, phished OIDC
+account) or obtains an API token.
+
+- The admin side is built to manage everything: within that account's role
+  (admin or editor) the attacker can edit the page and, as admin, see the
+  subscriber list and the monitoring settings. The database does not limit an
+  admin account; the role checks of the admin API do.
+- **Contained by the split**: the public instance offers no login, no admin API
+  and no ingest route (404), so admin accounts cannot be used or brute-forced
+  from the internet when the admin host is internal. Whatever the attacker makes
+  public flows out only through the views, i.e. as public status page content;
+  there is no path to make the public instance hand out private tables.
+- Keep the admin host off the internet (VPN, IP allow list), use OIDC with
+  group mapping, and review the audit log.
+
+### A compromised admin or worker instance
+
+Their login owns the tables, so the database does not restrict them. Run them in
+an internal network only, keep their credentials (database, `SECRET_KEY`,
+monitoring credentials, SMTP) out of the public host, and patch them like any
+internal service.
+
+## Verification
+
+`apps/server/test-pg/public-role.test.ts` connects **as** the public role and
+checks every statement of this page: the views return only public data, private
+tables and internal columns are not readable, every direct write and every call
+of an internal function fails, and the subscription functions work and reject
+invalid input, also through a public instance end to end. CI runs it in the
+`postgres` job:
+
+```sh
+psql "$DATABASE_URL" -v public_password=... -f deploy/postgres/roles.sql
+PG_TEST_URL=postgres://owner:...@localhost:5432/osp \
+PG_TEST_PUBLIC_URL=postgres://osp_public:...@localhost:5432/osp \
+  pnpm --filter @openstatuspage/server test:pg
+```
+
+`PG_TEST_URL` needs the right to create databases (each test file uses a fresh
+one and drops it afterwards).

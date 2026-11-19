@@ -23,6 +23,11 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
       deinem eigenen Build oder aus einem Mirror, den du kontrollierst.
 - [ ] Nur die Ports des Proxys (80/443) sind aus dem Internet erreichbar.
       PostgreSQL ist nicht veröffentlicht.
+- [ ] Getrennter Betrieb: Die `public`-Instanz meldet sich mit einer eigenen,
+      eingeschränkten Rolle an (`DB_PUBLIC_ROLE`, angelegt mit
+      `deploy/postgres/roles.sql`) und schreibt keine Warnung über einen
+      uneingeschränkten Login ins Log; den Admin-Host erreichst du nicht aus
+      dem Internet. Siehe [Sicherheitsmodell](../../security-model.md).
 
 ## Geheimnisse
 

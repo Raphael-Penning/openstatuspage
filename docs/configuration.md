@@ -35,6 +35,7 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` (use `sqlite::memory:` for throw-away instances) or `postgres://user:password@host:5432/database`. Migrations run automatically on start (except with `APP_ROLE=public`). |
+| `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL only: the restricted login role of `APP_ROLE=public` instances (lower case letters, digits, `_`). Instances that migrate grant it read access to the public views and the subscription functions of schema `osp_public` on every start, once the role exists (create it with [`deploy/postgres/roles.sql`](../deploy/postgres/roles.sql)). See [security-model.md](security-model.md). |
 
 ## Initial administrator
 
@@ -112,6 +113,17 @@ What a `public` instance does **not** do:
 - It never runs migrations: start the admin or worker instance (or run
   `pnpm db:migrate`) first after an update. A public instance whose build is older
   than the database schema refuses to start.
+
+Give the public instance its own database login, the restricted role
+`DB_PUBLIC_ROLE` (default `osp_public`, created with
+[`deploy/postgres/roles.sql`](../deploy/postgres/roles.sql)). It can only read
+views of the public rows and columns (schema `osp_public`) and write through a
+few checked functions for the email subscriptions; row level security backs this
+up. A vulnerability in the public instance, or SQL injection in its code, then
+cannot read subscribers, users, sessions, tokens or monitoring sources, nor change
+anything. Admin and worker instances use the login that owns the tables and grant
+the public role on every start. Details, scope and threat model:
+[security-model.md](security-model.md).
 
 Monitoring sources changed on an admin instance reach the worker's pollers within
 30 seconds. Results pushed to the ingest endpoints go to the admin instance, so

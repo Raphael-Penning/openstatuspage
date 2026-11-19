@@ -160,3 +160,13 @@ background tasks start (`startup.ts`). `all` keeps the single-process behaviour;
 [configuration.md](configuration.md#split-deployment)). A worker re-reads the
 monitoring sources every 30 s (`poller-sync`) so changes made on an admin
 instance reach its pollers.
+
+On PostgreSQL a public instance connects as the restricted role `DB_PUBLIC_ROLE`
+with `search_path=osp_public` (`db/index.ts`): migration `0007_public_role`
+creates views of the public rows and columns there, row level security policies
+and `SECURITY DEFINER` functions for the subscription flow
+(`services/subscription-flow.ts` calls them instead of the subscriber tables).
+Instances that migrate run `osp_grant_public_role()` on start
+(`db/public-role.ts`). Mails queued by those functions carry no content; the
+worker renders them (`NotificationService`). See
+[security-model.md](security-model.md).
