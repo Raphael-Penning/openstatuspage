@@ -1,0 +1,245 @@
+/**
+ * Fake public API for the accessibility tests: one of everything the public
+ * pages can show (groups, sites, all statuses, incidents, maintenance,
+ * locations with and without coordinates, a subscription).
+ */
+import type {
+  DailyUptime,
+  HistoryItem,
+  Paginated,
+  PublicIncident,
+  PublicLocation,
+  PublicLocationsResponse,
+  PublicMaintenance,
+  PublicPageSettings,
+  PublicService,
+  PublicServiceGroup,
+  PublicSubscription,
+  PublicSummary,
+  ServiceStatus,
+} from '@openstatuspage/shared';
+
+const DAY = 86_400_000;
+const now = Date.now();
+const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+
+export const settings: PublicPageSettings = {
+  siteName: 'Example Status',
+  description: 'Status of the Example services.',
+  logoUrl: null,
+  faviconUrl: null,
+  accentColor: '#7c6cf2',
+  defaultLocale: 'en',
+  defaultTheme: 'system',
+  footerLinks: [{ label: 'Imprint', url: 'https://example.com/imprint' }],
+  supportUrl: 'https://example.com/support',
+  showLocations: true,
+  showUptime: true,
+  uptimeDays: 90,
+  recentIncidentDays: 7,
+  emailSubscriptionsEnabled: true,
+  maintenanceReminderHours: 24,
+};
+
+function uptime(pattern: (i: number) => ServiceStatus | null): DailyUptime[] {
+  return Array.from({ length: 90 }, (_, i) => {
+    const status = pattern(i);
+    const date = new Date(now - (89 - i) * DAY).toISOString().slice(0, 10);
+    if (status === null) return { date, status, uptime: null, minutes: {} };
+    if (status === 'operational') return { date, status, uptime: 100, minutes: {} };
+    const outage = status === 'partial_outage' || status === 'major_outage';
+    return { date, status, uptime: outage ? 97.5 : 100, minutes: { [status]: 36 } };
+  });
+}
+
+const STATUSES: ServiceStatus[] = ['operational', 'maintenance', 'degraded', 'partial_outage', 'major_outage'];
+
+function service(id: string, name: string, status: ServiceStatus, extra: Partial<PublicService> = {}): PublicService {
+  return {
+    id,
+    slug: id,
+    name,
+    description: null,
+    kind: 'service',
+    url: null,
+    groupId: 'grp-core',
+    status,
+    locationIds: ['loc-fra'],
+    uptimePercent: 99.5,
+    uptime: uptime((i) => (i < 10 ? null : i % 17 === 0 ? STATUSES[i % 5]! : 'operational')),
+    ...extra,
+  };
+}
+
+const api = service('api', 'API', 'degraded', { description: 'Public REST API.' });
+const web = service('website', 'Website', 'operational', {
+  kind: 'site',
+  url: 'https://www.example.com',
+  groupId: 'grp-web',
+});
+const mail = service('mail', 'Mail', 'major_outage', { groupId: null });
+
+export const groups: PublicServiceGroup[] = [
+  {
+    id: 'grp-core',
+    slug: 'core',
+    name: 'Core platform',
+    description: 'Everything our customers build on.',
+    collapsedByDefault: false,
+    status: 'degraded',
+    services: [api],
+  },
+  {
+    id: 'grp-web',
+    slug: 'web',
+    name: 'Websites',
+    description: null,
+    collapsedByDefault: true,
+    status: 'operational',
+    services: [web],
+  },
+];
+export const ungrouped = [mail];
+
+export const incident: PublicIncident = {
+  id: 'inc-1',
+  title: 'Elevated API error rates',
+  status: 'identified',
+  impact: 'major',
+  startedAt: iso(-3 * 3_600_000),
+  resolvedAt: null,
+  updatedAt: iso(-3_600_000),
+  affectedServices: [{ id: 'api', name: 'API', status: 'degraded' }],
+  locationIds: ['loc-fra'],
+  updates: [
+    { id: 'u-2', status: 'identified', message: 'A faulty deployment was found.\nA rollback is running.', createdAt: iso(-3_600_000) },
+    { id: 'u-1', status: 'investigating', message: 'We are looking into errors.', createdAt: iso(-3 * 3_600_000) },
+  ],
+};
+
+export const resolvedIncident: PublicIncident = {
+  ...incident,
+  id: 'inc-0',
+  title: 'Slow logins',
+  status: 'resolved',
+  impact: 'minor',
+  startedAt: iso(-2 * DAY),
+  resolvedAt: iso(-2 * DAY + 3_600_000),
+  updatedAt: iso(-2 * DAY + 3_600_000),
+  updates: [{ id: 'u-0', status: 'resolved', message: 'Fixed.', createdAt: iso(-2 * DAY + 3_600_000) }],
+};
+
+export const maintenance: PublicMaintenance = {
+  id: 'm-1',
+  title: 'Database upgrade',
+  description: 'Short read-only window.',
+  status: 'in_progress',
+  scheduledStart: iso(-3_600_000),
+  scheduledEnd: iso(3_600_000),
+  actualStart: iso(-3_600_000),
+  actualEnd: null,
+  affectedServices: [{ id: 'api', name: 'API' }],
+  locationIds: ['loc-fra'],
+  updates: [{ id: 'mu-1', status: 'in_progress', message: '', createdAt: iso(-3_600_000) }],
+};
+
+const upcoming: PublicMaintenance = {
+  ...maintenance,
+  id: 'm-2',
+  title: 'Network switch replacement',
+  status: 'scheduled',
+  scheduledStart: iso(2 * DAY),
+  scheduledEnd: iso(2 * DAY + 7_200_000),
+  actualStart: null,
+  updates: [],
+};
+
+export const summary: PublicSummary = {
+  page: settings,
+  overall: 'major_outage',
+  groups,
+  ungrouped,
+  activeIncidents: [incident],
+  recentIncidents: [resolvedIncident],
+  activeMaintenances: [maintenance],
+  upcomingMaintenances: [upcoming],
+  emailSubscriptions: true,
+  generatedAt: iso(-60_000),
+};
+
+const counts: Record<ServiceStatus, number> = {
+  operational: 1,
+  maintenance: 0,
+  degraded: 1,
+  partial_outage: 0,
+  major_outage: 1,
+};
+
+const location = (id: string, name: string, status: ServiceStatus, extra: Partial<PublicLocation>): PublicLocation => ({
+  id,
+  slug: id,
+  name,
+  code: null,
+  city: null,
+  country: null,
+  region: 'europe',
+  latitude: null,
+  longitude: null,
+  description: null,
+  status,
+  serviceIds: ['api'],
+  ...extra,
+});
+
+export const locations: PublicLocationsResponse = {
+  locations: [
+    location('loc-fra', 'Frankfurt', 'operational', { code: 'FRA1', city: 'Frankfurt am Main', country: 'DE', latitude: 50.11, longitude: 8.68 }),
+    location('loc-ams', 'Amsterdam', 'degraded', { code: 'AMS1', city: 'Amsterdam', country: 'NL', latitude: 52.37, longitude: 4.9 }),
+    location('loc-nyc', 'New York', 'major_outage', { region: 'north_america', city: 'New York', country: 'US', latitude: 40.71, longitude: -74.0 }),
+    location('loc-edge', 'Edge network', 'maintenance', { region: 'north_america', description: 'Distributed edge nodes.' }),
+  ],
+  counts,
+};
+
+export const history: Paginated<HistoryItem> = {
+  items: [
+    { type: 'incident', date: incident.startedAt, incident },
+    { type: 'maintenance', date: maintenance.scheduledStart, maintenance },
+    { type: 'incident', date: resolvedIncident.startedAt, incident: resolvedIncident },
+  ],
+  total: 45,
+  page: 1,
+  pageSize: 20,
+};
+
+export const subscription: PublicSubscription = {
+  id: 'sub-1',
+  email: 'jane@example.com',
+  locale: 'en',
+  allServices: false,
+  serviceIds: ['api'],
+  confirmed: true,
+};
+
+export const SUBSCRIPTION_TOKEN = 'token-0123456789abcdef';
+
+/** Response of the fake API for a request, or null for "not found". */
+export function respond(method: string, path: string): { status: number; body: unknown } {
+  const ok = (body: unknown) => ({ status: 200, body });
+  if (method === 'GET') {
+    if (path === '/api/public/settings') return ok(settings);
+    if (path === '/api/public/summary') return ok(summary);
+    if (path === '/api/public/services') return ok({ groups, ungrouped, counts });
+    if (path === '/api/public/services/api') return ok({ ...api, incidents: [incident, resolvedIncident], maintenances: [maintenance] });
+    if (path === '/api/public/locations') return ok(locations);
+    if (path === '/api/public/incidents/inc-1') return ok(incident);
+    if (path === '/api/public/maintenances/m-1') return ok(maintenance);
+    if (path === '/api/public/history') return ok(history);
+    if (path === '/api/public/subscriptions/sub-1') return ok(subscription);
+  }
+  if (method === 'POST' && path === '/api/public/subscriptions/sub-1/confirm') {
+    return ok({ subscription, manageToken: SUBSCRIPTION_TOKEN });
+  }
+  if (method === 'POST' && path === '/api/public/subscriptions') return ok({ ok: true });
+  return { status: 404, body: { error: 'not_found', message: 'Not found' } };
+}
