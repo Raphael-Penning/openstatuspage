@@ -223,6 +223,11 @@ export interface MaintenancesTable {
   notify_subscribers: Bool;
   /** When the reminder mail was queued; reset when the window moves later. */
   reminder_sent_at: string | null;
+  /**
+   * 1 when the window had already started when it was entered. It then counts
+   * as "maintenance" in the corrected history (see services/history-corrections.ts).
+   */
+  retroactive: Bool;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -302,6 +307,25 @@ export interface EmailOutboxTable {
   sent_at: string | null;
 }
 
+export interface StatusCorrectionsTable {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  status: ServiceStatus;
+  /** Internal, never public. */
+  reason: string;
+  show_public: Bool;
+  public_note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StatusCorrectionServicesTable {
+  correction_id: string;
+  service_id: string;
+}
+
 export interface Database {
   settings: SettingsTable;
   users: UsersTable;
@@ -327,6 +351,8 @@ export interface Database {
   subscribers: SubscribersTable;
   subscriber_services: SubscriberServicesTable;
   email_outbox: EmailOutboxTable;
+  status_corrections: StatusCorrectionsTable;
+  status_correction_services: StatusCorrectionServicesTable;
 }
 
 export type User = Selectable<UsersTable>;

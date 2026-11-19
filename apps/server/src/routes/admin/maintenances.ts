@@ -56,6 +56,27 @@ async function serviceIdsOf(db: DB, maintenanceId: string): Promise<string[]> {
   return rows.map((r) => r.service_id);
 }
 
+/** Windows starting less than this before "now" are treated as starting now (not retroactive). */
+export const RETROACTIVE_GRACE_MS = 5 * 60_000;
+
+/**
+ * How a new maintenance window relates to the time it is entered:
+ * - upcoming: starts in the future (or just now, or not started automatically)
+ * - started:  started in the past and still running (auto start)
+ * - past:     already over; created as completed
+ */
+export function classifyNewWindow(
+  start: string,
+  end: string,
+  autoStart: boolean,
+  now: string,
+): 'upcoming' | 'started' | 'past' {
+  if (end <= now) return 'past';
+  const startedAgo = new Date(now).getTime() - new Date(start).getTime();
+  if (autoStart && startedAgo >= RETROACTIVE_GRACE_MS) return 'started';
+  return 'upcoming';
+}
+
 /** /api/admin/maintenances (editor) */
 export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine, notifications } = app.ctx;
@@ -98,6 +119,10 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
     const id = newId();
     const now = nowIso();
     const userId = actorUserId(req);
+    const start = toIso(input.scheduledStart);
+    const end = toIso(input.scheduledEnd);
+    const kind = classifyNewWindow(start, end, input.autoStart, now);
+    const retroactive = kind !== 'upcoming';
     await db.transaction().execute(async (trx) => {
       await trx
         .insertInto('maintenances')
@@ -105,32 +130,58 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
           id,
           title: input.title,
           description: input.description,
-          status: 'scheduled',
-          scheduled_start: toIso(input.scheduledStart),
-          scheduled_end: toIso(input.scheduledEnd),
-          actual_start: null,
-          actual_end: null,
+          status: kind === 'past' ? 'completed' : kind === 'started' ? 'in_progress' : 'scheduled',
+          scheduled_start: start,
+          scheduled_end: end,
+          actual_start: retroactive ? start : null,
+          actual_end: kind === 'past' ? end : null,
           auto_start: input.autoStart ? 1 : 0,
           auto_complete: input.autoComplete ? 1 : 0,
           is_public: input.isPublic ? 1 : 0,
           notify_subscribers: input.notify ? 1 : 0,
           reminder_sent_at: null,
+          retroactive: retroactive ? 1 : 0,
           created_by: userId,
           created_at: now,
           updated_at: now,
         })
         .execute();
-      // Empty message: clients render a localized "scheduled" text.
+      // Empty messages: clients render a localized default text per status.
+      // A retroactive window gets its timeline at the real times instead of "scheduled".
+      const updates: { status: 'scheduled' | 'in_progress' | 'completed'; at: string }[] =
+        kind === 'upcoming'
+          ? [{ status: 'scheduled', at: now }]
+          : kind === 'started'
+            ? [{ status: 'in_progress', at: start }]
+            : [
+                { status: 'in_progress', at: start },
+                { status: 'completed', at: end },
+              ];
       await trx
         .insertInto('maintenance_updates')
-        .values({ id: newId(), maintenance_id: id, status: 'scheduled', message: '', created_by: userId, created_at: now })
+        .values(
+          updates.map((u) => ({
+            id: newId(),
+            maintenance_id: id,
+            status: u.status,
+            message: '',
+            created_by: userId,
+            created_at: u.at,
+          })),
+        )
         .execute();
       await replaceServices(trx, id, serviceIds);
       await replaceLocations(trx, id, input.locationIds);
     });
-    // Announce first; a window that is already due is then started (and announced) by the scheduler.
     if (input.notify && input.isPublic) {
-      await notifications.safely('maintenance.create', () => notifications.maintenanceEvent(id, 'scheduled'));
+      // Upcoming: announce first; a window that is already due is then started (and announced) by the scheduler.
+      // Started retroactively: no announcement for a start in the past, only "in progress".
+      // Already over: nothing to tell subscribers.
+      if (kind === 'upcoming') {
+        await notifications.safely('maintenance.create', () => notifications.maintenanceEvent(id, 'scheduled'));
+      } else if (kind === 'started') {
+        await notifications.safely('maintenance.create', () => notifications.maintenanceEvent(id, 'update'));
+      }
     }
     await applyDueTransitions();
     await engine.recompute(serviceIds);
@@ -138,6 +189,7 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
       title: input.title,
       scheduledStart: input.scheduledStart,
       scheduledEnd: input.scheduledEnd,
+      ...(retroactive ? { retroactive: true } : {}),
     });
     return reply.status(201).send(await getMaintenance(db, id));
   });
@@ -155,6 +207,19 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
     const start = input.scheduledStart ? toIso(input.scheduledStart) : current.scheduled_start;
     const end = input.scheduledEnd ? toIso(input.scheduledEnd) : current.scheduled_end;
     if (end <= start) throw badRequest('scheduledEnd must be after scheduledStart');
+    const now = nowIso();
+    // A retroactive window keeps its actual times in line with the corrected window.
+    const retroSync: { actual_start?: string; actual_end?: string } = {};
+    if (current.retroactive === 1 && (start !== current.scheduled_start || end !== current.scheduled_end)) {
+      if (current.status === 'completed') {
+        if (end > now) throw badRequest('A completed retroactive maintenance must end in the past');
+        retroSync.actual_start = start;
+        retroSync.actual_end = end;
+      } else if (current.status === 'in_progress') {
+        if (start > now) throw badRequest('A running retroactive maintenance must start in the past');
+        retroSync.actual_start = start;
+      }
+    }
 
     const before = await serviceIdsOf(db, id);
     await db.transaction().execute(async (trx) => {
@@ -171,7 +236,8 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
           ...(start > current.scheduled_start ? { reminder_sent_at: null } : {}),
           scheduled_start: start,
           scheduled_end: end,
-          updated_at: nowIso(),
+          ...retroSync,
+          updated_at: now,
         })
         .where('id', '=', id)
         .execute();
