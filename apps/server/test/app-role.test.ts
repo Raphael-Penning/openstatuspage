@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
+import { createDb, EXPECTED_MIGRATION, migrateToLatest, schemaStatus } from '../src/db/index.js';
+import { DELIVERY_TASK } from '../src/services/notifications.js';
+import { POLLER_SYNC_TASK, prepareDatabase, startBackgroundTasks } from '../src/startup.js';
 import { adminClient, createTestApp, createUser, errors, loginRequest, PASSWORD, type TestApp } from './helpers.js';
 
 const PG = 'postgres://osp:secret@db.invalid:5432/osp';
@@ -152,10 +155,83 @@ describe('APP_ROLE requests', () => {
     }
   });
 
+  it('starts the background tasks only where WORKER_ENABLED', async () => {
+    const cases = [
+      ['all', {}, true],
+      ['worker', {}, true],
+      ['admin', {}, false],
+      ['admin', { WORKER_ENABLED: 'true' }, true],
+      ['public', {}, false],
+    ] as const;
+    for (const [role, extra, expected] of cases) {
+      const t = await createTestApp({ APP_ROLE: role, ...extra });
+      apps.push(t);
+      const started = await startBackgroundTasks(t.app.ctx);
+      expect(started, role).toBe(expected);
+      expect(t.app.ctx.worker.running, role).toBe(expected);
+      if (expected) {
+        expect(t.app.ctx.worker.taskNames()).toEqual(
+          expect.arrayContaining(['maintenance-transitions', 'session-cleanup', DELIVERY_TASK, POLLER_SYNC_TASK]),
+        );
+      } else {
+        expect(t.app.ctx.worker.taskNames(), role).toEqual([]);
+      }
+      t.app.ctx.worker.stop();
+    }
+  });
+
   it('lets an admin sign in and preview the public API on an admin instance', async () => {
     const t = await make('admin');
     const admin = await adminClient(t);
     expect((await admin.get('/api/admin/services')).statusCode).toBe(200);
     expect((await t.app.inject('/api/public/status')).statusCode).toBe(200);
+  });
+});
+
+describe('APP_ROLE database preparation', () => {
+  const log = { info: () => {} };
+  const fresh = () => createDb({ database: { dialect: 'sqlite', filename: ':memory:' } });
+
+  it('migrates on start for all, admin and worker', async () => {
+    for (const role of ['all', 'admin', 'worker'] as const) {
+      const db = await fresh();
+      await prepareDatabase(db, { APP_ROLE: role, SCHEMA_WAIT_SECONDS: 0 }, log);
+      expect((await schemaStatus(db)).state, role).toBe('current');
+      await db.destroy();
+    }
+  });
+
+  it('never migrates on a public instance and fails clearly when the schema is missing', async () => {
+    const db = await fresh();
+    await expect(prepareDatabase(db, { APP_ROLE: 'public', SCHEMA_WAIT_SECONDS: 0 }, log)).rejects.toThrow(
+      /schema is not ready.*never runs migrations/,
+    );
+    expect(await schemaStatus(db)).toEqual({ applied: null, expected: EXPECTED_MIGRATION, state: 'behind' });
+    await db.destroy();
+  });
+
+  it('waits on a public instance until another instance has migrated', async () => {
+    const db = await fresh();
+    const waits: unknown[] = [];
+    const ready = prepareDatabase(
+      db,
+      { APP_ROLE: 'public', SCHEMA_WAIT_SECONDS: 5 },
+      { info: (obj) => waits.push(obj) },
+      { intervalMs: 20 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await migrateToLatest(db);
+    await expect(ready).resolves.toBeUndefined();
+    expect(waits).toEqual([{ applied: null, expected: EXPECTED_MIGRATION }]);
+    await db.destroy();
+  });
+
+  it('refuses a database that is newer than the build on a public instance', async () => {
+    const db = await fresh();
+    await migrateToLatest(db);
+    await db.insertInto('kysely_migration' as never).values({ name: '9999_future', timestamp: new Date().toISOString() } as never).execute();
+    expect((await schemaStatus(db)).state).toBe('ahead');
+    await expect(prepareDatabase(db, { APP_ROLE: 'public', SCHEMA_WAIT_SECONDS: 0 }, log)).rejects.toThrow(/newer than this build/);
+    await db.destroy();
   });
 });

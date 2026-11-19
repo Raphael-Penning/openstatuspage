@@ -39,6 +39,16 @@ export class Worker {
     return this.tasks.has(name);
   }
 
+  /** Names of the registered periodic tasks. */
+  taskNames(): string[] {
+    return [...this.tasks.keys()];
+  }
+
+  /** Whether start() armed the periodic tasks. */
+  get running(): boolean {
+    return this.started;
+  }
+
   start(): void {
     if (this.started) return;
     this.started = true;
