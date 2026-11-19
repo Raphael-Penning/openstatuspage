@@ -26,8 +26,12 @@ database-side boundaries: the application code is the only boundary there.
                │  functions (definer) ────► subscribers, subscriber_services, outbox │
                └────────────────────────────────────────────────────────────────────┘
                                                                      │
-                                          monitoring systems, SMTP ◄─┘ (worker only)
+                                          monitoring systems, SMTP ◄─┘ (never the public instance)
 ```
+
+The worker polls the monitoring systems and sends the mails. The admin instance
+also connects to monitoring systems for manual actions ("poll now", connection
+tests) and history imports. The public instance never connects to either.
 
 - **Public instance**: serves the status page, the public API, feeds and the
   subscription endpoints. It connects with its own login role (`DB_PUBLIC_ROLE`,

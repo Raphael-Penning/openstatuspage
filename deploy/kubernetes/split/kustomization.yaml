@@ -31,8 +31,10 @@
 #   4. kubectl apply -k deploy/kubernetes/split
 #
 # The public Deployment holds only the public role's database URL and the key of
-# the subscription links, never SECRET_KEY. The worker is
-# the only pod that polls monitoring systems. Replicas: public is stateless and
+# the subscription links, never SECRET_KEY. The public pod never connects to
+# monitoring systems: the worker polls them, and the admin pod connects for
+# manual actions (poll now, connection tests) and history imports, so allow
+# egress to them from those two only. Replicas: public is stateless and
 # can scale out; admin and worker run one replica each by default (several worker
 # replicas are safe on PostgreSQL, see docs/guide/en/09-operations.md).
 apiVersion: kustomize.config.k8s.io/v1beta1
