@@ -11,6 +11,7 @@ export const AUDIT_ENTITY_TYPES = [
   'location',
   'monitor_source',
   'check',
+  'check_bundle',
   'settings',
   'user',
   'api_token',

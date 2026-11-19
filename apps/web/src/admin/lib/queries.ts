@@ -4,6 +4,7 @@
  */
 import type {
   AdminApiToken,
+  AdminCheckBundle,
   AdminIncident,
   AdminLocation,
   AdminMaintenance,
@@ -15,7 +16,9 @@ import type {
   AdminUser,
   AuditLogEntry,
   AuthConfig,
+  BundleCandidateSource,
   CheckState,
+  ConfigurableSourceType,
   NotificationStatus,
   Paginated,
   PublicPageSettings,
@@ -67,6 +70,8 @@ export const keys = {
   sources: ['admin', 'monitor-sources'] as const,
   source: (id: string) => ['admin', 'monitor-sources', id] as const,
   checks: (filter: ChecksFilter) => ['admin', 'checks', filter] as const,
+  bundles: ['admin', 'check-bundles'] as const,
+  bundleCandidates: (type: string) => ['admin', 'check-bundles', 'candidates', type] as const,
   settings: ['admin', 'settings'] as const,
   users: ['admin', 'users'] as const,
   tokens: ['admin', 'api-tokens'] as const,
@@ -135,6 +140,18 @@ export const useChecks = (filter: ChecksFilter, enabled = true) =>
     { sourceId: filter.sourceId, q: filter.q, state: filter.state, unlinked: filter.unlinked ? 'true' : undefined },
     enabled,
   );
+/** Bundles with their live vote; refreshed regularly so the breakdown stays current. */
+export const useBundles = () =>
+  useQuery({
+    queryKey: keys.bundles,
+    queryFn: () => api.get<AdminCheckBundle[]>('/api/admin/check-bundles'),
+    retry: notRetryingClientErrors,
+    refetchInterval: 30_000,
+  });
+export const useBundleCandidates = (type: ConfigurableSourceType | '') =>
+  useAdminQuery<BundleCandidateSource[]>(keys.bundleCandidates(type), '/api/admin/check-bundles/candidates', {
+    type: type || undefined,
+  });
 export const useSettings = () => useAdminQuery<PublicPageSettings>(keys.settings, '/api/admin/settings');
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');

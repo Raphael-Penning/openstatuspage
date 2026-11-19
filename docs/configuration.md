@@ -69,7 +69,13 @@ See [oidc.md](oidc.md) for IdP setup and the role mapping rules.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `WORKER_ENABLED` | `true` | Runs maintenance auto start/complete, monitoring pollers, email delivery, maintenance reminders and the cleanup tasks. Set to `false` on additional replicas so only one instance runs background jobs. |
+| `WORKER_ENABLED` | `true` | Runs maintenance auto start/complete, monitoring pollers, check bundle re-evaluation, email delivery, maintenance reminders and the cleanup tasks. Set to `false` on additional replicas so only one instance runs background jobs. |
+
+## Check bundles
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `BUNDLE_PUSH_STALE_SECONDS` | `3600` | How long (seconds, 60 to 604800) a result of a push-only (`webhook`) source counts in a check bundle vote; older members are treated as not reporting. Pull sources count while their last successful poll (or result) is at most 3 poll intervals old, at least 5 minutes. See [adapters/README.md](adapters/README.md#check-bundles). |
 
 ## Email notifications
 

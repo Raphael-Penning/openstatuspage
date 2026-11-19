@@ -21,6 +21,7 @@ management area.
 - **History**: filterable archive of incidents and maintenance
 - **Monitoring adapters**: Icinga 2, Uptime Kuma, openITCockpit, generic webhook (pull and push)
 - **Service composition**: build public services from internal checks with configurable aggregation rules
+- **Check bundles**: let several monitoring nodes (e.g. Uptime Kuma instances in different places) vote with weights on the state of one target
 - **Management UI**: incidents, maintenance, services, groups, locations, monitoring sources, users, branding
 - **Auth**: local users (admin / editor) and optional OIDC single sign-on
 - **Databases**: SQLite (zero config) or PostgreSQL

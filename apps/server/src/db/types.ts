@@ -173,6 +173,23 @@ export interface MonitorChecksTable {
   updated_at: string;
 }
 
+export interface CheckBundlesTable {
+  id: string;
+  name: string;
+  description: string | null;
+  /** The bundle's own check (source of type "bundle"). */
+  check_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CheckBundleMembersTable {
+  bundle_id: string;
+  check_id: string;
+  /** Weight in the vote, >= 1. */
+  votes: number;
+}
+
 export interface IncidentsTable {
   id: string;
   title: string;
@@ -315,6 +332,8 @@ export interface Database {
   service_status_history: ServiceStatusHistoryTable;
   monitor_sources: MonitorSourcesTable;
   monitor_checks: MonitorChecksTable;
+  check_bundles: CheckBundlesTable;
+  check_bundle_members: CheckBundleMembersTable;
   incidents: IncidentsTable;
   incident_updates: IncidentUpdatesTable;
   incident_services: IncidentServicesTable;
@@ -335,6 +354,7 @@ export type Location = Selectable<LocationsTable>;
 export type ServiceGroup = Selectable<ServiceGroupsTable>;
 export type MonitorSource = Selectable<MonitorSourcesTable>;
 export type MonitorCheck = Selectable<MonitorChecksTable>;
+export type CheckBundle = Selectable<CheckBundlesTable>;
 export type Incident = Selectable<IncidentsTable>;
 export type Maintenance = Selectable<MaintenancesTable>;
 export type Subscriber = Selectable<SubscribersTable>;

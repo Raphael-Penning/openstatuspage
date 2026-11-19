@@ -175,7 +175,8 @@ async function doPollAndStore(ctx: AppContext, sourceId: string, options: Runner
     }
   }
 
-  const result = await ctx.ingest.ingest(sourceId, checks, { full: true });
+  // recordPoll re-evaluates the source's bundles with the new poll outcome.
+  const result = await ctx.ingest.ingest(sourceId, checks, { full: true, deferBundleRecompute: true });
   await ctx.ingest.recordPoll(sourceId, true);
   return {
     ok: true,

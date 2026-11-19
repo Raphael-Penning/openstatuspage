@@ -1,11 +1,11 @@
 import {
-  MONITOR_SOURCE_TYPES,
+  CONFIGURABLE_SOURCE_TYPES,
   MonitorSourceInput,
   SECRET_MASK,
   type AdminMonitorSource,
-  type MonitorSourceType,
+  type ConfigurableSourceType,
 } from '@openstatuspage/shared';
-import { KeyRound, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
+import { Combine, KeyRound, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
@@ -20,6 +20,7 @@ import { useAdminMutation, useSource } from '../../lib/queries';
 import {
   emptySourceForm,
   hasStoredSecret,
+  isBundleSource,
   isPullType,
   sourceFormToPayload,
   sourceToForm,
@@ -33,11 +34,37 @@ export default function SourceEditPage() {
   const { t } = useTranslation('admin');
   const source = useSource(id);
   if (!id) return <SourceForm key="new" />;
+  if (source.data && isBundleSource(source.data)) return <BundleSourceInfo source={source.data} />;
   if (source.data) return <SourceForm key={source.data.id} source={source.data} />;
   return (
     <>
       <PageHeader title={t('sources.title')} back={{ to: '/admin/monitoring', label: t('sources.title') }} />
       <QueryState query={source}>{() => null}</QueryState>
+    </>
+  );
+}
+
+/** The built-in source of the check bundles has nothing to configure. */
+function BundleSourceInfo({ source }: { source: AdminMonitorSource }) {
+  const { t } = useTranslation('admin');
+  return (
+    <>
+      <PageHeader
+        back={{ to: '/admin/monitoring', label: t('sources.title') }}
+        title={source.name}
+        description={t('sources.types.bundle')}
+        actions={
+          <LinkButton to="/admin/monitoring/bundles" variant="primary" icon={Combine}>
+            {t('bundles.manage')}
+          </LinkButton>
+        }
+      />
+      <Card>
+        <div className="flex flex-col gap-3 p-4 text-sm sm:p-6">
+          <p>{t('bundles.sourceInfo')}</p>
+          <p className="text-muted">{t('sources.checkCount', { count: source.checkCount })}</p>
+        </div>
+      </Card>
     </>
   );
 }
@@ -72,7 +99,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
     onSuccess: () => navigate('/admin/monitoring', { replace: true }),
   });
 
-  const changeType = (type: MonitorSourceType) => {
+  const changeType = (type: ConfigurableSourceType) => {
     // Stored secrets belong to the stored type; a new type needs new credentials.
     form.setValues((prev) => ({ ...prev, type, password: '', apiKey: '' }));
     form.setErrors({});
@@ -165,11 +192,11 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
                 required
                 help={t('sources.nameHelp')}
               />
-              <SelectField<MonitorSourceType>
+              <SelectField<ConfigurableSourceType>
                 label={t('sources.fields.type')}
                 value={v.type}
                 onValue={changeType}
-                options={MONITOR_SOURCE_TYPES.map((type) => ({ value: type, label: t(`sources.types.${type}`) }))}
+                options={CONFIGURABLE_SOURCE_TYPES.map((type) => ({ value: type, label: t(`sources.types.${type}`) }))}
                 help={t(`sources.typeHelp.${v.type}`)}
               />
               {v.type !== 'webhook' && (
