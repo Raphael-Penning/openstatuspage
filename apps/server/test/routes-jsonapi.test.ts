@@ -5,7 +5,7 @@
  */
 import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
 import type { HTTPMethods, LightMyRequestResponse, RouteOptions } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { adminClient, createTestApp, data, seedChecks, type Client, type TestApp } from './helpers.js';
 
 /** Routes that are not JSON:API on purpose (see docs/api.md). */
@@ -166,10 +166,52 @@ describe('registered routes', () => {
     expect(checked.filter((l) => / → 2\d\d$/.test(l)).length).toBeGreaterThan(30);
   });
 
+  it('answer include and sort with 400 unless the route supports them', async () => {
+    const gets = routes.filter((r) => r.jsonapi && r.method === 'GET');
+    expect(gets.length).toBeGreaterThan(30);
+    for (const route of gets) {
+      const url = concreteUrl(route.url);
+      for (const [parameter, code] of [
+        ['include', 'unsupported_include'],
+        ['sort', 'unsupported_sort'],
+      ] as const) {
+        // "x" is no include path and no sort field of any route.
+        const res = await admin.get(`${url}?${parameter}=x`);
+        const label = `GET ${route.url}?${parameter}=x → ${res.statusCode}`;
+        expect(res.statusCode, label).toBe(400);
+        expect(res.json().errors[0], label).toMatchObject({ code, source: { parameter } });
+      }
+    }
+  });
+
   it('answers errors of the non-JSON:API routes as JSON:API error documents', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/public/subscriptions/missing/unsubscribe' });
     expect(res.statusCode).toBe(404);
     expect(res.headers['content-type']).toBe(JSONAPI_MEDIA_TYPE);
     expect(res.json()).toMatchObject({ jsonapi: { version: '1.1' }, errors: [{ status: '404' }] });
+  });
+
+  it('answers errors of status.json and the feeds as JSON:API error documents', async () => {
+    const wrongMethod = await t.app.inject({ method: 'POST', url: '/feed.rss' });
+    expect(wrongMethod.statusCode).toBe(404);
+    expect(wrongMethod.headers['content-type']).toBe(JSONAPI_MEDIA_TYPE);
+    expect(wrongMethod.json()).toMatchObject({ jsonapi: { version: '1.1' }, errors: [{ status: '404' }] });
+
+    const spy = vi.spyOn(t.app.ctx.db, 'selectFrom').mockImplementation(() => {
+      throw new Error('database unavailable');
+    });
+    try {
+      for (const url of ['/api/public/status.json', '/feed.atom']) {
+        const res = await t.app.inject({ method: 'GET', url });
+        expect(res.statusCode, url).toBe(500);
+        expect(res.headers['content-type'], url).toBe(JSONAPI_MEDIA_TYPE);
+        expect(res.json(), url).toEqual({
+          jsonapi: { version: '1.1' },
+          errors: [{ status: '500', code: 'internal_error', title: 'Internal Server Error', detail: 'Internal server error' }],
+        });
+      }
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
