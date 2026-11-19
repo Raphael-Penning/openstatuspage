@@ -87,6 +87,7 @@ async function historyImportRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/admin/monitor-sources/:id/history-imports/:importId', { ...admin, ...withInclude }, async (req) => {
     const { id, importId } = parse(ImportParams, req.params);
+    includedFor(req); // a bad `include` is a 400 even for an unknown import
     const job = await historyImports.get(id, importId);
     const doc = jobDocument(req, job);
     return { ...doc, links: { self: selfLink(req) } };
