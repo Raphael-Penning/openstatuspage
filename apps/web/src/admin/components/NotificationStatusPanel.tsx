@@ -102,7 +102,7 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
 
       {!s.configured &&
         (enabled ? (
-          <Notice tone="warning" icon={<TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-status-degraded" />}>
+          <Notice tone="warning" icon={<TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-status-degraded-text" />}>
             {t('notifications.noTransportWarning')}
           </Notice>
         ) : (
@@ -127,7 +127,7 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
         <Fact label={t('notifications.queue')}>
           {t('notifications.queuePending', { value: fmt.number(s.queue.pending) })}
           {' · '}
-          <span className={s.queue.failed > 0 ? 'font-medium text-status-major-outage' : undefined}>
+          <span className={s.queue.failed > 0 ? 'font-medium text-status-major-outage-text' : undefined}>
             {t('notifications.queueFailed', { value: fmt.number(s.queue.failed) })}
           </span>
         </Fact>
@@ -142,7 +142,7 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
         </Fact>
         <Fact label={t('notifications.lastError')}>
           {s.lastError ? (
-            <span className="text-status-major-outage">
+            <span className="text-status-major-outage-text">
               {s.lastError.message}{' '}
               <time dateTime={s.lastError.at} title={fmt.dateTime(s.lastError.at)} className="text-xs text-muted">
                 ({fmt.relative(s.lastError.at)})
@@ -187,7 +187,7 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
         </Button>
       </div>
       {result && (
-        <p role="status" className={clsx('flex items-start gap-2 text-sm', result.ok ? 'text-status-operational' : 'text-status-major-outage')}>
+        <p role="status" className={clsx('flex items-start gap-2 text-sm', result.ok ? 'text-status-operational-text' : 'text-status-major-outage-text')}>
           {result.ok ? (
             <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0" />
           ) : (

@@ -35,7 +35,7 @@ function Confirm({ id, token }: { id: string; token: string }) {
   if (confirm.isPending) {
     return (
       <ResultState
-        icon={<Loader2 aria-hidden className="size-10 animate-spin text-muted" />}
+        icon={<Loader2 aria-hidden className="size-10 motion-safe:animate-spin text-muted" />}
         title={t('subscription.confirm.loading')}
       />
     );
@@ -48,7 +48,7 @@ function Confirm({ id, token }: { id: string; token: string }) {
   const { subscription, manageToken } = confirm.data;
   return (
     <ResultState
-      icon={<MailCheck aria-hidden className="size-10 text-status-operational" />}
+      icon={<MailCheck aria-hidden className="size-10 text-status-operational-text" />}
       title={t('subscription.confirm.success')}
       actions={
         <>

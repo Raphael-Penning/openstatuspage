@@ -3,6 +3,7 @@ import { MapPin } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CounterCards } from '../components/CounterCards';
+import { StatusMarkerIcon } from '../components/StatusMarker';
 import { Card, EmptyState, ErrorState, PageTitle, Skeleton, SkeletonList, StatusPill } from '../components/ui';
 import { useCountryName } from '../hooks/countries';
 import { useDocumentTitle } from '../hooks/dom';
@@ -67,30 +68,41 @@ export function LocationsPage() {
                     {g.locations.map((l) => {
                       const onMap = l.latitude !== null && l.longitude !== null;
                       const place = [l.city, countryName(l.country)].filter(Boolean).join(', ');
+                      const content = (
+                        <>
+                          <MapPin aria-hidden className="size-4 shrink-0 text-muted" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium break-words">
+                              {l.name}
+                              {l.code && <span className="ml-2 text-xs font-normal text-muted">{l.code}</span>}
+                            </span>
+                            {place && <span className="block text-xs break-words text-muted">{place}</span>}
+                            {l.description && <span className="mt-0.5 block text-xs text-muted">{l.description}</span>}
+                          </span>
+                          <StatusPill status={l.status} />
+                        </>
+                      );
+                      const row = 'flex w-full items-center gap-3 px-4 py-3 text-left sm:px-5';
+                      // This list is the text alternative of the map: every location with its status.
+                      // Locations with coordinates can be highlighted on the map.
                       return (
                         <li key={l.id}>
-                          <button
-                            type="button"
-                            disabled={!onMap}
-                            aria-pressed={onMap ? selectedId === l.id : undefined}
-                            onClick={() => setSelectedId(selectedId === l.id ? null : l.id)}
-                            className={clsx(
-                              'flex w-full items-center gap-3 px-4 py-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-default sm:px-5',
-                              onMap && 'hover:bg-surface-2',
-                              selectedId === l.id && 'bg-surface-2',
-                            )}
-                          >
-                            <MapPin aria-hidden className="size-4 shrink-0 text-muted" />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium">
-                                {l.name}
-                                {l.code && <span className="ml-2 text-xs font-normal text-muted">{l.code}</span>}
-                              </span>
-                              {place && <span className="block truncate text-xs text-muted">{place}</span>}
-                              {l.description && <span className="mt-0.5 block text-xs text-muted">{l.description}</span>}
-                            </span>
-                            <StatusPill status={l.status} />
-                          </button>
+                          {onMap ? (
+                            <button
+                              type="button"
+                              aria-pressed={selectedId === l.id}
+                              onClick={() => setSelectedId(selectedId === l.id ? null : l.id)}
+                              className={clsx(
+                                row,
+                                'hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus',
+                                selectedId === l.id && 'bg-surface-2',
+                              )}
+                            >
+                              {content}
+                            </button>
+                          ) : (
+                            <div className={row}>{content}</div>
+                          )}
                         </li>
                       );
                     })}
@@ -112,7 +124,7 @@ function MapLegend() {
     <ul className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 px-2 text-xs text-muted" aria-label={t('public:locations.legend')}>
       {items.map((s) => (
         <li key={s} className="flex items-center gap-1.5">
-          <span aria-hidden className="size-2 rounded-full" style={{ background: `var(--status-${s.replace('_', '-')})` }} />
+          <StatusMarkerIcon status={s} className="size-3" />
           {t(`status.${s}`)}
         </li>
       ))}

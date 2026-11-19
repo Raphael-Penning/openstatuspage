@@ -60,7 +60,7 @@ export function ServicesPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('services.search')}
-              className="h-11 w-full rounded-full border border-border bg-surface pr-10 pl-10 text-sm placeholder:text-muted focus:border-accent focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+              className="min-h-11 w-full rounded-full border border-border-strong bg-surface py-2 pr-10 pl-10 text-sm placeholder:text-muted focus:border-accent [&::-webkit-search-cancel-button]:hidden"
             />
             {query && (
               <button
@@ -87,7 +87,7 @@ export function ServicesPage() {
           ) : empty ? (
             <EmptyState icon={<Search aria-hidden className="size-5 shrink-0" />}>{t('services.noMatches')}</EmptyState>
           ) : (
-            filtered && <ServiceCatalog groups={filtered.groups} ungrouped={filtered.ungrouped} forceOpen={filtering} />
+            filtered && <ServiceCatalog groups={filtered.groups} ungrouped={filtered.ungrouped} forceOpen={filtering} headingLevel={2} />
           )}
         </>
       )}

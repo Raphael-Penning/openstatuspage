@@ -5,7 +5,7 @@
  * all dynamic values are escaped by the HTML renderer, so templates never
  * concatenate HTML themselves.
  */
-import type { SubscriptionLocale } from '@openstatuspage/shared';
+import { solidAccent, type SubscriptionLocale } from '@openstatuspage/shared';
 
 export interface RenderedMail {
   subject: string;
@@ -43,8 +43,8 @@ const TEXTS = {
     impact: 'Impact',
     affected: 'Affected services',
     window: 'Scheduled window',
-    viewIncident: 'View incident',
-    viewMaintenance: 'View maintenance',
+    viewIncident: 'View the incident on the status page',
+    viewMaintenance: 'View the maintenance on the status page',
     manage: 'Manage subscription',
     unsubscribe: 'Unsubscribe',
     footer: (site: string) => `You receive this email because you subscribed to status updates from ${site}.`,
@@ -101,8 +101,8 @@ const TEXTS = {
     impact: 'Auswirkung',
     affected: 'Betroffene Dienste',
     window: 'Geplanter Zeitraum',
-    viewIncident: 'Vorfall ansehen',
-    viewMaintenance: 'Wartung ansehen',
+    viewIncident: 'Vorfall auf der Statusseite ansehen',
+    viewMaintenance: 'Wartung auf der Statusseite ansehen',
     manage: 'Abonnement verwalten',
     unsubscribe: 'Abmelden',
     footer: (site: string) => `Du erhältst diese E-Mail, weil du Status-Benachrichtigungen von ${site} abonniert hast.`,
@@ -223,52 +223,78 @@ function renderText(c: MailContent): string {
   return `${blocks.join('\n\n')}\n`;
 }
 
+/** Text colors of the mails: >= 4.5:1 on the white card and the grey page background (WCAG 1.4.3). */
+const COLOR = {
+  text: '#18181b',
+  muted: '#52525b',
+  page: '#f4f4f5',
+  card: '#ffffff',
+  border: '#d4d4d8',
+  quote: '#fafafa',
+} as const;
+
+/**
+ * Accessible HTML (WCAG 2.2 AA, see docs/accessibility.md): lang and dir of the
+ * mail locale, the subject as <title>, layout tables marked as presentation,
+ * a real heading, relative font sizes that follow the reader's settings,
+ * contrast-safe colors (the button derives its colors from the accent) and
+ * link texts that make sense on their own. The plain text part carries the
+ * same content.
+ */
 function renderHtml(site: MailSite, locale: SubscriptionLocale, subject: string, c: MailContent): string {
   const accent = site.accentColor && /^#[0-9a-fA-F]{6}$/.test(site.accentColor) ? site.accentColor : DEFAULT_ACCENT;
-  const p = (text: string) => `<p style="margin:0 0 16px;line-height:1.5">${escapeHtml(text)}</p>`;
+  const button = solidAccent(accent);
+  const p = (text: string) => `<p style="margin:0 0 1em;line-height:1.5">${escapeHtml(text)}</p>`;
   const parts: string[] = [];
-  parts.push(`<h1 style="font-size:20px;line-height:1.3;margin:0 0 16px">${escapeHtml(c.heading)}</h1>`);
+  parts.push(`<h1 style="font-size:1.375em;line-height:1.3;margin:0 0 0.75em;color:${COLOR.text}">${escapeHtml(c.heading)}</h1>`);
   for (const text of c.paragraphs) parts.push(p(text));
   if (c.fields.length > 0) {
     const rows = c.fields
       .map(
         ([label, v]) =>
-          `<tr><td style="padding:4px 16px 4px 0;color:#71717a;vertical-align:top;white-space:nowrap">${escapeHtml(label)}</td>` +
-          `<td style="padding:4px 0;vertical-align:top">${escapeHtml(v)}</td></tr>`,
+          `<tr><td style="padding:0.25em 1em 0.25em 0;color:${COLOR.muted};vertical-align:top">${escapeHtml(label)}</td>` +
+          `<td style="padding:0.25em 0;vertical-align:top">${escapeHtml(v)}</td></tr>`,
       )
       .join('');
-    parts.push(`<table role="presentation" style="border-collapse:collapse;margin:0 0 16px;font-size:14px">${rows}</table>`);
+    parts.push(
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 1em;font-size:0.9375em;line-height:1.5">${rows}</table>`,
+    );
   }
   if (c.message) {
     const lines = c.message.trim().split(/\r?\n/).map(escapeHtml).join('<br>');
     parts.push(
-      `<div style="margin:0 0 16px;padding:12px 16px;border-left:3px solid ${accent};background:#fafafa;line-height:1.5">${lines}</div>`,
+      `<div style="margin:0 0 1em;padding:0.75em 1em;border-left:3px solid ${accent};background:${COLOR.quote};line-height:1.5">${lines}</div>`,
     );
   }
   if (c.action) {
     parts.push(
-      `<p style="margin:24px 0 8px"><a href="${escapeHtml(safeUrl(c.action.url))}" ` +
-        `style="display:inline-block;padding:10px 18px;border-radius:6px;background:${accent};color:#ffffff;text-decoration:none;font-weight:600">` +
+      `<p style="margin:1.5em 0 0.5em"><a href="${escapeHtml(safeUrl(c.action.url))}" ` +
+        `style="display:inline-block;padding:0.625em 1.125em;border-radius:6px;background:${button.background};color:${button.foreground};text-decoration:underline;font-weight:600">` +
         `${escapeHtml(c.action.label)}</a></p>`,
     );
   }
   const footerLinks = c.footerLinks
-    .map((l) => `<a href="${escapeHtml(safeUrl(l.url))}" style="color:#71717a">${escapeHtml(l.label)}</a>`)
+    .map((l) => `<a href="${escapeHtml(safeUrl(l.url))}" style="color:${COLOR.muted};text-decoration:underline">${escapeHtml(l.label)}</a>`)
     .join(' &middot; ');
-  const footer = [...c.footer.map((f) => `<p style="margin:0 0 8px">${escapeHtml(f)}</p>`)];
+  const footer = [...c.footer.map((f) => `<p style="margin:0 0 0.5em">${escapeHtml(f)}</p>`)];
   if (footerLinks) footer.push(`<p style="margin:0">${footerLinks}</p>`);
+  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
   return [
     '<!doctype html>',
-    `<html lang="${locale}">`,
+    `<html lang="${locale}" dir="ltr">`,
     '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">',
     `<title>${escapeHtml(subject)}</title></head>`,
-    '<body style="margin:0;padding:0;background:#f4f4f5">',
-    '<div style="max-width:600px;margin:0 auto;padding:24px 16px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#18181b;font-size:15px">',
-    `<p style="margin:0 0 12px;font-size:13px;color:#71717a">${escapeHtml(site.siteName)}</p>`,
-    `<div style="background:#ffffff;border:1px solid #e4e4e7;border-radius:8px;padding:24px">${parts.join('')}</div>`,
-    `<div style="margin-top:16px;font-size:12px;color:#71717a;line-height:1.5">${footer.join('')}</div>`,
-    '</div></body></html>',
+    `<body style="margin:0;padding:0;background:${COLOR.page};color:${COLOR.text}">`,
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${COLOR.page}"><tr><td align="center" style="padding:1.5em 1em">`,
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;font-family:${font};color:${COLOR.text};font-size:1em;text-align:left">`,
+    `<tr><td style="padding:0 0 0.75em;font-size:0.875em;color:${COLOR.muted}">${escapeHtml(site.siteName)}</td></tr>`,
+    `<tr><td style="background:${COLOR.card};border:1px solid ${COLOR.border};border-radius:8px;padding:1.5em">${parts.join('')}</td></tr>`,
+    `<tr><td style="padding:1em 0 0;font-size:0.875em;color:${COLOR.muted};line-height:1.5">${footer.join('')}</td></tr>`,
+    '</table>',
+    '</td></tr></table>',
+    '</body></html>',
   ].join('\n');
 }
 

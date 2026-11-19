@@ -5,7 +5,7 @@
 import type { PublicPageSettings } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { Activity, Earth, LayoutDashboard, RotateCcwClock, Server } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router';
 import { LANGUAGES } from '../lib/i18n';
@@ -14,7 +14,7 @@ import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle } from
 import { Skeleton } from './components/ui';
 import { PreferencesProvider } from './hooks/preferences';
 import { usePublicSettings } from './hooks/queries';
-import { readableOn, solidAccent } from './utils/color';
+import { readableOnAll, solidAccent } from './utils/color';
 
 export function PublicLayout() {
   const { data: settings } = usePublicSettings();
@@ -57,9 +57,13 @@ function PageEffects({ settings }: { settings: PublicPageSettings | undefined })
     const accent = settings?.accentColor;
     if (!accent) return;
     const root = document.documentElement;
-    const surface = getComputedStyle(root).getPropertyValue('--surface').trim() || '#ffffff';
+    // Accent text and focus rings appear on the page, card and inset backgrounds: readable on all of them.
+    const style = getComputedStyle(root);
+    const backgrounds = ['--bg', '--surface', '--surface-2']
+      .map((name) => style.getPropertyValue(name).trim())
+      .filter((v) => v !== '');
     const solid = solidAccent(accent);
-    root.style.setProperty('--osp-accent-text', readableOn(accent, surface));
+    root.style.setProperty('--osp-accent-text', readableOnAll(accent, backgrounds.length > 0 ? backgrounds : ['#ffffff']));
     root.style.setProperty('--osp-accent-solid', solid.background);
     root.style.setProperty('--osp-accent-solid-fg', solid.foreground);
   }, [settings?.accentColor, resolved]);
@@ -77,10 +81,6 @@ function PageEffects({ settings }: { settings: PublicPageSettings | undefined })
       link.removeAttribute('type');
     }
   }, [settings?.faviconUrl]);
-
-  useEffect(() => {
-    document.documentElement.lang = i18n.resolvedLanguage ?? 'en';
-  }, [i18n.resolvedLanguage]);
 
   // The page default language applies when the visitor neither picked a
   // language nor has a browser language we support.
@@ -104,6 +104,8 @@ function PageEffects({ settings }: { settings: PublicPageSettings | undefined })
 
 function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
+  const mainRef = useRef<HTMLElement>(null);
+  useFocusOnNavigation(mainRef);
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
       {/* React 19 hoists these into <head>. */}
@@ -120,7 +122,7 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
       <Header settings={settings} />
       <NavTabs showLocations={settings?.showLocations !== false} />
 
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-8 pb-16 focus:outline-none sm:px-6">
+      <main ref={mainRef} id="main" tabIndex={-1} className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-8 pb-16 focus:outline-none sm:px-6">
         <Outlet />
       </main>
 
@@ -130,12 +132,28 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
   );
 }
 
+/**
+ * A client-side navigation does not reset focus like a page load does: move it
+ * to the start of the new content so keyboard and screen reader users are not
+ * left on a link that no longer exists (WCAG 2.4.3). Changes of the query
+ * string only (history filters) keep the focus where it is.
+ */
+function useFocusOnNavigation(mainRef: RefObject<HTMLElement | null>) {
+  const { pathname } = useLocation();
+  const previous = useRef(pathname);
+  useEffect(() => {
+    if (previous.current === pathname) return;
+    previous.current = pathname;
+    mainRef.current?.focus({ preventScroll: true });
+  }, [pathname, mainRef]);
+}
+
 function Header({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
   const { isError } = usePublicSettings();
   return (
     <header className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center justify-between gap-3 px-4 pt-5 sm:px-6">
-      <Link to="/" className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-accent">
+      <Link to="/" className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-focus">
         {settings?.logoUrl ? (
           <img src={settings.logoUrl} alt="" className="h-8 w-auto max-w-32 object-contain" />
         ) : (
@@ -144,7 +162,7 @@ function Header({ settings }: { settings: PublicPageSettings | undefined }) {
           </span>
         )}
         {settings || isError ? (
-          <span className="truncate text-lg font-semibold">{settings?.siteName ?? t('fallbackSiteName')}</span>
+          <span className="text-lg font-semibold break-words">{settings?.siteName ?? t('fallbackSiteName')}</span>
         ) : (
           <Skeleton className="h-5 w-32" />
         )}
@@ -176,26 +194,18 @@ function NavTabs({ showLocations }: { showLocations: boolean }) {
     },
   ];
 
-  // On narrow screens the pills scroll horizontally; keep the active one visible.
-  const scroller = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = scroller.current;
-    const current = el?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!el || !current || el.scrollWidth <= el.clientWidth) return;
-    el.scrollLeft = current.offsetLeft - (el.clientWidth - current.offsetWidth) / 2;
-  }, [pathname]);
-
   return (
     <nav aria-label={t('nav.label')} className="mx-auto mt-6 w-full max-w-[1100px] px-4 sm:px-6">
-      <div ref={scroller} className="relative mx-auto w-fit max-w-full overflow-x-auto rounded-full border border-border bg-surface p-1 [scrollbar-width:none]">
-        <ul className="flex gap-1">
+      {/* Wraps instead of scrolling sideways on narrow screens (reflow, WCAG 1.4.10). */}
+      <div className="mx-auto w-fit max-w-full rounded-3xl border border-border bg-surface p-1">
+        <ul className="flex flex-wrap justify-center gap-1">
           {items.map(({ to, label, Icon, active }) => (
             <li key={to} className="shrink-0">
               <Link
                 to={to}
                 aria-current={active ? 'page' : undefined}
                 className={clsx(
-                  'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+                  'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus',
                   active ? 'bg-surface-2 text-fg shadow-sm' : 'text-muted hover:text-fg',
                 )}
               >

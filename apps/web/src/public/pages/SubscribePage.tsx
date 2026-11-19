@@ -3,7 +3,7 @@
  */
 import { SubscribeInput, type SubscriptionLocale } from '@openstatuspage/shared';
 import { Loader2, MailCheck, MailX } from 'lucide-react';
-import { useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { ApiError } from '../../lib/api';
@@ -65,12 +65,22 @@ function SubscribeForm({
   const { t, i18n } = useTranslation('public');
   const emailId = useId();
   const emailRef = useRef<HTMLInputElement>(null);
+  const scopeRef = useRef<HTMLFieldSetElement>(null);
   const [email, setEmail] = useState('');
   const [locale, setLocale] = useState<SubscriptionLocale>(() => toSubscriptionLocale(i18n.resolvedLanguage));
   const [scope, setScope] = useState({ allServices: true, serviceIds: [] as string[] });
   const [website, setWebsite] = useState('');
   const [errors, setErrors] = useState<SubscriptionErrors>({});
   const subscribe = useSubscribe();
+  // After a failed submit the focus moves to the first invalid field, once its
+  // error is rendered, so the error is announced with it (WCAG 3.3.1).
+  const [focusRequest, setFocusRequest] = useState(0);
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    if (errors.email) emailRef.current?.focus();
+    else if (errors.serviceIds) scopeRef.current?.focus();
+    // Only on a new request, not on every change of the errors.
+  }, [focusRequest]);
   const clearError = (field: keyof SubscriptionErrors) =>
     setErrors((current) => {
       if (!current[field]) return current;
@@ -90,7 +100,7 @@ function SubscribeForm({
     if (!parsed.success) {
       const next = subscriptionErrors(parsed.error.issues);
       setErrors(next);
-      if (next.email) emailRef.current?.focus();
+      setFocusRequest((n) => n + 1);
       return;
     }
     setErrors({});
@@ -99,7 +109,10 @@ function SubscribeForm({
       onSuccess: () => onSent(parsed.data.email),
       onError: (error) => {
         if (error instanceof ApiError && error.status === 404) return onUnavailable();
-        if (error instanceof ApiError && error.status === 400) return setErrors(subscriptionErrors(error.body?.issues));
+        if (error instanceof ApiError && error.status === 400) {
+          setErrors(subscriptionErrors(error.body?.issues));
+          return setFocusRequest((n) => n + 1);
+        }
         if (error instanceof ApiError && error.status === 429) return setErrors({ form: 'subscription.errors.rateLimited' });
         setErrors({ form: 'subscription.errors.generic' });
       },
@@ -138,6 +151,7 @@ function SubscribeForm({
         </div>
 
         <ScopePicker
+          ref={scopeRef}
           value={scope}
           onChange={(v) => {
             setScope(v);
@@ -158,7 +172,7 @@ function SubscribeForm({
         <p className="rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted">{t('subscription.privacy')}</p>
 
         {errors.form && (
-          <p role="alert" className="rounded-xl bg-status-major-outage/10 px-4 py-3 text-sm text-status-major-outage">
+          <p role="alert" className="rounded-xl bg-status-major-outage/10 px-4 py-3 text-sm text-status-major-outage-text">
             {t(errors.form)}
           </p>
         )}
@@ -168,7 +182,7 @@ function SubscribeForm({
             {t('common:actions.cancel')}
           </Link>
           <button type="submit" className={primaryButton} disabled={subscribe.isPending} aria-busy={subscribe.isPending || undefined}>
-            {subscribe.isPending && <Loader2 aria-hidden className="size-4 animate-spin" />}
+            {subscribe.isPending && <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" />}
             {t('subscription.submit')}
           </button>
         </div>
@@ -181,7 +195,7 @@ function SentState({ email }: { email: string }) {
   const { t } = useTranslation('public');
   return (
     <ResultState
-      icon={<MailCheck aria-hidden className="size-10 text-status-operational" />}
+      icon={<MailCheck aria-hidden className="size-10 text-status-operational-text" />}
       title={t('subscription.sent.title')}
       actions={
         <Link to="/" className={secondaryButton}>

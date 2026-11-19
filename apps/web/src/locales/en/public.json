@@ -139,7 +139,13 @@
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "resetZoom": "Reset zoom",
-    "empty": "No locations have been published yet."
+    "empty": "No locations have been published yet.",
+    "mapHint": "The list below the map shows every location with its status.",
+    "pan": "Move the map",
+    "panUp": "Move map up",
+    "panDown": "Move map down",
+    "panLeft": "Move map left",
+    "panRight": "Move map right"
   },
   "history": {
     "title": "History",
@@ -271,7 +277,7 @@
       "subscribeAgain": "Subscribe again"
     },
     "errors": {
-      "email": "Enter a valid email address.",
+      "email": "Enter a valid email address, for example name@example.com.",
       "services": "Select at least one service.",
       "servicesInvalid": "Some selected services are no longer available. Please reload the page and try again.",
       "invalid": "Please check your input and try again.",

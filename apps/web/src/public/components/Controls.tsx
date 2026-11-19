@@ -16,7 +16,7 @@ import { usePreferences } from '../hooks/preferences';
 export const LANG_CHOSEN_KEY = 'osp-lang-chosen';
 
 const control =
-  'inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm hover:border-accent focus-visible:outline-2 focus-visible:outline-accent';
+  'inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm hover:border-accent focus-visible:outline-2 focus-visible:outline-focus';
 
 export function TimeZoneToggle() {
   const { t } = useTranslation('public');
@@ -41,7 +41,7 @@ export function LanguageSwitcher() {
   const id = useId();
   const current = i18n.resolvedLanguage ?? 'en';
   return (
-    <div className={clsx(control, 'relative pr-2')}>
+    <div className={clsx(control, 'relative border-border-strong pr-2 focus-within:outline-2 focus-within:outline-focus')}>
       <Globe aria-hidden className="size-4 text-muted" />
       <label htmlFor={id} className="sr-only">
         {t('header.language')}
@@ -60,7 +60,8 @@ export function LanguageSwitcher() {
         className="cursor-pointer appearance-none bg-transparent pr-4 text-sm focus:outline-none"
       >
         {LANGUAGES.map((l) => (
-          <option key={l.code} value={l.code} className="bg-surface text-fg">
+          // Language names are shown in their own language (WCAG 3.1.2).
+          <option key={l.code} value={l.code} lang={l.code} className="bg-surface text-fg">
             {l.label}
           </option>
         ))}
@@ -80,7 +81,7 @@ export function ThemeSwitcher() {
   const { t } = useTranslation('public');
   const { preference, setPreference } = useTheme();
   return (
-    <div role="group" aria-label={t('header.theme')} className="inline-flex h-9 items-center rounded-full border border-border bg-surface p-0.5">
+    <div role="group" aria-label={t('header.theme')} className="inline-flex min-h-9 items-center rounded-full border border-border bg-surface p-0.5">
       {THEMES.map(({ value, Icon }) => (
         <button
           key={value}
@@ -90,7 +91,7 @@ export function ThemeSwitcher() {
           title={t(`common:theme.${value}`)}
           onClick={() => setPreference(value)}
           className={clsx(
-            'grid size-8 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-accent',
+            'grid size-8 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-focus',
             preference === value ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg',
           )}
         >
@@ -102,7 +103,7 @@ export function ThemeSwitcher() {
 }
 
 const menuItem =
-  'flex items-center gap-2 px-4 py-2 text-sm hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none';
+  'flex items-center gap-2 px-4 py-2 text-sm hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus';
 
 /**
  * Accent button opening a small menu with email notifications (when offered),
@@ -112,6 +113,7 @@ export function FeedMenu({ email = false }: { email?: boolean }) {
   const { t } = useTranslation('public');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, ref, close);
@@ -123,13 +125,21 @@ export function FeedMenu({ email = false }: { email?: boolean }) {
   ];
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <div
+      ref={ref}
+      className="relative inline-block"
+      onKeyDown={(e) => {
+        // Escape closes the menu (useDismiss); keep the focus on the button instead of losing it.
+        if (e.key === 'Escape' && open) buttonRef.current?.focus();
+      }}
+    >
       <button
+        ref={buttonRef}
         type="button"
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-2 rounded-full bg-[color:var(--osp-accent-solid,var(--accent))] px-5 py-2 text-sm font-medium text-[color:var(--osp-accent-solid-fg,var(--accent-fg))] shadow-sm hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="inline-flex items-center gap-2 rounded-full bg-[color:var(--osp-accent-solid,var(--accent))] px-5 py-2 text-sm font-medium text-[color:var(--osp-accent-solid-fg,var(--accent-fg))] shadow-sm hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       >
         <Rss aria-hidden className="size-4" />
         {t('feeds.subscribe')}

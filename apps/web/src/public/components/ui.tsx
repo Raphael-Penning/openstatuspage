@@ -68,7 +68,7 @@ export function ErrorState({ onRetry, className, message }: { onRetry?: () => vo
   const { t } = useTranslation('public');
   return (
     <Card className={clsx('flex flex-col items-center gap-3 px-6 py-10 text-center', className)}>
-      <CircleExclamationPoint aria-hidden className="size-8 text-status-major-outage" />
+      <CircleExclamationPoint aria-hidden className="size-8 text-status-major-outage-text" />
       <div role="alert">
         <p className="font-medium">{message ?? t('error.title')}</p>
         <p className="mt-1 text-sm text-muted">{t('error.description')}</p>
@@ -77,7 +77,7 @@ export function ErrorState({ onRetry, className, message }: { onRetry?: () => vo
         <button
           type="button"
           onClick={onRetry}
-          className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-4 py-1.5 text-sm font-medium hover:border-accent focus-visible:outline-2 focus-visible:outline-accent"
+          className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-4 py-1.5 text-sm font-medium hover:border-accent focus-visible:outline-2 focus-visible:outline-focus"
         >
           <RotateCcw aria-hidden className="size-4" />
           {t('common:actions.retry')}

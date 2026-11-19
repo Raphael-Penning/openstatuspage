@@ -6,7 +6,7 @@
 import { SUBSCRIPTION_LOCALES, type SubscriptionLocale } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { Unlink } from 'lucide-react';
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { LANGUAGES } from '../../lib/i18n';
@@ -14,26 +14,26 @@ import { selectionState, setSelected, type ServiceSection } from '../utils/subsc
 import { Card } from './ui';
 
 export const fieldClass = clsx(
-  'block w-full rounded-xl border border-border bg-bg px-3.5 py-2.5 text-sm text-fg placeholder:text-muted/70',
-  'focus:border-accent focus:outline-2 focus:outline-offset-0 focus:outline-accent/30',
+  'block w-full rounded-xl border border-border-strong bg-bg px-3.5 py-2.5 text-sm text-fg placeholder:text-muted',
+  'focus:border-accent focus:outline-2 focus:outline-offset-1 focus:outline-focus',
   'aria-[invalid=true]:border-status-major-outage',
 );
 
 export const primaryButton = clsx(
   'inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-medium shadow-sm',
   'bg-[color:var(--osp-accent-solid,var(--accent))] text-[color:var(--osp-accent-solid-fg,var(--accent-fg))]',
-  'hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+  'hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
   'disabled:cursor-not-allowed disabled:opacity-60',
 );
 
 export const secondaryButton = clsx(
   'inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-5 py-2 text-sm font-medium',
-  'hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+  'hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
   'disabled:cursor-not-allowed disabled:opacity-60',
 );
 
 export const dangerButton = clsx(
-  'inline-flex items-center justify-center gap-2 rounded-full border border-status-major-outage/40 px-5 py-2 text-sm font-medium text-status-major-outage',
+  'inline-flex items-center justify-center gap-2 rounded-full border border-status-major-outage/40 px-5 py-2 text-sm font-medium text-status-major-outage-text',
   'hover:bg-status-major-outage/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-status-major-outage',
   'disabled:cursor-not-allowed disabled:opacity-60',
 );
@@ -44,7 +44,7 @@ const checkboxClass = 'size-4 shrink-0 accent-[color:var(--osp-accent-solid,var(
 export function FieldError({ id, children }: { id: string; children?: ReactNode }) {
   if (!children) return null;
   return (
-    <p id={id} className="text-sm text-status-major-outage">
+    <p id={id} className="text-sm text-status-major-outage-text">
       {children}
     </p>
   );
@@ -62,7 +62,7 @@ export function LocaleSelect({ value, onChange }: { value: SubscriptionLocale; o
       </label>
       <select id={id} value={value} onChange={(e) => onChange(e.target.value as SubscriptionLocale)} className={fieldClass}>
         {options.map((l) => (
-          <option key={l.code} value={l.code}>
+          <option key={l.code} value={l.code} lang={l.code}>
             {l.label}
           </option>
         ))}
@@ -118,11 +118,14 @@ export function ScopePicker({
   onChange,
   sections,
   error,
+  ref,
 }: {
   value: ScopeValue;
   onChange: (v: ScopeValue) => void;
   sections: ServiceSection[];
   error?: string;
+  /** Receives focus when the selection is invalid on submit (WCAG 3.3.1). */
+  ref?: Ref<HTMLFieldSetElement>;
 }) {
   const { t } = useTranslation('public');
   const name = useId();
@@ -135,7 +138,7 @@ export function ScopePicker({
   const radio = (all: boolean, label: string, help: string) => (
     <label
       className={clsx(
-        'flex cursor-pointer gap-3 rounded-xl border p-3.5 focus-within:outline-2 focus-within:outline-accent',
+        'flex cursor-pointer gap-3 rounded-xl border p-3.5 focus-within:outline-2 focus-within:outline-focus',
         value.allServices === all ? 'border-accent bg-surface-2' : 'border-border hover:border-accent/60',
       )}
     >
@@ -154,7 +157,13 @@ export function ScopePicker({
   );
 
   return (
-    <fieldset className="flex flex-col gap-3" aria-describedby={error ? errorId : undefined}>
+    <fieldset
+      ref={ref}
+      tabIndex={-1}
+      className="flex flex-col gap-3 rounded-xl focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+      aria-describedby={error ? errorId : undefined}
+      aria-invalid={error ? true : undefined}
+    >
       <legend className="mb-1.5 text-sm font-medium">{t('subscription.scope.label')}</legend>
       <div className="grid gap-3 sm:grid-cols-2">
         {radio(true, t('subscription.scope.all'), t('subscription.scope.allHelp'))}
@@ -173,7 +182,7 @@ export function ScopePicker({
               <div className="flex gap-3 text-sm font-medium">
                 <button
                   type="button"
-                  className="text-[color:var(--osp-accent-text,var(--accent))] hover:underline disabled:opacity-50 disabled:no-underline"
+                  className="min-h-6 text-[color:var(--osp-accent-text,var(--accent))] hover:underline disabled:opacity-50 disabled:no-underline"
                   disabled={selectedCount === total}
                   onClick={() => setIds(setSelected(value.serviceIds, allIds, true))}
                 >
@@ -181,7 +190,7 @@ export function ScopePicker({
                 </button>
                 <button
                   type="button"
-                  className="text-[color:var(--osp-accent-text,var(--accent))] hover:underline disabled:opacity-50 disabled:no-underline"
+                  className="min-h-6 text-[color:var(--osp-accent-text,var(--accent))] hover:underline disabled:opacity-50 disabled:no-underline"
                   disabled={selectedCount === 0}
                   onClick={() => setIds([])}
                 >

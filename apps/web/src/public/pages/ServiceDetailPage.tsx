@@ -156,7 +156,7 @@ export function ServiceDetailPage() {
             ))}
           </div>
         ) : (
-          <EmptyState icon={<CircleCheck aria-hidden className="size-5 shrink-0 text-status-operational" />}>
+          <EmptyState icon={<CircleCheck aria-hidden className="size-5 shrink-0 text-status-operational-text" />}>
             {t('service.noIncidents')}
           </EmptyState>
         )}

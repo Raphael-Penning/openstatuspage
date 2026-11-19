@@ -13,7 +13,7 @@ function Counter({ label, value, to, sub, alert }: { label: string; value: numbe
   const body = (
     <>
       <p className="text-xs font-medium text-muted">{label}</p>
-      <p className={clsx('mt-1 text-2xl font-semibold tabular-nums', alert && 'text-status-major-outage')}>{value}</p>
+      <p className={clsx('mt-1 text-2xl font-semibold tabular-nums', alert && 'text-status-major-outage-text')}>{value}</p>
       {sub && <p className="mt-0.5 text-xs text-muted">{sub}</p>}
     </>
   );
@@ -116,7 +116,7 @@ export default function DashboardPage() {
                             </Link>
                             <span className="text-xs text-muted">{fmt.relative(s.lastPollAt)}</span>
                           </div>
-                          {s.lastError && <p className="mt-0.5 text-xs break-words text-status-major-outage">{s.lastError}</p>}
+                          {s.lastError && <p className="mt-0.5 text-xs break-words text-status-major-outage-text">{s.lastError}</p>}
                         </li>
                       ))}
                     </ul>

@@ -10,9 +10,9 @@ export const STATUS_BG: Record<ServiceStatus, string> = {
 };
 
 export const STATUS_TEXT: Record<ServiceStatus, string> = {
-  operational: 'text-status-operational',
-  maintenance: 'text-status-maintenance',
-  degraded: 'text-status-degraded',
-  partial_outage: 'text-status-partial-outage',
-  major_outage: 'text-status-major-outage',
+  operational: 'text-status-operational-text',
+  maintenance: 'text-status-maintenance-text',
+  degraded: 'text-status-degraded-text',
+  partial_outage: 'text-status-partial-outage-text',
+  major_outage: 'text-status-major-outage-text',
 };

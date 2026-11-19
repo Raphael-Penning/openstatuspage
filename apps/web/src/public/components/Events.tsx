@@ -65,7 +65,7 @@ export function AffectedServices({ services, className }: { services: { id: stri
           <li key={s.id}>
             <Link
               to={`/services/${s.id}`}
-              className="inline-block rounded-full border border-border bg-surface-2 px-2 py-0.5 text-xs hover:border-accent"
+              className="inline-flex min-h-6 items-center rounded-full border border-border bg-surface-2 px-2 py-0.5 text-xs hover:border-accent"
             >
               {s.name}
             </Link>

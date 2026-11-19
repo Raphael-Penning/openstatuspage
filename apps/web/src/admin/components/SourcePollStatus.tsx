@@ -11,7 +11,7 @@ export function SourcePollStatus({ source }: { source: AdminMonitorSource }) {
   if (source.lastPollOk === null) return <span className="text-sm text-muted">{t('sources.neverPolled')}</span>;
   return (
     <div className="text-sm">
-      <span className={`inline-flex items-center gap-1 ${source.lastPollOk ? 'text-status-operational' : 'text-status-major-outage'}`}>
+      <span className={`inline-flex items-center gap-1 ${source.lastPollOk ? 'text-status-operational-text' : 'text-status-major-outage-text'}`}>
         {source.lastPollOk ? <CircleCheck aria-hidden className="size-4" /> : <CircleX aria-hidden className="size-4" />}
         {source.lastPollOk ? t('sources.pollOk') : t('sources.pollError')}
       </span>
@@ -19,7 +19,7 @@ export function SourcePollStatus({ source }: { source: AdminMonitorSource }) {
         {fmt.relative(source.lastPollAt)}
       </span>
       {!source.lastPollOk && source.lastError && (
-        <p className="mt-0.5 max-w-xs text-xs break-words text-status-major-outage">{source.lastError}</p>
+        <p className="mt-0.5 max-w-xs text-xs break-words text-status-major-outage-text">{source.lastError}</p>
       )}
     </div>
   );

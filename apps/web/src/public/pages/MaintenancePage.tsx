@@ -77,7 +77,7 @@ export function MaintenancePage() {
                 <li key={s.id}>
                   <Link
                     to={`/services/${s.id}`}
-                    className="inline-block rounded-full border border-border bg-surface-2 px-3 py-1 text-sm hover:border-accent"
+                    className="inline-flex min-h-6 items-center rounded-full border border-border bg-surface-2 px-3 py-1 text-sm hover:border-accent"
                   >
                     {s.name}
                   </Link>

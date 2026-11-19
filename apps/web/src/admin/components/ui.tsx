@@ -151,10 +151,10 @@ type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'info
 const TONE: Record<BadgeTone, string> = {
   neutral: 'bg-surface-2 text-muted',
   accent: 'bg-accent/15 text-accent',
-  success: 'bg-status-operational/15 text-status-operational',
-  warning: 'bg-status-degraded/15 text-status-degraded',
-  danger: 'bg-status-major-outage/15 text-status-major-outage',
-  info: 'bg-status-maintenance/15 text-status-maintenance',
+  success: 'bg-status-operational/15 text-status-operational-text',
+  warning: 'bg-status-degraded/15 text-status-degraded-text',
+  danger: 'bg-status-major-outage/15 text-status-major-outage-text',
+  info: 'bg-status-maintenance/15 text-status-maintenance-text',
 };
 
 export function Badge({ tone = 'neutral', children, className }: { tone?: BadgeTone; children: ReactNode; className?: string }) {
@@ -215,7 +215,7 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   const { t } = useTranslation('admin');
   return (
     <div role="alert" className="flex flex-col items-center gap-3 p-10 text-center text-sm">
-      <p className="text-status-major-outage">{apiErrorMessage(error, t)}</p>
+      <p className="text-status-major-outage-text">{apiErrorMessage(error, t)}</p>
       {onRetry && (
         <Button size="sm" onClick={onRetry}>
           {t('common:actions.retry')}

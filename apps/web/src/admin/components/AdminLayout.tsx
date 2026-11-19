@@ -258,7 +258,7 @@ function UserMenu() {
             </Link>
             <button
               type="button"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-status-major-outage hover:bg-surface-2"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-status-major-outage-text hover:bg-surface-2"
               onClick={() => logout.mutate()}
               disabled={logout.isPending}
             >

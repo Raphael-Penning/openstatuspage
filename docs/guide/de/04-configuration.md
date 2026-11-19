@@ -61,7 +61,7 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 | Branding | Seitenname | Erscheint im Kopf der Seite, im Browser-Titel, in Feeds und im Betreff von E-Mails. |
 | Branding | Beschreibung | Kurzer Text unter dem Seitennamen. |
 | Branding | Logo-URL, Favicon-URL | `https://`-URLs oder Pfade. |
-| Branding | Akzentfarbe | Farbe von Buttons und Hervorhebungen (Hex, z. B. `#7c6cf2`). |
+| Branding | Akzentfarbe | Farbe von Buttons und Hervorhebungen (Hex, z. B. `#7c6cf2`); wird für ausreichenden Kontrast automatisch angepasst, siehe [unten](#akzentfarbe-und-barrierefreiheit). |
 | Anzeige | Standardsprache | Gilt, wenn die Browsersprache des Besuchers nicht verfügbar ist (Englisch oder Deutsch). |
 | Anzeige | Standarddarstellung | System, hell oder dunkel; Besucher können umschalten. |
 | Anzeige | Support-URL | Optionaler Link zu deiner Support- oder Kontaktseite. |
@@ -75,6 +75,27 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 
 Die E-Mail-Einstellungen und den Kasten **E-Mail-Versand** darunter erklärt
 [E-Mail-Abonnements](07-email-subscriptions.md).
+
+### Akzentfarbe und Barrierefreiheit
+
+Die öffentliche Seite und die E-Mails sollen WCAG 2.2 Stufe AA erfüllen (siehe
+`docs/accessibility.md` im Repository). Du kannst jede Akzentfarbe wählen; die
+Seite hält sie selbst lesbar:
+
+- Links, hervorgehobener Text und der Tastatur-Fokusrahmen nutzen eine Variante
+  deiner Farbe, die gerade so weit abgedunkelt (helle Darstellung) oder
+  aufgehellt (dunkle Darstellung) wird, dass sie auf jedem Hintergrund einen
+  Kontrast von 4,5:1 erreicht.
+- Buttons in deiner Farbe bekommen weiße oder dunkle Schrift, je nachdem, was
+  lesbar ist, und die Farbe wird bei Bedarf leicht abgedunkelt. Die E-Mails
+  machen das für ihren Button genauso.
+
+Eine sehr helle Farbe wie Gelb wirkt auf der Seite deshalb dunkler als in der
+Farbauswahl. Am nächsten an deiner Markenfarbe bleibst du mit einer mittleren
+oder dunklen Farbe. Prüfe die Seite in heller und dunkler Darstellung und
+verzichte auf Logos, die außer dem Seitennamen wichtigen Text enthalten (das
+Logo hat keinen Alternativtext, weil der Seitenname daneben steht). Schreib
+Texte zu Vorfällen und Wartungen in der Sprache der meisten Besucher.
 
 Sprache und Darstellung der Verwaltung stellt jeder Benutzer selbst im
 Benutzermenü (unten links) ein.

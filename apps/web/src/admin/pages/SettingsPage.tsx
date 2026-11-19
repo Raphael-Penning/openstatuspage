@@ -181,7 +181,7 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
                 spellCheck={false}
               />
             </div>
-            <p id="accent-hex-help" className={`text-xs ${form.error('accentColor') ? 'text-status-major-outage' : 'text-muted'}`}>
+            <p id="accent-hex-help" className={`text-xs ${form.error('accentColor') ? 'text-status-major-outage-text' : 'text-muted'}`}>
               {form.error('accentColor') ?? t('settings.accentHelp')}
             </p>
           </div>
@@ -338,7 +338,7 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
               </div>
             </div>
           ))}
-          {form.errors.footerLinks && <p className="text-xs text-status-major-outage">{form.error('footerLinks')}</p>}
+          {form.errors.footerLinks && <p className="text-xs text-status-major-outage-text">{form.error('footerLinks')}</p>}
         </div>
       </Card>
 

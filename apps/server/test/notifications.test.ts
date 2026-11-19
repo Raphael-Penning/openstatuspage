@@ -196,7 +196,7 @@ describe('incident notifications', () => {
     expect(mail!.subject).toBe('[Example Status] Vorfall: Ausfall');
     expect(mail!.text).toContain('Auswirkung: Kritisch');
     expect(mail!.text).toContain('Abonnement verwalten');
-    expect(mail!.html).toContain('<html lang="de">');
+    expect(mail!.html).toContain('<html lang="de" dir="ltr">');
   });
 });
 

@@ -61,7 +61,7 @@ export function IncidentPage() {
             <ul className="divide-y divide-border">
               {data.affectedServices.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 py-2">
-                  <Link to={`/services/${s.id}`} className="truncate text-sm hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+                  <Link to={`/services/${s.id}`} className="min-w-0 text-sm break-words hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
                     {s.name}
                   </Link>
                   <StatusPill status={s.status} />

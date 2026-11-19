@@ -6,12 +6,14 @@
 import type { PublicLocation } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { geoNaturalEarth1, geoPath, type ExtendedFeature, type ExtendedFeatureCollection } from 'd3-geo';
-import { Maximize2, Minus, Plus } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Maximize2, Minus, Plus } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { feature } from 'topojson-client';
 import world from 'world-atlas/countries-110m.json';
 import { useCountryName } from '../hooks/countries';
+import { statusShapePath } from '../utils/shapes';
+import { statusVar } from './StatusMarker';
 import { StatusPill } from './ui';
 
 const WIDTH = 960;
@@ -52,10 +54,6 @@ function clampView(v: View): View {
   };
 }
 
-function statusVar(status: PublicLocation['status']): string {
-  return `var(--status-${status.replace('_', '-')})`;
-}
-
 interface WorldMapProps {
   locations: PublicLocation[];
   selectedId: string | null;
@@ -66,7 +64,11 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
   const { t } = useTranslation('public');
   const countryName = useCountryName();
   const [view, setView] = useState<View>(INITIAL);
-  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [hoverId, setHoverIdNow] = useState<string | null>(null);
+  /** Tooltip hidden with Escape until another marker is hovered, focused or selected (WCAG 1.4.13). */
+  const [tooltipHidden, setTooltipHidden] = useState(false);
+  const hideTimer = useRef<number | undefined>(undefined);
+  const hintId = useId();
   const drag = useRef<{ x: number; y: number; view: View; moved: boolean } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -82,6 +84,29 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
     [locations],
   );
 
+  // Leaving a marker hides its tooltip a moment later, so the pointer can move onto the tooltip.
+  function setHoverId(id: string | null) {
+    window.clearTimeout(hideTimer.current);
+    if (id === null) {
+      hideTimer.current = window.setTimeout(() => setHoverIdNow(null), 300);
+      return;
+    }
+    setTooltipHidden(false);
+    setHoverIdNow(id);
+  }
+  useEffect(() => () => window.clearTimeout(hideTimer.current), []);
+  useEffect(() => setTooltipHidden(false), [selectedId]);
+
+  const tooltipShown = (hoverId ?? selectedId) !== null && !tooltipHidden;
+  useEffect(() => {
+    if (!tooltipShown) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setTooltipHidden(true);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [tooltipShown]);
+
   // Bring a marker selected from the list into view when zoomed in.
   useEffect(() => {
     const m = markers.find((x) => x.location.id === selectedId);
@@ -96,6 +121,9 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
   const active = markers.find((m) => m.location.id === activeId);
 
   const zoom = (factor: number) => setView((v) => clampView({ ...v, k: v.k * factor }));
+  // Buttons for panning: dragging must not be the only way (WCAG 2.5.7, 2.1.1).
+  const pan = (dx: number, dy: number) =>
+    setView((v) => clampView({ ...v, cx: v.cx + (dx * WIDTH) / (4 * v.k), cy: v.cy + (dy * HEIGHT) / (4 * v.k) }));
 
   function onPointerDown(e: PointerEvent<SVGSVGElement>) {
     if (view.k <= 1 || e.button !== 0) return;
@@ -141,6 +169,7 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         role="group"
         aria-label={t('locations.mapLabel', { count: markers.length })}
+        aria-describedby={hintId}
         className={clsx('block h-auto w-full touch-pan-y select-none', view.k > 1 && 'cursor-grab active:cursor-grabbing')}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -184,11 +213,11 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
                 if (!drag.current?.moved) onSelect(selectedId === l.id ? null : l.id);
               }}
               onKeyDown={(e) => onMarkerKey(e, l.id)}
-              className="cursor-pointer outline-none [&:focus-visible>circle:last-child]:stroke-accent"
+              className="cursor-pointer outline-none [&:focus-visible>path]:stroke-[color:var(--focus)]"
             >
               <circle r={r * 2.4} style={{ fill: statusVar(l.status) }} opacity={isActive ? 0.35 : 0.18} />
-              <circle
-                r={isActive ? r * 1.35 : r}
+              <path
+                d={statusShapePath(l.status, isActive ? r * 1.35 : r)}
                 style={{ fill: statusVar(l.status) }}
                 className="stroke-surface"
                 strokeWidth={r / 2.5}
@@ -198,11 +227,17 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
         })}
       </svg>
 
-      {active && (
+      <p id={hintId} className="sr-only">
+        {t('locations.mapHint')}
+      </p>
+
+      {active && !tooltipHidden && (
         <div
           role="tooltip"
+          onPointerEnter={() => active && setHoverId(active.location.id)}
+          onPointerLeave={() => setHoverId(null)}
           className={clsx(
-            'pointer-events-none absolute z-10 w-max max-w-60 -translate-x-1/2 rounded-xl border border-border bg-surface px-3 py-2 text-sm shadow-lg',
+            'absolute z-10 w-max max-w-60 -translate-x-1/2 rounded-xl border border-border bg-surface px-3 py-2 text-sm shadow-lg',
             below ? 'mt-3' : '-mt-3 -translate-y-full',
           )}
           style={{ left: `${Math.min(88, Math.max(12, left))}%`, top: `${top}%` }}
@@ -220,7 +255,7 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
         </div>
       )}
 
-      <div className="absolute right-3 bottom-3 flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <div className="absolute right-3 bottom-3 flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         <MapButton label={t('locations.zoomIn')} onClick={() => zoom(1.6)} disabled={view.k >= MAX_ZOOM}>
           <Plus aria-hidden className="size-4" />
         </MapButton>
@@ -231,6 +266,32 @@ export default function WorldMap({ locations, selectedId, onSelect }: WorldMapPr
           <Maximize2 aria-hidden className="size-4" />
         </MapButton>
       </div>
+
+      {view.k > 1 && (
+        <div
+          role="group"
+          aria-label={t('locations.pan')}
+          className="absolute bottom-3 left-3 grid grid-cols-3 overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
+        >
+          <span />
+          <MapButton label={t('locations.panUp')} onClick={() => pan(0, -1)}>
+            <ArrowUp aria-hidden className="size-4" />
+          </MapButton>
+          <span />
+          <MapButton label={t('locations.panLeft')} onClick={() => pan(-1, 0)}>
+            <ArrowLeft aria-hidden className="size-4" />
+          </MapButton>
+          <span />
+          <MapButton label={t('locations.panRight')} onClick={() => pan(1, 0)}>
+            <ArrowRight aria-hidden className="size-4" />
+          </MapButton>
+          <span />
+          <MapButton label={t('locations.panDown')} onClick={() => pan(0, 1)}>
+            <ArrowDown aria-hidden className="size-4" />
+          </MapButton>
+          <span />
+        </div>
+      )}
     </div>
   );
 }
@@ -253,7 +314,7 @@ function MapButton({
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid size-9 place-items-center border-b border-border text-fg last:border-b-0 hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:text-muted disabled:opacity-50"
+      className="grid size-9 place-items-center text-fg hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus disabled:text-muted disabled:opacity-50"
     >
       {children}
     </button>
