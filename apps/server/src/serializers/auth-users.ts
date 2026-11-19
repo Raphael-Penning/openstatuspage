@@ -16,6 +16,7 @@ import type {
   ResourceObject,
 } from '@openstatuspage/shared';
 import { Included, resource, toMany, toOne } from '../lib/jsonapi.js';
+import { adminServiceResource } from './catalog.js';
 
 export const AUTH_TYPES = {
   authConfig: 'auth-configs',
@@ -72,18 +73,6 @@ export function auditEntryResource(entry: AuditLogEntry): ResourceObject {
   });
 }
 
-/** Admin service as shown on the dashboard (checks stay value objects). */
-export function overviewServiceResource(service: AdminService): ResourceObject {
-  const { groupId, locationIds, ...attributes } = service;
-  return resource(AUTH_TYPES.service, service.id, attributes, {
-    relationships: {
-      group: toOne('service-groups', groupId),
-      locations: toMany('locations', locationIds),
-    },
-    links: { self: `/api/admin/services/${service.id}` },
-  });
-}
-
 export interface OverviewData {
   counts: Record<string, number>;
   services: AdminService[];
@@ -92,7 +81,7 @@ export interface OverviewData {
 
 /** Dashboard overview: counts as attributes, services and recent audit entries included. */
 export function overviewResource(overview: OverviewData, included: Included): ResourceObject {
-  included.add(...overview.services.map(overviewServiceResource), ...overview.recentAudit.map(auditEntryResource));
+  included.add(...overview.services.map(adminServiceResource), ...overview.recentAudit.map(auditEntryResource));
   return resource(
     AUTH_TYPES.overview,
     CURRENT_ID,
