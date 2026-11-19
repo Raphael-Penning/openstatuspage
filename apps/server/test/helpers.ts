@@ -1,7 +1,18 @@
 /**
  * Test helpers: an app on an in-memory SQLite database plus small HTTP helpers.
  */
-import type { UserRole } from '@openstatuspage/shared';
+import {
+  deserialize,
+  deserializePage,
+  inferResourceType,
+  JSONAPI_MEDIA_TYPE,
+  toRequestDocument,
+  type DataDocument,
+  type ErrorObject,
+  type Paginated,
+  type ToResourceOptions,
+  type UserRole,
+} from '@openstatuspage/shared';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { loadConfig, type Config } from '../src/config.js';
@@ -87,7 +98,42 @@ export interface Client {
   delete(url: string): Promise<LightMyRequestResponse>;
 }
 
-/** HTTP client authenticated by cookie (with CSRF header) or by bearer token. */
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Request document for a test payload. Already wrapped documents (`{ data: ... }`)
+ * are kept; plain objects are wrapped with the type inferred from the URL.
+ */
+export function asDocument(url: string, payload: unknown): unknown {
+  if (!isPlainObject(payload) || 'data' in payload) return payload;
+  return toRequestDocument(inferResourceType(url), payload);
+}
+
+/** `{ data: { type, attributes, relationships } }` for explicit request bodies in tests. */
+export const doc = (type: string, values: Record<string, unknown>, options?: ToResourceOptions) =>
+  toRequestDocument(type, values, options);
+
+/** Primary data of a JSON:API response as plain object(s) (see deserialize). */
+export function data<T = Record<string, unknown>>(res: LightMyRequestResponse): T {
+  return deserialize<T>(res.json() as DataDocument);
+}
+
+/** Collection response → `{ items, total, page, pageSize }`. */
+export function page<T = Record<string, unknown>>(res: LightMyRequestResponse): Paginated<T> {
+  return deserializePage<T>(res.json() as DataDocument);
+}
+
+/** Error objects of a JSON:API error response. */
+export function errors(res: LightMyRequestResponse): ErrorObject[] {
+  return (res.json() as { errors?: ErrorObject[] }).errors ?? [];
+}
+
+/**
+ * HTTP client authenticated by cookie (with CSRF header) or by bearer token.
+ * Object payloads are sent as JSON:API request documents (see asDocument);
+ * routes that are not converted yet receive the flattened attributes.
+ */
 export function client(app: FastifyInstance, auth: { cookie?: string; token?: string }): Client {
   const headers: Record<string, string> = {};
   if (auth.cookie) {
@@ -95,8 +141,12 @@ export function client(app: FastifyInstance, auth: { cookie?: string; token?: st
     headers['x-requested-with'] = 'openstatuspage';
   }
   if (auth.token) headers.authorization = `Bearer ${auth.token}`;
-  const send = (method: InjectOptions['method'], url: string, payload?: unknown) =>
-    app.inject({ method, url, headers, ...(payload !== undefined ? { payload: payload as object } : {}) });
+  const send = (method: InjectOptions['method'], url: string, payload?: unknown) => {
+    if (payload === undefined) return app.inject({ method, url, headers });
+    const body = asDocument(url, payload);
+    const contentType = isPlainObject(body) ? JSONAPI_MEDIA_TYPE : 'application/json';
+    return app.inject({ method, url, headers: { ...headers, 'content-type': contentType }, payload: JSON.stringify(body) });
+  };
   return {
     get: (url) => send('GET', url),
     post: (url, payload) => send('POST', url, payload ?? {}),
