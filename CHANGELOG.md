@@ -60,9 +60,21 @@ breaking changes.
     resource: attribute `overall` and `updatedAt`; relationships `services`,
     `activeIncidents` and `activeMaintenances` (resources included). The former
     `services[].group` name is the `service-groups` relationship of each service.
-  - Unchanged: `/api/health` and the RSS/Atom feeds (plain formats, documented in
-    [docs/api.md](docs/api.md)).
+  - Unchanged: `/api/health` (now also reports `role` and `worker`) and the RSS/Atom
+    feeds (plain formats, documented in [docs/api.md](docs/api.md)).
   - Migrating a client: send `Content-Type: application/vnd.api+json` and wrap
     bodies in `data`; read `data.attributes` (or use `deserialize()` from
     `@openstatuspage/shared`); replace `PUT` by `PATCH`; rename list parameters
     to `page[...]`/`filter[...]`; read error details from `errors[]`.
+
+### Added
+
+- **Split deployment** with `APP_ROLE` (`all`, `public`, `admin`, `worker`): on
+  PostgreSQL the public status page, the management side and the background worker
+  can run as separate instances. A `public` instance has no management UI, login,
+  admin or ingest routes, serves a separate public-only web entry (`public.html`)
+  without the management UI chunks, never connects to monitoring systems or sends
+  mail, and never runs migrations (it waits for the expected schema,
+  `SCHEMA_WAIT_SECONDS`). See [docs/configuration.md](docs/configuration.md#split-deployment).
+- `WORKER_ENABLED` defaults to `false` for `APP_ROLE=admin`; contradicting settings
+  stop the server on start.

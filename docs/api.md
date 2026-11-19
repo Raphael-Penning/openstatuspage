@@ -334,7 +334,7 @@ error documents like everywhere else.
 
 | Method | Path | Response |
 | --- | --- | --- |
-| GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes |
+| GET | `/api/health` | `{ "status": "ok", "role": "all", "worker": true }` (`application/json`) for liveness/readiness probes; `role` is the instance's `APP_ROLE`, `worker` whether it runs the background tasks. Exists in every role. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 | GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | `302` to `/admin` after login, or `/admin/login?error=<code>` |
@@ -353,7 +353,7 @@ GET /api/health
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"status": "ok"}
+{"status": "ok", "role": "all", "worker": true}
 ```
 
 </details>

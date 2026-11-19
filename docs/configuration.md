@@ -34,7 +34,7 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` (use `sqlite::memory:` for throw-away instances) or `postgres://user:password@host:5432/database`. Migrations run automatically on start. |
+| `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` (use `sqlite::memory:` for throw-away instances) or `postgres://user:password@host:5432/database`. Migrations run automatically on start (except with `APP_ROLE=public`). |
 
 ## Initial administrator
 
@@ -65,11 +65,60 @@ Alternatively create users with
 
 See [oidc.md](oidc.md) for IdP setup and the role mapping rules.
 
+## Deployment role
+
+One build can run as different kinds of instances. `APP_ROLE` selects what an
+instance does; see [Split deployment](#split-deployment) below.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `APP_ROLE` | `all` | `all`: everything in one process (status page, management UI and API, login, ingest, background tasks). `public`: status page, public API, feeds, email subscriptions and `/api/health` only. `admin`: management UI and API, login/OIDC, ingest endpoints, plus the public page and API (preview). `worker`: background tasks only, HTTP serves `/api/health` only. Every role except `all` requires PostgreSQL. |
+| `SCHEMA_WAIT_SECONDS` | `120` | `APP_ROLE=public` never runs migrations. On start it waits up to this many seconds (0 to 3600) for the database schema to reach the version of its build, then stops with an error. |
+
 ## Background worker
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `WORKER_ENABLED` | `true` | Runs maintenance auto start/complete, monitoring pollers, check bundle re-evaluation, email delivery, maintenance reminders and the cleanup tasks. Set to `false` on additional replicas so only one instance runs background jobs. |
+| `WORKER_ENABLED` | `true` for `all` and `worker`, `false` for `admin` | Runs maintenance auto start/complete, monitoring pollers, check bundle re-evaluation, email delivery, maintenance reminders and the cleanup tasks. Set to `false` on additional `all` replicas so only one instance runs background jobs. Must not be `true` with `APP_ROLE=public` or `false` with `APP_ROLE=worker` (the server refuses to start). |
+
+## Split deployment
+
+With PostgreSQL the management side and the public status page can run as separate
+instances, e.g. `status.admin.example.org` (internal network or VPN) and
+`status.example.org` (internet):
+
+| | `public` | `admin` | `worker` | `all` |
+| --- | :---: | :---: | :---: | :---: |
+| Public status page, `/api/public/*`, feeds, subscriptions | ✓ | ✓ | – | ✓ |
+| Management UI (`/admin`), `/api/admin/*`, `/api/auth/*` (login, OIDC) | – | ✓ | – | ✓ |
+| Ingest endpoints `/api/ingest/*` (webhooks of monitoring systems) | – | ✓ | – | ✓ |
+| `/api/health` (reports `role` and `worker`) | ✓ | ✓ | ✓ | ✓ |
+| Background tasks (pollers, scheduler, mail delivery, cleanup) | never | `WORKER_ENABLED=true` | ✓ | ✓ (default) |
+| Runs migrations on start | never (waits) | ✓ | ✓ | ✓ |
+| Creates the initial admin (`ADMIN_EMAIL`) | – | ✓ | – | ✓ |
+
+What a `public` instance does **not** do:
+
+- Routes that are not listed above do not exist (404), whatever headers or cookies
+  a request carries; sessions and API tokens are never looked up.
+- It serves `public.html`, a separate entry page of the web client that contains
+  no management UI. `/admin/...` answers 404, and so do `index.html` and every
+  file that only the management UI loads (the server reads the build's
+  `.vite/manifest.json`; the instance refuses to start without it).
+- It never connects to monitoring systems and never sends mail: confirmation and
+  notification mails are queued in the database and delivered by the worker. It
+  needs `MAIL_TRANSPORT` (and `SMTP_FROM`) to offer subscriptions, but no
+  `SMTP_HOST` or SMTP credentials.
+- It never runs migrations: start the admin or worker instance (or run
+  `pnpm db:migrate`) first after an update. A public instance whose build is older
+  than the database schema refuses to start.
+
+Monitoring sources changed on an admin instance reach the worker's pollers within
+30 seconds. Results pushed to the ingest endpoints go to the admin instance, so
+monitoring systems need to reach the admin host, not the public one.
+
+SQLite is a single-file database for one instance: with SQLite only `APP_ROLE=all`
+is supported.
 
 ## Check bundles
 

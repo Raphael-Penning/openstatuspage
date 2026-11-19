@@ -149,3 +149,14 @@ openITCockpit API, CSV) ──► history_import_intervals ──preview──�
   `services/history-replay.ts` (pure, unit tested).
 
 Set `WORKER_ENABLED=false` on extra replicas so only one instance runs these tasks.
+
+## Deployment roles
+
+`APP_ROLE` (`apps/server/src/role.ts`) decides per instance which route modules
+are registered (`routes/index.ts`), which web files are served (`web-assets.ts`),
+whether migrations run or the instance waits for the schema, and whether the
+background tasks start (`startup.ts`). `all` keeps the single-process behaviour;
+`public`, `admin` and `worker` split it across instances on PostgreSQL (see
+[configuration.md](configuration.md#split-deployment)). A worker re-reads the
+monitoring sources every 30 s (`poller-sync`) so changes made on an admin
+instance reach its pollers.
