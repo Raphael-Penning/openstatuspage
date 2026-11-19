@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newId } from '../src/lib/ids.js';
+import { runMaintenanceTransitions } from '../src/services/maintenance-scheduler.js';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import { adminClient, client, createTestApp, createUser, login, type Client, type TestApp } from './helpers.js';
 
@@ -88,9 +89,17 @@ describe('status corrections', () => {
     expect((await admin.delete(`/api/admin/corrections/${c.id}`)).statusCode).toBe(204);
     expect((await admin.get(`/api/admin/corrections/${c.id}`)).statusCode).toBe(404);
 
-    const audit = await t.db.selectFrom('audit_log').select(['action', 'entity_id']).where('entity_type', '=', 'correction').execute();
+    const audit = await t.db
+      .selectFrom('audit_log')
+      .select(['action', 'entity_id', 'details'])
+      .where('entity_type', '=', 'correction')
+      .execute();
     expect(audit.map((a) => a.action)).toEqual(['correction.create', 'correction.update', 'correction.delete']);
     expect(audit.every((a) => a.entity_id === c.id)).toBe(true);
+    const update = audit[1]!.details;
+    const details = typeof update === 'string' ? JSON.parse(update) : update;
+    expect(details.before).toMatchObject({ serviceIds: expect.arrayContaining([api, web]), showPublic: false, publicNote: null });
+    expect(details.after).toMatchObject({ serviceIds: [api], showPublic: true, publicNote: 'False alarm of the monitoring.' });
   });
 
   it('validates input', async () => {
@@ -224,10 +233,19 @@ describe('status corrections', () => {
     expect(tooLong.statusCode).toBe(400);
   });
 
-  it('removes corrections of a deleted service but keeps the correction', async () => {
+  it('unlinks a deleted service and removes corrections left without services', async () => {
     const c = (await admin.post('/api/admin/corrections', falseAlarm())).json();
+    const webOnly = (await admin.post('/api/admin/corrections', { ...falseAlarm(), serviceIds: [web] })).json();
     await admin.delete(`/api/admin/services/${web}`);
     expect((await admin.get(`/api/admin/corrections/${c.id}`)).json().services).toEqual([{ id: api, name: 'Public API' }]);
+    expect((await admin.get(`/api/admin/corrections/${webOnly.id}`)).statusCode).toBe(404);
+    const audit = await t.db
+      .selectFrom('audit_log')
+      .select('details')
+      .where('action', '=', 'service.delete')
+      .where('entity_id', '=', web)
+      .executeTakeFirstOrThrow();
+    expect(String(audit.details)).toContain(webOnly.id);
   });
 });
 
@@ -296,8 +314,10 @@ describe('retroactive maintenance', () => {
     expect(await publicPercent(api)).toBe(before);
   });
 
-  it('counts a non-public retroactive maintenance without listing it', async () => {
+  it('does not count or list a non-public retroactive maintenance', async () => {
     await seedOutage(api);
+    const before = await publicPercent(api);
+    expect(before).toBeLessThan(100);
     const m = (
       await admin.post('/api/admin/maintenances', {
         title: 'Internal window',
@@ -307,7 +327,7 @@ describe('retroactive maintenance', () => {
         scheduledEnd: iso(21 * HOUR),
       })
     ).json();
-    expect(await publicPercent(api)).toBe(100);
+    expect(await publicPercent(api)).toBe(before);
     const history = await get('/api/public/history?type=maintenance');
     expect(history.body).not.toContain(m.id);
   });
@@ -329,6 +349,32 @@ describe('retroactive maintenance', () => {
     expect(mails[0]!.subject).toContain('Running since yesterday: In progress');
     expect((await get(`/api/public/services/${api}`)).json().status).toBe('maintenance');
     expect(await publicPercent(api)).toBe(100);
+  });
+
+  it('completes a running retroactive window silently when its end moves into the past', async () => {
+    await subscribe();
+    await seedOutage(api);
+    const m = (
+      await admin.post('/api/admin/maintenances', {
+        title: 'Ended earlier',
+        serviceIds: [api],
+        scheduledStart: iso(25 * HOUR),
+        scheduledEnd: new Date(Date.now() + 2 * HOUR).toISOString(),
+      })
+    ).json();
+    await deliver();
+    const end = iso(23 * HOUR);
+    const res = await admin.patch(`/api/admin/maintenances/${m.id}`, { scheduledEnd: end });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'completed', actualEnd: res.json().scheduledEnd });
+    const updates = res.json().updates as { status: string; createdAt: string }[];
+    expect(updates.map((u) => u.status).sort()).toEqual(['completed', 'in_progress']);
+    expect(updates.find((u) => u.status === 'completed')!.createdAt).toBe(res.json().scheduledEnd);
+    await runMaintenanceTransitions(t.db, t.app.ctx.engine, undefined, t.app.ctx.notifications);
+    expect(await deliver()).toHaveLength(0);
+    // Only 25 h..23 h counts as maintenance: the outage up to 22 h ago still partly counts.
+    expect(await publicPercent(api)).toBeLessThan(100);
+    expect((await get(`/api/public/services/${api}`)).json().status).not.toBe('maintenance');
   });
 
   it('keeps the existing behavior for upcoming windows and windows starting now', async () => {

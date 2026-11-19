@@ -209,7 +209,7 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
     if (end <= start) throw badRequest('scheduledEnd must be after scheduledStart');
     const now = nowIso();
     // A retroactive window keeps its actual times in line with the corrected window.
-    const retroSync: { actual_start?: string; actual_end?: string } = {};
+    const retroSync: { actual_start?: string; actual_end?: string; status?: 'completed' } = {};
     if (current.retroactive === 1 && (start !== current.scheduled_start || end !== current.scheduled_end)) {
       if (current.status === 'completed') {
         if (end > now) throw badRequest('A completed retroactive maintenance must end in the past');
@@ -218,6 +218,12 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
       } else if (current.status === 'in_progress') {
         if (start > now) throw badRequest('A running retroactive maintenance must start in the past');
         retroSync.actual_start = start;
+        // Its end moved into the past: the window is over, record it as completed
+        // at the real end, silently (no "completed" email for a past window).
+        if (end <= now) {
+          retroSync.status = 'completed';
+          retroSync.actual_end = end;
+        }
       }
     }
 
@@ -241,12 +247,28 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
         })
         .where('id', '=', id)
         .execute();
+      if (retroSync.status === 'completed') {
+        await trx
+          .insertInto('maintenance_updates')
+          .values({
+            id: newId(),
+            maintenance_id: id,
+            status: 'completed',
+            message: '',
+            created_by: actorUserId(req),
+            created_at: end,
+          })
+          .execute();
+      }
       if (input.serviceIds) await replaceServices(trx, id, input.serviceIds);
       if (input.locationIds) await replaceLocations(trx, id, input.locationIds);
     });
     await applyDueTransitions();
     await engine.recompute([...before, ...(input.serviceIds ?? [])]);
-    await auditRequest(db, req, 'maintenance.update', 'maintenance', id, { fields: Object.keys(input) });
+    await auditRequest(db, req, 'maintenance.update', 'maintenance', id, {
+      fields: Object.keys(input),
+      ...(retroSync.status === 'completed' ? { completed: true, actualEnd: end } : {}),
+    });
     return getMaintenance(db, id);
   });
 

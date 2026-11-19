@@ -6,6 +6,10 @@ import * as m0004 from './0004_history_corrections.js';
 /**
  * Migrations are registered statically so they survive bundling.
  * Append new migrations here; never edit or reorder existing ones.
+ *
+ * 0003 (check bundles) lands with a separate change and must be registered
+ * before any release ships 0004: the Migrator rejects running an older
+ * migration on a database that already ran a newer one.
  */
 export const migrations: Record<string, Migration> = {
   '0001_initial': m0001,

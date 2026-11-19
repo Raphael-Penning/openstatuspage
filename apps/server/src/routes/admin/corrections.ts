@@ -25,6 +25,15 @@ import { assertExist, auditRequest, editor } from './util.js';
 const FUTURE_TOLERANCE_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
 
+/** Shared range checks of POST and PATCH (after clamping the end to now). */
+function assertRange(start: string, end: string, now: string): void {
+  if (start >= now) throw badRequest('startsAt must be in the past');
+  if (end <= start) throw badRequest('endsAt must be after startsAt');
+  if (new Date(end).getTime() - new Date(start).getTime() > CORRECTION_MAX_DAYS * DAY_MS) {
+    throw badRequest(`A correction may span at most ${CORRECTION_MAX_DAYS} days`);
+  }
+}
+
 async function getCorrection(db: DB, id: string): Promise<AdminCorrection> {
   const [c] = await loadCorrections(db, [id]);
   if (!c) throw notFound('Correction');
@@ -64,6 +73,19 @@ async function replaceServices(trx: DB, correctionId: string, serviceIds: string
       .values(ids.map((service_id) => ({ correction_id: correctionId, service_id })))
       .execute();
   }
+}
+
+/** The fields of a correction recorded in the audit log (before/after of an update). */
+function auditView(c: AdminCorrection) {
+  return {
+    serviceIds: c.services.map((s) => s.id),
+    startsAt: c.startsAt,
+    endsAt: c.endsAt,
+    status: c.status,
+    reason: c.reason,
+    showPublic: c.showPublic,
+    publicNote: c.publicNote,
+  };
 }
 
 /** Clips history segments to [from, to); `open` segments stay open when `to` is in the future. */
@@ -141,7 +163,7 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
     const now = await nextCreatedAt(db);
     const start = toIso(input.startsAt);
     const end = clampEnd(input.endsAt, now);
-    if (end <= start) throw badRequest('startsAt must be in the past');
+    assertRange(start, end, now);
     const id = newId();
     await db.transaction().execute(async (trx) => {
       await trx
@@ -168,6 +190,7 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
       status: input.status,
       reason: input.reason,
       showPublic: input.showPublic,
+      publicNote: input.publicNote || null,
     });
     return reply.status(201).send(await getCorrection(db, id));
   });
@@ -181,10 +204,8 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
     const now = nowIso();
     const start = input.startsAt ? toIso(input.startsAt) : current.starts_at;
     const end = input.endsAt ? clampEnd(input.endsAt, now) : current.ends_at;
-    if (end <= start) throw badRequest('endsAt must be after startsAt');
-    if (new Date(end).getTime() - new Date(start).getTime() > CORRECTION_MAX_DAYS * DAY_MS) {
-      throw badRequest(`A correction may span at most ${CORRECTION_MAX_DAYS} days`);
-    }
+    assertRange(start, end, now);
+    const [before] = await loadCorrections(db, [id]);
     await db.transaction().execute(async (trx) => {
       await trx
         .updateTable('status_corrections')
@@ -201,14 +222,13 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
         .execute();
       if (input.serviceIds) await replaceServices(trx, id, input.serviceIds);
     });
+    const after = await getCorrection(db, id);
     await auditRequest(db, req, 'correction.update', 'correction', id, {
       fields: Object.keys(input),
-      ...(input.status !== undefined ? { status: input.status } : {}),
-      ...(input.reason !== undefined ? { reason: input.reason } : {}),
-      startsAt: start,
-      endsAt: end,
+      before: before ? auditView(before) : null,
+      after: auditView(after),
     });
-    return getCorrection(db, id);
+    return after;
   });
 
   app.delete('/api/admin/corrections/:id', editor, async (req, reply) => {
