@@ -241,6 +241,9 @@ describe('JSON:API routes', () => {
     const wrongId = await send('PATCH', '/things/a', { data: { type: 'things', id: 'b', attributes: {} } });
     expect(wrongId.statusCode).toBe(409);
     expect((await send('PATCH', '/things/a', { data: { type: 'things', id: 'a', attributes: { name: 'B' } } })).statusCode).toBe(200);
+    const clientId = await send('POST', '/things', { data: { type: 'things', id: 'mine', attributes: { name: 'Box' } } });
+    expect(clientId.statusCode).toBe(403);
+    expect(clientId.json().errors[0]).toMatchObject({ code: 'client_id_unsupported', source: { pointer: '/data/id' } });
     const invalidJson = await app.inject({ method: 'POST', url: '/things', payload: '{', headers: { 'content-type': MEDIA } });
     expect(invalidJson.statusCode).toBe(400);
     expect(invalidJson.json().errors[0].status).toBe('400');

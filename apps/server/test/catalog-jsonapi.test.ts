@@ -24,6 +24,13 @@ describe('admin catalog documents', () => {
     expect(errors(plain)[0]).toMatchObject({ status: '400', code: 'invalid_document' });
   });
 
+  it('rejects client-generated ids with 403', async () => {
+    const res = await admin.post('/api/admin/services', doc('services', { name: 'API' }, { id: 'abc' }));
+    expect(res.statusCode).toBe(403);
+    expect(errors(res)[0]).toMatchObject({ code: 'client_id_unsupported', source: { pointer: '/data/id' } });
+    expect((await admin.get('/api/admin/services')).json().data).toEqual([]);
+  });
+
   it('points validation errors of relationships at the relationship', async () => {
     const svc = data<{ id: string }>(await admin.post('/api/admin/services', { name: 'API' }));
     const res = await admin.post(

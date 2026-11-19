@@ -121,7 +121,7 @@ function registerSubscriptionApi(
   );
 
   // Action: `{ data: { type: "subscriptions", id, attributes: { token } } }` → the subscription with `manageToken`.
-  scope.post('/api/public/subscriptions/:id/confirm', manageRoute, async (req) => {
+  scope.post('/api/public/subscriptions/:id/confirm', { config: { ...manageRoute.config, jsonapi: { allowId: true } } }, async (req) => {
     const { id } = parse(IdParams, req.params);
     const { token } = parse(SubscriptionConfirmInput, req.body);
     const { subscription, manageToken } = await confirmSubscription(ctx, id, token);

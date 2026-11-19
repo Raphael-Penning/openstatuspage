@@ -42,6 +42,12 @@ export interface JsonApiRouteConfig {
    * other routes `include` is answered with 400 `unsupported_include` (JSON:API 1.1).
    */
   include?: boolean;
+  /**
+   * A `POST` action on an existing resource (e.g. confirm): the request document
+   * may name that resource in `data.id`, which must match the `:id` URL parameter.
+   * Elsewhere a `POST` with `data.id` is answered with 403 (no client-generated ids).
+   */
+  allowId?: boolean;
   /** The handler reads the `sort` parameter; on other routes `sort` is answered with 400 `unsupported_sort`. */
   sort?: boolean;
 }
@@ -172,6 +178,11 @@ function unwrap(req: FastifyRequest, config: JsonApiRouteConfig): void {
   if (config.type && data.type !== config.type) {
     throw new HttpError(409, 'type_mismatch', `Expected a resource of type "${config.type}"`, undefined, {
       source: { pointer: '/data/type' },
+    });
+  }
+  if (req.method === 'POST' && data.id !== undefined && !config.allowId) {
+    throw new HttpError(403, 'client_id_unsupported', 'Client-generated ids are not supported', undefined, {
+      source: { pointer: '/data/id' },
     });
   }
   const paramId = (req.params as Record<string, unknown> | undefined)?.id;
