@@ -231,6 +231,24 @@ nötig.
 - Das Kubernetes-Beispiel nutzt ihn für die Readiness- und Liveness-Probes.
 - Nutze ihn für Health-Checks von Load Balancern und Container-Orchestrierung.
 
+## Arbeitsspeicher
+
+Eine Instanz braucht im normalen Betrieb etwa 80–100 MB Arbeitsspeicher; eine
+Passwortprüfung oder die erste Abfrage eines Prozesses kommt kurz mit 10–20 MB
+dazu. Ein Speicherlimit von 128 MB pro Container lässt genug Luft. Das
+Docker-Image setzt dafür die Optionen von Node.js und dem Speicher-Allocator
+(`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`). Ohne das Image setzt
+du sie selbst:
+
+```sh
+NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
+MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node apps/server/dist/index.js
+```
+
+Erhöhe `--max-old-space-size` (z. B. auf `256`) auf der Instanz, die einen
+großen Verlaufsimport ausführt. Messwerte pro Rolle:
+[architecture.md](../../architecture.md#memory).
+
 ## Die Statusseite überwachen
 
 Eine Statusseite wird gerade dann gebraucht, wenn deine Infrastruktur Probleme

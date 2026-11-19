@@ -217,6 +217,22 @@ database answers, otherwise an error status. It needs no authentication.
 - The Kubernetes example uses it for the readiness and liveness probes.
 - Use it for load balancer health checks and container orchestration.
 
+## Memory
+
+An instance needs about 80–100 MB of memory in normal use; a password check or
+the first poll of a process briefly adds 10–20 MB. A memory limit of 128 MB per
+container leaves enough room. The Docker image sets the Node.js and allocator
+options for this (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`).
+Without the image, set them yourself:
+
+```sh
+NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
+MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node apps/server/dist/index.js
+```
+
+Raise `--max-old-space-size` (e.g. to `256`) on the instance that runs a large
+history import. Measurements per role: [architecture.md](../../architecture.md#memory).
+
 ## Monitoring the status page
 
 A status page is most needed when your infrastructure has problems, so monitor
