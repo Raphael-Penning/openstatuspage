@@ -9,8 +9,16 @@ import type { MonitorSource } from '../db/types.js';
 import { notFound } from '../lib/errors.js';
 import type { IngestResult } from '../services/ingest.js';
 import { createAdapterFetch, describeTransportError, type AdapterFetchOptions, type FetchFn } from './http.js';
+import { withLease } from '../lib/task-leases.js';
 import { getAdapter } from './index.js';
 import type { NormalizedCheck } from './types.js';
+
+/** Worker tasks (and leases) of polls are named `poll:<sourceId>`. */
+export const POLL_TASK_PREFIX = 'poll:';
+
+export function pollTaskName(sourceId: string): string {
+  return `${POLL_TASK_PREFIX}${sourceId}`;
+}
 
 /** Upper bound for one complete poll (all requests of a source together). */
 export const POLL_TIMEOUT_MS = 120_000;
@@ -21,6 +29,8 @@ export interface RunnerOptions {
   /** Aborts the poll, e.g. on shutdown. */
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** The caller already holds the lease `poll:<sourceId>` (the scheduled poll task). */
+  leaseHeld?: boolean;
 }
 
 export interface PollOutcome {
@@ -135,12 +145,22 @@ const inFlight = new Map<string, Promise<PollOutcome>>();
 /**
  * Polls a source and stores the result (full sync). A failed poll only records
  * the error: check states keep their last known value.
- * Concurrent calls for the same source share one poll.
+ * Concurrent calls for the same source share one poll. On PostgreSQL the poll
+ * runs under the lease `poll:<sourceId>`, so it never overlaps with a poll of
+ * the same source on another instance.
  */
 export function pollAndStore(ctx: AppContext, sourceId: string, options: RunnerOptions = {}): Promise<PollOutcome> {
   const running = inFlight.get(sourceId);
   if (running) return running;
-  const promise = doPollAndStore(ctx, sourceId, options).finally(() => inFlight.delete(sourceId));
+  const { leaseHeld, ...rest } = options;
+  const promise = withLease(leaseHeld ? null : ctx.leases, pollTaskName(sourceId), {}, () =>
+    doPollAndStore(ctx, sourceId, rest),
+  )
+    .then(
+      (r): PollOutcome =>
+        r.ran ? r.value : { ok: false, message: 'Another instance is polling this source right now; try again shortly.' },
+    )
+    .finally(() => inFlight.delete(sourceId));
   inFlight.set(sourceId, promise);
   return promise;
 }
