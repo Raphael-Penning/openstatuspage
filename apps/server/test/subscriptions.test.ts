@@ -2,7 +2,24 @@ import type { LightMyRequestResponse } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import { subscriptionToken, TOKEN_PLACEHOLDERS } from '../src/services/subscriptions.js';
-import { adminClient, BASE_URL, createTestApp, data, type Client, type TestApp } from './helpers.js';
+import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
+import { adminClient, BASE_URL, createTestApp, data, doc, errors, type Client, type TestApp } from './helpers.js';
+
+const JSONAPI_HEADERS = { 'content-type': JSONAPI_MEDIA_TYPE };
+
+/** Request document of a subscription; serviceIds go to the `services` relationship. */
+const subscriptionBody = (values: object, id?: string) =>
+  JSON.stringify(doc('subscriptions', values as Record<string, unknown>, { id, relationships: { serviceIds: 'services' } }));
+
+const confirm = (id: string, token: string) =>
+  t.app.inject({
+    method: 'POST',
+    url: `/api/public/subscriptions/${id}/confirm`,
+    headers: JSONAPI_HEADERS,
+    payload: subscriptionBody({ token }),
+  });
+
+type Subscription = { id: string; serviceIds: string[]; manageToken?: string };
 
 const emailSubscriptions = (res: LightMyRequestResponse) => data<{ emailSubscriptions: boolean }>(res).emailSubscriptions;
 
@@ -34,7 +51,13 @@ async function enableSubscriptions(enabled = true) {
 
 /** Every call uses another client IP unless given, so the per-IP rate limit does not interfere. */
 async function subscribe(payload: object, remoteAddress = `192.0.2.${++ip % 250}`) {
-  const res = await t.app.inject({ method: 'POST', url: '/api/public/subscriptions', payload, remoteAddress });
+  const res = await t.app.inject({
+    method: 'POST',
+    url: '/api/public/subscriptions',
+    headers: JSONAPI_HEADERS,
+    payload: subscriptionBody(payload),
+    remoteAddress,
+  });
   // The subscribe work runs after the answer; wait for it so the tests see its effects.
   await t.app.ctx.worker.idle();
   return res;
@@ -56,24 +79,25 @@ async function subscribeAndConfirm(email: string, extra: object = {}) {
   expect((await subscribe({ email, ...extra })).statusCode).toBe(202);
   const [mail] = await deliver();
   const { id, token } = linkParams(mail!, 'confirm');
-  const res = await t.app.inject({ method: 'POST', url: `/api/public/subscriptions/${id}/confirm`, payload: { token } });
+  const res = await confirm(id, token);
   expect(res.statusCode).toBe(200);
-  return { id, manageToken: res.json().manageToken as string };
+  return { id, manageToken: data<Subscription>(res).manageToken! };
 }
 
-const manage = (method: 'GET' | 'PUT' | 'DELETE', id: string, token: string, payload?: object) =>
+const manage = (method: 'GET' | 'PATCH' | 'DELETE', id: string, token: string, payload?: object) =>
   t.app.inject({
     method,
     url: `/api/public/subscriptions/${id}`,
-    headers: { 'x-subscription-token': token },
-    ...(payload ? { payload } : {}),
+    headers: { 'x-subscription-token': token, ...(payload ? JSONAPI_HEADERS : {}) },
+    ...(payload ? { payload: subscriptionBody(payload, id) } : {}),
   });
 
 describe('subscribe and confirm', () => {
   it('creates a pending subscription and confirms it via the emailed link', async () => {
     const res = await subscribe({ email: 'Jane@Example.com', locale: 'de' });
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toEqual({ ok: true });
+    expect(res.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { accepted: true } });
+    expect(res.headers['content-type']).toBe(JSONAPI_MEDIA_TYPE);
     expect(res.headers['cache-control']).toBe('no-store');
 
     const row = await t.db.selectFrom('subscribers').selectAll().executeTakeFirstOrThrow();
@@ -92,41 +116,42 @@ describe('subscribe and confirm', () => {
     // The token is only in the URL fragment, never in a query string.
     expect(mail!.text).not.toMatch(/[?&]token=/);
 
-    const confirmed = await t.app.inject({
-      method: 'POST',
-      url: `/api/public/subscriptions/${id}/confirm`,
-      payload: { token },
-    });
+    const confirmed = await confirm(id, token);
     expect(confirmed.statusCode).toBe(200);
     expect(confirmed.headers['cache-control']).toBe('no-store');
-    const body = confirmed.json();
-    expect(body.subscription).toEqual({
+    expect(confirmed.json().data).toMatchObject({
+      type: 'subscriptions',
+      id,
+      relationships: { services: { data: [] } },
+      links: { self: `/api/public/subscriptions/${id}` },
+    });
+    const body = data<Subscription>(confirmed);
+    expect(body).toEqual({
       id,
       email: 'jane@example.com',
       locale: 'de',
       allServices: true,
       serviceIds: [],
+      // An empty to-many relationship resolves to an empty list.
+      services: [],
       confirmed: true,
+      manageToken: subscriptionToken(t.config.SECRET_KEY, 'manage', row.id, row.token_salt),
     });
-    expect(body.manageToken).toBe(subscriptionToken(t.config.SECRET_KEY, 'manage', row.id, row.token_salt));
 
     // Idempotent.
-    const again = await t.app.inject({ method: 'POST', url: `/api/public/subscriptions/${id}/confirm`, payload: { token } });
+    const again = await confirm(id, token);
     expect(again.statusCode).toBe(200);
-    expect(again.json().manageToken).toBe(body.manageToken);
+    expect(data<Subscription>(again).manageToken).toBe(body.manageToken);
   });
 
   it('answers unknown ids and wrong tokens identically', async () => {
     await subscribe({ email: 'jane@example.com' });
     const row = await t.db.selectFrom('subscribers').select('id').executeTakeFirstOrThrow();
     const token = 'x'.repeat(43);
-    const wrong = await t.app.inject({ method: 'POST', url: `/api/public/subscriptions/${row.id}/confirm`, payload: { token } });
-    const unknown = await t.app.inject({
-      method: 'POST',
-      url: '/api/public/subscriptions/00000000-0000-0000-0000-000000000000/confirm',
-      payload: { token },
-    });
+    const wrong = await confirm(row.id, token);
+    const unknown = await confirm('00000000-0000-0000-0000-000000000000', token);
     expect(wrong.statusCode).toBe(404);
+    expect(errors(wrong)[0]).toMatchObject({ status: '404', code: 'not_found' });
     expect(unknown.statusCode).toBe(404);
     expect(wrong.body).toBe(unknown.body);
     // The manage token is no confirm token and vice versa.
@@ -134,8 +159,7 @@ describe('subscribe and confirm', () => {
     const manageToken = subscriptionToken(t.config.SECRET_KEY, 'manage', sub.id, sub.token_salt);
     const confirmToken = subscriptionToken(t.config.SECRET_KEY, 'confirm', sub.id, sub.token_salt);
     expect(
-      (await t.app.inject({ method: 'POST', url: `/api/public/subscriptions/${sub.id}/confirm`, payload: { token: manageToken } }))
-        .statusCode,
+      (await confirm(sub.id, manageToken)).statusCode,
     ).toBe(404);
     expect((await manage('GET', sub.id, confirmToken)).statusCode).toBe(404);
     expect((await manage('GET', sub.id, '')).statusCode).toBe(404);
@@ -162,11 +186,7 @@ describe('subscribe and confirm', () => {
 
     // Confirmed: preferences stay unchanged, a manage mail is sent instead (throttled as well).
     const { id } = linkParams(resent!, 'confirm');
-    await t.app.inject({
-      method: 'POST',
-      url: `/api/public/subscriptions/${id}/confirm`,
-      payload: { token: linkParams(resent!, 'confirm').token },
-    });
+    await confirm(id, linkParams(resent!, 'confirm').token);
     await t.db.updateTable('subscribers').set({ confirmation_sent_at: old }).execute();
     const confirmed = await subscribe({ email: 'jane@example.com', allServices: false, serviceIds: [otherService] });
     expect(confirmed.statusCode).toBe(202);
@@ -188,7 +208,8 @@ describe('subscribe and confirm', () => {
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/public/subscriptions',
-      payload: { email: 'jane@example.com' },
+      headers: JSONAPI_HEADERS,
+      payload: subscriptionBody({ email: 'jane@example.com' }),
       remoteAddress: '192.0.2.251',
     });
     expect(res.statusCode).toBe(202);
@@ -269,7 +290,8 @@ describe('subscribe and confirm', () => {
       const res = await noTransport.app.inject({
         method: 'POST',
         url: '/api/public/subscriptions',
-        payload: { email: 'jane@example.com' },
+        headers: JSONAPI_HEADERS,
+        payload: subscriptionBody({ email: 'jane@example.com' }),
       });
       expect(res.statusCode).toBe(404);
       expect(emailSubscriptions(await noTransport.app.inject({ method: 'GET', url: '/api/public/summary' }))).toBe(
@@ -294,19 +316,29 @@ describe('manage and unsubscribe', () => {
     const got = await manage('GET', id, manageToken);
     expect(got.statusCode).toBe(200);
     expect(got.headers['cache-control']).toBe('no-store');
-    expect(got.json()).toMatchObject({ id, allServices: true, confirmed: true });
+    expect(data(got)).toMatchObject({ id, allServices: true, confirmed: true });
+    expect(data(got)).not.toHaveProperty('manageToken');
 
-    const updated = await manage('PUT', id, manageToken, { locale: 'de', allServices: false, serviceIds: [publicService] });
+    const updated = await manage('PATCH', id, manageToken, { locale: 'de', allServices: false, serviceIds: [publicService] });
     expect(updated.statusCode).toBe(200);
-    expect(updated.json()).toMatchObject({ locale: 'de', allServices: false, serviceIds: [publicService] });
-    expect((await manage('PUT', id, manageToken, { allServices: false, serviceIds: [hiddenService] })).statusCode).toBe(400);
-    expect((await manage('PUT', id, 'wrong-token-wrong-token', { allServices: true })).statusCode).toBe(404);
+    expect(data(updated)).toMatchObject({ locale: 'de', allServices: false, serviceIds: [publicService] });
+    // Partial: attributes left out keep their value.
+    expect(data(await manage('PATCH', id, manageToken, { locale: 'en' }))).toMatchObject({
+      locale: 'en',
+      allServices: false,
+      serviceIds: [publicService],
+    });
+    const hidden = await manage('PATCH', id, manageToken, { allServices: false, serviceIds: [hiddenService] });
+    expect(hidden.statusCode).toBe(400);
+    const empty = await manage('PATCH', id, manageToken, { allServices: false, serviceIds: [] });
+    expect(errors(empty)[0]).toMatchObject({ source: { pointer: '/data/relationships/services' } });
+    expect((await manage('PATCH', id, 'wrong-token-wrong-token', { allServices: true })).statusCode).toBe(404);
 
     // A service hidden later is not revealed in the subscription.
     expect((await admin.put(`/api/admin/services/${publicService}`, { name: 'Public API', isPublic: false })).statusCode).toBe(
       200,
     );
-    expect((await manage('GET', id, manageToken)).json().serviceIds).toEqual([]);
+    expect(data<Subscription>(await manage('GET', id, manageToken)).serviceIds).toEqual([]);
 
     expect((await manage('DELETE', id, 'wrong-token-wrong-token')).statusCode).toBe(404);
     expect((await manage('DELETE', id, manageToken)).statusCode).toBe(204);
@@ -339,8 +371,7 @@ describe('manage and unsubscribe', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'List-Unsubscribe=One-Click',
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true });
+    expect(res.statusCode).toBe(204);
     expect(await t.db.selectFrom('subscribers').selectAll().execute()).toHaveLength(0);
 
     // Empty body works as well.
@@ -349,7 +380,7 @@ describe('manage and unsubscribe', () => {
       method: 'POST',
       url: `/api/public/subscriptions/${other.id}/unsubscribe?token=${other.manageToken}`,
     });
-    expect(empty.statusCode).toBe(200);
+    expect(empty.statusCode).toBe(204);
     expect(await t.db.selectFrom('subscribers').selectAll().execute()).toHaveLength(0);
   });
 

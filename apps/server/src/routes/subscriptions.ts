@@ -1,12 +1,17 @@
 /**
- * /api/public/subscriptions: email subscriptions with double opt-in (no login).
+ * /api/public/subscriptions: email subscriptions with double opt-in (no login), JSON:API.
  *
  *   POST   /api/public/subscriptions                 subscribe (always 202, work runs after the answer, rate limited)
  *   POST   /api/public/subscriptions/:id/confirm     confirm with the emailed token
  *   GET    /api/public/subscriptions/:id             \
- *   PUT    /api/public/subscriptions/:id              } manage, token in X-Subscription-Token
+ *   PATCH  /api/public/subscriptions/:id              } manage, token in X-Subscription-Token
  *   DELETE /api/public/subscriptions/:id             /
- *   POST   /api/public/subscriptions/:id/unsubscribe?token=   RFC 8058 one-click
+ *   POST   /api/public/subscriptions/:id/unsubscribe?token=   RFC 8058 one-click (native form body)
+ *   GET    /api/public/subscriptions/:id/unsubscribe?token=   browser redirect to the manage page (not JSON:API)
+ *
+ * Subscriptions are "subscriptions" resources with a `services` relationship
+ * (`serviceIds` on the plain object). The confirm response also carries the
+ * `manageToken` attribute for the following manage requests.
  *
  * Unknown ids and wrong tokens get the same 404. Managing and unsubscribing keep
  * working when subscriptions are disabled later; only subscribing needs them enabled.
@@ -16,12 +21,14 @@ import {
   SubscribeInput,
   SubscriptionConfirmInput,
   SubscriptionPreferencesInput,
-  type PublicSubscription,
 } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { notFound } from '../lib/errors.js';
 import { IdParams, parse } from '../lib/http.js';
+import { document, metaDocument, noContent } from '../lib/jsonapi.js';
+import { useJsonApi } from '../plugins/jsonapi.js';
+import { AUTH_TYPES, subscriptionResource } from '../serializers/auth-users.js';
 import {
   assertPublicServices,
   confirmSubscription,
@@ -63,14 +70,38 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
     // Tokens in the query string: keep these routes out of info-level request logs.
     const queryTokenRoute = { ...manageRoute, logLevel: 'warn' as const };
 
+    // A browser opening the List-Unsubscribe URL lands on the manage page (GET never deletes).
+    scope.get('/api/public/subscriptions/:id/unsubscribe', queryTokenRoute, async (req, reply) => {
+      const { id } = parse(IdParams, req.params);
+      const { token } = parse(TokenQuery, req.query);
+      const sub = await findByToken(ctx, id, 'manage', token);
+      // The manage page reads the token from the URL fragment.
+      return reply.redirect(subscriberLinks(ctx.config, sub.id, subscriberTokens(ctx.config, sub)).unsubscribeUrl, 303);
+    });
+
+    await scope.register(async (api) => {
+      useJsonApi(api);
+      registerSubscriptionApi(api, manageRoute, queryTokenRoute);
+    });
+  });
+
+  function registerSubscriptionApi(
+    scope: FastifyInstance,
+    manageRoute: { config: { rateLimit: { max: number; timeWindow: string } } },
+    queryTokenRoute: typeof manageRoute & { logLevel: 'warn' },
+  ): void {
+    const { ctx } = app;
+    /** The answer to every subscribe request, whatever happens afterwards. */
+    const accepted = () => metaDocument({ accepted: true });
+
     scope.post(
       '/api/public/subscriptions',
-      { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+      { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, jsonapi: { type: AUTH_TYPES.subscription } } },
       async (req, reply) => {
         if (!(await subscriptionsAvailable(ctx))) throw notFound('Subscriptions');
         const input = parse(SubscribeInput, req.body);
         // Honeypot filled in (bots): answer like a successful subscribe, but create and send nothing.
-        if (input.website) return reply.status(202).send({ ok: true });
+        if (input.website) return reply.status(202).send(accepted());
         // Checked before answering (400 on unknown or hidden services); does not look at subscribers.
         const serviceIds = input.allServices ? [] : await assertPublicServices(ctx.db, input.serviceIds);
         // What happens next, and how long it takes, depends on whether the address is
@@ -81,51 +112,60 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
           await answered;
           await subscribe(ctx, { ...input, serviceIds });
         });
-        return reply.status(202).send({ ok: true });
+        return reply.status(202).send(accepted());
       },
     );
 
+    // Action: `{ data: { type: "subscriptions", id, attributes: { token } } }` → the subscription with `manageToken`.
     scope.post('/api/public/subscriptions/:id/confirm', manageRoute, async (req) => {
       const { id } = parse(IdParams, req.params);
       const { token } = parse(SubscriptionConfirmInput, req.body);
-      return confirmSubscription(ctx, id, token);
+      const { subscription, manageToken } = await confirmSubscription(ctx, id, token);
+      return document(subscriptionResource(subscription, { manageToken }));
     });
 
-    scope.get('/api/public/subscriptions/:id', manageRoute, async (req): Promise<PublicSubscription> => {
+    scope.get('/api/public/subscriptions/:id', manageRoute, async (req) => {
       const { id } = parse(IdParams, req.params);
       const sub = await findByToken(ctx, id, 'manage', headerToken(req));
-      return toPublicSubscription(ctx.db, sub);
+      return document(subscriptionResource(await toPublicSubscription(ctx.db, sub)));
     });
 
-    scope.put('/api/public/subscriptions/:id', manageRoute, async (req): Promise<PublicSubscription> => {
-      const { id } = parse(IdParams, req.params);
-      const sub = await findByToken(ctx, id, 'manage', headerToken(req));
-      const input = parse(SubscriptionPreferencesInput, req.body);
-      return updatePreferences(ctx, sub, input);
-    });
+    scope.patch(
+      '/api/public/subscriptions/:id',
+      { config: { ...manageRoute.config, jsonapi: { type: AUTH_TYPES.subscription } } },
+      async (req) => {
+        const { id } = parse(IdParams, req.params);
+        const sub = await findByToken(ctx, id, 'manage', headerToken(req));
+        // Partial update: what is left out keeps its value.
+        const current = await toPublicSubscription(ctx.db, sub);
+        const input = parse(SubscriptionPreferencesInput, {
+          locale: current.locale,
+          allServices: current.allServices,
+          serviceIds: current.serviceIds,
+          ...(req.body as object),
+        });
+        return document(subscriptionResource(await updatePreferences(ctx, sub, input)));
+      },
+    );
 
     scope.delete('/api/public/subscriptions/:id', manageRoute, async (req, reply) => {
       const { id } = parse(IdParams, req.params);
       const sub = await findByToken(ctx, id, 'manage', headerToken(req));
       await deleteSubscriber(ctx.db, sub.id);
-      return reply.status(204).send();
+      return noContent(reply);
     });
 
-    scope.post('/api/public/subscriptions/:id/unsubscribe', queryTokenRoute, async (req) => {
-      const { id } = parse(IdParams, req.params);
-      const { token } = parse(TokenQuery, req.query);
-      const sub = await findByToken(ctx, id, 'manage', token);
-      await deleteSubscriber(ctx.db, sub.id);
-      return { ok: true };
-    });
-
-    // A browser opening the List-Unsubscribe URL lands on the manage page (GET never deletes).
-    scope.get('/api/public/subscriptions/:id/unsubscribe', queryTokenRoute, async (req, reply) => {
-      const { id } = parse(IdParams, req.params);
-      const { token } = parse(TokenQuery, req.query);
-      const sub = await findByToken(ctx, id, 'manage', token);
-      // The manage page reads the token from the URL fragment.
-      return reply.redirect(subscriberLinks(ctx.config, sub.id, subscriberTokens(ctx.config, sub)).unsubscribeUrl, 303);
-    });
-  });
+    // RFC 8058 one-click: mail clients post a form body ("List-Unsubscribe=One-Click"), not JSON:API.
+    scope.post(
+      '/api/public/subscriptions/:id/unsubscribe',
+      { ...queryTokenRoute, config: { ...queryTokenRoute.config, jsonapi: { requestBody: 'native' } } },
+      async (req, reply) => {
+        const { id } = parse(IdParams, req.params);
+        const { token } = parse(TokenQuery, req.query);
+        const sub = await findByToken(ctx, id, 'manage', token);
+        await deleteSubscriber(ctx.db, sub.id);
+        return noContent(reply);
+      },
+    );
+  }
 }
