@@ -51,6 +51,10 @@ export async function syncPollers(ctx: AppContext, options: RunnerOptions = {}):
   for (const [id, { intervalMs, fingerprint }] of wanted) {
     if (current.get(id) === fingerprint && ctx.worker.has(pollTaskName(id))) continue;
     // A source edited after its last poll (on any instance) is polled right away, once.
+    // updated_at comes from the clock of the instance that saved the source, the lease
+    // times from the database clock: with clock skew between the two, an edited source
+    // is polled once more than needed or only at its next interval. Accepted: polls are
+    // idempotent and the interval bounds the delay.
     const changedAt = current.has(id) ? Date.parse(updatedAt.get(id) ?? '') : undefined;
     ctx.worker.schedule(
       pollTaskName(id),

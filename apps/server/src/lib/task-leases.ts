@@ -35,7 +35,9 @@ export interface ClaimOptions {
   intervalMs?: number | null;
   /**
    * The task changed at this time (ms since the epoch, e.g. a monitoring source
-   * was edited): it is also due when its last start was before that.
+   * was edited): it is also due when its last start was before that. Compared
+   * with `last_started_at` from the database clock, so clock skew of the caller
+   * shifts it (see syncPollers).
    */
   changedAt?: number;
 }
