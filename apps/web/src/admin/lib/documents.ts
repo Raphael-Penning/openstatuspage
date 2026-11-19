@@ -13,6 +13,8 @@ export const SERVICE_DOCUMENT: DocumentOptions = {
   type: 'services',
   relationships: { groupId: 'service-groups', locationIds: 'locations' },
 };
+/** Body of the reorder actions: `{ ids }` in the new display order. */
+export const ORDERING_DOCUMENT: DocumentOptions = { type: 'orderings' };
 export const GROUP_DOCUMENT: DocumentOptions = { type: 'service-groups' };
 export const LOCATION_DOCUMENT: DocumentOptions = { type: 'locations' };
 /** Affected services carry an impact per service and stay attributes. */

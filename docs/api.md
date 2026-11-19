@@ -93,7 +93,10 @@ parameter; every other endpoint answers any `include` (even an empty one) with
 - Delete: `204 No Content` without a body.
 - Actions (logout, change password, reorder, preview, rotate token, test, poll,
   apply/cancel import, confirm, test email, retry) are `POST` endpoints returning a
-  resource document, a meta-only document (`{ "jsonapi": …, "meta": { … } }`) or `204`.
+  resource document, a meta-only document (`{ "jsonapi": …, "meta": { … } }`) or `204`. The
+  reorder actions take a request document of type `orderings` with the ids in the
+  new order (`{ "data": { "type": "orderings", "attributes": { "ids": [...] } } }`);
+  another type is answered with `409` `type_mismatch`.
 - A request document must have a `data` member (`400` `invalid_document`
   otherwise). Each endpoint takes the relationships listed for it: another
   relationship name is answered with `400` `unknown_relationship`, resource
@@ -1303,15 +1306,15 @@ Content-Type: application/vnd.api+json
 | GET | `/api/admin/locations` | – | `locations[]` (`AdminLocation`, relationship `services`) in display order | editor |
 | POST | `/api/admin/locations` | `locations` (`LocationInput`) | `locations` (201) | admin |
 | GET/PATCH/DELETE | `/api/admin/locations/:id` | `locations` (partial `LocationInput`) | `locations`; DELETE 204 | GET editor, else admin |
-| POST | `/api/admin/locations/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
+| POST | `/api/admin/locations/reorder` | `orderings` with the attribute `ids` (`ReorderInput`) | 204 | admin |
 | GET | `/api/admin/service-groups` | – | `service-groups[]` (`AdminServiceGroup`) in display order | editor |
 | POST | `/api/admin/service-groups` | `service-groups` (`ServiceGroupInput`) | `service-groups` (201) | admin |
 | GET/PATCH/DELETE | `/api/admin/service-groups/:id` | `service-groups` (partial `ServiceGroupInput`) | `service-groups`; DELETE 204 | GET editor, else admin |
-| POST | `/api/admin/service-groups/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
+| POST | `/api/admin/service-groups/reorder` | `orderings` with the attribute `ids` (`ReorderInput`) | 204 | admin |
 | GET | `/api/admin/services` | – | `services[]` (`AdminService`; relationships `group`, `locations`; the `checks` with their linked check stay attributes) in display order | editor |
 | POST | `/api/admin/services` | `services` (`ServiceInput`, relationships `group`, `locations`) | `services` (201) | admin |
 | GET/PATCH/DELETE | `/api/admin/services/:id` | `services` (partial `ServiceInput`) | `services`; DELETE 204 | GET editor, else admin |
-| POST | `/api/admin/services/reorder` | attribute `ids` (`ReorderInput`, within one group) | 204 | admin |
+| POST | `/api/admin/services/reorder` | `orderings` with the attribute `ids` (`ReorderInput`, within one group) | 204 | admin |
 | GET | `/api/admin/services/:id/preview` | – | meta `{ monitorStatus, status }` computed with the stored config (for the service builder) | editor |
 | POST | `/api/admin/services/preview` | `ServiceInput` (any type) | meta `{ monitorStatus }` computed for an unsaved config | admin |
 
@@ -1459,7 +1462,7 @@ Content-Type: application/vnd.api+json
 POST /api/admin/locations/reorder
 Content-Type: application/vnd.api+json
 
-{"data": {"type": "reorder", "attributes": {"ids": ["8361…"]}}}
+{"data": {"type": "orderings", "attributes": {"ids": ["8361…"]}}}
 ```
 
 ```http
@@ -1596,7 +1599,7 @@ Content-Type: application/vnd.api+json
 POST /api/admin/service-groups/reorder
 Content-Type: application/vnd.api+json
 
-{"data": {"type": "reorder", "attributes": {"ids": ["f633…"]}}}
+{"data": {"type": "orderings", "attributes": {"ids": ["f633…"]}}}
 ```
 
 ```http
@@ -1814,7 +1817,7 @@ Content-Type: application/vnd.api+json
 POST /api/admin/services/reorder
 Content-Type: application/vnd.api+json
 
-{"data": {"type": "reorder", "attributes": {"ids": ["33ea…"]}}}
+{"data": {"type": "orderings", "attributes": {"ids": ["33ea…"]}}}
 ```
 
 ```http

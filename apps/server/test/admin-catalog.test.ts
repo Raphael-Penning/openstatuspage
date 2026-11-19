@@ -59,7 +59,7 @@ describe('locations', () => {
     const wrongType = await admin.patch(`/api/admin/locations/${locA.id}`, { data: { type: 'services', attributes: { name: 'X' } } });
     expect(errors(wrongType)[0]).toMatchObject({ status: '409', code: 'type_mismatch' });
 
-    expect((await admin.post('/api/admin/locations/reorder', { ids: [locB.id, locA.id] })).statusCode).toBe(204);
+    expect((await admin.post('/api/admin/locations/reorder', doc('orderings', { ids: [locB.id, locA.id] }))).statusCode).toBe(204);
     const list = await admin.get('/api/admin/locations');
     expect(list.json().meta).toEqual({ total: 2 });
     expect(data<{ id: string }[]>(list).map((l) => l.id)).toEqual([locB.id, locA.id]);
@@ -185,8 +185,8 @@ describe('services', () => {
     const a = data<Any>(await admin.post('/api/admin/services', { name: 'A', groupId: g1.id }));
     const b = data<Any>(await admin.post('/api/admin/services', { name: 'B', groupId: g1.id }));
     const c = data<Any>(await admin.post('/api/admin/services', { name: 'C', groupId: g2.id }));
-    expect((await admin.post('/api/admin/services/reorder', { ids: [a.id, c.id] })).statusCode).toBe(400);
-    expect((await admin.post('/api/admin/services/reorder', { ids: [b.id, a.id] })).statusCode).toBe(204);
+    expect((await admin.post('/api/admin/services/reorder', doc('orderings', { ids: [a.id, c.id] }))).statusCode).toBe(400);
+    expect((await admin.post('/api/admin/services/reorder', doc('orderings', { ids: [b.id, a.id] }))).statusCode).toBe(204);
     const list = data<{ id: string }[]>(await admin.get('/api/admin/services'));
     expect(list.map((s) => s.id)).toEqual([b.id, a.id, c.id]);
 

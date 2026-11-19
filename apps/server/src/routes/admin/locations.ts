@@ -46,6 +46,7 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db } = app.ctx;
+  const orderingType = { config: { jsonapi: { type: CATALOG_TYPES.ordering } } };
   const locationType = { config: { jsonapi: { type: CATALOG_TYPES.location } } };
   const groupType = { config: { jsonapi: { type: CATALOG_TYPES.group } } };
 
@@ -70,7 +71,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Registered before /:id so "reorder" is not taken as an id.
-  app.post('/api/admin/locations/reorder', admin, async (req, reply) => {
+  app.post('/api/admin/locations/reorder', { ...admin, ...orderingType }, async (req, reply) => {
     const { ids } = parse(ReorderInput, req.body);
     await assertExist(db, 'locations', ids, 'location');
     await applyOrder(db, 'locations', ids);
@@ -149,7 +150,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
     return created(reply, document(group, { links: { self: selfLink(req) } }), `/api/admin/service-groups/${id}`);
   });
 
-  app.post('/api/admin/service-groups/reorder', admin, async (req, reply) => {
+  app.post('/api/admin/service-groups/reorder', { ...admin, ...orderingType }, async (req, reply) => {
     const { ids } = parse(ReorderInput, req.body);
     await assertExist(db, 'service_groups', ids, 'service group');
     await applyOrder(db, 'service_groups', ids);

@@ -34,6 +34,8 @@ export const CATALOG_TYPES = {
   maintenanceUpdate: 'maintenance-updates',
   correction: 'corrections',
   serviceHistory: 'service-histories',
+  /** Request documents of the reorder actions (`attributes.ids` in display order). */
+  ordering: 'orderings',
 } as const;
 
 export function adminServiceResource(service: AdminService): ResourceObject {

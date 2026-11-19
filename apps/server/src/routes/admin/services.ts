@@ -110,6 +110,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine } = app.ctx;
+  const orderingType = { config: { jsonapi: { type: CATALOG_TYPES.ordering } } };
   const serviceType = {
     config: {
       jsonapi: { type: CATALOG_TYPES.service, relationships: { group: CATALOG_TYPES.group, locations: CATALOG_TYPES.location } },
@@ -151,7 +152,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
     return created(reply, await serviceDocument(req, id), `/api/admin/services/${id}`);
   });
 
-  app.post('/api/admin/services/reorder', admin, async (req, reply) => {
+  app.post('/api/admin/services/reorder', { ...admin, ...orderingType }, async (req, reply) => {
     const { ids } = parse(ReorderInput, req.body);
     const list = await assertExist(db, 'services', ids, 'service');
     const groups = await db.selectFrom('services').select('group_id').distinct().where('id', 'in', list).execute();
