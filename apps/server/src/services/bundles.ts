@@ -127,6 +127,7 @@ export class BundleService {
         'monitor_sources.enabled',
         'monitor_sources.poll_interval_seconds',
         'monitor_sources.last_poll_ok',
+        'monitor_sources.last_poll_at',
       ])
       .where(
         'check_bundle_members.bundle_id',
@@ -149,6 +150,7 @@ export class BundleService {
               pollable: isPollable(r.source_type),
               pollIntervalSeconds: r.poll_interval_seconds,
               lastPollOk: r.last_poll_ok === null ? null : r.last_poll_ok === 1,
+              lastPollAt: r.last_poll_at,
             },
             now,
             this.pushStaleMs,
@@ -171,11 +173,24 @@ export class BundleService {
     });
   }
 
+  /** Tail of the recompute queue: one writer per process. */
+  private queue: Promise<void> = Promise.resolve();
+
   /**
    * Evaluates bundles (all when omitted), stores the results on their checks and
    * recomputes the services linked to bundles whose state changed.
+   *
+   * Calls are serialised (worker, ingest and poll outcomes can overlap), so an
+   * older evaluation can never overwrite a newer one.
    */
-  async recompute(bundleIds?: string[]): Promise<void> {
+  recompute(bundleIds?: string[]): Promise<void> {
+    const run = this.queue.then(() => this.recomputeNow(bundleIds));
+    // Keep the queue going after a failure; the caller still sees the error.
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async recomputeNow(bundleIds?: string[]): Promise<void> {
     const evaluations = await this.evaluate(bundleIds);
     if (evaluations.length === 0) return;
     const current = await this.db
@@ -190,23 +205,32 @@ export class BundleService {
     const byId = new Map(current.map((c) => [c.id, c]));
     const now = nowIso();
     const changed: string[] = [];
+    const unchanged: string[] = [];
     for (const { bundle, vote } of evaluations) {
       const check = byId.get(bundle.check_id);
       if (!check) continue;
       const output = bundleOutput(vote);
       const stateChanged = check.state !== vote.state;
+      if (!stateChanged && check.output === output) {
+        unchanged.push(check.id);
+        continue;
+      }
       await this.db
         .updateTable('monitor_checks')
         .set({
           state: vote.state,
           output,
           last_check_at: now,
-          ...(stateChanged || check.output !== output ? { updated_at: now } : {}),
+          updated_at: now,
           ...(stateChanged ? { last_state_change_at: now } : {}),
         })
         .where('id', '=', check.id)
         .execute();
       if (stateChanged) changed.push(check.id);
+    }
+    // Unchanged bundles only note when they were last evaluated, in one statement.
+    if (unchanged.length > 0) {
+      await this.db.updateTable('monitor_checks').set({ last_check_at: now }).where('id', 'in', unchanged).execute();
     }
     await this.engine.recomputeForChecks(changed);
   }

@@ -95,8 +95,9 @@ describe('evaluateBundle', () => {
 describe('memberReason', () => {
   const now = Date.parse('2026-01-10T12:00:00.000Z');
   const ago = (ms: number) => new Date(now - ms).toISOString();
-  const pull: MemberSourceInfo = { enabled: true, pollable: true, pollIntervalSeconds: 60, lastPollOk: true };
-  const push: MemberSourceInfo = { enabled: true, pollable: false, pollIntervalSeconds: 60, lastPollOk: null };
+  // lastPollAt null: these cases are judged by the age of the result alone.
+  const pull: MemberSourceInfo = { enabled: true, pollable: true, pollIntervalSeconds: 60, lastPollOk: true, lastPollAt: null };
+  const push: MemberSourceInfo = { enabled: true, pollable: false, pollIntervalSeconds: 60, lastPollOk: null, lastPollAt: null };
 
   it('reports with a fresh result', () => {
     expect(memberReason({ state: 'critical', lastCheckAt: ago(60_000) }, pull, now)).toBe('reporting');
@@ -127,6 +128,34 @@ describe('memberReason', () => {
     const slow = { ...pull, pollIntervalSeconds: 600 };
     expect(memberReason({ state: 'ok', lastCheckAt: ago(29 * 60_000) }, slow, now)).toBe('reporting');
     expect(memberReason({ state: 'ok', lastCheckAt: ago(31 * 60_000) }, slow, now)).toBe('stale');
+  });
+
+  it('keeps a pull member reporting while its source polls successfully, however old the check run is', () => {
+    // Icinga 2 style: the check ran 5-6 minutes ago (5-minute check interval), the poll a minute ago.
+    const icinga = { ...pull, lastPollAt: ago(60_000) };
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(5 * 60_000 + 30_000) }, icinga, now)).toBe('reporting');
+    expect(memberReason({ state: 'critical', lastCheckAt: ago(6 * 60_000) }, icinga, now)).toBe('reporting');
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(2 * 60 * 60_000) }, icinga, now)).toBe('reporting');
+  });
+
+  it('falls back to the result age when the last successful poll is itself stale', () => {
+    const silent = { ...pull, lastPollAt: ago(MIN_STALE_MS + 1) };
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(6 * 60_000) }, silent, now)).toBe('stale');
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(60_000) }, silent, now)).toBe('reporting');
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(6 * 60_000) }, { ...pull, lastPollAt: 'garbage' }, now)).toBe('stale');
+  });
+
+  it('does not let a fresh poll override a failed poll, an unknown state or a disabled source', () => {
+    const polled = { ...pull, lastPollAt: ago(0) };
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(0) }, { ...polled, lastPollOk: false }, now)).toBe('poll_failed');
+    expect(memberReason({ state: 'unknown', lastCheckAt: ago(0) }, polled, now)).toBe('state_unknown');
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(0) }, { ...polled, enabled: false }, now)).toBe('source_disabled');
+  });
+
+  it('ignores poll times for push-only sources', () => {
+    expect(memberReason({ state: 'ok', lastCheckAt: ago(61 * 60_000) }, { ...push, lastPollOk: true, lastPollAt: ago(0) }, now)).toBe(
+      'stale',
+    );
   });
 
   it('uses the push staleness for push-only sources', () => {

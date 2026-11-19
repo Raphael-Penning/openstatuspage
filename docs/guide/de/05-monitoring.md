@@ -84,8 +84,9 @@ Checks sind: Fehlende Checks werden entfernt, samt ihrer Verknüpfungen zu
 Services. Das geht nur bei Quellen vom Typ **Webhook (Push)**; andere Typen
 bekommen ihre Liste per Abfrage, dort antwortet der Server mit `400`. Als
 Schutz wird ein vollständiger Push, der mehr als die Hälfte der mit Services
-verknüpften Checks entfernen würde, mit `409` abgelehnt und ändert nichts. Ist
-das Entfernen gewollt, lös die Verknüpfungen vorher.
+verknüpften oder in Check-Bündeln verwendeten Checks entfernen würde, mit `409`
+abgelehnt und ändert nichts. Ist das Entfernen gewollt, lös die Verknüpfungen
+vorher (bzw. nimm die Checks aus dem Bündel).
 
 ## Services aus Checks zusammensetzen
 
@@ -153,8 +154,11 @@ du die Checks weiterhin direkt mit dem Service und nutzt die Zusammenfassung
 **So funktioniert die Abstimmung:** Es zählen nur Nodes, die gerade
 **melden**. Ein Node meldet nicht, wenn seine Quelle deaktiviert ist, seine
 letzte Abfrage fehlgeschlagen ist, sein Check *Unbekannt* ist oder sein
-letztes Ergebnis zu alt ist (älter als 3 Abfrageintervalle, mindestens
-5 Minuten; bei reinen Webhook-Quellen standardmäßig älter als eine Stunde).
+Node verstummt ist: bei abgefragten Quellen weder eine erfolgreiche Abfrage
+noch ein neues Ergebnis innerhalb von 3 Abfrageintervallen (mindestens
+5 Minuten), bei reinen Webhook-Quellen standardmäßig seit einer Stunde kein
+Ergebnis. Eine erfolgreiche Abfrage reicht, ein Icinga-Check, der vor
+6 Minuten zuletzt lief, zählt also weiter, solange Icinga antwortet.
 Von den Stimmen der meldenden Nodes gilt:
 
 - mehr als die Hälfte sagt *down* → das Bündel ist **kritisch**;

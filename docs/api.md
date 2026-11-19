@@ -112,7 +112,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 
 | Method | Path | Body | Response | Role |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }`; editors only get `incident` and `maintenance` audit entries | editor |
+| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }`; source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries | editor |
 | GET/PUT | `/api/admin/settings` | `SettingsInput` | `PublicPageSettings` | GET editor, PUT admin |
 | GET | `/api/admin/locations` | – | `AdminLocation[]` | editor |
 | POST | `/api/admin/locations` | `LocationInput` | `AdminLocation` (201) | admin |
@@ -143,7 +143,7 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/monitor-sources/:id/test` | – | `MonitorSourceTestResult` | admin |
 | POST | `/api/admin/monitor-sources/:id/poll` | – | `MonitorSourceTestResult` (polls now and stores the results) | admin |
 | POST | `/api/admin/monitor-sources/:id/rotate-token` | – | `{ ingestToken: string }` | admin |
-| GET | `/api/admin/checks` | query `sourceId`, `q` (search name/host/external id), `state`, `unlinked=true` | `AdminMonitorCheck[]` | editor |
+| GET | `/api/admin/checks` | query `sourceId`, `q` (search name/host/external id), `state`, `unlinked=true` | `AdminMonitorCheck[]` (`sourceType` is `bundle` for bundle checks) | editor |
 | DELETE | `/api/admin/checks/:id` | – | 204 (409 for the check of a bundle: delete the bundle) | admin |
 | GET | `/api/admin/check-bundles` | – | `AdminCheckBundle[]` with the live vote and per-member breakdown | admin |
 | GET | `/api/admin/check-bundles/candidates` | query `type` (configurable source type) | `BundleCandidateSource[]`: checks that can become members, grouped by source | admin |
@@ -219,7 +219,7 @@ value is redacted in the request log).
 Responses: `{ ok: true, created, updated, removed, stateChanges }`.
 `full: true` (remove checks missing from the payload) is accepted only for sources of type
 `webhook` (`400` otherwise); a full push that would remove more than half of the checks linked
-to services is rejected with `409` and stores nothing (see docs/adapters/README.md).
+to services or used as bundle members is rejected with `409` and stores nothing (see docs/adapters/README.md).
 
 | Method | Path | Body |
 | --- | --- | --- |

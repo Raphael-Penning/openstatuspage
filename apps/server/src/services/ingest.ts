@@ -30,14 +30,17 @@ export class IngestService {
    * With `full = true`, checks that are missing from `checks` are deleted
    * (their service links disappear with them).
    * With `guardLinkedChecks`, a full sync that would delete more than half of
-   * the checks linked to services is rejected with 409 and nothing is stored:
-   * service links are configured by administrators and do not come back when
-   * a check reappears later.
+   * the checks linked to services or used as bundle members is rejected with
+   * 409 and nothing is stored: service links and bundle memberships are
+   * configured by administrators and do not come back when a check reappears.
+   * With `deferBundleRecompute` (poll path), the source's bundles are not
+   * re-evaluated here because `recordPoll` follows and does it with the new
+   * poll outcome; bundles that lost a removed member are still re-evaluated.
    */
   async ingest(
     sourceId: string,
     checks: NormalizedCheck[],
-    options: { full: boolean; guardLinkedChecks?: boolean },
+    options: { full: boolean; guardLinkedChecks?: boolean; deferBundleRecompute?: boolean },
   ): Promise<IngestResult> {
     const now = nowIso();
     const result: IngestResult = { created: 0, updated: 0, removed: 0, stateChanges: 0 };
@@ -163,7 +166,7 @@ export class IngestService {
     await this.engine.recompute(servicesOfRemovedChecks);
     // Fresh results (even without a state change) can bring a stale member back into the vote.
     if (this.bundles) {
-      await this.bundles.recomputeForSource(sourceId);
+      if (!options.deferBundleRecompute) await this.bundles.recomputeForSource(sourceId);
       if (bundlesOfRemovedChecks.length > 0) await this.bundles.recompute(bundlesOfRemovedChecks);
     }
     return result;
@@ -178,17 +181,29 @@ export class IngestService {
     sourceId: string,
     incoming: Map<string, NormalizedCheck>,
   ): Promise<void> {
+    // Checks linked to services or used as bundle members (each counted once).
     const linked = await db
-      .selectFrom('service_checks')
-      .innerJoin('monitor_checks', 'monitor_checks.id', 'service_checks.check_id')
+      .selectFrom('monitor_checks')
       .select('monitor_checks.external_id')
-      .distinct()
       .where('monitor_checks.source_id', '=', sourceId)
+      .where((eb) =>
+        eb.or([
+          eb.exists(
+            eb.selectFrom('service_checks').select('check_id').whereRef('service_checks.check_id', '=', 'monitor_checks.id'),
+          ),
+          eb.exists(
+            eb
+              .selectFrom('check_bundle_members')
+              .select('check_id')
+              .whereRef('check_bundle_members.check_id', '=', 'monitor_checks.id'),
+          ),
+        ]),
+      )
       .execute();
     const removed = linked.filter((l) => !incoming.has(l.external_id)).length;
     if (removed > 0 && removed * 2 > linked.length) {
       throw conflict(
-        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services. ` +
+        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services or bundles. ` +
           'Include these checks, unlink them in the admin UI first, or push without "full".',
       );
     }

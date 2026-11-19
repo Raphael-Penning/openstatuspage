@@ -596,6 +596,8 @@ export interface AdminMonitorCheck {
   id: string;
   sourceId: string;
   sourceName: string;
+  /** Type of the source; "bundle" for the checks of check bundles. */
+  sourceType: MonitorSourceType;
   externalId: string;
   name: string;
   host: string | null;

@@ -101,8 +101,8 @@ monitors that watch the same target into a **check bundle**
 node a number of votes and link the bundle to the service instead of the
 individual monitors. The bundle is down only when more than half of the votes
 of the reporting nodes say so; *pending* counts as a warning. A node whose
-poll fails or whose results are older than 3 poll intervals (at least
-5 minutes) is left out of the vote. Details and examples:
+poll fails, or that has neither polled successfully nor delivered a result
+within 3 poll intervals (at least 5 minutes), is left out of the vote. Details and examples:
 [Check bundles](README.md#check-bundles).
 
 Use pull for bundle members (optionally plus push): webhook notifications

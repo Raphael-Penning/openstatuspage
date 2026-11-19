@@ -114,13 +114,15 @@ Only members that currently **report** take part. A member does not report when
 | the last poll of its (pull) source failed | last poll failed |
 | its check state is `unknown` | state unknown |
 | it has no result yet | no result yet |
-| its last result is too old: older than **3 poll intervals, at least 5 minutes** for pull sources (Icinga 2, Uptime Kuma, openITCockpit), older than `BUNDLE_PUSH_STALE_SECONDS` (default 1 hour) for push-only `webhook` sources | result too old |
+| its result is too old: for pull sources (Icinga 2, Uptime Kuma, openITCockpit) neither a **successful poll** nor a result within the last **3 poll intervals, at least 5 minutes**; for push-only `webhook` sources no result within `BUNDLE_PUSH_STALE_SECONDS` (default 1 hour) | result too old |
 
-The age is taken from the check's result time. Uptime Kuma's `/metrics` has
-none, so every successful poll counts as a fresh result. Icinga 2 and
-openITCockpit report when the check really ran: a check that runs less often
-than 3 poll intervals (at least 5 minutes) would count as not reporting, so
-use such checks only with a matching check interval.
+For pull sources a recent successful poll is enough: it proves that the node
+reports and that the value is current. Icinga 2 and openITCockpit report when
+the check itself ran, which with the usual 5-minute check interval is
+regularly older than 5 minutes just before the next run; such a member stays
+in the vote as long as its source polls successfully. Only when polling stops
+(the source is not polled any more and no new results arrive) does the age of
+the result decide. Push results to a pull source also refresh the result age.
 
 With *R* = the votes of the reporting members:
 
@@ -213,7 +215,8 @@ protect that configuration:
 - `full` is accepted only for sources of type `webhook`. Pull sources get their
   complete list from polling; a full push to them is rejected with `400`.
 - A full push that would remove **more than half of the checks linked to
-  services** is rejected with `409` and nothing is stored (the push
-  counterpart of the poller's "empty result" guard). Include the missing
-  checks, unlink them in the admin UI first, or push without `full`.
-  Unlinked checks are removed without this limit.
+  services or used as members of a check bundle** is rejected with `409` and
+  nothing is stored (the push counterpart of the poller's "empty result"
+  guard). Include the missing checks, unlink them (or take them out of the
+  bundle) in the admin UI first, or push without `full`. Checks that are
+  neither linked nor bundle members are removed without this limit.

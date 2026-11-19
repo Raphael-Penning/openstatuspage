@@ -80,8 +80,9 @@ Add `"full": true` when the payload is the complete list of checks: checks
 missing from it are removed, together with their service links. This works
 only for **Webhook** sources (other types get their list from polling, and
 the server answers `400`). As a safety net, a full push that would remove more than half
-of the checks linked to services is rejected with `409` and changes nothing;
-unlink those checks first if the removal is intended.
+of the checks linked to services or used in check bundles is rejected with
+`409` and changes nothing; unlink those checks (or take them out of the
+bundle) first if the removal is intended.
 
 ## Composing services from checks
 
@@ -144,9 +145,11 @@ checks to the service directly and use the aggregation (worst check / quorum).
 
 **How the vote works:** only nodes that currently **report** count. A node does
 not report when its source is disabled, its last poll failed, its check is
-*unknown*, or its last result is too old (older than 3 poll intervals, at
-least 5 minutes; for pure webhook sources older than one hour by default). Of
-the votes of the reporting nodes:
+*unknown*, or it has gone silent: for polled sources neither a successful
+poll nor a new result within 3 poll intervals (at least 5 minutes), for pure
+webhook sources no result for one hour by default. A successful poll is
+enough, so an Icinga check that last ran 6 minutes ago still counts while
+Icinga answers. Of the votes of the reporting nodes:
 
 - more than half say *down* → the bundle is **critical**;
 - otherwise more than half say *down* or *pending/warning* → **warning**;

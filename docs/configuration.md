@@ -75,7 +75,7 @@ See [oidc.md](oidc.md) for IdP setup and the role mapping rules.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `BUNDLE_PUSH_STALE_SECONDS` | `3600` | How long (seconds, 60 to 604800) a result of a push-only (`webhook`) source counts in a check bundle vote; older members are treated as not reporting. Pull sources use 3 poll intervals, at least 5 minutes. See [adapters/README.md](adapters/README.md#check-bundles). |
+| `BUNDLE_PUSH_STALE_SECONDS` | `3600` | How long (seconds, 60 to 604800) a result of a push-only (`webhook`) source counts in a check bundle vote; older members are treated as not reporting. Pull sources count while their last successful poll (or result) is at most 3 poll intervals old, at least 5 minutes. See [adapters/README.md](adapters/README.md#check-bundles). |
 
 ## Email notifications
 

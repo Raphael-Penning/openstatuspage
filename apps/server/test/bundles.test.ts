@@ -125,9 +125,11 @@ describe('check bundles', () => {
     expect(view.vote).toMatchObject({ state: 'ok', reportingVotes: 2, criticalVotes: 1 });
     expect(view.members.find((m) => m.checkId === b.checkId)).toMatchObject({ reporting: false, reason: 'poll_failed' });
 
-    // Node C's results become stale (the worker re-evaluates periodically): 1 of 1 down.
+    // Node C goes silent: neither a recent poll nor a recent result (the worker
+    // re-evaluates periodically): 1 of 1 down.
     const old = new Date(Date.now() - 10 * 60_000).toISOString();
     await t.db.updateTable('monitor_checks').set({ last_check_at: old }).where('id', '=', c.checkId).execute();
+    await t.db.updateTable('monitor_sources').set({ last_poll_at: old }).where('id', '=', c.sourceId).execute();
     await t.app.ctx.worker.schedule(BUNDLE_TASK, 60_000, async () => t.app.ctx.bundles.recompute());
     await t.app.ctx.worker.runNow(BUNDLE_TASK);
     t.app.ctx.worker.unschedule(BUNDLE_TASK);
@@ -150,6 +152,55 @@ describe('check bundles', () => {
     });
     expect(put.statusCode).toBe(200);
     expect((await bundleCheck(bundle)).state).toBe('critical');
+  });
+
+  it('keeps pull members with an old check run but a fresh successful poll in the vote', async () => {
+    // Icinga 2 style: heavy node A is fine, its check last ran 6 minutes ago (5-minute
+    // check interval), but the source polled successfully a moment ago.
+    const a = await kumaNode('Icinga FRA');
+    const b = await kumaNode('Kuma AMS', 'critical');
+    const c = await kumaNode('Kuma NYC', 'critical');
+    const bundle = (
+      await admin.post('/api/admin/check-bundles', {
+        name: 'Website',
+        members: [{ checkId: a.checkId, votes: 2 }, { checkId: b.checkId }, { checkId: c.checkId }],
+      })
+    ).json<AdminCheckBundle>();
+    expect(bundle.vote).toMatchObject({ state: 'ok', reportingVotes: 4 });
+
+    const ranAt = new Date(Date.now() - 6 * 60_000).toISOString();
+    await t.db.updateTable('monitor_checks').set({ last_check_at: ranAt }).where('id', '=', a.checkId).execute();
+    await t.app.ctx.bundles.recompute();
+    const view = (await admin.get(`/api/admin/check-bundles/${bundle.id}`)).json<AdminCheckBundle>();
+    expect(view.members.find((m) => m.checkId === a.checkId)).toMatchObject({ reporting: true, reason: 'reporting' });
+    expect((await bundleCheck(bundle)).state).toBe('ok');
+  });
+
+  it('re-evaluates once per poll: ingest on the poll path defers to recordPoll', async () => {
+    const a = await kumaNode('Kuma FRA');
+    const bundle = (await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: a.checkId }] })).json<AdminCheckBundle>();
+    await t.app.ctx.ingest.ingest(a.sourceId, [{ externalId: 'Website', state: 'critical' }], {
+      full: true,
+      deferBundleRecompute: true,
+    });
+    expect((await bundleCheck(bundle)).state).toBe('ok');
+    await t.app.ctx.ingest.recordPoll(a.sourceId, true);
+    expect((await bundleCheck(bundle)).state).toBe('critical');
+  });
+
+  it('serialises concurrent re-evaluations and skips writes when nothing changed', async () => {
+    const a = await kumaNode('Kuma FRA');
+    const bundle = (await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: a.checkId }] })).json<AdminCheckBundle>();
+    const before = await bundleCheck(bundle);
+    await Promise.all([t.app.ctx.bundles.recompute(), t.app.ctx.bundles.recompute(), push(a.sourceId, 'critical')]);
+    const after = await bundleCheck(bundle);
+    expect(after.state).toBe('critical');
+    await t.app.ctx.bundles.recompute();
+    // Unchanged: only the evaluation time moves.
+    const again = await bundleCheck(bundle);
+    expect(again.updated_at).toBe(after.updated_at);
+    expect(again.last_state_change_at).toBe(after.last_state_change_at);
+    expect(before.state).toBe('ok');
   });
 
   it('is unknown when no member reports', async () => {
@@ -255,6 +306,34 @@ describe('check bundles', () => {
     expect((await editor.post('/api/admin/check-bundles', { name: 'X' })).statusCode).toBe(403);
     const anonymous = client(t.app, {});
     expect((await anonymous.get('/api/admin/check-bundles')).statusCode).toBe(401);
+  });
+});
+
+describe('bundles and other views', () => {
+  it('rejects a full push that would remove most bundle member checks', async () => {
+    const a = await kumaNode('Kuma FRA');
+    await t.db.updateTable('monitor_sources').set({ type: 'webhook' }).where('id', '=', a.sourceId).execute();
+    await t.app.ctx.ingest.ingest(a.sourceId, [{ externalId: 'Shop', state: 'ok' }], { full: false });
+    await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: a.checkId }] });
+    await expect(
+      t.app.ctx.ingest.ingest(a.sourceId, [{ externalId: 'Shop', state: 'ok' }], { full: true, guardLinkedChecks: true }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await t.db.selectFrom('check_bundle_members').select('check_id').execute()).toEqual([{ check_id: a.checkId }]);
+  });
+
+  it('leaves the bundle source and its checks out of the overview counts', async () => {
+    const a = await kumaNode('Kuma FRA', 'critical');
+    await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: a.checkId }] });
+    const counts = (await admin.get('/api/admin/overview')).json().counts;
+    expect(counts).toMatchObject({ sources: 1, checks: 1, checksFailing: 1 });
+  });
+
+  it('marks bundle checks in the check list', async () => {
+    const a = await kumaNode('Kuma FRA');
+    const bundle = (await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: a.checkId }] })).json<AdminCheckBundle>();
+    const checks = (await admin.get('/api/admin/checks')).json();
+    expect(checks.find((c: { id: string }) => c.id === bundle.checkId)).toMatchObject({ sourceType: 'bundle' });
+    expect(checks.find((c: { id: string }) => c.id === a.checkId)).toMatchObject({ sourceType: 'uptimekuma' });
   });
 });
 

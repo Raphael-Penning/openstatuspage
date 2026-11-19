@@ -15,7 +15,11 @@
  */
 import type { BundleMemberReason, BundleVoteSummary, CheckState } from '@openstatuspage/shared';
 
-/** Results of a pull source count for this many poll intervals ... */
+/**
+ * A pull source counts as reporting while its last successful poll is at most
+ * this many poll intervals old; without a recent successful poll, the age of
+ * the check result decides ...
+ */
 export const STALE_POLL_INTERVALS = 3;
 /** ... but at least this long. */
 export const MIN_STALE_MS = 5 * 60_000;
@@ -29,6 +33,8 @@ export interface MemberSourceInfo {
   pollIntervalSeconds: number;
   /** Outcome of the last poll, null when never polled. */
   lastPollOk: boolean | null;
+  /** Time of the last poll (ISO), null when never polled. */
+  lastPollAt: string | null;
 }
 
 export interface MemberCheckInfo {
@@ -55,7 +61,16 @@ export function memberReason(
   if (!check.lastCheckAt) return 'never_checked';
   const at = Date.parse(check.lastCheckAt);
   if (!Number.isFinite(at)) return 'never_checked';
-  if (now - at > staleAfterMs(source, pushStaleMs)) return 'stale';
+  const limit = staleAfterMs(source, pushStaleMs);
+  // A recent successful poll proves that the node reports and that the value is
+  // current, even when the monitoring system ran the check itself a while ago
+  // (Icinga 2 / openITCockpit report the time of the check, which with a
+  // 5-minute check interval regularly ages past the window between two runs).
+  if (source.pollable && source.lastPollOk === true && source.lastPollAt) {
+    const polledAt = Date.parse(source.lastPollAt);
+    if (Number.isFinite(polledAt) && now - polledAt <= limit) return 'reporting';
+  }
+  if (now - at > limit) return 'stale';
   return 'reporting';
 }
 
