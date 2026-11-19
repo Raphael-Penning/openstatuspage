@@ -171,6 +171,55 @@ The **Bundles** page shows every bundle with its current result and, per node,
 the votes, the state and whether (and why not) it counts. It refreshes on its
 own. All of this is internal; customers only see the resulting service status.
 
+## Importing history
+
+The status page records history from the moment a check is connected. The
+uptime bars of a new installation therefore start empty. To fill the time
+before, import the history your monitoring systems already keep:
+
+| System | Read from | What you need |
+| --- | --- | --- |
+| Uptime Kuma | heartbeats (same API as its web UI) | an Uptime Kuma login, plus the 2FA code if enabled |
+| Icinga 2 | the Icinga DB database (MySQL/MariaDB or PostgreSQL) | a read-only database user |
+| openITCockpit | the state history API | nothing extra (the API key of the source); set the API user's time zone to UTC |
+| any source | a CSV file you upload | the file |
+
+1. Open the source under **Monitoring** and click **Import history** in the
+   **History import** box.
+2. Choose the time range and, for Uptime Kuma and Icinga 2, enter the
+   credentials. They are only used for this import and are not stored. If you
+   import regularly, you can store them encrypted in the source instead
+   (section **History import** of the source form).
+3. Click **Load preview**. The server reads the history in the background; you
+   can close the dialog and come back later.
+4. Check the preview: per service you see how much time had no data, how much
+   gets filled, the downtime and the uptime in the range before and after.
+   Click **Import** to write it or **Discard** to drop it.
+
+What you can rely on:
+
+- **Only gaps are filled.** History the status page recorded itself is never
+  changed. Typically only the time before go-live is filled.
+- **Same rules as live.** The imported check states go through your current
+  service links, mappings, aggregation and check bundles, and maintenance
+  windows and incidents of that time count as well. Services with a manual
+  status are left alone.
+- **Repeating is safe.** Running the same import again changes nothing; a later
+  import of the same period replaces the earlier imported data (for example
+  after you imported a second source that feeds the same services). Imports
+  are written one after the other, even when you confirm several at once.
+- **Service statuses from a CSV file stay.** If you set a service's status
+  directly in a CSV file (column `service`), later imports keep it. Only
+  another CSV file with rows for that service changes it, and only for the
+  times in its rows.
+- **Uptime Kuma:** a monitor with very many heartbeats (more than about
+  200 000 from the start of the range until today) is skipped and named in
+  the preview. Choose a later start for it.
+- Every import is recorded in the audit log.
+
+For the CSV format and the details per system, see the
+[adapter documentation](../../adapters/README.md#history-import).
+
 ## Tips
 
 - Monitoring downtimes and acknowledgements do not change the imported state.

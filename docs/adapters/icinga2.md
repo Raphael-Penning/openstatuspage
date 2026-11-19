@@ -142,3 +142,56 @@ objects is accepted as well.
 - Set `interval` on the notification (example: 30 minutes) so problem states are
   re-sent periodically; this heals missed notifications. Combining push with a
   slower pull interval achieves the same with full reconciliation.
+
+## History import
+
+The Icinga 2 REST API has no history. The history import therefore reads the
+**Icinga DB** database (the backend of Icinga DB Web), MySQL/MariaDB or
+PostgreSQL. The IDO database is not supported. See
+[README.md](README.md#history-import) for the procedure and the rules.
+
+Tables read (nothing is written; the session is set to read-only):
+
+| Table | Used for |
+| --- | --- |
+| `state_history` joined with `host` / `service` | state changes in the range (`event_time` in ms, `hard_state`) and the last change before the range |
+| `host_state` / `service_state` | current hard state and `last_state_change`, for objects whose older history was removed by retention |
+
+External IDs are built like the live adapter (`host!service`, `host`) from the
+object names. Only **hard states** count; soft states (retries) are ignored.
+
+Create a read-only database user that the status page server can reach:
+
+```sql
+-- MySQL / MariaDB
+CREATE USER 'osp_history'@'status.example.com' IDENTIFIED BY '<long random password>';
+GRANT SELECT ON icingadb.state_history TO 'osp_history'@'status.example.com';
+GRANT SELECT ON icingadb.host TO 'osp_history'@'status.example.com';
+GRANT SELECT ON icingadb.service TO 'osp_history'@'status.example.com';
+GRANT SELECT ON icingadb.host_state TO 'osp_history'@'status.example.com';
+GRANT SELECT ON icingadb.service_state TO 'osp_history'@'status.example.com';
+
+-- PostgreSQL
+CREATE ROLE osp_history LOGIN PASSWORD '<long random password>';
+GRANT SELECT ON state_history, host, service, host_state, service_state TO osp_history;
+```
+
+Connection string (typed into the import dialog for one import, or stored
+encrypted in the source as **Icinga DB connection string**, `icingaDbUrl`):
+
+```
+mysql://osp_history:<password>@db.example.com:3306/icingadb
+postgres://osp_history:<password>@db.example.com:5432/icingadb?sslmode=require
+```
+
+`mariadb://` is accepted as an alias of `mysql://`. For TLS with MySQL/MariaDB
+append `?ssl={"rejectUnauthorized":true}`. Special characters in the password
+must be URL encoded.
+
+- **Retention**: Icinga DB removes history after `retention.history-days`
+  (per category `retention.options.state`) of its configuration. For objects
+  whose state did not change since before the range, the current state fills
+  the range even when older history is gone.
+- **Several environments** in one Icinga DB: objects are matched by name only;
+  use unique host names across environments.
+- The range is queried in windows of 7 days.

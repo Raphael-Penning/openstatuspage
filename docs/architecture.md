@@ -116,5 +116,36 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
 - `maintenance-reminders`: queues reminders every minute
 - `notification-cleanup` (hourly): deletes unconfirmed subscriptions after 7 days and
   sent/failed mails after 30 days
+- `history-import-cleanup` (every 5 min): fails import jobs without progress for
+  15 minutes (e.g. after a restart) and discards previews older than 24 hours
+
+History import jobs themselves run as one-off jobs in the process that received
+the request (also with `WORKER_ENABLED=false`).
+
+## Check history and history import
+
+```
+ingest / bundle vote ──state change──► monitor_check_history (source = live)
+                                                  ▲
+importer (Kuma Socket.IO, Icinga DB SQL,          │ only into periods without live rows
+openITCockpit API, CSV) ──► history_import_intervals ──preview──► confirm ──┐
+                                                                            ▼
+      replay (history-replay.ts): check history → link mappings, aggregation,
+      bundle votes, maintenance, incidents → service_status_history (source = import),
+      only inside the service's gaps
+```
+
+- `monitor_check_history` keeps state intervals per check; the open row
+  (`ended_at = null`) is the current state.
+- Imports never touch `live` rows and replace earlier `import` rows inside their
+  range, so re-runs are idempotent. Service statuses from CSV files are stored
+  as `import_explicit` and kept by later imports (precedence live > explicit >
+  replayed).
+- Applying plans and writes in one transaction under a global lock
+  (`pg_advisory_xact_lock` on PostgreSQL, the write lock on SQLite), so imports
+  of different sources feeding the same service never interleave.
+- Code: `apps/server/src/importers/` (one importer per source type, CSV parser,
+  minimal Socket.IO client), `services/history-import*.ts` (jobs, planning),
+  `services/history-replay.ts` (pure, unit tested).
 
 Set `WORKER_ENABLED=false` on extra replicas so only one instance runs these tasks.

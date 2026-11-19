@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registerBundleRoutes } from './bundles.js';
 import { registerCorrectionRoutes } from './corrections.js';
+import { registerHistoryImportRoutes } from './history-imports.js';
 import { registerIncidentRoutes } from './incidents.js';
 import { registerLocationAndGroupRoutes } from './locations.js';
 import { registerMaintenanceRoutes } from './maintenances.js';
@@ -20,6 +21,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   await registerCorrectionRoutes(app);
   await registerMonitoringRoutes(app);
   await registerBundleRoutes(app);
+  await registerHistoryImportRoutes(app);
   await registerUserRoutes(app);
   await registerSubscriberRoutes(app);
 }

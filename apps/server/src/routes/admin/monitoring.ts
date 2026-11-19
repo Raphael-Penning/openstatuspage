@@ -24,6 +24,7 @@ import {
   loadAdminChecks,
   loadAdminSources,
   SECRET_FIELDS,
+  SELF_CONTAINED_SECRETS,
 } from '../../services/admin-catalog.js';
 import { admin, auditRequest, editor } from './util.js';
 
@@ -105,12 +106,16 @@ export async function registerMonitoringRoutes(app: FastifyInstance): Promise<vo
     // username are unchanged, so stored credentials can never be redirected to another host.
     const stored = current.type === input.type ? decryptSourceConfig(secrets, current) : {};
     const sourceConfig = { ...(input.config as Record<string, unknown>) };
-    const sameTarget = ['baseUrl', 'username'].every((k) => (sourceConfig[k] ?? null) === (stored[k] ?? null));
+    // The history login of Uptime Kuma belongs to its own user name.
+    const sameTarget = (key: string) =>
+      ['baseUrl', key === 'historyPassword' ? 'historyUsername' : 'username'].every(
+        (k) => (sourceConfig[k] ?? null) === (stored[k] ?? null),
+      );
     for (const key of SECRET_FIELDS) {
       if (sourceConfig[key] !== SECRET_MASK) continue;
       const previous = stored[key];
       if (typeof previous !== 'string' || previous === '') throw badRequest(`config.${key} must be provided`);
-      if (!sameTarget) throw badRequest(`config.${key} must be entered again when the URL or username changes`);
+      if (!SELF_CONTAINED_SECRETS.includes(key) && !sameTarget(key)) throw badRequest(`config.${key} must be entered again when the URL or username changes`);
       sourceConfig[key] = previous;
     }
 

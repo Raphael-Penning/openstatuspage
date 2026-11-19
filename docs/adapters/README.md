@@ -156,6 +156,93 @@ The bundle check's output (admin only) summarizes the vote, e.g.
 `critical: 3 of 4 reporting votes down, 0 warning`; the admin page shows the
 breakdown per member. Nothing of this is visible publicly.
 
+## History import
+
+The status page records history from the moment a check is connected. To get
+uptime bars for the time **before** that (typically before the status page went
+live), import the history the monitoring systems already have:
+
+| System | Read from | Credentials | Guide |
+| --- | --- | --- | --- |
+| Icinga 2 | Icinga DB database (`state_history`), MySQL/MariaDB or PostgreSQL | read-only database user | [icinga2.md](icinga2.md#history-import) |
+| Uptime Kuma | heartbeats via the Socket.IO API of the web UI | Uptime Kuma login (optional 2FA code) | [uptime-kuma.md](uptime-kuma.md#history-import) |
+| openITCockpit | `statehistories` API | the API key of the source | [openitcockpit.md](openitcockpit.md#history-import) |
+| any source | CSV upload | – | [below](#csv-format) |
+
+**Admin → Monitoring → (source) → History import → Import history**: choose the
+time range (at most 731 days), enter credentials if the source does not store
+them, and load the preview. The import runs on the server in the background:
+you can close the dialog and come back. Only administrators can import.
+
+1. **Fetch.** The server reads the history of the checks of this source
+   (by default only checks linked to services or bundles) and keeps it on the
+   import job. Credentials typed into the dialog are stored encrypted on the job
+   until fetching ends and are never sent back to the browser.
+2. **Preview.** Per check: written intervals, covered time and period. Per
+   service: time without recorded history in the range ("gap"), time that would
+   be filled, downtime and the uptime in the range before and after. Unknown
+   external IDs and warnings (e.g. retention) are listed. Nothing is written yet.
+3. **Apply.** The import is planned again against the current data and written
+   in one transaction; the audit log gets `history_import.start`, `.apply`,
+   `.complete` (or `.cancel`). Only one import is written at a time (across all
+   sources and server processes), so two sources feeding the same service
+   cannot overwrite each other. An unapplied preview is discarded after 24 hours.
+
+Rules:
+
+- **Only gaps are filled.** History the status page recorded itself (`live`)
+  is never changed. Imported data only goes into periods without live
+  history, for checks (`monitor_check_history`) as well as for services
+  (`service_status_history`).
+- **Re-runs are safe.** Data of earlier imports inside the range is replaced,
+  outside the range it stays. Running the same import twice changes nothing;
+  importing a second source that feeds the same services completes them.
+- **Explicit service statuses win over the replay.** Service rows of a CSV file
+  are stored as such (`import_explicit`). Precedence: recorded (live) history,
+  then explicit CSV statuses, then statuses replayed from check history. Later
+  imports keep them; only a later CSV file with service rows for the same
+  service replaces them, and only where its rows lie.
+- **Services are rebuilt with the live rules** for their gaps: the imported
+  check states go through the current service links and state mappings, the
+  aggregation mode (worst/quorum), the weighted vote of check bundles (a member
+  without history at a point in time does not report; recorded bundle history
+  wins), public maintenance windows that ran in that period (`actual_start` to
+  `actual_end`) and public incidents (`started_at` to `resolved_at`). Where none
+  of a service's checks has data, the service keeps its gap. Services in manual
+  status mode are not changed.
+- The configuration is not versioned: links, mappings and bundle votes of
+  today are applied to the past.
+- Only hard states count (like the live adapters).
+
+The current state of every check that existed before the upgrade is known since
+its last state change; that period counts as recorded history.
+
+### CSV format
+
+For systems without a history API, or to correct data, upload a CSV file
+(up to 5 MB, 100 000 rows) on any source. Header row required, column order
+free, `,` or `;` as separator, quoting as in RFC 4180:
+
+```csv
+check,service,start,end,state
+web01!http,,2026-01-01T00:00:00Z,2026-01-01T02:30:00Z,critical
+web01!http,,2026-01-01T02:30:00Z,2026-02-01T00:00:00Z,ok
+,checkout,2026-01-12T08:00:00Z,2026-01-12T09:00:00Z,maintenance
+```
+
+| Column | Description |
+| --- | --- |
+| `check` | external ID of a check of this source (as shown on the Checks page) |
+| `service` | slug of a service; its status is taken as it is, without replay, and kept by later imports (see the rules above) |
+| `start`, `end` | ISO 8601 with time zone (`Z` or `+01:00`); `start` before `end` |
+| `state` (or `status`) | check rows: `ok`, `warning`, `critical`, `unknown`; service rows: `operational`, `degraded`, `partial_outage`, `major_outage`, `maintenance` |
+
+Each row sets exactly one of `check` and `service`. Rows of the same check or
+service must not overlap; adjacent rows with the same state are merged. The file
+is validated completely before anything happens; errors are reported with line
+numbers. Rows for unknown checks or services are listed in the preview and
+ignored.
+
 ## Ingest API
 
 ```

@@ -18,7 +18,9 @@ import type { MonitorSource, ServiceGroup } from '../db/types.js';
 import type { SecretBox } from '../lib/crypto.js';
 
 /** Config keys holding credentials. They are masked in responses and never logged. */
-export const SECRET_FIELDS = ['password', 'apiKey'] as const;
+export const SECRET_FIELDS = ['password', 'apiKey', 'historyPassword', 'icingaDbUrl'] as const;
+/** Secrets that carry their own target (a connection string) and may be kept when the base URL changes. */
+export const SELF_CONTAINED_SECRETS: readonly string[] = ['icingaDbUrl'];
 
 export function toAdminGroup(g: ServiceGroup): AdminServiceGroup {
   return {

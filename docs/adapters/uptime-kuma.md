@@ -108,3 +108,41 @@ within 3 poll intervals (at least 5 minutes), is left out of the vote. Details a
 Use pull for bundle members (optionally plus push): webhook notifications
 arrive only on state changes, so a push-only source would look silent and drop
 out of the vote after `BUNDLE_PUSH_STALE_SECONDS`.
+
+## History import
+
+Uptime Kuma keeps a heartbeat per check run. The history import reads them
+through the Socket.IO API that the Uptime Kuma web UI uses (versions 1.23 and
+2.x): it logs in, receives the monitor list and calls `getMonitorBeats` per
+monitor. The API key cannot be used for this; a **login** is required. See
+[README.md](README.md#history-import) for the procedure and the rules.
+
+- **Credentials**: enter user name and password in the import dialog (used for
+  this import only), or store them in the source (**History import** section of
+  the source form, `historyUsername` / `historyPassword`, encrypted, masked in
+  responses). Uptime Kuma has no read-only role, so the login has full access:
+  prefer typing it into the dialog over storing it.
+- **Two-factor authentication**: enter the current 6-digit code in the dialog.
+  A code can only be used once, so start the import right after typing it.
+  A stored login cannot be used for accounts with 2FA without a code.
+- **Network**: the server talks to `<base URL>/socket.io/` with HTTP long
+  polling (no WebSocket needed). A reverse proxy in front of Uptime Kuma must
+  pass `/socket.io/` through, which it already does for the web UI.
+- **Retention**: Uptime Kuma deletes heartbeats older than **Settings →
+  Monitor History → Keep monitor history data** (default 180 days). The preview
+  warns when the returned data starts later than the requested range.
+- **Mapping**: monitors are matched by **name** (the external ID). Monitors
+  sharing a name are skipped with a warning. Heartbeat states map like the live
+  status (down → critical, pending → warning, up and maintenance → ok). A
+  heartbeat counts until the next one, but at most three check intervals
+  (minimum 10 minutes): a paused monitor leaves a gap instead of extending its
+  last state.
+- **Size limit**: `getMonitorBeats` returns all heartbeats of a monitor from
+  the start of the range up to now in one response, and one response is
+  limited to 50 MiB, which is roughly 200 000 heartbeats. One per minute is
+  about 260 000 per half year, one every 20 seconds about 780 000. A monitor
+  over the limit is skipped and named in a preview warning; the other monitors
+  are still imported (the importer logs in again with the session token, so
+  no new 2FA code is needed). For such monitors choose a range that starts
+  later (the response always reaches up to now), or lower the retention in
+  Uptime Kuma. Large imports take a while.

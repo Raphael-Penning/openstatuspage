@@ -27,6 +27,7 @@ import { newToken } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import type { Worker } from '../worker.js';
 import { bundleOutput, evaluateBundle, memberReason } from './bundle-rules.js';
+import { recordCheckState } from './check-history.js';
 import type { StatusEngine } from './status-engine.js';
 
 /** Fixed id of the virtual source, so concurrent creation cannot produce two. */
@@ -226,7 +227,10 @@ export class BundleService {
         })
         .where('id', '=', check.id)
         .execute();
-      if (stateChanged) changed.push(check.id);
+      if (stateChanged) {
+        await recordCheckState(this.db, check.id, vote.state, now);
+        changed.push(check.id);
+      }
     }
     // Unchanged bundles only note when they were last evaluated, in one statement.
     if (unchanged.length > 0) {

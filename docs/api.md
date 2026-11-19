@@ -151,10 +151,15 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | GET | `/api/admin/services/:id/history` | query `ServiceHistoryQuery` (`from`, `to`, at most 366 days) | `AdminServiceHistory` (measured and corrected segments and uptime) | editor |
 | GET | `/api/admin/monitor-sources` | – | `AdminMonitorSource[]` | admin |
 | POST | `/api/admin/monitor-sources` | `MonitorSourceInput` | `AdminMonitorSource & { ingestToken: string }` (201, token shown once) | admin |
-| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` are unchanged, otherwise 400) | `AdminMonitorSource` | admin |
+| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` (`historyUsername` for `historyPassword`) are unchanged, otherwise 400; `icingaDbUrl` is kept regardless) | `AdminMonitorSource` | admin |
 | POST | `/api/admin/monitor-sources/:id/test` | – | `MonitorSourceTestResult` | admin |
 | POST | `/api/admin/monitor-sources/:id/poll` | – | `MonitorSourceTestResult` (polls now and stores the results) | admin |
 | POST | `/api/admin/monitor-sources/:id/rotate-token` | – | `{ ingestToken: string }` | admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports` | – | `AdminHistoryImport[]` (latest 20, newest first) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports` | `HistoryImportCreateInput` (body up to ~10 MB for CSV) | `AdminHistoryImport` (202, status `fetching`) | admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports/:importId` | – | `AdminHistoryImport` with `progress`, `preview` (status `ready`) or `result` | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/apply` | – | `AdminHistoryImport` (202, status `applying`; 409 unless `ready`) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/cancel` | – | `AdminHistoryImport` (aborts `fetching`, discards `ready`; 409 otherwise) | admin |
 | GET | `/api/admin/checks` | query `sourceId`, `q` (search name/host/external id), `state`, `unlinked=true` | `AdminMonitorCheck[]` (`sourceType` is `bundle` for bundle checks) | editor |
 | DELETE | `/api/admin/checks/:id` | – | 204 (409 for the check of a bundle: delete the bundle) | admin |
 | GET | `/api/admin/check-bundles` | – | `AdminCheckBundle[]` with the live vote and per-member breakdown | admin |
@@ -225,6 +230,33 @@ their creator loses the admin role.
   to ingest and to `DELETE` while bundles exist. Members must be existing checks
   that are not bundle checks (`400`). Voting rules: [adapters/README.md](adapters/README.md#check-bundles).
   Audit actions `check_bundle.create|update|delete`.
+- History import ([adapters/README.md](adapters/README.md#history-import)):
+  `HistoryImportCreateInput` = `{ from, to, onlyLinkedChecks = true, credentials?, csv? }`
+  with `to` capped at now and a range of at most 731 days. `credentials`
+  (`username`, `password`, `totp` for Uptime Kuma, `databaseUrl` for Icinga DB)
+  are used for this import only: stored encrypted on the job until fetching
+  ends, never returned; without them the values stored in the source config
+  (`historyUsername`/`historyPassword`, `icingaDbUrl`, both secrets masked like
+  `password`) are used, otherwise `400`. `csv` imports the file instead of
+  calling the source (required for `webhook` sources); an invalid file is `400`
+  with `issues: [{ line, code, params, message }]` (`code` and `params` for
+  translated messages, `message` in English; codes in `HistoryCsvIssue`). One active job (`fetching`, `ready`,
+  `applying`) per source, otherwise `409`; the `bundle` source answers `409`.
+  Jobs run in the background (poll `GET …/:importId`); jobs without progress for
+  15 minutes are marked `failed` and previews expire after 24 hours (checked
+  whenever jobs are read or started, so also without a worker process).
+  Applying is serialised across all sources (PostgreSQL advisory lock, SQLite
+  write lock): the plan is made and written in one transaction. Preview
+  `warnings` are `{ code, params, message }` (`HistoryImportWarning`); a failed
+  or expired job has `errorCode` (`source`, `timeout`, `shutdown`, `interrupted`,
+  `expired`, `apply_failed`) and an English `error`, redacted of secrets. Audit actions
+  `history_import.start|apply|complete|cancel` (entity `monitor_source`, details
+  without credentials or CSV content).
+- `monitor_check_history` rows carry `source = live | import`,
+  `service_status_history` rows `live | import | import_explicit` (service
+  statuses from a CSV file). Imports only write into periods without `live`
+  rows; they replace earlier `import` rows in their range, and
+  `import_explicit` rows only where a new CSV file has service rows.
 - Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
 - `notify` (default `true`) in `IncidentCreateInput`, `IncidentUpdateInput`,
   `MaintenanceCreateInput` and `MaintenanceUpdateInput` queues subscriber emails for
