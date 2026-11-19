@@ -10,7 +10,8 @@
  *            different sources feeding the same service never interleave.
  *   cancel   "fetching" (aborts) or "ready" (discards) → "cancelled"
  *
- * Only one job per source can be active (fetching, ready, applying). One-off
+ * Only one job per source can be active (fetching, ready, applying; a unique
+ * index enforces it across instances). One-off
  * credentials are stored encrypted on the job and cleared when fetching ends.
  * Jobs run in the process that received the request; a periodic task fails
  * jobs that stopped making progress (e.g. after a restart); previews nobody
@@ -38,7 +39,7 @@ import { redactSecrets } from '../adapters/runner.js';
 import type { DB } from '../db/index.js';
 import type { Database, HistoryImport, MonitorSource } from '../db/types.js';
 import type { SecretBox } from '../lib/crypto.js';
-import { badRequest, conflict, notFound } from '../lib/errors.js';
+import { badRequest, conflict, isUniqueViolation, notFound } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import type { Valued } from '../lib/intervals.js';
 import { nowIso } from '../lib/time.js';
@@ -202,10 +203,12 @@ export class HistoryImportService {
       .where('source_id', '=', source.id)
       .where('status', 'in', [...ACTIVE])
       .executeTakeFirst();
-    if (active) throw conflict('Another history import of this source is still running or waiting for confirmation.');
+    const busy = 'Another history import of this source is still running or waiting for confirmation.';
+    if (active) throw conflict(busy);
 
     const id = newId();
     const ts = nowIso();
+    // history_imports_active_idx also rejects a job another instance started in the meantime.
     await this.db
       .insertInto('history_imports')
       .values({
@@ -227,7 +230,10 @@ export class HistoryImportService {
         updated_at: ts,
         finished_at: null,
       })
-      .execute();
+      .execute()
+      .catch((err: unknown) => {
+        throw isUniqueViolation(err) ? conflict(busy) : err;
+      });
     // Never log credentials or the CSV content.
     await audit(this.db, {
       userId: actor.userId,
