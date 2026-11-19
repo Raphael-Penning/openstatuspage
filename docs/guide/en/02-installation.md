@@ -13,6 +13,7 @@ Choose one of these ways to run it:
 | Option | Database | Good for |
 | --- | --- | --- |
 | [Docker Compose](#docker-compose) | PostgreSQL 17 container | most production setups |
+| [Split deployment](#split-deployment) | PostgreSQL 17 container | public and admin on separate domains, worker in its own container |
 | [Single container with SQLite](#single-container-with-sqlite) | SQLite file in a volume | small setups, one instance |
 | [Kubernetes](#kubernetes) | external PostgreSQL (or SQLite on a volume) | clusters with an ingress controller |
 | [Building the image yourself](#building-the-image-yourself) | as with Compose | own changes, other platforms |
@@ -216,6 +217,130 @@ pinning, use the image digest instead of a tag
 (`ghcr.io/raphael-penning/openstatuspage@sha256:...`, shown by
 `docker buildx imagetools inspect`). How the images and releases are made is
 described in [`docs/releasing.md`](../../releasing.md).
+
+## Split deployment
+
+The split deployment runs the public status page and the admin area as two
+instances on two domains, plus a background worker, all on one PostgreSQL
+database. The point is containment: the public instance cannot reach the admin
+area, the monitoring systems or the admin tables, so a vulnerability in the
+public app or a stolen admin session cannot make the data flow out through the
+public instance.
+
+| Container | `APP_ROLE` | Serves | Database role | Port on the host |
+| --- | --- | --- | --- | --- |
+| `public` | `public` | status page, public API, feeds, subscriptions, `/api/health` | `osp_public` (no table access) | `PUBLIC_HOST_PORT`, default 3000 |
+| `admin` | `admin` | management UI and API, login, OIDC, ingest, public page for previews | owner role (`POSTGRES_USER`) | `ADMIN_HOST_PORT`, default 3001 |
+| `worker` | `worker` | polling, mails, maintenance, bundles, imports, cleanup; `/api/health` only | owner role | none |
+| `db` | – | PostgreSQL 17, not published | – | none |
+
+The public container has no `env_file` and receives only its own settings: no
+admin password, no OIDC or SMTP secrets, and no route to the monitoring systems
+(they are polled by the worker). It never runs migrations and waits until the
+admin instance has brought the schema up to date. The database role `osp_public`
+sees only the public views and calls only the subscription functions, see
+[security-model.md](../../security-model.md).
+
+### Setup
+
+You need the same as for [Docker Compose](#docker-compose), plus a clone of the
+repository, because the file uses the database init script in `deploy/postgres/`:
+
+```bash
+git clone https://github.com/Raphael-Penning/openstatuspage.git
+cd openstatuspage/deploy/compose
+cp .env.example .env
+chmod 600 .env
+printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
+  "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
+# edit .env, see below
+docker compose -f compose.split.yaml up -d
+```
+
+In `.env`, uncomment and set the variables of the section *Split deployment*:
+
+- `PUBLIC_BASE_URL`, the public domain, for example `https://status.example.com`.
+- `ADMIN_BASE_URL`, the admin domain, for example `https://status.admin.example.com`.
+- `ADMIN_EMAIL` and `ADMIN_PASSWORD`, for the first administrator (as in
+  [Minimal configuration](#minimal-configuration)).
+- `TRUST_PROXY`, the number of proxies in front of each instance (1 for one proxy).
+- `PUBLIC_BIND` and `ADMIN_BIND` keep the default `127.0.0.1` when your reverse
+  proxy runs on the same host.
+
+Use letters and digits only in `POSTGRES_PASSWORD` and `POSTGRES_PUBLIC_PASSWORD`:
+both are part of a connection URL. `BASE_URL` in `.env` is not used by this file;
+the compose file sets the base URL of each container. `SECRET_KEY` must be the
+same for all containers; the public instance needs it to check subscription links.
+
+The database init script creates the role `osp_public` with
+`POSTGRES_PUBLIC_PASSWORD` when the data volume is created for the first time.
+If that step failed, the database is initialized already and the script does not
+run again: stop the stack, remove the volume `openstatuspage-split_pg` (this
+deletes the data) and start again.
+
+### Reverse proxies
+
+Each instance publishes plain HTTP on its own host port. Put one proxy host in
+front of each:
+
+| Domain | Points to | Notes |
+| --- | --- | --- |
+| `status.example.com` | `127.0.0.1:3000` | the public page; open to everyone |
+| `status.admin.example.com` | `127.0.0.1:3001` | the admin area; restrict it, for example by IP address, VPN or an access proxy |
+
+See [Reverse proxy](03-reverse-proxy.md) for the proxy settings. Do not publish
+the admin domain to the internet without a restriction: that is the reason the
+two instances are separate.
+
+### Check the installation
+
+```bash
+docker compose -f compose.split.yaml ps
+curl -fsS http://127.0.0.1:3000/api/health   # public
+curl -fsS http://127.0.0.1:3001/api/health   # admin
+docker compose -f compose.split.yaml logs --tail 50 worker
+```
+
+Then log in at `https://status.admin.example.com` and check that the status
+page at `https://status.example.com` loads. The worker log shows the polling and
+mail tasks; it should contain no errors.
+
+### Upgrades and passwords
+
+Pin `OSP_VERSION` to a release, as described in [Image tags](#image-tags), and
+make a backup first ([Operations](09-operations.md)). Then run
+`docker compose -f compose.split.yaml pull` followed by
+`docker compose -f compose.split.yaml up -d`. The admin instance migrates the
+schema; the public instance waits for it (`SCHEMA_WAIT_SECONDS`).
+
+To change `POSTGRES_PUBLIC_PASSWORD` later, change it in `.env` (letters and
+digits only), then:
+
+```bash
+docker compose -f compose.split.yaml up -d db
+docker compose -f compose.split.yaml exec db /docker-entrypoint-initdb.d/10-roles.sh
+docker compose -f compose.split.yaml up -d public
+```
+
+### What the split does not cover
+
+- **The owner role is a superuser.** The official PostgreSQL image makes
+  `POSTGRES_USER` a superuser, and admin and worker connect with it. A compromised
+  admin or worker container therefore has full access to the database. The
+  separation protects the public side: the public role is the only one that
+  faces the internet. For a stricter setup, create a non-superuser application
+  role with `deploy/postgres/roles.sql` (`app_password`) and point `DATABASE_URL`
+  of admin and worker to it.
+- **One shared `SECRET_KEY`.** All three containers hold it. Keep the `.env` file
+  private and back it up, see [Operations](09-operations.md#secret_key).
+- **PostgreSQL only.** SQLite is a single-instance database and supports only the
+  combined `all` role.
+- **One host.** The compose file is an example for one machine. For several
+  hosts or more replicas, see [Kubernetes](#kubernetes) and
+  [Running several instances](09-operations.md#running-several-instances).
+
+The Kubernetes example for the split deployment is in
+[`deploy/kubernetes/split/`](../../../deploy/kubernetes/split/).
 
 ## Single container with SQLite
 
