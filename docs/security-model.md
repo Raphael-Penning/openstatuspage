@@ -36,7 +36,9 @@ database-side boundaries: the application code is the only boundary there.
 - **Admin and worker instances**: connect with the role that owns the tables
   (called `osp_app` here). They run the migrations, grant the public role its
   access on every start and do everything else. Their database access is **not**
-  restricted beyond owning the tables: protect them by network (internal only),
+  restricted beyond owning the tables (they also take advisory locks and write
+  `task_leases` to share background work, see
+  [architecture.md](architecture.md#several-instances)): protect them by network (internal only),
   login (OIDC, strong passwords) and by keeping the admin host off the internet.
 
 ## What the public role can do
@@ -61,7 +63,8 @@ with `search_path=osp_public`, so the public code runs unchanged against them.
   `api_tokens`, `audit_log`, `subscribers`, `subscriber_services`,
   `email_outbox`, `monitor_sources`, `monitor_checks`, `monitor_check_history`,
   `service_checks`, `check_bundles`, `check_bundle_members`, `history_imports`,
-  `history_import_intervals` and the role registry `osp_public_roles`.
+  `history_import_intervals`, `task_leases` and the role registry
+  `osp_public_roles`.
 - **Read hidden rows**: hidden services, groups, locations, incidents and
   maintenance, and everything linked only to them, are not in the views.
 - **Read internal columns**: e.g. how a service status is made (`status_mode`,
