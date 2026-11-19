@@ -30,8 +30,11 @@
  *                       admin or all comes first so the polled source exists)
  *   --requests <n>      public requests per role (default 400)
  *   --poll-seconds <n>  how long worker and all keep running for polls (default 40)
+ *   --settle-seconds <n> idle time before "after" is read (default 15; V8 shrinks
+ *                       the heap of an idle process after a few seconds)
  *   --node-args <args>  extra node flags, e.g. "--max-old-space-size=64"
  *   --json              print the results as JSON instead of a table
+ *   --verbose           pass the server's stderr through
  *
  * Every other setting comes from the environment as usual (e.g. NODE_OPTIONS,
  * WEB_DIST_DIR). Nothing here is meant for production databases.
@@ -50,8 +53,10 @@ const { values: opts } = parseArgs({
     roles: { type: 'string', default: 'admin,public,worker,all' },
     requests: { type: 'string', default: '400' },
     'poll-seconds': { type: 'string', default: '40' },
+    'settle-seconds': { type: 'string', default: '15' },
     'node-args': { type: 'string', default: '' },
     json: { type: 'boolean', default: false },
+    verbose: { type: 'boolean', default: false },
   },
 });
 
@@ -68,6 +73,7 @@ const cliDir = join(dirname(serverEntry), 'cli');
 const roles = opts.roles.split(',').map((r) => r.trim()).filter(Boolean);
 const requests = Number(opts.requests);
 const pollSeconds = Number(opts['poll-seconds']);
+const settleSeconds = Number(opts['settle-seconds']);
 const nodeArgs = opts['node-args'].split(/\s+/).filter(Boolean);
 const JSONAPI = 'application/vnd.api+json';
 
@@ -255,7 +261,10 @@ async function measureRole(role, kumaUrl) {
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let stderr = '';
-  child.stderr.on('data', (d) => (stderr = (stderr + d).slice(-4000)));
+  child.stderr.on('data', (d) => {
+    stderr = (stderr + d).slice(-4000);
+    if (opts.verbose) process.stderr.write(d);
+  });
   let peak = 0;
   const sampler = setInterval(() => {
     try {
@@ -267,16 +276,17 @@ async function measureRole(role, kumaUrl) {
   try {
     await waitForHealth(base, child);
     await sleep(3000);
-    const startup = memoryOf(child.pid).rss;
+    const started = memoryOf(child.pid);
+    const startup = started.rss;
     peak = startup;
     const load = {};
     const features = { public: ['public'], admin: ['admin', 'public'], worker: ['poll'], all: ['admin', 'public', 'poll'] }[role];
     if (features.includes('admin')) await adminLoad(base, kumaUrl);
     if (features.includes('public')) load.public = await publicLoad(base, requests);
     if (features.includes('poll')) await sleep(pollSeconds * 1000);
-    await sleep(5000);
+    await sleep(settleSeconds * 1000);
     const mem = memoryOf(child.pid);
-    return { role, startup, peak: Math.max(peak, mem.rss), after: mem.rss, hwm: mem.hwm, anon: mem.anon, load };
+    return { role, startup, peak: Math.max(peak, mem.rss), after: mem.rss, hwm: mem.hwm, startupAnon: started.anon, anon: mem.anon, load };
   } catch (err) {
     throw new Error(`${role}: ${err.message}\n${stderr}`);
   } finally {
@@ -305,10 +315,11 @@ if (opts.json) {
   console.log(JSON.stringify({ node: process.version, nodeArgs, results }, null, 2));
 } else {
   console.log(`Node ${process.version}${nodeArgs.length ? ` ${nodeArgs.join(' ')}` : ''}`);
-  console.log('| Role | After start | Peak under load | After load | of which anonymous | Kernel peak (VmHWM) |');
+  console.log('| Role | After start | Peak under load | After load | Kernel peak (VmHWM) | Anonymous after start / load |');
   console.log('| --- | --- | --- | --- | --- | --- |');
   for (const r of results) {
-    console.log(`| ${r.role} | ${mb(r.startup)} | ${mb(r.peak)} | ${mb(r.after)} | ${mb(r.anon)} | ${mb(r.hwm)} |`);
+    const anon = `${mb(r.startupAnon)} / ${mb(r.anon)}`;
+    console.log(`| ${r.role} | ${mb(r.startup)} | ${mb(r.peak)} | ${mb(r.after)} | ${mb(r.hwm)} | ${anon} |`);
   }
   for (const r of results) if (r.load.public) log(`${r.role} responses: ${JSON.stringify(r.load.public)}`);
 }
