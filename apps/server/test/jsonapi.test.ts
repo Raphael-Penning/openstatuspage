@@ -276,6 +276,7 @@ describe('JSON:API routes', () => {
     const del = await app.inject({ method: 'DELETE', url: '/things/a' });
     expect(del.statusCode).toBe(204);
     expect(del.body).toBe('');
+    expect(del.headers['content-type']).toBeUndefined();
     expect((await app.inject({ url: '/limited' })).statusCode).toBe(200);
     const limited = await app.inject({ url: '/limited' });
     expect(limited.statusCode).toBe(429);

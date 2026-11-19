@@ -271,7 +271,12 @@ export function registerJsonApi(app: FastifyInstance): void {
   });
 
   // Fastify appends "; charset=utf-8" to serialized JSON; JSON:API forbids other parameters.
+  // 204 answers have no body and so no media type (negotiate() set one up front).
   app.addHook('onSend', async (_req, reply, payload) => {
+    if (reply.statusCode === 204) {
+      reply.removeHeader('content-type');
+      return payload;
+    }
     const type = reply.getHeader('content-type');
     if (typeof type === 'string' && type !== JSONAPI_MEDIA_TYPE && type.startsWith(JSONAPI_MEDIA_TYPE)) {
       reply.header('content-type', JSONAPI_MEDIA_TYPE);
