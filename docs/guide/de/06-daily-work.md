@@ -133,14 +133,19 @@ abgeschlossen) zu den echten Zeiten, und ist als *Nachträglich eingetragen*
 markiert. Für ihre Services zählt der Zeitraum in den Verfügbarkeitsbalken und
 Prozentwerten als *Wartung* und nicht mehr als Ausfall. Eine öffentliche
 Wartung erscheint wie jede andere im öffentlichen Verlauf. Für einen schon
-vergangenen Zeitraum geht **keine E-Mail** raus, auch keine Erinnerung. Eine
-versteckte Wartung korrigiert die Uptime, ohne öffentlich aufzutauchen.
+vergangenen Zeitraum geht **keine E-Mail** raus, auch keine Erinnerung. Wie
+überall ändert eine **versteckte** Wartung keine Status und korrigiert deshalb
+auch nicht die Uptime. Willst du einen internen Zeitraum korrigieren, ohne ihn
+öffentlich aufzulisten, nimm stattdessen eine Statuskorrektur mit dem Status
+*Wartung* (siehe unten).
 
 Hat der Zeitraum begonnen, ist aber noch nicht vorbei (du steckst z. B.
 mitten in der Arbeit), startet die Wartung sofort: Abonnenten bekommen nur
 die E-Mail „Läuft“ (die Wartung hat begonnen), keine Ankündigung, und die Zeit seit dem Beginn zählt
 als Wartung. Änderst du später den Zeitraum einer solchen Wartung, wird der
 Verlauf entsprechend korrigiert; löschst du sie, entfällt die Korrektur.
+Verschiebst du ihr Ende in die Vergangenheit, wird sie sofort zu diesem Ende
+abgeschlossen, ohne E-Mail.
 
 ### Einen Fehlalarm oder verpassten Ausfall markieren
 
@@ -158,7 +163,11 @@ Services für einen vergangenen Zeitraum:
 
 Ohne den öffentlichen Hinweis wird die korrigierte Uptime ohne Markierung
 angezeigt. Überschneiden sich Korrekturen, gilt die **zuletzt erstellte**;
-eine Korrektur gilt auch vor einer nachträglich eingetragenen Wartung. Die
+eine Korrektur gilt auch vor einer nachträglich eingetragenen Wartung. Ein
+Tag wird öffentlich nur markiert, wo eine öffentliche Korrektur noch wirkt:
+Überdeckt eine neuere interne Korrektur sie ganz, verschwindet die Markierung.
+Löschst du einen Service, werden Korrekturen, die nur für ihn gelten,
+mitgelöscht. Die
 Liste kannst du nach Service und Datum filtern.
 
 Um die Wirkung zu prüfen, öffne den Service (**Services & Sites**) und scrolle

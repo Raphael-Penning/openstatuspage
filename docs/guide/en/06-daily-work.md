@@ -127,14 +127,17 @@ completed) at the real times and is marked *Entered afterwards*. For its
 services the window counts as *Maintenance*, no longer as an outage, in the
 uptime bars and percentages. A public maintenance appears in the public
 history like any other. **No email is sent** for a window that is already
-over, and no reminder either. A hidden maintenance corrects the uptime
-without being listed publicly.
+over, and no reminder either. As everywhere, a **hidden** maintenance does
+not change statuses, so it does not correct the uptime either. To correct an
+internal window without listing it publicly, use a status correction with the
+status *Maintenance* instead (see below).
 
 If the window has started but is not over yet (e.g. you are in the middle of
 the work), it starts immediately: subscribers get only the "in progress"
 email, no announcement, and the time since the start counts as
 maintenance. Changing the window of such a maintenance later corrects the
-history accordingly; deleting it removes the correction.
+history accordingly; deleting it removes the correction. If you move its end
+into the past, it is completed right away at that end, without an email.
 
 ### Marking a false alarm or a missed outage
 
@@ -152,7 +155,10 @@ a past time range:
 
 Without the public note option, the corrected uptime is shown without any
 marker. Where corrections overlap, the one **created last** wins; a
-correction also wins over a retroactive maintenance. The list can be filtered
+correction also wins over a retroactive maintenance. A day is only marked
+publicly where a public correction is still in effect: if a newer internal
+correction covers it completely, the marker disappears. Deleting a service
+also deletes corrections that apply only to that service. The list can be filtered
 by service and date.
 
 To check the effect, open the service (**Services & sites**) and scroll to

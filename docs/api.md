@@ -34,8 +34,10 @@ Responses may be cached (`Cache-Control: public, max-age=30`).
 
 Uptime (`uptime`, `uptimePercent`) is computed from the **corrected** history
 (see [History corrections](#history-corrections)). A `DailyUptime` entry of a day
-that contains a correction marked public carries `corrected: true` and
-`correctionNotes: string[]` (the public notes, possibly empty). The internal
+in which a correction marked public is in effect carries `corrected: true` and
+`correctionNotes: string[]` (the public notes, possibly empty). The marker is
+derived from the corrected history: where a newer correction replaces a public
+one, that part no longer marks the day. The internal
 reason of a correction is never returned by public endpoints.
 
 Upcoming maintenance = `status = scheduled` and `scheduled_end > now`.
@@ -232,7 +234,9 @@ comparison), corrections are applied on top
 1. measured segments,
 2. retroactive maintenance windows (`retroactive = 1`, status `in_progress` or
    `completed`): `maintenance` from `actualStart` to `actualEnd` (or now while
-   running), for its services, public or hidden,
+   running), for its services; only **public** maintenances (`is_public = 1`),
+   like the live status engine (use a status correction with status
+   `maintenance` for an internal window),
 3. status corrections: their `status` for `[startsAt, endsAt)`. Where corrections
    overlap, the one **created last** wins (creation times are strictly increasing).
 
@@ -246,10 +250,19 @@ email.
   internal), `showPublic` (default `false`), `publicNote` (optional, ≤ 500).
 - `PATCH` accepts any subset; the merged range is validated again. `serviceIds`
   replaces the services.
-- Audit: `correction.create`, `correction.update`, `correction.delete` (with
-  services, range, status and reason).
-- Deleting a service removes it from its corrections; a correction without
-  services stays listed until it is deleted.
+- Validation errors (`400`): `startsAt must be in the past`, `endsAt must be
+  after startsAt` (also when clamping the end to now leaves an empty range),
+  span longer than 366 days; the same for `POST` and `PATCH`.
+- Audit: `correction.create` (services, range, status, reason, public flag and
+  note), `correction.update` (`fields` plus `before` and `after` with all of
+  these), `correction.delete` (services, range, status and reason).
+- Deleting a service removes it from its corrections; corrections left without
+  any service are deleted with it (their ids are recorded in the
+  `service.delete` audit entry).
+- Retroactive maintenance (`retroactive = true`) that is still running and
+  whose `scheduledEnd` is moved into the past by `PATCH` is completed at once,
+  with `actualEnd = scheduledEnd` and a `completed` update at that time, and
+  without email.
 
 ## Ingest API (`/api/ingest`)
 
