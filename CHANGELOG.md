@@ -46,4 +46,10 @@ breaking changes.
     poll answer meta documents.
   - Ingest responses are meta documents (`meta: { created, updated, removed,
     stateChanges }`) instead of `{ ok: true, ... }`.
+  - All error responses are JSON:API error documents, also those of the routes that
+    stay outside JSON:API; former `PUT` routes answer `404`.
   - Unchanged: `/api/public/status.json`, `/api/health` and the RSS/Atom feeds.
+  - Migrating a client: send `Content-Type: application/vnd.api+json` and wrap
+    bodies in `data`; read `data.attributes` (or use `deserialize()` from
+    `@openstatuspage/shared`); replace `PUT` by `PATCH`; rename list parameters
+    to `page[...]`/`filter[...]`; read error details from `errors[]`.
