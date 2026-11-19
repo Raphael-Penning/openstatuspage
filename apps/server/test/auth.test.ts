@@ -3,7 +3,7 @@ import { loadConfig } from '../src/config.js';
 import { sha256 } from '../src/lib/crypto.js';
 import { cleanupExpiredSessions } from '../src/services/sessions.js';
 import { createOrResetLocalUser } from '../src/services/users.js';
-import { PASSWORD, client, createTestApp, createUser, login, type TestApp } from './helpers.js';
+import { PASSWORD, client, createTestApp, createUser, doc, login, type TestApp } from './helpers.js';
 
 const HOUR_MS = 3600_000;
 
@@ -218,8 +218,8 @@ describe('authorization', () => {
     const without = await t.app.inject({
       method: 'POST',
       url: '/api/admin/service-groups',
-      headers: { cookie },
-      payload: { name: 'Platform' },
+      headers: { cookie, 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
     });
     expect(without.statusCode).toBe(403);
 
@@ -229,8 +229,8 @@ describe('authorization', () => {
     const withHeader = await t.app.inject({
       method: 'POST',
       url: '/api/admin/service-groups',
-      headers: { cookie, 'x-requested-with': 'openstatuspage' },
-      payload: { name: 'Platform' },
+      headers: { cookie, 'x-requested-with': 'openstatuspage', 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
     });
     expect(withHeader.statusCode).toBe(201);
 

@@ -75,7 +75,9 @@ function LocationForm({ location, sortOrder }: { location?: AdminLocation; sortO
 
   const save = useAdminMutation(
     (body: LocationInput) =>
-      location ? api.put<AdminLocation>(`/api/admin/locations/${location.id}`, body) : api.post<AdminLocation>('/api/admin/locations', body),
+      location
+        ? api.patch<AdminLocation>(`/api/admin/locations/${location.id}`, body, { type: 'locations', id: location.id })
+        : api.post<AdminLocation>('/api/admin/locations', body, { type: 'locations' }),
     {
       success: location ? t('locations.saved') : t('locations.created'),
       onSuccess: (l) => {

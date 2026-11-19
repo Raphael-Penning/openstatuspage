@@ -54,11 +54,11 @@ beforeEach(async () => {
     .set({ output: 'CRITICAL - connection refused on 192.0.2.12' })
     .execute();
 
-  const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json().id;
-  const hiddenGroup = (await admin.post('/api/admin/service-groups', { name: 'Hidden group', isPublic: false })).json().id;
-  const fra = (await admin.post('/api/admin/locations', { name: 'Frankfurt', code: 'FRA-1', region: 'europe' })).json().id;
+  const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json().data.id;
+  const hiddenGroup = (await admin.post('/api/admin/service-groups', { name: 'Hidden group', isPublic: false })).json().data.id;
+  const fra = (await admin.post('/api/admin/locations', { name: 'Frankfurt', code: 'FRA-1', region: 'europe' })).json().data.id;
   const hiddenLocation = (await admin.post('/api/admin/locations', { name: 'Hidden location', region: 'europe', isPublic: false }))
-    .json().id;
+    .json().data.id;
 
   const api = (
     await admin.post('/api/admin/services', {
@@ -275,7 +275,7 @@ describe('public locations', () => {
     // The hidden service is still in major outage, but the public location stays operational.
     expect(after[0].status).toBe('operational');
 
-    await admin.put(`/api/admin/locations/${ids.fra}`, { name: 'Frankfurt', region: 'europe', statusOverride: 'degraded' });
+    await admin.patch(`/api/admin/locations/${ids.fra}`, { statusOverride: 'degraded' });
     expect((await getData('/api/public/locations'))[0].status).toBe('degraded');
   });
 });

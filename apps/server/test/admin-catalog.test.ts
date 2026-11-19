@@ -1,6 +1,9 @@
 import { SECRET_MASK } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { adminClient, createTestApp, data, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, errors, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
 
 let t: TestApp;
 let admin: Client;
@@ -23,33 +26,48 @@ describe('locations', () => {
       longitude: 8.7,
     });
     expect(a.statusCode).toBe(201);
-    expect(a.json()).toMatchObject({ slug: 'frankfurt', status: 'operational', serviceIds: [], isPublic: true });
+    expect(a.headers['content-type']).toBe('application/vnd.api+json');
+    const locA = data<Any>(a);
+    expect(a.headers.location).toBe(`/api/admin/locations/${locA.id}`);
+    expect(a.json().data).toMatchObject({ type: 'locations', relationships: { services: { data: [] } } });
+    expect(locA).toMatchObject({ slug: 'frankfurt', status: 'operational', serviceIds: [], isPublic: true });
 
     const b = await admin.post('/api/admin/locations', { name: 'Frankfurt', region: 'europe' });
-    expect(b.json().slug).toBe('frankfurt-2');
+    const locB = data<Any>(b);
+    expect(locB.slug).toBe('frankfurt-2');
 
     const dup = await admin.post('/api/admin/locations', { name: 'X', slug: 'frankfurt', region: 'europe' });
     expect(dup.statusCode).toBe(409);
 
     const invalid = await admin.post('/api/admin/locations', { name: 'X', region: 'mars' });
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json().error).toBe('validation_error');
+    expect(errors(invalid)[0]).toMatchObject({ status: '400', source: { pointer: '/data/attributes/region' } });
 
-    const updated = await admin.put(`/api/admin/locations/${a.json().id}`, {
+    // PATCH is partial: missing attributes keep their values.
+    const updated = await admin.patch(`/api/admin/locations/${locA.id}`, {
       name: 'Frankfurt am Main',
-      region: 'europe',
       statusOverride: 'maintenance',
     });
     expect(updated.statusCode).toBe(200);
     // Slug is kept when not provided.
-    expect(updated.json()).toMatchObject({ slug: 'frankfurt', name: 'Frankfurt am Main', status: 'maintenance' });
+    expect(data(updated)).toMatchObject({ slug: 'frankfurt', name: 'Frankfurt am Main', status: 'maintenance', code: 'FRA-1', latitude: 50.1 });
+    expect((await admin.put(`/api/admin/locations/${locA.id}`, { name: 'X', region: 'europe' })).statusCode).toBe(404);
+    const mismatch = await admin.patch(`/api/admin/locations/${locA.id}`, {
+      data: { type: 'locations', id: locB.id, attributes: { name: 'X' } },
+    });
+    expect(mismatch.statusCode).toBe(409);
+    const wrongType = await admin.patch(`/api/admin/locations/${locA.id}`, { data: { type: 'services', attributes: { name: 'X' } } });
+    expect(errors(wrongType)[0]).toMatchObject({ status: '409', code: 'type_mismatch' });
 
-    expect((await admin.post('/api/admin/locations/reorder', { ids: [b.json().id, a.json().id] })).statusCode).toBe(204);
+    expect((await admin.post('/api/admin/locations/reorder', { ids: [locB.id, locA.id] })).statusCode).toBe(204);
     const list = await admin.get('/api/admin/locations');
-    expect(list.json().map((l: { id: string }) => l.id)).toEqual([b.json().id, a.json().id]);
+    expect(list.json().meta).toEqual({ total: 2 });
+    expect(data<{ id: string }[]>(list).map((l) => l.id)).toEqual([locB.id, locA.id]);
 
-    expect((await admin.delete(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(204);
-    expect((await admin.get(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(404);
+    expect((await admin.delete(`/api/admin/locations/${locA.id}`)).statusCode).toBe(204);
+    const gone = await admin.get(`/api/admin/locations/${locA.id}`);
+    expect(gone.statusCode).toBe(404);
+    expect(errors(gone)[0]).toMatchObject({ status: '404', code: 'not_found' });
 
     const audit = await admin.get('/api/admin/audit-log?entityType=location');
     // Entries within the same millisecond have no defined order, so compare sorted.
@@ -65,13 +83,14 @@ describe('locations', () => {
 
 describe('service groups', () => {
   it('deleting a group keeps its services (group_id becomes null)', async () => {
-    const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json();
+    const group = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Platform' }));
     expect(group).toMatchObject({ slug: 'platform', isPublic: true, collapsedByDefault: false });
     const svc = (await admin.post('/api/admin/services', { name: 'API', groupId: group.id })).json();
     expect(svc.groupId).toBe(group.id);
 
-    const renamed = await admin.put(`/api/admin/service-groups/${group.id}`, { name: 'Core', collapsedByDefault: true });
-    expect(renamed.json()).toMatchObject({ name: 'Core', slug: 'platform', collapsedByDefault: true });
+    const renamed = await admin.patch(`/api/admin/service-groups/${group.id}`, { name: 'Core', collapsedByDefault: true });
+    expect(data(renamed)).toMatchObject({ name: 'Core', slug: 'platform', collapsedByDefault: true, isPublic: true });
+    expect(data<Any[]>(await admin.get('/api/admin/service-groups')).map((g) => g.name)).toEqual(['Core']);
 
     expect((await admin.delete(`/api/admin/service-groups/${group.id}`)).statusCode).toBe(204);
     const after = (await admin.get(`/api/admin/services/${svc.id}`)).json();
@@ -85,7 +104,7 @@ describe('services', () => {
       { externalId: 'web1!https', name: 'HTTPS', host: 'web1.internal.example.com', state: 'ok' },
       { externalId: 'web2!https', name: 'HTTPS', host: 'web2.internal.example.com', state: 'ok' },
     ]);
-    const loc = (await admin.post('/api/admin/locations', { name: 'Amsterdam', region: 'europe' })).json();
+    const loc = data<Any>(await admin.post('/api/admin/locations', { name: 'Amsterdam', region: 'europe' }));
 
     const created = await admin.post('/api/admin/services', {
       name: 'Web App',
@@ -150,8 +169,8 @@ describe('services', () => {
     const badGroup = await admin.post('/api/admin/services', { name: 'X', groupId: 'missing' });
     expect(badGroup.statusCode).toBe(400);
 
-    const g1 = (await admin.post('/api/admin/service-groups', { name: 'One' })).json();
-    const g2 = (await admin.post('/api/admin/service-groups', { name: 'Two' })).json();
+    const g1 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'One' }));
+    const g2 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Two' }));
     const a = (await admin.post('/api/admin/services', { name: 'A', groupId: g1.id })).json();
     const b = (await admin.post('/api/admin/services', { name: 'B', groupId: g1.id })).json();
     const c = (await admin.post('/api/admin/services', { name: 'C', groupId: g2.id })).json();

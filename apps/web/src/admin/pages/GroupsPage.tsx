@@ -133,7 +133,9 @@ function GroupDialog({ group, sortOrder, onClose }: { group?: AdminServiceGroup;
   const v = form.values;
   const save = useAdminMutation(
     (body: ServiceGroupInput) =>
-      group ? api.put(`/api/admin/service-groups/${group.id}`, body) : api.post('/api/admin/service-groups', body),
+      group
+        ? api.patch(`/api/admin/service-groups/${group.id}`, body, { type: 'service-groups', id: group.id })
+        : api.post('/api/admin/service-groups', body, { type: 'service-groups' }),
     { success: group ? t('groups.saved') : t('groups.created'), onSuccess: onClose, onError: form.applyServerError },
   );
 
