@@ -216,8 +216,8 @@ header in the proxy if you want embedding to work.
 
 Other ways to show the status elsewhere:
 
-- `GET /api/public/status.json`: compact machine-readable status (overall
-  status, public services, active incidents and maintenance).
+- `GET /api/public/status`: compact machine-readable status as a JSON:API
+  document (overall status, public services, active incidents and maintenance).
 - `/feed.rss` and `/feed.atom`: incidents and maintenance as feeds.
 
 ## Checklist
