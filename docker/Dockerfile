@@ -30,10 +30,17 @@ COPY apps/server apps/server
 RUN pnpm --filter @openstatuspage/server deploy --prod --legacy /out/server
 
 FROM node:22-bookworm-slim
+# Memory (docs/architecture.md#memory): a small young generation and a cap on the
+# old generation keep an instance below 100 MB; fewer malloc arenas and libuv
+# threads keep native memory small. Override NODE_OPTIONS to raise the cap, e.g.
+# for large history imports on an admin instance.
 ENV NODE_ENV=production \
     PORT=3000 \
     DATABASE_URL=sqlite:/data/openstatuspage.db \
-    WEB_DIST_DIR=/app/web
+    WEB_DIST_DIR=/app/web \
+    NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
+    MALLOC_ARENA_MAX=2 \
+    UV_THREADPOOL_SIZE=2
 WORKDIR /app
 COPY --from=deps /out/server /app/server
 COPY --from=build /app/apps/server/dist /app/server/dist
@@ -42,6 +49,7 @@ RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME ["/data"]
 EXPOSE 3000
+# Plain bash instead of a second node process (about 40 MB every 30 s).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-  CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$PORT && printf 'GET /api/health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
 CMD ["node", "server/dist/index.js"]
