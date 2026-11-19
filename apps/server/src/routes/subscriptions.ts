@@ -43,6 +43,8 @@ import {
 } from '../services/subscriptions.js';
 
 const TokenQuery = z.object({ token: z.string().max(256).optional() });
+/** Relationships of a subscription request document. */
+const SUBSCRIPTION_RELATIONSHIPS = { services: AUTH_TYPES.service };
 
 function headerToken(req: FastifyRequest): string | undefined {
   const value = req.headers[SUBSCRIPTION_TOKEN_HEADER];
@@ -100,7 +102,7 @@ function registerSubscriptionApi(
 
   scope.post(
     '/api/public/subscriptions',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, jsonapi: { type: AUTH_TYPES.subscription } } },
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, jsonapi: { type: AUTH_TYPES.subscription, relationships: SUBSCRIPTION_RELATIONSHIPS } } },
     async (req, reply) => {
       if (!(await subscriptionsAvailable(ctx))) throw notFound('Subscriptions');
       const input = parse(SubscribeInput, req.body);
@@ -136,7 +138,7 @@ function registerSubscriptionApi(
 
   scope.patch(
     '/api/public/subscriptions/:id',
-    { config: { ...manageRoute.config, jsonapi: { type: AUTH_TYPES.subscription } } },
+    { config: { ...manageRoute.config, jsonapi: { type: AUTH_TYPES.subscription, relationships: SUBSCRIPTION_RELATIONSHIPS } } },
     async (req) => {
       const { id } = parse(IdParams, req.params);
       const sub = await findByToken(ctx, id, 'manage', headerToken(req));

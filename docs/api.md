@@ -95,8 +95,13 @@ parameter; every other endpoint answers any `include` (even an empty one) with
   apply/cancel import, confirm, test email, retry) are `POST` endpoints returning a
   resource document, a meta-only document (`{ "jsonapi": …, "meta": { … } }`) or `204`.
 - A request document must have a `data` member (`400` `invalid_document`
-  otherwise). The server also accepts foreign keys sent as attributes
-  (`groupId`, `locationIds`, `serviceIds`).
+  otherwise). Each endpoint takes the relationships listed for it: another
+  relationship name is answered with `400` `unknown_relationship`, resource
+  linkage of another type (e.g. `"group": { "data": { "type": "users", … } }`)
+  with `409` `type_mismatch` and a pointer such as
+  `/data/relationships/group/data/type`. The server also accepts foreign keys
+  sent as attributes (`groupId`, `locationIds`, `serviceIds`) as a shorthand;
+  those carry no type and are only checked as ids.
 
 ```http
 POST /api/admin/services

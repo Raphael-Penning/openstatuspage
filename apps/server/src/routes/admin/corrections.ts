@@ -132,7 +132,7 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db } = app.ctx;
-  const correctionType = { config: { jsonapi: { type: CATALOG_TYPES.correction, include: true } } };
+  const correctionType = { config: { jsonapi: { type: CATALOG_TYPES.correction, include: true, relationships: { services: CATALOG_TYPES.service } } } };
 
   const correctionDocument = async (req: FastifyRequest, id: string) => {
     const include = parseInclude((req.query ?? {}) as Record<string, unknown>, INCLUDES.allowed, INCLUDES.default);

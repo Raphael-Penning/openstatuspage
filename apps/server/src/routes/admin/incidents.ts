@@ -77,7 +77,7 @@ export async function registerIncidentRoutes(app: FastifyInstance): Promise<void
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine, notifications } = app.ctx;
-  const incidentType = { config: { jsonapi: { type: CATALOG_TYPES.incident, include: true } } };
+  const incidentType = { config: { jsonapi: { type: CATALOG_TYPES.incident, include: true, relationships: { locations: CATALOG_TYPES.location } } } };
   const updateType = { config: { jsonapi: { type: CATALOG_TYPES.incidentUpdate } } };
 
   /** Incident document; its updates are included unless `include` says otherwise. */

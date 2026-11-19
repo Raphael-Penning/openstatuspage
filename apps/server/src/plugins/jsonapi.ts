@@ -48,6 +48,12 @@ export interface JsonApiRouteConfig {
    * Elsewhere a `POST` with `data.id` is answered with 403 (no client-generated ids).
    */
   allowId?: boolean;
+  /**
+   * Relationships the request document may carry, by name, with the type of the
+   * related resources: `{ group: 'service-groups', locations: 'locations' }`.
+   * Other relationships are answered with 400, linkage of another type with 409.
+   */
+  relationships?: Record<string, string>;
   /** The handler reads the `sort` parameter; on other routes `sort` is answered with 400 `unsupported_sort`. */
   sort?: boolean;
 }
@@ -159,6 +165,36 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const invalidDocument = (detail: string, pointer: string) =>
   new HttpError(400, 'invalid_document', detail, undefined, { source: { pointer } });
 
+const escapePointer = (segment: string) => segment.replace(/~/g, '~0').replace(/\//g, '~1');
+
+/** Checks the relationship names and the resource linkage types against the route's declaration. */
+function checkRelationships(relationships: Record<string, unknown>, expected: Record<string, string>): void {
+  for (const [name, rel] of Object.entries(relationships)) {
+    const base = `/data/relationships/${escapePointer(name)}`;
+    const type = Object.hasOwn(expected, name) ? expected[name] : undefined;
+    if (type === undefined) {
+      throw new HttpError(400, 'unknown_relationship', `Unknown relationship "${name}"`, undefined, { source: { pointer: base } });
+    }
+    if (!isObject(rel) || !('data' in rel)) throw invalidDocument('A relationship must have a "data" member', base);
+    const linkage = rel.data;
+    const items: [unknown, string][] = Array.isArray(linkage)
+      ? linkage.map((r, i) => [r, `${base}/data/${i}`])
+      : linkage === null
+        ? []
+        : [[linkage, `${base}/data`]];
+    for (const [item, pointer] of items) {
+      if (!isObject(item) || typeof item.type !== 'string' || typeof item.id !== 'string') {
+        throw invalidDocument('Resource linkage must be { "type", "id" }', pointer);
+      }
+      if (item.type !== type) {
+        throw new HttpError(409, 'type_mismatch', `Relationship "${name}" expects resources of type "${type}"`, undefined, {
+          source: { pointer: `${pointer}/type` },
+        });
+      }
+    }
+  }
+}
+
 /** Replaces a JSON:API request document by the flattened resource. */
 function unwrap(req: FastifyRequest, config: JsonApiRouteConfig): void {
   const body = req.body;
@@ -180,6 +216,7 @@ function unwrap(req: FastifyRequest, config: JsonApiRouteConfig): void {
       source: { pointer: '/data/type' },
     });
   }
+  if (config.relationships) checkRelationships((data.relationships as Record<string, unknown> | undefined) ?? {}, config.relationships);
   if (req.method === 'POST' && data.id !== undefined && !config.allowId) {
     throw new HttpError(403, 'client_id_unsupported', 'Client-generated ids are not supported', undefined, {
       source: { pointer: '/data/id' },

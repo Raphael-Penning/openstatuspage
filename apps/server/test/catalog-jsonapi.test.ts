@@ -31,6 +31,16 @@ describe('admin catalog documents', () => {
     expect((await admin.get('/api/admin/services')).json().data).toEqual([]);
   });
 
+  it('checks the type of related resources', async () => {
+    const group = data<{ id: string }>(await admin.post('/api/admin/service-groups', { name: 'Platform' }));
+    const res = await admin.post(
+      '/api/admin/services',
+      { data: { type: 'services', attributes: { name: 'API' }, relationships: { group: { data: { type: 'users', id: group.id } } } } },
+    );
+    expect(res.statusCode).toBe(409);
+    expect(errors(res)[0]).toMatchObject({ code: 'type_mismatch', source: { pointer: '/data/relationships/group/data/type' } });
+  });
+
   it('points validation errors of relationships at the relationship', async () => {
     const svc = data<{ id: string }>(await admin.post('/api/admin/services', { name: 'API' }));
     const res = await admin.post(

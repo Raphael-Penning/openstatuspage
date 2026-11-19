@@ -110,7 +110,11 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine } = app.ctx;
-  const serviceType = { config: { jsonapi: { type: CATALOG_TYPES.service } } };
+  const serviceType = {
+    config: {
+      jsonapi: { type: CATALOG_TYPES.service, relationships: { group: CATALOG_TYPES.group, locations: CATALOG_TYPES.location } },
+    },
+  };
   const serviceDocument = async (req: { url: string }, id: string) =>
     document(adminServiceResource(await getService(db, id)), { links: { self: req.url } });
 

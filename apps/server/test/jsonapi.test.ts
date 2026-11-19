@@ -168,6 +168,9 @@ describe('JSON:API routes', () => {
         return document(resource('things', (req.params as { id: string }).id, req.body as object));
       });
       scope.delete('/things/:id', async (_req, reply) => noContent(reply));
+      scope.post('/owned', { config: { jsonapi: { type: 'things', relationships: { owner: 'users', tags: 'tags' } } } }, async (req) =>
+        metaDocument({ body: req.body }),
+      );
       scope.get('/listed', { config: { jsonapi: { include: true } } }, async (req) => {
         const include = parseInclude(req.query as Record<string, unknown>, ['owner']);
         return metaDocument({ include: [...include] });
@@ -270,6 +273,22 @@ describe('JSON:API routes', () => {
     expect(limited.statusCode).toBe(429);
     expect(limited.headers['content-type']).toBe(MEDIA);
     expect(limited.json().errors[0]).toMatchObject({ status: '429', code: 'rate_limited' });
+  });
+
+  it('checks the relationships of the request document against the route', async () => {
+    const post = (relationships: unknown) => send('POST', '/owned', { data: { type: 'things', attributes: {}, relationships } });
+    const ok = await post({ owner: { data: { type: 'users', id: 'u1' } }, tags: { data: [{ type: 'tags', id: 't1' }] } });
+    expect(ok.json().meta).toEqual({ body: { ownerId: 'u1', tagIds: ['t1'] } });
+    const wrongType = await post({ owner: { data: { type: 'groups', id: 'u1' } } });
+    expect(wrongType.statusCode).toBe(409);
+    expect(wrongType.json().errors[0]).toMatchObject({ code: 'type_mismatch', source: { pointer: '/data/relationships/owner/data/type' } });
+    const wrongItem = await post({ tags: { data: [{ type: 'tags', id: 't1' }, { type: 'users', id: 'u1' }] } });
+    expect(wrongItem.json().errors[0].source).toEqual({ pointer: '/data/relationships/tags/data/1/type' });
+    const unknown = await post({ group: { data: null } });
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.json().errors[0]).toMatchObject({ code: 'unknown_relationship', source: { pointer: '/data/relationships/group' } });
+    expect((await post({ owner: { data: { id: 'u1' } } })).json().errors[0]).toMatchObject({ code: 'invalid_document' });
+    expect((await post({ owner: { data: null } })).statusCode).toBe(200);
   });
 
   it('rejects include and sort on routes that do not support them', async () => {

@@ -96,7 +96,15 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine, notifications } = app.ctx;
-  const maintenanceType = { config: { jsonapi: { type: CATALOG_TYPES.maintenance, include: true } } };
+  const maintenanceType = {
+    config: {
+      jsonapi: {
+        type: CATALOG_TYPES.maintenance,
+        include: true,
+        relationships: { services: CATALOG_TYPES.service, locations: CATALOG_TYPES.location },
+      },
+    },
+  };
   const updateType = { config: { jsonapi: { type: CATALOG_TYPES.maintenanceUpdate } } };
 
   /** Maintenance document; its updates are included unless `include` says otherwise. */
