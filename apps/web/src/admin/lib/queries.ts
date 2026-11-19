@@ -125,6 +125,7 @@ function useAdminQuery<T>(queryKey: readonly unknown[], path: string, query?: Re
   });
 }
 
+/** `overviews/current`; services and recent audit entries come from `included`. */
 export const useOverview = () => useAdminQuery<AdminOverview>(keys.overview, '/api/admin/overview');
 export const useServices = () => useAdminQuery<AdminService[]>(keys.services, '/api/admin/services');
 export const useService = (id: string | undefined) =>
@@ -191,10 +192,14 @@ export const useSettings = () => useAdminQuery<PublicPageSettings>(keys.settings
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
 export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
-  useAdminQuery<Paginated<AuditLogEntry>>(keys.audit(page, entityType), '/api/admin/audit-log', {
-    page,
-    pageSize,
-    entityType: entityType || undefined,
+  useQuery({
+    queryKey: keys.audit(page, entityType),
+    queryFn: () =>
+      api.getPage<AuditLogEntry>('/api/admin/audit-log', {
+        page: { number: page, size: pageSize },
+        filter: { entityType: entityType || undefined },
+      }),
+    retry: notRetryingClientErrors,
   });
 
 export const useCorrections = (filter: CorrectionsFilter, pageSize = 20) =>
