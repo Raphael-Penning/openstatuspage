@@ -182,6 +182,51 @@ Node die Stimmen, den Zustand und ob (und warum nicht) er mitzählt. Sie
 aktualisiert sich von selbst. All das ist intern; Kunden sehen nur den
 resultierenden Service-Status.
 
+## Historie importieren
+
+Die Statusseite zeichnet Historie ab dem Moment auf, in dem ein Check
+angebunden ist. Bei einer neuen Installation sind die Uptime-Balken deshalb
+zunächst leer. Um die Zeit davor zu füllen, importierst du die Historie, die
+deine Monitoring-Systeme schon haben:
+
+| System | Gelesen aus | Was du brauchst |
+| --- | --- | --- |
+| Uptime Kuma | Heartbeats (dieselbe API wie die Weboberfläche) | einen Uptime-Kuma-Login, bei aktivierter 2FA zusätzlich den Code |
+| Icinga 2 | der Icinga-DB-Datenbank (MySQL/MariaDB oder PostgreSQL) | einen Datenbankbenutzer mit Lesezugriff |
+| openITCockpit | der Statushistorie-API | nichts weiter (den API-Key der Quelle); stell die Zeitzone des API-Benutzers auf UTC |
+| jede Quelle | einer CSV-Datei, die du hochlädst | die Datei |
+
+1. Öffne die Quelle unter **Monitoring** und klick im Kasten
+   **Historie-Import** auf **Historie importieren**.
+2. Wähl den Zeitraum und gib bei Uptime Kuma und Icinga 2 die Zugangsdaten
+   ein. Sie werden nur für diesen Import genutzt und nicht gespeichert. Wenn du
+   regelmäßig importierst, kannst du sie stattdessen verschlüsselt in der
+   Quelle hinterlegen (Abschnitt **Historie-Import** im Formular der Quelle).
+3. Klick auf **Vorschau laden**. Der Server liest die Historie im Hintergrund;
+   du kannst den Dialog schließen und später zurückkommen.
+4. Prüf die Vorschau: Pro Service siehst du, wie lange keine Daten vorlagen,
+   wie viel gefüllt wird, die Ausfallzeit und die Uptime im Zeitraum vorher
+   und nachher. Mit **Importieren** schreibst du sie, mit **Verwerfen**
+   verwirfst du sie.
+
+Darauf kannst du dich verlassen:
+
+- **Es werden nur Lücken gefüllt.** Historie, die die Statusseite selbst
+  aufgezeichnet hat, bleibt immer unverändert. Meist wird nur die Zeit vor dem
+  Go-live gefüllt.
+- **Dieselben Regeln wie live.** Die importierten Check-Zustände laufen durch
+  deine aktuellen Verknüpfungen, Zuordnungen, die Aggregation und die
+  Check-Bündel; Wartungen und Vorfälle aus dieser Zeit zählen ebenfalls.
+  Services mit manuellem Status bleiben unverändert.
+- **Wiederholen ist gefahrlos.** Derselbe Import ein zweites Mal ändert
+  nichts; ein späterer Import desselben Zeitraums ersetzt die zuvor
+  importierten Daten (zum Beispiel, nachdem du eine zweite Quelle importiert
+  hast, die dieselben Services speist).
+- Jeder Import landet im Audit-Log.
+
+Das CSV-Format und die Details je System findest du in der
+[Adapter-Dokumentation](../../adapters/README.md#history-import) (Englisch).
+
 ## Tipps
 
 - Downtimes und Acknowledgements im Monitoring ändern den übernommenen Zustand

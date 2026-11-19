@@ -161,3 +161,33 @@ of such objects is accepted as well.
   that list so the output cannot break the shell quoting of the command line.
 - Naemon only notifies on hard state changes; configure a re-notification
   interval or combine push with pull for reconciliation.
+
+## History import
+
+The history import reads the state history through the API, with the API key
+of the source (like the pull mode, not yet verified against a real
+installation). See [README.md](README.md#history-import) for the procedure and
+the rules.
+
+Requests, besides the paginated `services/index.json` / `hosts/index.json`
+that map UUIDs to numeric IDs and provide the current state:
+
+- `GET <base>/statehistories/service/<id>.json?angular=true&filter[from]=…&filter[to]=…&filter[StatehistoryServices.state_type]=1&sort=StatehistoryServices.state_time&direction=asc&page=<n>`
+- `GET <base>/statehistories/host/<id>.json?…` with `StatehistoryHosts.*` for host checks
+
+The API user needs permission to view the state history of the hosts and
+services it can see.
+
+- **Time zone**: openITCockpit formats `state_time` with the date format and
+  **time zone of the API user**. Unix timestamps and ISO 8601 with offset are
+  used as they are; `Y-m-d H:i:s`, `d.m.Y H:i:s`, `m/d/Y H:i:s` and
+  `H:i:s - d.m.Y` are read as **UTC**. Set the time zone of the API user to UTC
+  in its profile before importing.
+- Only hard states count (`state_type` filter, and `is_hardstate` when present).
+- The state before the first event in the range comes from the last change in
+  the 30 days before it, otherwise from the current status when its last hard
+  state change lies before the range.
+- **Retention**: openITCockpit deletes old state history according to its
+  cleanup settings; older periods stay empty.
+- One request per check and page: keep "Only checks used by services or
+  bundles" enabled for large installations.
