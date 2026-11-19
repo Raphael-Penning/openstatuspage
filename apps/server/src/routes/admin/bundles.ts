@@ -25,6 +25,7 @@ import { newId } from '../../lib/ids.js';
 import { IdParams, parse } from '../../lib/http.js';
 import { nowIso } from '../../lib/time.js';
 import { admin, auditRequest } from './util.js';
+import { recordCheckState } from '../../services/check-history.js';
 
 const CandidatesQuery = z.object({ type: z.enum(CONFIGURABLE_SOURCE_TYPES).optional() });
 
@@ -116,6 +117,7 @@ export async function registerBundleRoutes(app: FastifyInstance): Promise<void> 
           updated_at: now,
         })
         .execute();
+      await recordCheckState(trx, checkId, 'unknown', now);
       await trx
         .insertInto('check_bundles')
         .values({ id, name: input.name, description: input.description ?? null, check_id: checkId, created_at: now, updated_at: now })

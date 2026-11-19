@@ -8,6 +8,7 @@ import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso, toIso } from '../lib/time.js';
 import type { BundleService } from './bundles.js';
+import { recordCheckState } from './check-history.js';
 import type { StatusEngine } from './status-engine.js';
 
 export interface IngestResult {
@@ -95,6 +96,7 @@ export class IngestService {
               updated_at: now,
             })
             .execute();
+          await recordCheckState(trx, id, check.state, now);
           result.created++;
         } else {
           const changed = prev.state !== check.state;
@@ -118,6 +120,7 @@ export class IngestService {
             .execute();
           result.updated++;
           if (changed) {
+            await recordCheckState(trx, prev.id, check.state, now);
             result.stateChanges++;
             affectedCheckIds.push(prev.id);
           }

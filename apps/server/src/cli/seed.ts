@@ -11,6 +11,7 @@ import { newId, newToken } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { StatusEngine } from '../services/status-engine.js';
 import { saveSettings, DEFAULT_SETTINGS } from '../services/settings.js';
+import { recordCheckState } from '../services/check-history.js';
 
 // Demo data is meant for development; a real SECRET_KEY is still used when set.
 process.env.NODE_ENV ??= 'development';
@@ -184,6 +185,7 @@ for (const c of checks) {
       updated_at: ts,
     })
     .execute();
+  await recordCheckState(db, id, c.state, ts);
   for (const [service, critical] of c.services) {
     await db
       .insertInto('service_checks')
