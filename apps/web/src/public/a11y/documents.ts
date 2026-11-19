@@ -12,6 +12,7 @@ import type {
   PublicPageSettings,
   PublicService,
   PublicServiceGroup,
+  PublicSubscription,
   PublicSummary,
   RelationshipObject,
   ResourceObject,
@@ -153,3 +154,17 @@ export function historyDocument(history: Paginated<HistoryItem>): DataDocument {
   );
   return doc(data, included, { total: history.total, page: { number: history.page, size: history.pageSize } });
 }
+
+/** `subscriptions` resource; `manageToken` only in the confirm response (like the server). */
+export function subscriptionDocument(sub: PublicSubscription, manageToken?: string): DataDocument {
+  const { id, serviceIds, ...attributes } = sub;
+  return doc({
+    type: 'subscriptions',
+    id,
+    attributes: { ...attributes, ...(manageToken ? { manageToken } : {}) },
+    relationships: { services: idList('services', serviceIds) },
+  });
+}
+
+/** Answer of POST /api/public/subscriptions (always the same meta-only document). */
+export const subscribeAcceptedDocument = { jsonapi: { version: '1.1' }, meta: { accepted: true } };

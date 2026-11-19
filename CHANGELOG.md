@@ -22,4 +22,13 @@ breaking changes.
   - Public API: `/api/public/history` filters are `filter[type]`, `filter[service]`,
     `filter[location]` and `filter[month]`; history entries are `incidents` and
     `maintenances` resources instead of `{ type, date, incident | maintenance }`.
+  - Auth: login posts a `sessions` document and answers with `sessions/current`
+    (the user is included); `/api/auth/config` is `auth-configs/current`.
+  - `PUT` updates became partial `PATCH` updates: `/api/admin/users/:id`,
+    `/api/admin/settings` and `/api/public/subscriptions/:id`.
+  - Subscribe answers `202` with `meta.accepted`; confirm returns the
+    `subscriptions` resource with the `manageToken` attribute; the RFC 8058
+    one-click unsubscribe answers `204`.
+  - Admin lists: `/api/admin/audit-log` takes `filter[entityType]`,
+    `/api/admin/subscribers` takes `filter[q]` and `filter[status]`.
   - Unchanged: `/api/public/status.json`, `/api/health` and the RSS/Atom feeds.

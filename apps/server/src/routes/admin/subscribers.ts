@@ -1,8 +1,13 @@
-import { SubscriberListQuery, TestEmailInput, type AdminSubscriber, type NotificationStatus } from '@openstatuspage/shared';
+import { TestEmailInput, type AdminSubscriber } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
+import { z } from 'zod';
 import { notFound } from '../../lib/errors.js';
-import { IdParams, offsetOf, paginated, parse } from '../../lib/http.js';
+import { IdParams, parse } from '../../lib/http.js';
+import { collection, document, Included, metaDocument, noContent, selfLink } from '../../lib/jsonapi.js';
+import { parseListQuery } from '../../lib/jsonapi-query.js';
+import { useJsonApi } from '../../plugins/jsonapi.js';
+import { notificationStatusResource, subscriberResource } from '../../serializers/auth-users.js';
 import { deleteSubscriber, maskEmail } from '../../services/subscriptions.js';
 import { admin, auditRequest } from './util.js';
 
@@ -11,19 +16,30 @@ function likePattern(value: string): string {
   return `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-/** /api/admin/subscribers and /api/admin/notifications/* (admin) */
+/** Filters of GET /api/admin/subscribers: `filter[q]` (substring of the address) and `filter[status]`. */
+const SubscriberFilter = {
+  q: z.string().max(254).optional(),
+  status: z.enum(['all', 'confirmed', 'pending']).default('all'),
+};
+
+/** /api/admin/subscribers and /api/admin/notifications/* (admin, JSON:API) */
 export async function registerSubscriberRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(registerSubscriberScope);
+}
+
+async function registerSubscriberScope(app: FastifyInstance): Promise<void> {
+  useJsonApi(app);
   const { db, notifications } = app.ctx;
 
   app.get('/api/admin/subscribers', admin, async (req) => {
-    const q = parse(SubscriberListQuery, req.query);
+    const { page, filter } = parseListQuery(req.query, { page: { defaultSize: 50, maxSize: 100 }, filter: SubscriberFilter });
     let base = db.selectFrom('subscribers');
-    if (q.q) {
-      const pattern = likePattern(q.q.trim().toLowerCase());
+    if (filter.q?.trim()) {
+      const pattern = likePattern(filter.q.trim().toLowerCase());
       base = base.where(sql<boolean>`email like ${pattern} escape '\\'`);
     }
-    if (q.status === 'confirmed') base = base.where('confirmed_at', 'is not', null);
-    if (q.status === 'pending') base = base.where('confirmed_at', 'is', null);
+    if (filter.status === 'confirmed') base = base.where('confirmed_at', 'is not', null);
+    if (filter.status === 'pending') base = base.where('confirmed_at', 'is', null);
 
     const [total, rows] = await Promise.all([
       base
@@ -34,8 +50,8 @@ export async function registerSubscriberRoutes(app: FastifyInstance): Promise<vo
         .selectAll()
         .orderBy('created_at', 'desc')
         .orderBy('id')
-        .limit(q.pageSize)
-        .offset(offsetOf(q))
+        .limit(page.size)
+        .offset(page.offset)
         .execute(),
     ]);
 
@@ -61,7 +77,8 @@ export async function registerSubscriberRoutes(app: FastifyInstance): Promise<vo
       createdAt: r.created_at,
       confirmedAt: r.confirmed_at,
     }));
-    return paginated(items, total, q);
+    const included = new Included();
+    return collection(req, items.map((item) => subscriberResource(item, included)), { page, total, included });
   });
 
   app.delete('/api/admin/subscribers/:id', admin, async (req, reply) => {
@@ -70,21 +87,25 @@ export async function registerSubscriberRoutes(app: FastifyInstance): Promise<vo
     if (!row) throw notFound('Subscriber');
     await deleteSubscriber(db, id);
     await auditRequest(db, req, 'subscriber.delete', 'subscriber', id, { email: maskEmail(row.email) });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
-  app.get('/api/admin/notifications/status', admin, async (): Promise<NotificationStatus> => notifications.status());
+  app.get('/api/admin/notifications/status', admin, async (req) =>
+    document(notificationStatusResource(await notifications.status()), { links: { self: selfLink(req) } }),
+  );
+
+  // Actions: the results are meta-only documents.
 
   app.post('/api/admin/notifications/test', admin, async (req) => {
     const { to } = parse(TestEmailInput, req.body);
     const result = await notifications.sendTest(to.trim());
     await auditRequest(db, req, 'notifications.test', 'notifications', null, { to: maskEmail(to), ok: result.ok });
-    return result;
+    return metaDocument(result);
   });
 
   app.post('/api/admin/notifications/retry-failed', admin, async (req) => {
     const requeued = await notifications.retryFailed();
     await auditRequest(db, req, 'notifications.retry_failed', 'notifications', null, { requeued });
-    return { requeued };
+    return metaDocument({ requeued });
   });
 }

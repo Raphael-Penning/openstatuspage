@@ -38,7 +38,7 @@ export default function LoginPage() {
   const form = useForm({ email: '', password: '' });
 
   const login = useMutation({
-    mutationFn: (body: LoginInput) => api.post<SessionInfo>('/api/auth/login', body),
+    mutationFn: (body: LoginInput) => api.post<SessionInfo>('/api/auth/login', body, { type: 'sessions' }),
     onSuccess: async (info) => {
       queryClient.setQueryData(keys.session, info);
       await navigate(next, { replace: true });

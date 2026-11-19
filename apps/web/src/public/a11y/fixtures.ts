@@ -27,6 +27,8 @@ import {
   servicesDocument,
   settingsDocument,
   summaryDocument,
+  subscribeAcceptedDocument,
+  subscriptionDocument,
 } from './documents';
 
 const DAY = 86_400_000;
@@ -245,12 +247,12 @@ export function respond(method: string, path: string): { status: number; body: u
     if (path === '/api/public/incidents/inc-1') return ok(incidentDocument(incident));
     if (path === '/api/public/maintenances/m-1') return ok(maintenanceDocument(maintenance));
     if (path === '/api/public/history') return ok(historyDocument(history));
-    if (path === '/api/public/subscriptions/sub-1') return ok(subscription);
+    if (path === '/api/public/subscriptions/sub-1') return ok(subscriptionDocument(subscription));
   }
   if (method === 'POST' && path === '/api/public/subscriptions/sub-1/confirm') {
-    return ok({ subscription, manageToken: SUBSCRIPTION_TOKEN });
+    return ok(subscriptionDocument(subscription, SUBSCRIPTION_TOKEN));
   }
-  if (method === 'POST' && path === '/api/public/subscriptions') return ok({ ok: true });
+  if (method === 'POST' && path === '/api/public/subscriptions') return { status: 202, body: subscribeAcceptedDocument };
   return {
     status: 404,
     body: { jsonapi: { version: '1.1' }, errors: [{ status: '404', code: 'not_found', title: 'Not Found', detail: 'Not found' }] },

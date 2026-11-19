@@ -248,12 +248,12 @@ describe('public summary and services', () => {
   });
 
   it('respects showUptime and uptimeDays', async () => {
-    await admin.put('/api/admin/settings', { siteName: 'Status', showUptime: false });
+    await admin.patch('/api/admin/settings', { siteName: 'Status', showUptime: false });
     const off = await getData('/api/public/services');
     expect(off[0].uptime).toBeUndefined();
     expect(off[0].uptimePercent).toBeNull();
 
-    await admin.put('/api/admin/settings', { siteName: 'Status', uptimeDays: 30 });
+    await admin.patch('/api/admin/settings', { showUptime: true, uptimeDays: 30 });
     const on = await getData('/api/public/services');
     expect(on[0].uptime).toHaveLength(30);
   });
@@ -354,7 +354,7 @@ describe('status.json and feeds', () => {
 
   it('renders RSS and Atom with escaped content', async () => {
     await admin.post('/api/admin/incidents', { title: 'Errors <script>alert("x")</script> & more', message: 'a < b' });
-    await admin.put('/api/admin/settings', { siteName: 'Example & Co' });
+    await admin.patch('/api/admin/settings', { siteName: 'Example & Co' });
 
     const rss = await get('/feed.rss');
     expect(rss.headers['content-type']).toContain('application/rss+xml');

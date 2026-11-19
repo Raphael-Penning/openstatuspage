@@ -104,6 +104,7 @@ export function useAuthConfig() {
   return useQuery({ queryKey: keys.authConfig, queryFn: () => api.get<AuthConfig>('/api/auth/config'), staleTime: 5 * 60_000 });
 }
 
+/** The session resource `sessions/current`; its user comes from `included`. */
 export function useSessionQuery() {
   return useQuery({
     queryKey: keys.session,
@@ -124,6 +125,7 @@ function useAdminQuery<T>(queryKey: readonly unknown[], path: string, query?: Re
   });
 }
 
+/** `overviews/current`; services and recent audit entries come from `included`. */
 export const useOverview = () => useAdminQuery<AdminOverview>(keys.overview, '/api/admin/overview');
 export const useServices = () => useAdminQuery<AdminService[]>(keys.services, '/api/admin/services');
 export const useService = (id: string | undefined) =>
@@ -190,10 +192,14 @@ export const useSettings = () => useAdminQuery<PublicPageSettings>(keys.settings
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
 export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
-  useAdminQuery<Paginated<AuditLogEntry>>(keys.audit(page, entityType), '/api/admin/audit-log', {
-    page,
-    pageSize,
-    entityType: entityType || undefined,
+  useQuery({
+    queryKey: keys.audit(page, entityType),
+    queryFn: () =>
+      api.getPage<AuditLogEntry>('/api/admin/audit-log', {
+        page: { number: page, size: pageSize },
+        filter: { entityType: entityType || undefined },
+      }),
+    retry: notRetryingClientErrors,
   });
 
 export const useCorrections = (filter: CorrectionsFilter, pageSize = 20) =>
@@ -209,7 +215,11 @@ export const useServiceHistory = (id: string, from: string, to: string, enabled 
 export const useSubscribers = (query: SubscriberListQuery) =>
   useQuery({
     queryKey: keys.subscribers(query),
-    queryFn: () => api.get<Paginated<AdminSubscriber>>('/api/admin/subscribers', { ...query, q: query.q || undefined }),
+    queryFn: () =>
+      api.getPage<AdminSubscriber>('/api/admin/subscribers', {
+        page: { number: query.page, size: query.pageSize },
+        filter: { q: query.q || undefined, status: query.status },
+      }),
     retry: notRetryingClientErrors,
     placeholderData: keepPreviousData,
   });

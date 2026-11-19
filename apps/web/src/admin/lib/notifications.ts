@@ -3,7 +3,7 @@
  */
 import type { MailTransportKind } from '@openstatuspage/shared';
 
-/** Response of POST /api/admin/notifications/test. */
+/** `meta` of the POST /api/admin/notifications/test response. */
 export interface TestEmailResponse {
   ok: boolean;
   /** English text from the server; on failure the SMTP error. */

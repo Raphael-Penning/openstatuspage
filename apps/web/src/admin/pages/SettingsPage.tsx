@@ -76,7 +76,7 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
   const form = useForm<Values>(() => toValues(settings));
   const v = form.values;
 
-  const save = useAdminMutation((body: SettingsInput) => api.put<PublicPageSettings>('/api/admin/settings', body), {
+  const save = useAdminMutation((body: SettingsInput) => api.patch<PublicPageSettings>('/api/admin/settings', body, { type: 'settings', id: 'site' }), {
     success: t('settings.saved'),
     onSuccess: async (saved) => {
       form.setValues(toValues(saved));

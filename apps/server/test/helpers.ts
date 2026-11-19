@@ -81,9 +81,19 @@ export async function createUser(
   return id;
 }
 
+/** POST /api/auth/login with the JSON:API request document (type "sessions"). */
+export function loginRequest(email: string, password: string, headers: Record<string, string> = {}): InjectOptions {
+  return {
+    method: 'POST',
+    url: '/api/auth/login',
+    headers: { 'content-type': JSONAPI_MEDIA_TYPE, ...headers },
+    payload: JSON.stringify(doc('sessions', { email, password })),
+  };
+}
+
 /** Logs in and returns the `Cookie` header value. */
 export async function login(app: FastifyInstance, email: string, password = PASSWORD): Promise<string> {
-  const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
+  const res = await app.inject(loginRequest(email, password));
   if (res.statusCode !== 200) throw new Error(`login failed: ${res.statusCode} ${res.body}`);
   const cookie = res.cookies.find((c) => c.name === 'osp_session');
   if (!cookie) throw new Error('no session cookie');
