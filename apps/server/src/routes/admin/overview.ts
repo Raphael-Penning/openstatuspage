@@ -161,7 +161,9 @@ async function registerOverviewScope(app: FastifyInstance): Promise<void> {
     return document(overview, { included, links: { self: selfLink(req) } });
   });
 
-  app.get('/api/admin/settings', editor, async (req) => document(adminSettingsResource(await getSettings(db)), { links: { self: selfLink(req) } }));
+  app.get('/api/admin/settings', editor, async (req) =>
+    document(adminSettingsResource(await getSettings(db)), { links: { self: selfLink(req) } }),
+  );
 
   // Partial update: missing attributes keep their current value.
   app.patch('/api/admin/settings', { ...admin, config: { jsonapi: { type: AUTH_TYPES.settings } } }, async (req) => {

@@ -84,88 +84,91 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
       registerSubscriptionApi(api, manageRoute, queryTokenRoute);
     });
   });
+}
 
-  function registerSubscriptionApi(
-    scope: FastifyInstance,
-    manageRoute: { config: { rateLimit: { max: number; timeWindow: string } } },
-    queryTokenRoute: typeof manageRoute & { logLevel: 'warn' },
-  ): void {
-    const { ctx } = app;
-    /** The answer to every subscribe request, whatever happens afterwards. */
-    const accepted = () => metaDocument({ accepted: true });
+type ManageRoute = { config: { rateLimit: { max: number; timeWindow: string } } };
 
-    scope.post(
-      '/api/public/subscriptions',
-      { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, jsonapi: { type: AUTH_TYPES.subscription } } },
-      async (req, reply) => {
-        if (!(await subscriptionsAvailable(ctx))) throw notFound('Subscriptions');
-        const input = parse(SubscribeInput, req.body);
-        // Honeypot filled in (bots): answer like a successful subscribe, but create and send nothing.
-        if (input.website) return reply.status(202).send(accepted());
-        // Checked before answering (400 on unknown or hidden services); does not look at subscribers.
-        const serviceIds = input.allServices ? [] : await assertPublicServices(ctx.db, input.serviceIds);
-        // What happens next, and how long it takes, depends on whether the address is
-        // new, pending or confirmed. It runs once the answer has been sent, so neither
-        // the answer nor its timing reveals whether an address is subscribed.
-        const answered = new Promise<void>((resolve) => reply.raw.once('close', () => resolve()));
-        ctx.worker.runDetached('subscribe', async () => {
-          await answered;
-          await subscribe(ctx, { ...input, serviceIds });
-        });
-        return reply.status(202).send(accepted());
-      },
-    );
+/** The JSON:API routes (everything except the browser redirect). */
+function registerSubscriptionApi(
+  scope: FastifyInstance,
+  manageRoute: ManageRoute,
+  queryTokenRoute: ManageRoute & { logLevel: 'warn' },
+): void {
+  const { ctx } = scope;
+  /** The answer to every subscribe request, whatever happens afterwards. */
+  const accepted = () => metaDocument({ accepted: true });
 
-    // Action: `{ data: { type: "subscriptions", id, attributes: { token } } }` → the subscription with `manageToken`.
-    scope.post('/api/public/subscriptions/:id/confirm', manageRoute, async (req) => {
-      const { id } = parse(IdParams, req.params);
-      const { token } = parse(SubscriptionConfirmInput, req.body);
-      const { subscription, manageToken } = await confirmSubscription(ctx, id, token);
-      return document(subscriptionResource(subscription, { manageToken }));
-    });
+  scope.post(
+    '/api/public/subscriptions',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, jsonapi: { type: AUTH_TYPES.subscription } } },
+    async (req, reply) => {
+      if (!(await subscriptionsAvailable(ctx))) throw notFound('Subscriptions');
+      const input = parse(SubscribeInput, req.body);
+      // Honeypot filled in (bots): answer like a successful subscribe, but create and send nothing.
+      if (input.website) return reply.status(202).send(accepted());
+      // Checked before answering (400 on unknown or hidden services); does not look at subscribers.
+      const serviceIds = input.allServices ? [] : await assertPublicServices(ctx.db, input.serviceIds);
+      // What happens next, and how long it takes, depends on whether the address is
+      // new, pending or confirmed. It runs once the answer has been sent, so neither
+      // the answer nor its timing reveals whether an address is subscribed.
+      const answered = new Promise<void>((resolve) => reply.raw.once('close', () => resolve()));
+      ctx.worker.runDetached('subscribe', async () => {
+        await answered;
+        await subscribe(ctx, { ...input, serviceIds });
+      });
+      return reply.status(202).send(accepted());
+    },
+  );
 
-    scope.get('/api/public/subscriptions/:id', manageRoute, async (req) => {
-      const { id } = parse(IdParams, req.params);
-      const sub = await findByToken(ctx, id, 'manage', headerToken(req));
-      return document(subscriptionResource(await toPublicSubscription(ctx.db, sub)));
-    });
+  // Action: `{ data: { type: "subscriptions", id, attributes: { token } } }` → the subscription with `manageToken`.
+  scope.post('/api/public/subscriptions/:id/confirm', manageRoute, async (req) => {
+    const { id } = parse(IdParams, req.params);
+    const { token } = parse(SubscriptionConfirmInput, req.body);
+    const { subscription, manageToken } = await confirmSubscription(ctx, id, token);
+    return document(subscriptionResource(subscription, { manageToken }));
+  });
 
-    scope.patch(
-      '/api/public/subscriptions/:id',
-      { config: { ...manageRoute.config, jsonapi: { type: AUTH_TYPES.subscription } } },
-      async (req) => {
-        const { id } = parse(IdParams, req.params);
-        const sub = await findByToken(ctx, id, 'manage', headerToken(req));
-        // Partial update: what is left out keeps its value.
-        const current = await toPublicSubscription(ctx.db, sub);
-        const input = parse(SubscriptionPreferencesInput, {
-          locale: current.locale,
-          allServices: current.allServices,
-          serviceIds: current.serviceIds,
-          ...(req.body as object),
-        });
-        return document(subscriptionResource(await updatePreferences(ctx, sub, input)));
-      },
-    );
+  scope.get('/api/public/subscriptions/:id', manageRoute, async (req) => {
+    const { id } = parse(IdParams, req.params);
+    const sub = await findByToken(ctx, id, 'manage', headerToken(req));
+    return document(subscriptionResource(await toPublicSubscription(ctx.db, sub)));
+  });
 
-    scope.delete('/api/public/subscriptions/:id', manageRoute, async (req, reply) => {
+  scope.patch(
+    '/api/public/subscriptions/:id',
+    { config: { ...manageRoute.config, jsonapi: { type: AUTH_TYPES.subscription } } },
+    async (req) => {
       const { id } = parse(IdParams, req.params);
       const sub = await findByToken(ctx, id, 'manage', headerToken(req));
+      // Partial update: what is left out keeps its value.
+      const current = await toPublicSubscription(ctx.db, sub);
+      const input = parse(SubscriptionPreferencesInput, {
+        locale: current.locale,
+        allServices: current.allServices,
+        serviceIds: current.serviceIds,
+        ...(req.body as object),
+      });
+      return document(subscriptionResource(await updatePreferences(ctx, sub, input)));
+    },
+  );
+
+  scope.delete('/api/public/subscriptions/:id', manageRoute, async (req, reply) => {
+    const { id } = parse(IdParams, req.params);
+    const sub = await findByToken(ctx, id, 'manage', headerToken(req));
+    await deleteSubscriber(ctx.db, sub.id);
+    return noContent(reply);
+  });
+
+  // RFC 8058 one-click: mail clients post a form body ("List-Unsubscribe=One-Click"), not JSON:API.
+  scope.post(
+    '/api/public/subscriptions/:id/unsubscribe',
+    { ...queryTokenRoute, config: { ...queryTokenRoute.config, jsonapi: { requestBody: 'native' } } },
+    async (req, reply) => {
+      const { id } = parse(IdParams, req.params);
+      const { token } = parse(TokenQuery, req.query);
+      const sub = await findByToken(ctx, id, 'manage', token);
       await deleteSubscriber(ctx.db, sub.id);
       return noContent(reply);
-    });
-
-    // RFC 8058 one-click: mail clients post a form body ("List-Unsubscribe=One-Click"), not JSON:API.
-    scope.post(
-      '/api/public/subscriptions/:id/unsubscribe',
-      { ...queryTokenRoute, config: { ...queryTokenRoute.config, jsonapi: { requestBody: 'native' } } },
-      async (req, reply) => {
-        const { id } = parse(IdParams, req.params);
-        const { token } = parse(TokenQuery, req.query);
-        const sub = await findByToken(ctx, id, 'manage', token);
-        await deleteSubscriber(ctx.db, sub.id);
-        return noContent(reply);
-      },
-    );
-  }
+    },
+  );
 }
