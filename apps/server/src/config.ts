@@ -34,6 +34,15 @@ const EnvSchema = z.object({
   /** `sqlite:<path>` or `postgres://user:pass@host:5432/db`. */
   DATABASE_URL: z.string().default('sqlite:./data/openstatuspage.db'),
   /**
+   * PostgreSQL only: the restricted database role (login) of APP_ROLE=public instances.
+   * Instances that migrate grant it access to the osp_public schema on every start,
+   * once the role exists (deploy/postgres/roles.sql, docs/security-model.md).
+   */
+  DB_PUBLIC_ROLE: z
+    .string()
+    .regex(/^[a-z_][a-z0-9_]{0,62}$/, 'expected a lower-case PostgreSQL role name')
+    .default('osp_public'),
+  /**
    * Secret used to encrypt monitoring credentials at rest and to sign cookies.
    * At least 32 characters. Changing it makes stored credentials unreadable.
    */
