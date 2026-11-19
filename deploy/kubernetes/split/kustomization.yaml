@@ -5,17 +5,20 @@
 #
 #   1. Create the namespace and the three secrets (never commit them):
 #        kubectl apply -f namespace.yaml
+#        TOKEN_KEY="$(openssl rand -base64 48)"   # the key of the subscription links
 #        kubectl -n openstatuspage create secret generic openstatuspage-public \
-#          --from-literal=SECRET_KEY="$(openssl rand -base64 48)" \
+#          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
 #          --from-literal=DATABASE_URL='postgres://osp_public:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
 #          --from-literal=MAIL_TRANSPORT=smtp --from-literal=SMTP_FROM='Example Status <status@example.com>'
 #        kubectl -n openstatuspage create secret generic openstatuspage-admin \
-#          --from-literal=SECRET_KEY="<the same SECRET_KEY>" \
+#          --from-literal=SECRET_KEY="$(openssl rand -base64 48)" \
+#          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
 #          --from-literal=DATABASE_URL='postgres://openstatuspage:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
 #          --from-literal=ADMIN_EMAIL=admin@example.com \
 #          --from-literal=ADMIN_PASSWORD='a-long-password'
 #        kubectl -n openstatuspage create secret generic openstatuspage-worker \
-#          --from-literal=SECRET_KEY="<the same SECRET_KEY>" \
+#          --from-literal=SECRET_KEY="<the SECRET_KEY of the admin secret>" \
+#          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
 #          --from-literal=DATABASE_URL='postgres://openstatuspage:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
 #          --from-literal=SMTP_HOST=smtp.example.com --from-literal=SMTP_USER=status@example.com \
 #          --from-literal=SMTP_PASSWORD='...' --from-literal=SMTP_FROM='Example Status <status@example.com>'
@@ -25,7 +28,8 @@
 #      an example). Restrict the admin domain, for example with an IP allowlist.
 #   4. kubectl apply -k deploy/kubernetes/split
 #
-# The public Deployment holds only the public role's database URL. The worker is
+# The public Deployment holds only the public role's database URL and the key of
+# the subscription links, never SECRET_KEY. The worker is
 # the only pod that polls monitoring systems. Replicas: public is stateless and
 # can scale out; admin and worker run one replica each by default (several worker
 # replicas are safe on PostgreSQL, see docs/guide/en/09-operations.md).

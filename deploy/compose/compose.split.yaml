@@ -58,8 +58,8 @@ services:
     <<: *image
     ports:
       - "${PUBLIC_BIND:-127.0.0.1}:${PUBLIC_HOST_PORT:-3000}:3000"
-    # No env_file: the public instance gets only the settings listed here, not the
-    # admin password, the OIDC or the SMTP secrets.
+    # No env_file: the public instance gets only the settings listed here, not
+    # SECRET_KEY, the admin password, the OIDC or the SMTP secrets.
     environment:
       APP_ROLE: public
       HOST: 0.0.0.0
@@ -71,7 +71,9 @@ services:
       # Subscriptions are offered when mails are configured; the worker sends them.
       MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
       SMTP_FROM: ${SMTP_FROM:-}
-      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      # Only the key of the subscription links, never SECRET_KEY (it decrypts the
+      # monitoring credentials and signs the admin cookies).
+      SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
       DATABASE_URL: postgres://osp_public:${POSTGRES_PUBLIC_PASSWORD:?set POSTGRES_PUBLIC_PASSWORD in .env}@db:5432/openstatuspage
     depends_on:
       db:
@@ -100,6 +102,7 @@ services:
       # Links in subscriber mails and feeds point to the public page.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
       DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
     depends_on:
       db:
@@ -119,6 +122,7 @@ services:
       BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
       DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
     depends_on:
       db:

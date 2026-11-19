@@ -357,7 +357,7 @@ export interface SubscribersTable {
   confirm_token_hash: string | null;
   /** SHA-256 (hex) of the manage token. */
   manage_token_hash: string | null;
-  /** Fingerprint of the SECRET_KEY the hashes were derived from (null = not derived yet). */
+  /** Fingerprint of the token key (SUBSCRIPTION_TOKEN_KEY) the hashes were derived from (null = not derived yet). */
   token_key: string | null;
 }
 

@@ -43,7 +43,7 @@ spec:
               value: "1"
           envFrom:
             - secretRef:
-                name: openstatuspage-public # SECRET_KEY, DATABASE_URL (osp_public), mail queue settings
+                name: openstatuspage-public # SUBSCRIPTION_TOKEN_KEY, DATABASE_URL (osp_public), mail queue settings
           startupProbe:
             httpGet:
               path: /api/health

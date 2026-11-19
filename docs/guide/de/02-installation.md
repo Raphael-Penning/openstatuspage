@@ -262,8 +262,8 @@ git clone https://github.com/Raphael-Penning/openstatuspage.git
 cd openstatuspage/deploy/compose
 cp .env.example .env
 chmod 600 .env
-printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
-  "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
+printf 'SECRET_KEY=%s\nSUBSCRIPTION_TOKEN_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
+  "$(openssl rand -base64 48)" "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
 # .env bearbeiten, siehe unten
 docker compose -f compose.split.yaml up -d
 ```
@@ -282,8 +282,8 @@ das Kommentarzeichen davor:
 Verwende in `POSTGRES_PASSWORD` und `POSTGRES_PUBLIC_PASSWORD` nur Buchstaben und
 Ziffern: Beide stehen in einer Verbindungs-URL. `BASE_URL` in `.env` nutzt diese
 Datei nicht; die Compose-Datei setzt die Basis-URL jedes Containers selbst.
-`SECRET_KEY` muss in allen Containern gleich sein; die öffentliche Instanz
-braucht ihn, um Abonnement-Links zu prüfen.
+Nur Admin und Worker bekommen `SECRET_KEY`; der öffentliche Container bekommt
+stattdessen `SUBSCRIPTION_TOKEN_KEY`, den Schlüssel der Abonnement-Links.
 
 Das Init-Skript legt die Rolle `osp_public` mit `POSTGRES_PUBLIC_PASSWORD` an,
 wenn das Datenvolumen zum ersten Mal erstellt wird. Ist dieser Schritt
@@ -344,8 +344,9 @@ docker compose -f compose.split.yaml up -d public
   `osp_public` ist dem Internet zugewandt. Für eine strengere Einrichtung lege
   mit `deploy/postgres/roles.sql` (`app_password`) eine Anwendungsrolle ohne
   Superuser-Rechte an und setze `DATABASE_URL` von Admin und Worker auf sie.
-- **Ein gemeinsamer `SECRET_KEY`.** Alle drei Container haben ihn. Halte die
-  `.env`-Datei privat und sichere sie, siehe [Betrieb](09-operations.md#secret_key).
+- **Gemeinsame Geheimnisse.** Admin und Worker haben `SECRET_KEY`, alle drei
+  Container haben `SUBSCRIPTION_TOKEN_KEY`. Halte die `.env`-Datei privat und
+  sichere sie, siehe [Betrieb](09-operations.md#secret_key).
 - **Nur PostgreSQL.** SQLite ist eine Datenbank für eine einzelne Instanz und
   unterstützt nur die Rolle `all`.
 - **Ein Host.** Die Compose-Datei ist ein Beispiel für eine Maschine. Für mehrere

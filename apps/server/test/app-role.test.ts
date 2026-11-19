@@ -59,6 +59,23 @@ describe('APP_ROLE configuration', () => {
     }
   });
 
+  it('lets a public instance run with SUBSCRIPTION_TOKEN_KEY instead of SECRET_KEY', () => {
+    const prod = { NODE_ENV: 'production', DATABASE_URL: PG, APP_ROLE: 'public' };
+    const tokenKey = 'subscription-token-key-that-is-long-enough-123';
+    expect(() => loadConfig(prod)).toThrow(/SUBSCRIPTION_TOKEN_KEY must be set for APP_ROLE=public/);
+    const pub = loadConfig({ ...prod, SUBSCRIPTION_TOKEN_KEY: tokenKey });
+    expect(pub.SUBSCRIPTION_TOKEN_KEY).toBe(tokenKey);
+    // A random key of its own for everything else: nothing derived from it outlives the process.
+    expect(pub.SECRET_KEY).not.toBe(tokenKey);
+    expect(pub.SECRET_KEY.length).toBeGreaterThanOrEqual(32);
+    expect(pub.insecureSecret).toBe(false);
+    // Every other role still needs SECRET_KEY; the token key defaults to it.
+    expect(() => loadConfig({ ...prod, APP_ROLE: 'admin', SUBSCRIPTION_TOKEN_KEY: tokenKey })).toThrow(/SECRET_KEY must be set/);
+    const secret = 'secret-key-that-is-long-enough-1234567890';
+    expect(loadConfig({ ...prod, APP_ROLE: 'admin', SECRET_KEY: secret }).SUBSCRIPTION_TOKEN_KEY).toBe(secret);
+    expect(() => loadConfig({ ...prod, SUBSCRIPTION_TOKEN_KEY: 'short' })).toThrow(/SUBSCRIPTION_TOKEN_KEY/);
+  });
+
   it('only enables OIDC where the login is served', () => {
     const env = { NODE_ENV: 'test', DATABASE_URL: PG, OIDC_ISSUER_URL: 'https://idp.example.com', OIDC_CLIENT_ID: 'osp' };
     expect(loadConfig({ ...env, APP_ROLE: 'admin' }).oidcEnabled).toBe(true);

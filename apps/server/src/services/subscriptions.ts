@@ -3,8 +3,9 @@
  *
  * Tokens are never stored, not even in the mail outbox (queued mails hold
  * placeholders, see TOKEN_PLACEHOLDERS): every subscriber has a random `token_salt`, and
- *   confirmToken = base64url(HMAC-SHA256(SECRET_KEY, "subscription-confirm:<id>:<salt>"))
- *   manageToken  = base64url(HMAC-SHA256(SECRET_KEY, "subscription-manage:<id>:<salt>"))
+ *   confirmToken = base64url(HMAC-SHA256(key, "subscription-confirm:<id>:<salt>"))
+ *   manageToken  = base64url(HMAC-SHA256(key, "subscription-manage:<id>:<salt>"))
+ * where key is SUBSCRIPTION_TOKEN_KEY (default SECRET_KEY).
  * Tokens are compared in constant time. Unknown ids and wrong tokens produce
  * the same 404, and subscribing always answers 202, so addresses cannot be
  * enumerated.
@@ -66,8 +67,8 @@ export const TOKEN_PLACEHOLDERS: Readonly<SubscriptionTokens> = {
 /** The real confirm and manage tokens of a subscriber. */
 export function subscriberTokens(config: Config, sub: Pick<Subscriber, 'id' | 'token_salt'>): SubscriptionTokens {
   return {
-    confirm: subscriptionToken(config.SECRET_KEY, 'confirm', sub.id, sub.token_salt),
-    manage: subscriptionToken(config.SECRET_KEY, 'manage', sub.id, sub.token_salt),
+    confirm: subscriptionToken(config.SUBSCRIPTION_TOKEN_KEY, 'confirm', sub.id, sub.token_salt),
+    manage: subscriptionToken(config.SUBSCRIPTION_TOKEN_KEY, 'manage', sub.id, sub.token_salt),
   };
 }
 
@@ -76,7 +77,7 @@ export function tokenHash(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
-/** Fingerprint of SECRET_KEY stored next to the token hashes (one-way, reveals nothing about the key). */
+/** Fingerprint of the token key stored next to the token hashes (one-way, reveals nothing about the key). */
 export function tokenKeyFingerprint(secret: string): string {
   return createHmac('sha256', secret).update('subscription-token-key').digest('base64url').slice(0, 16);
 }
@@ -89,7 +90,7 @@ export interface SubscriptionTokenHashes {
 
 /**
  * Hashes of a subscriber's tokens. They let the database verify a token without
- * SECRET_KEY (the functions of the restricted public role do, see 0007_public_role).
+ * the token key (the functions of the restricted public role do, see 0007_public_role).
  */
 export function subscriptionTokenHashes(
   secret: string,
@@ -104,7 +105,7 @@ export function subscriptionTokenHashes(
 
 /**
  * Stores the token hashes of subscribers that have none yet or whose hashes were
- * derived from another SECRET_KEY (rows from before 0006, a changed key). Runs on
+ * derived from another token key (rows from before 0006, a changed key). Runs on
  * the start of every instance that migrates; returns the number of updated rows.
  */
 export async function syncSubscriptionTokenHashes(db: DB, secret: string, batch = 500): Promise<number> {
@@ -297,7 +298,7 @@ export async function subscribe(ctx: AppContext, input: SubscribeInput, now = ne
       confirmation_sent_at: null,
       created_at: nowIso,
       updated_at: nowIso,
-      ...subscriptionTokenHashes(ctx.config.SECRET_KEY, { id, token_salt: tokenSalt }),
+      ...subscriptionTokenHashes(ctx.config.SUBSCRIPTION_TOKEN_KEY, { id, token_salt: tokenSalt }),
     };
     try {
       await db.transaction().execute(async (trx) => {
@@ -331,7 +332,7 @@ export async function findByToken(
   const sub = await ctx.db.selectFrom('subscribers').selectAll().where('id', '=', id).executeTakeFirst();
   // Compute an HMAC even for unknown ids so both paths take similar time.
   const valid = verifySubscriptionToken(
-    ctx.config.SECRET_KEY,
+    ctx.config.SUBSCRIPTION_TOKEN_KEY,
     kind,
     sub ?? { id, token_salt: 'unknown' },
     token ?? '',
@@ -359,7 +360,7 @@ export async function confirmSubscription(
   }
   return {
     subscription: await toPublicSubscription(ctx.db, sub),
-    manageToken: subscriptionToken(ctx.config.SECRET_KEY, 'manage', sub.id, sub.token_salt),
+    manageToken: subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', sub.id, sub.token_salt),
   };
 }
 

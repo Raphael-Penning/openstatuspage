@@ -71,7 +71,7 @@ export async function startSubscription(ctx: AppContext, input: SubscribeInput):
   if (!usesDatabaseFunctions(ctx.config)) return subscribe(ctx, input);
   const id = newId();
   const tokenSalt = randomBytes(16).toString('base64url');
-  const hashes = subscriptionTokenHashes(ctx.config.SECRET_KEY, { id, token_salt: tokenSalt });
+  const hashes = subscriptionTokenHashes(ctx.config.SUBSCRIPTION_TOKEN_KEY, { id, token_salt: tokenSalt });
   const serviceIds = input.allServices ? [] : input.serviceIds;
   // id, salt and hashes are only used when the address is new.
   await call(() =>
@@ -96,7 +96,7 @@ export async function confirm(
   if (!row) throw notFound('Subscription');
   return {
     subscription: fromRow(row),
-    manageToken: subscriptionToken(ctx.config.SECRET_KEY, 'manage', row.id, row.token_salt),
+    manageToken: subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', row.id, row.token_salt),
   };
 }
 

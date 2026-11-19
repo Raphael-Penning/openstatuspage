@@ -23,7 +23,8 @@ Go through this list before going live and after larger changes.
       not published.
 - [ ] Split deployment: the `public` instance logs in as its own restricted
       role (`DB_PUBLIC_ROLE`, created with `deploy/postgres/roles.sql`) and
-      logs no warning about an unrestricted login; the admin host is not
+      logs no warning about an unrestricted login; it gets
+      `SUBSCRIPTION_TOKEN_KEY` but not `SECRET_KEY`; the admin host is not
       reachable from the internet. See [Security model](../../security-model.md).
 
 ## Secrets

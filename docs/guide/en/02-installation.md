@@ -251,8 +251,8 @@ git clone https://github.com/Raphael-Penning/openstatuspage.git
 cd openstatuspage/deploy/compose
 cp .env.example .env
 chmod 600 .env
-printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
-  "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
+printf 'SECRET_KEY=%s\nSUBSCRIPTION_TOKEN_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
+  "$(openssl rand -base64 48)" "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
 # edit .env, see below
 docker compose -f compose.split.yaml up -d
 ```
@@ -269,8 +269,9 @@ In `.env`, uncomment and set the variables of the section *Split deployment*:
 
 Use letters and digits only in `POSTGRES_PASSWORD` and `POSTGRES_PUBLIC_PASSWORD`:
 both are part of a connection URL. `BASE_URL` in `.env` is not used by this file;
-the compose file sets the base URL of each container. `SECRET_KEY` must be the
-same for all containers; the public instance needs it to check subscription links.
+the compose file sets the base URL of each container. Only admin and worker
+get `SECRET_KEY`; the public container gets `SUBSCRIPTION_TOKEN_KEY`, the key of
+the subscription links, instead.
 
 The database init script creates the role `osp_public` with
 `POSTGRES_PUBLIC_PASSWORD` when the data volume is created for the first time.
@@ -331,8 +332,9 @@ docker compose -f compose.split.yaml up -d public
   faces the internet. For a stricter setup, create a non-superuser application
   role with `deploy/postgres/roles.sql` (`app_password`) and point `DATABASE_URL`
   of admin and worker to it.
-- **One shared `SECRET_KEY`.** All three containers hold it. Keep the `.env` file
-  private and back it up, see [Operations](09-operations.md#secret_key).
+- **Shared secrets.** Admin and worker hold `SECRET_KEY`, all three containers
+  hold `SUBSCRIPTION_TOKEN_KEY`. Keep the `.env` file private and back it up,
+  see [Operations](09-operations.md#secret_key).
 - **PostgreSQL only.** SQLite is a single-instance database and supports only the
   combined `all` role.
 - **One host.** The compose file is an example for one machine. For several

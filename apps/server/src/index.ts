@@ -19,6 +19,12 @@ async function main(): Promise<void> {
   const { ctx } = app;
   app.log.info({ role: config.APP_ROLE, worker: config.WORKER_ENABLED }, 'instance role');
 
+  if (config.APP_ROLE === 'public' && process.env.SECRET_KEY) {
+    app.log.warn(
+      'APP_ROLE=public does not need SECRET_KEY: give the public instance only SUBSCRIPTION_TOKEN_KEY, so a ' +
+        'compromised public host does not hold the key of the monitoring credentials (docs/security-model.md).',
+    );
+  }
   if (config.insecureSecret) {
     app.log.warn('SECRET_KEY is not set: using the public development secret. Never use this in production.');
   }

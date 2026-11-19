@@ -286,8 +286,10 @@ with separate public, admin and worker instances):
   time and once per interval, each source is polled once per interval, and
   each email is sent once. If a worker instance stops, another one takes over
   its tasks within about a minute.
-- Use the same `SECRET_KEY` and `BASE_URL` on all instances. Logins work on
-  every instance (sessions are stored in the database).
+- Use the same `SECRET_KEY` and `BASE_URL` on all instances of a role, and the
+  same `SUBSCRIPTION_TOKEN_KEY` and `PUBLIC_BASE_URL` everywhere. A public
+  instance gets only `SUBSCRIPTION_TOKEN_KEY`, never `SECRET_KEY`. Logins work
+  on every admin instance (sessions are stored in the database).
 - Rate limits are counted per instance: with three instances behind a load
   balancer a client can try to log in up to three times as often. If that
   matters to you, let the proxy send each client to the same instance (sticky

@@ -32,7 +32,8 @@ The Docker image also sets `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`.** Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
+| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
+| `SUBSCRIPTION_TOKEN_KEY` | `SECRET_KEY` | At least 32 characters. Key of the email subscription links (confirm, manage, unsubscribe). A split deployment sets its own value, the same on every instance, and gives the `public` instance only this key instead of `SECRET_KEY`. Changing it invalidates links in emails already sent; the admin and worker instances refresh the stored token hashes on their next start. |
 | `SESSION_TTL_HOURS` | `168` (7 days) | Session lifetime. The expiry slides: active sessions are extended, idle ones expire after this many hours. Range 1–2160. |
 | `SESSION_MAX_AGE_HOURS` | `720` (30 days) | Absolute session lifetime, counted from the login. Active sessions are never extended past it, so everybody has to log in again (and SSO users pass the IdP checks again) at least this often. Range 1–8760, at least `SESSION_TTL_HOURS`; when unset and `SESSION_TTL_HOURS` is longer, that value is used. |
 
@@ -141,7 +142,10 @@ and polls are coordinated through the database, and every instance can serve eve
 request. Set `PUBLIC_BASE_URL` to the public domain on admin and worker
 instances: mails are written on the instance where an incident is created (the
 admin instance), and their links must not point to the restricted admin domain.
-Use the same `SECRET_KEY` everywhere. Rate limits are counted per instance
+Use the same `SUBSCRIPTION_TOKEN_KEY` everywhere and the same `SECRET_KEY` on
+the admin and worker instances. Do not give the public instance `SECRET_KEY`: it
+only needs `SUBSCRIPTION_TOKEN_KEY` (and logs a warning when it gets
+`SECRET_KEY`). Rate limits are counted per instance
 (see [Rate limits](#rate-limits)). Details: [architecture.md](architecture.md#several-instances).
 
 SQLite is a single-file database for one instance: with SQLite only `APP_ROLE=all`
@@ -177,8 +181,8 @@ With Docker Compose every variable goes into the `.env` next to `compose.yaml`
 are set by `compose.yaml` itself (use `HOST_PORT` for the published port).
 
 `BASE_URL` must be the public URL of the status page: all links in emails use it.
-Confirmation and unsubscribe links are signed with `SECRET_KEY`; changing it
-invalidates links in emails already sent.
+Confirmation and unsubscribe links are signed with `SUBSCRIPTION_TOKEN_KEY`
+(default `SECRET_KEY`); changing it invalidates links in emails already sent.
 
 ## Rate limits
 

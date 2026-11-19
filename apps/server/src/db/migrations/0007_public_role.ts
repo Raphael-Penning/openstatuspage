@@ -489,7 +489,7 @@ function statements(b: string, schemaName: string, invokerViews: boolean): State
       IF v_sub.confirmed_at IS NULL THEN
         UPDATE ${b}.subscribers s SET confirmed_at = v_now, updated_at = v_now WHERE s.id = v_sub.id;
       END IF;
-      -- The salt lets the caller (it knows SECRET_KEY) derive the manage token for its answer.
+      -- The salt lets the caller (it knows the token key) derive the manage token for its answer.
       RETURN QUERY SELECT r.id, r.email, r.locale, r.all_services, r.confirmed, r.service_ids, v_sub.token_salt
         FROM ${b}.osp_subscription_row(v_sub.id) r;
     END

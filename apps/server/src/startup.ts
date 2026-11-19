@@ -39,16 +39,16 @@ export interface StartupLog {
 export async function prepareDatabase(
   db: DB,
   config: Pick<Config, 'APP_ROLE' | 'SCHEMA_WAIT_SECONDS'> &
-    Partial<Pick<Config, 'SECRET_KEY' | 'DB_PUBLIC_ROLE' | 'database'>>,
+    Partial<Pick<Config, 'SUBSCRIPTION_TOKEN_KEY' | 'DB_PUBLIC_ROLE' | 'database'>>,
   log: StartupLog,
   options: { intervalMs?: number } = {},
 ): Promise<void> {
   const postgres = config.database?.dialect === 'postgres';
   if (roleFeatures(config.APP_ROLE).runsMigrations) {
     await migrateToLatest(db);
-    if (config.SECRET_KEY) {
+    if (config.SUBSCRIPTION_TOKEN_KEY) {
       // Token hashes for the database-side checks of the public role (rows from before 0006, a changed key).
-      const updated = await syncSubscriptionTokenHashes(db, config.SECRET_KEY);
+      const updated = await syncSubscriptionTokenHashes(db, config.SUBSCRIPTION_TOKEN_KEY);
       if (updated > 0) log.info({ subscribers: updated }, 'subscription token hashes updated');
     }
     if (postgres && config.DB_PUBLIC_ROLE) {

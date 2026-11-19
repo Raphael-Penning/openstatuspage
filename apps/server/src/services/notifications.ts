@@ -8,7 +8,7 @@
  * affected public service.
  *
  * Tokens: subscriber mails are queued with TOKEN_PLACEHOLDERS instead of the
- * confirm/manage tokens. deliverOne derives the real tokens (SECRET_KEY +
+ * confirm/manage tokens. deliverOne derives the real tokens (SUBSCRIPTION_TOKEN_KEY +
  * subscriber id + token_salt) right before sending, so the outbox never holds
  * a token. Once a row is sent, its bodies and headers are blanked; subject,
  * kind and status stay for the status view.

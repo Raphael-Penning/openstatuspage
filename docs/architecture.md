@@ -24,7 +24,7 @@ The core promise: **customers see services, never infrastructure.**
 - Monitoring credentials are encrypted at rest (AES-256-GCM, key derived from `SECRET_KEY`)
   and masked in admin responses.
 - Ingest tokens and session/API tokens are stored as SHA-256 hashes only.
-- Subscription tokens are not stored at all (HMAC of `SECRET_KEY` and a salt).
+- Subscription tokens are not stored at all (HMAC of `SUBSCRIPTION_TOKEN_KEY`, default `SECRET_KEY`, and a salt).
 
 ## Status model
 
@@ -97,7 +97,7 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
 - Fan-out only enqueues rows; it never sends inside the request, and errors are
   logged without failing the admin request.
 - Only public incidents/maintenance notify, and mails list public services only.
-- Subscription tokens are derived with HMAC-SHA256 from `SECRET_KEY` and a per
+- Subscription tokens are derived with HMAC-SHA256 from `SUBSCRIPTION_TOKEN_KEY` (default `SECRET_KEY`) and a per
   subscriber salt; they are never stored. Deleting a subscriber cascades to its
   services and queued mails.
 - Rows are claimed before sending (conditional update of `next_attempt_at`), so two

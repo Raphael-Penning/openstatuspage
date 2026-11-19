@@ -16,7 +16,7 @@ import {
   subscriptionTokenHashes,
   tokenHash,
 } from '../src/services/subscriptions.js';
-import { BASE_URL, createTestDatabase, SECRET_KEY, type PgTestDatabase } from './setup.js';
+import { BASE_URL, createTestDatabase, TOKEN_KEY, type PgTestDatabase } from './setup.js';
 
 const NOW = new Date().toISOString();
 const HOUR_AGO = new Date(Date.now() - 3600_000).toISOString();
@@ -300,7 +300,7 @@ async function seed(db: DB): Promise<void> {
       confirmed_at: NOW,
       confirmation_sent_at: null,
       ...ts,
-      ...subscriptionTokenHashes(SECRET_KEY, { id: ids.subscriber, token_salt: salt }),
+      ...subscriptionTokenHashes(TOKEN_KEY, { id: ids.subscriber, token_salt: salt }),
     })
     .execute();
 }
@@ -581,9 +581,9 @@ describe('tables', () => {
 describe('subscription functions', () => {
   const salt = 'fresh-subscriber-salt-123';
   const id = 'sub-new';
-  const hashes = subscriptionTokenHashes(SECRET_KEY, { id, token_salt: salt });
-  const confirmToken = subscriptionToken(SECRET_KEY, 'confirm', id, salt);
-  const manageToken = subscriptionToken(SECRET_KEY, 'manage', id, salt);
+  const hashes = subscriptionTokenHashes(TOKEN_KEY, { id, token_salt: salt });
+  const confirmToken = subscriptionToken(TOKEN_KEY, 'confirm', id, salt);
+  const manageToken = subscriptionToken(TOKEN_KEY, 'manage', id, salt);
 
   const subscribe = (email: string, overrides: Partial<Record<string, unknown>> = {}) => {
     const p = {
@@ -817,7 +817,7 @@ describe('a public instance', () => {
     expect(confirmed.statusCode).toBe(200);
     const manageToken = (confirmed.json() as { data: { attributes: { manageToken: string; confirmed: boolean } } }).data.attributes
       .manageToken;
-    expect(manageToken).toBe(subscriptionToken(SECRET_KEY, 'manage', subId!, (await ownerRows<{ token_salt: string }>(`select token_salt from subscribers where id = '${subId}'`))[0]!.token_salt));
+    expect(manageToken).toBe(subscriptionToken(TOKEN_KEY, 'manage', subId!, (await ownerRows<{ token_salt: string }>(`select token_salt from subscribers where id = '${subId}'`))[0]!.token_salt));
 
     const manageHeaders = { 'x-subscription-token': manageToken };
     const got = await publicApp.inject({ url: `/api/public/subscriptions/${subId}`, headers: manageHeaders });

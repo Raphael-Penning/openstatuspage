@@ -306,9 +306,11 @@ mit eigenen Public-, Admin- und Worker-Instanzen):
   Intervall, jede Quelle wird einmal pro Intervall abgefragt, und jede E-Mail
   geht einmal raus. Hält eine Worker-Instanz an, übernimmt eine andere ihre
   Aufgaben nach spätestens etwa einer Minute.
-- Verwende auf allen Instanzen denselben `SECRET_KEY` und dieselbe
-  `BASE_URL`. Anmeldungen funktionieren auf jeder Instanz (Sitzungen liegen in
-  der Datenbank).
+- Verwende auf allen Instanzen einer Rolle denselben `SECRET_KEY` und
+  dieselbe `BASE_URL`, überall denselben `SUBSCRIPTION_TOKEN_KEY` und dieselbe
+  `PUBLIC_BASE_URL`. Eine öffentliche Instanz bekommt nur
+  `SUBSCRIPTION_TOKEN_KEY`, nie `SECRET_KEY`. Anmeldungen funktionieren auf
+  jeder Admin-Instanz (Sitzungen liegen in der Datenbank).
 - Rate Limits zählen pro Instanz: Mit drei Instanzen hinter einem
   Load Balancer kann ein Client bis zu dreimal so oft einen Login versuchen.
   Ist dir das wichtig, lass den Proxy jeden Client zur selben Instanz

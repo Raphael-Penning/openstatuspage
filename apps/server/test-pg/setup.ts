@@ -14,6 +14,8 @@ import { loadConfig, type Config } from '../src/config.js';
 import { createDb, type DB } from '../src/db/index.js';
 
 export const SECRET_KEY = 'pg-test-secret-key-that-is-long-enough-1234567890';
+/** Key of the subscription tokens: the only key the public instance gets (no SECRET_KEY). */
+export const TOKEN_KEY = 'pg-test-subscription-token-key-1234567890abcdef';
 export const BASE_URL = 'https://status.example.com';
 
 function env(name: string): string {
@@ -64,7 +66,9 @@ export async function createTestDatabase(): Promise<PgTestDatabase> {
       APP_ROLE: role,
       DATABASE_URL: role === 'public' ? publicUrl : ownerUrl,
       DB_PUBLIC_ROLE: publicRole,
-      SECRET_KEY,
+      // Like a split deployment: the public instance never holds SECRET_KEY.
+      ...(role === 'public' ? {} : { SECRET_KEY }),
+      SUBSCRIPTION_TOKEN_KEY: TOKEN_KEY,
       BASE_URL,
       MAIL_TRANSPORT: 'log',
       SMTP_FROM: 'Example Status <status@example.com>',

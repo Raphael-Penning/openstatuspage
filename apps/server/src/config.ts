@@ -2,6 +2,7 @@
  * Runtime configuration, read exclusively from environment variables.
  * See `.env.example` in the repository root for documentation of every option.
  */
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { MailTransportKind } from '@openstatuspage/shared';
@@ -53,6 +54,12 @@ const EnvSchema = z.object({
    * At least 32 characters. Changing it makes stored credentials unreadable.
    */
   SECRET_KEY: z.string().min(32).optional(),
+  /**
+   * Key of the email subscription tokens (confirm and manage links). Defaults to
+   * SECRET_KEY. A split deployment sets its own value on every instance and gives
+   * the public instance only this key, not SECRET_KEY.
+   */
+  SUBSCRIPTION_TOKEN_KEY: z.string().min(32).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   /**
    * Reverse proxy trust, so client IPs and https are detected from X-Forwarded-* headers.
@@ -135,11 +142,14 @@ const EnvSchema = z.object({
 
 export type Config = Omit<
   z.infer<typeof EnvSchema>,
-  'MAIL_TRANSPORT' | 'SESSION_MAX_AGE_HOURS' | 'WORKER_ENABLED' | 'PUBLIC_BASE_URL'
+  'MAIL_TRANSPORT' | 'SESSION_MAX_AGE_HOURS' | 'WORKER_ENABLED' | 'PUBLIC_BASE_URL' | 'SUBSCRIPTION_TOKEN_KEY'
 > & {
   /** Effective: PUBLIC_BASE_URL or BASE_URL, without trailing slash. */
   PUBLIC_BASE_URL: string;
+  /** SECRET_KEY; on a public instance without one a random key of this process (nothing it does needs it). */
   SECRET_KEY: string;
+  /** Effective: SUBSCRIPTION_TOKEN_KEY or SECRET_KEY. */
+  SUBSCRIPTION_TOKEN_KEY: string;
   /** Effective: WORKER_ENABLED or the default of APP_ROLE. */
   WORKER_ENABLED: boolean;
   /** Effective absolute session lifetime (never shorter than SESSION_TTL_HOURS). */
@@ -195,11 +205,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
   const c = parsed.data;
 
   let secret = c.SECRET_KEY;
+  if (!secret && c.APP_ROLE === 'public' && c.SUBSCRIPTION_TOKEN_KEY) {
+    // A public instance encrypts no credentials and signs no cookies: it only needs the token key.
+    secret = randomBytes(48).toString('base64url');
+  }
   if (!secret) {
     if (c.NODE_ENV === 'production' && !options.allowMissingSecret) {
       throw new Error(
-        'SECRET_KEY must be set (at least 32 characters, e.g. `openssl rand -base64 48`). ' +
-          'For local development run `pnpm dev` or set NODE_ENV=development.',
+        c.APP_ROLE === 'public'
+          ? 'SUBSCRIPTION_TOKEN_KEY must be set for APP_ROLE=public (the same value as on the admin and worker ' +
+              'instances, at least 32 characters). The public instance does not need SECRET_KEY.'
+          : 'SECRET_KEY must be set (at least 32 characters, e.g. `openssl rand -base64 48`). ' +
+              'For local development run `pnpm dev` or set NODE_ENV=development.',
       );
     }
     secret = DEV_SECRET;
@@ -261,6 +278,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     BASE_URL: c.BASE_URL.replace(/\/+$/, ''),
     PUBLIC_BASE_URL: (c.PUBLIC_BASE_URL ?? c.BASE_URL).replace(/\/+$/, ''),
     SECRET_KEY: secret,
+    SUBSCRIPTION_TOKEN_KEY: c.SUBSCRIPTION_TOKEN_KEY ?? secret,
     insecureSecret: secret === DEV_SECRET,
     oidcEnabled,
     database,

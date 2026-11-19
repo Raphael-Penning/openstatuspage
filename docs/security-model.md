@@ -80,7 +80,7 @@ with `search_path=osp_public`, so the public code runs unchanged against them.
   The recipient is always the subscriber's stored address.
 - **Use a subscription without its token.** The functions compare the SHA-256 of
   the given token with the stored hash (migration `0006`). The database never
-  sees `SECRET_KEY` and never hands out a salt except to the holder of a valid
+  sees the token key and never hands out a salt except to the holder of a valid
   confirm token (who could derive the manage token anyway).
 
 ## How it is enforced
@@ -169,10 +169,14 @@ way on every version.
    *"the database login of this public instance is not a registered public role"*.
    Treat that warning as a configuration error.
 
-All instances need the same `SECRET_KEY`: the public instance derives the token
-hashes of new subscriptions and the manage token it returns on confirmation from
-it. When `SECRET_KEY` changes, the admin and worker instances refresh the stored
-hashes on their next start (existing mail links stop working, as before).
+All instances need the same `SUBSCRIPTION_TOKEN_KEY`: the public instance
+derives the token hashes of new subscriptions and the manage token it returns on
+confirmation from it, the worker the tokens in the mails. The public instance
+gets **only** this key, not `SECRET_KEY` (which encrypts the monitoring
+credentials and signs the OIDC state cookie of the admin instance); it logs a
+warning when it gets `SECRET_KEY` anyway. When the token key changes, the admin
+and worker instances refresh the stored hashes on their next start (existing
+mail links stop working).
 
 ## Threat model
 
@@ -180,7 +184,7 @@ hashes on their next start (existing mail links stop working, as before).
 
 An attacker runs code on the public host (vulnerable dependency, remote code
 execution) and holds its environment: the public database login and
-`SECRET_KEY`.
+`SUBSCRIPTION_TOKEN_KEY`.
 
 - **Contained**: the attacker reads nothing the public page does not already
   show. Subscriber addresses, users, password hashes, sessions, API tokens,
@@ -191,13 +195,16 @@ execution) and holds its environment: the public database login and
 - **Not contained**:
   - The attacker can serve a fake status page or alter answers of the public
     instance itself.
-  - With `SECRET_KEY` the attacker can subscribe addresses and, from the hashes
-    it chooses for new subscribers, confirm them; mails still only go to the given
-    address and are throttled. It observes the subscribers who use the instance
-    while it is compromised (their address and tokens pass through it).
-  - `SECRET_KEY` also encrypts monitoring credentials and signs cookies. The
-    encrypted credentials are not readable by the public role, but rotate the key
-    (and the public role's password) after a compromise.
+  - With `SUBSCRIPTION_TOKEN_KEY` the attacker can derive the links of every
+    subscriber whose id and salt it learns; it learns them only from the
+    subscribers who use the instance while it is compromised (their address and
+    tokens pass through it). It can subscribe addresses and, from the hashes it
+    chooses for new subscribers, confirm them; mails still only go to the given
+    address and are throttled. Rotate the token key (and the public role's
+    password) after a compromise.
+  - The public host never holds `SECRET_KEY`: the monitoring credentials stay
+    encrypted with a key it does not have, and it cannot forge the signed OIDC
+    state cookie of the admin instance.
   - Denial of service against the database is bounded by the role's timeouts and
     connection limit, not prevented.
 

@@ -26,8 +26,9 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
 - [ ] Getrennter Betrieb: Die `public`-Instanz meldet sich mit einer eigenen,
       eingeschränkten Rolle an (`DB_PUBLIC_ROLE`, angelegt mit
       `deploy/postgres/roles.sql`) und schreibt keine Warnung über einen
-      uneingeschränkten Login ins Log; den Admin-Host erreichst du nicht aus
-      dem Internet. Siehe [Sicherheitsmodell](../../security-model.md).
+      uneingeschränkten Login ins Log; sie bekommt `SUBSCRIPTION_TOKEN_KEY`,
+      aber nicht `SECRET_KEY`; den Admin-Host erreichst du nicht aus dem
+      Internet. Siehe [Sicherheitsmodell](../../security-model.md).
 
 ## Geheimnisse
 

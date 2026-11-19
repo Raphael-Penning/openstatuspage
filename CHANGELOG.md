@@ -95,6 +95,10 @@ breaking changes.
   emails and feeds. Admin and worker instances of a split deployment set it, so
   mails written on the admin instance link to the public page and its one-click
   unsubscribe endpoint instead of the admin domain.
+- `SUBSCRIPTION_TOKEN_KEY` (default `SECRET_KEY`): the key of the subscription
+  links. A public instance runs with this key alone, so a compromised public host
+  holds neither the key of the monitoring credentials nor the one that signs the
+  OIDC state cookie. The split examples give it only `SUBSCRIPTION_TOKEN_KEY`.
 - `WORKER_ENABLED` defaults to `false` for `APP_ROLE=admin`; contradicting settings
   stop the server on start.
 - **Several instances with background tasks** on PostgreSQL: every task (and the
