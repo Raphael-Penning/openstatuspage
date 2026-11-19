@@ -2,7 +2,7 @@
  * Session handling for the management UI: auth guard, role helpers and the
  * shared admin root (toasts, accent color).
  */
-import type { PublicPageSettings, SessionInfo } from '@openstatuspage/shared';
+import { deserialize, JSONAPI_MEDIA_TYPE, type DataDocument, type PublicPageSettings, type SessionInfo } from '@openstatuspage/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -31,9 +31,13 @@ export function useBranding() {
     queryKey: ['public', 'settings'],
     // Public responses are cacheable for 30 s; revalidate so saved settings show up immediately.
     queryFn: async () => {
-      const res = await fetch('/api/public/settings', { cache: 'no-cache', credentials: 'same-origin' });
+      const res = await fetch('/api/public/settings', {
+        cache: 'no-cache',
+        credentials: 'same-origin',
+        headers: { accept: JSONAPI_MEDIA_TYPE },
+      });
       if (!res.ok) throw new ApiError(res.status, null);
-      return (await res.json()) as PublicPageSettings;
+      return deserialize<PublicPageSettings>((await res.json()) as DataDocument);
     },
     staleTime: 5 * 60_000,
     retry: false,
