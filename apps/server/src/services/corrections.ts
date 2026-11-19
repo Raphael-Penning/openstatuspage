@@ -5,12 +5,12 @@
  */
 import type { AdminCorrection } from '@openstatuspage/shared';
 import type { DB } from '../db/index.js';
-import type { CorrectionLayer, PublicCorrectionMark } from './history-corrections.js';
+import type { CorrectionLayer } from './history-corrections.js';
 
 export interface ServiceCorrections {
   layers: CorrectionLayer[];
-  /** Corrections with show_public, for the public "corrected afterwards" marker. */
-  publicMarks: PublicCorrectionMark[];
+  /** Corrections with show_public (id -> public note), for the public "corrected afterwards" marker. */
+  publicNotes: Map<string, string | null>;
 }
 
 /**
@@ -28,7 +28,7 @@ export async function loadCorrectionLayers(
   const entry = (id: string) => {
     let e = result.get(id);
     if (!e) {
-      e = { layers: [], publicMarks: [] };
+      e = { layers: [], publicNotes: new Map() };
       result.set(id, e);
     }
     return e;
@@ -67,6 +67,8 @@ export async function loadCorrectionLayers(
       ])
       .where('maintenance_services.service_id', 'in', serviceIds)
       .where('maintenances.retroactive', '=', 1)
+      // Like the live status engine: only public maintenance changes statuses.
+      .where('maintenances.is_public', '=', 1)
       .where('maintenances.status', 'in', ['in_progress', 'completed'])
       .where('maintenances.scheduled_start', '<', to)
       .execute(),
@@ -82,7 +84,7 @@ export async function loadCorrectionLayers(
       end: c.ends_at,
       order: c.created_at,
     });
-    if (c.show_public === 1) e.publicMarks.push({ start: c.starts_at, end: c.ends_at, note: c.public_note });
+    if (c.show_public === 1) e.publicNotes.set(c.id, c.public_note);
   }
 
   for (const m of maintenances) {

@@ -176,16 +176,25 @@ describe('markCorrectedDays', () => {
   const day = (date: string): DailyUptime => ({ date, status: 'operational', uptime: 100, minutes: {} });
   const days = [day('2026-01-08'), day('2026-01-09'), day('2026-01-10')];
 
+  const measured = [seg('operational', '08T00:00', null)];
+
   it('marks every day a public correction overlaps, with distinct notes', () => {
-    const result = markCorrectedDays(
-      days,
+    const corrected = applyCorrections(
+      measured,
       [
-        { start: T('08T23:00'), end: T('09T01:00'), note: 'False alarm' },
-        { start: T('09T05:00'), end: T('09T06:00'), note: 'False alarm' },
-        { start: T('09T07:00'), end: T('09T08:00'), note: '  ' },
+        correction('c1', 'operational', '08T23:00', '09T01:00'),
+        correction('c2', 'operational', '09T05:00', '09T06:00'),
+        correction('c3', 'operational', '09T07:00', '09T08:00'),
+        correction('internal', 'major_outage', '10T01:00', '10T02:00'),
       ],
       now,
     );
+    const notes = new Map<string, string | null>([
+      ['c1', 'False alarm'],
+      ['c2', 'False alarm'],
+      ['c3', '  '],
+    ]);
+    const result = markCorrectedDays(days, corrected, notes, now);
     expect(result[0]).toMatchObject({ corrected: true, correctionNotes: ['False alarm'] });
     expect(result[1]).toMatchObject({ corrected: true, correctionNotes: ['False alarm'] });
     expect(result[2]!.corrected).toBeUndefined();
@@ -193,9 +202,36 @@ describe('markCorrectedDays', () => {
   });
 
   it('treats the end as exclusive at UTC midnight', () => {
-    const result = markCorrectedDays(days, [{ start: T('08T20:00'), end: T('09T00:00'), note: null }], now);
+    const corrected = applyCorrections(measured, [correction('c1', 'operational', '08T20:00', '09T00:00')], now);
+    const result = markCorrectedDays(days, corrected, new Map([['c1', null]]), now);
     expect(result.map((d) => d.corrected ?? false)).toEqual([true, false, false]);
     expect(result[0]!.correctionNotes).toEqual([]);
+  });
+
+  it('does not mark a public correction that a newer internal one fully replaces', () => {
+    const corrected = applyCorrections(
+      measured,
+      [
+        correction('public', 'operational', '09T05:00', '09T06:00', '2026-01-09T00:00:00.000Z'),
+        correction('internal', 'major_outage', '09T04:00', '09T07:00', '2026-01-10T00:00:00.000Z'),
+      ],
+      now,
+    );
+    const result = markCorrectedDays(days, corrected, new Map([['public', 'Note']]), now);
+    expect(result.map((d) => d.corrected ?? false)).toEqual([false, false, false]);
+  });
+
+  it('keeps the mark for the part of a public correction that is still in effect', () => {
+    const corrected = applyCorrections(
+      measured,
+      [
+        correction('public', 'operational', '08T22:00', '09T06:00', '2026-01-09T00:00:00.000Z'),
+        correction('internal', 'major_outage', '08T20:00', '09T00:00', '2026-01-10T00:00:00.000Z'),
+      ],
+      now,
+    );
+    const result = markCorrectedDays(days, corrected, new Map([['public', 'Note']]), now);
+    expect(result.map((d) => d.corrected ?? false)).toEqual([false, true, false]);
   });
 });
 

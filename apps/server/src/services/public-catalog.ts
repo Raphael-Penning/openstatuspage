@@ -91,10 +91,11 @@ export async function loadUptime(
   const result = new Map<string, { uptime: DailyUptime[]; percent: number | null }>();
   for (const id of serviceIds) {
     const c = corrections.get(id);
-    const segs = c ? applyCorrections(segments.get(id) ?? [], c.layers, now) : (segments.get(id) ?? []);
+    const corrected = c ? applyCorrections(segments.get(id) ?? [], c.layers, now) : null;
+    const segs = corrected ?? segments.get(id) ?? [];
     const daily = computeDailyUptime(segs, days, now);
     result.set(id, {
-      uptime: c ? markCorrectedDays(daily, c.publicMarks, now) : daily,
+      uptime: c && corrected ? markCorrectedDays(daily, corrected, c.publicNotes, now) : daily,
       percent: averageUptime(segs, from, now),
     });
   }

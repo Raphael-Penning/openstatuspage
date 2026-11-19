@@ -122,28 +122,32 @@ export function applyCorrections(
   }));
 }
 
-export interface PublicCorrectionMark {
-  start: string;
-  end: string;
-  note: string | null;
-}
+/** Public corrections of a service: correction id -> public note (null = no note). */
+export type PublicCorrectionNotes = ReadonlyMap<string, string | null>;
 
 /**
- * Adds `corrected: true` and the public notes to every day bucket that a public
- * correction overlaps (up to `now`). Returns new objects, the input is not changed.
+ * Adds `corrected: true` and the public notes to every day bucket in which a
+ * public correction is still in effect in the corrected history (`segments`
+ * from applyCorrections). A public correction that a newer one fully replaces
+ * no longer marks any day. Returns new objects, the input is not changed.
  */
 export function markCorrectedDays(
   days: readonly DailyUptime[],
-  marks: readonly PublicCorrectionMark[],
+  segments: readonly CorrectedSegment[],
+  publicNotes: PublicCorrectionNotes,
   now: Date,
 ): DailyUptime[] {
-  if (marks.length === 0) return [...days];
+  if (publicNotes.size === 0) return [...days];
   const nowMs = now.getTime();
-  const parsed = marks.map((m) => ({
-    start: new Date(m.start).getTime(),
-    end: Math.min(new Date(m.end).getTime(), nowMs),
-    note: m.note?.trim() || null,
-  }));
+  const parsed = segments
+    .filter((s) => s.source === 'correction' && s.sourceId !== null && publicNotes.has(s.sourceId))
+    .map((s) => ({
+      start: new Date(s.started_at).getTime(),
+      end: s.ended_at ? Math.min(new Date(s.ended_at).getTime(), nowMs) : nowMs,
+      note: publicNotes.get(s.sourceId as string)?.trim() || null,
+    }))
+    .filter((m) => m.end > m.start);
+  if (parsed.length === 0) return [...days];
   return days.map((day) => {
     const dayStart = new Date(`${day.date}T00:00:00.000Z`).getTime();
     const dayEnd = Math.min(dayStart + DAY_MS, nowMs);
