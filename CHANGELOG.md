@@ -96,6 +96,11 @@ breaking changes.
 - `pnpm measure:memory` (`scripts/measure-memory.mjs`) measures the memory of every
   `APP_ROLE` under light load. The results are in
   [docs/architecture.md](docs/architecture.md#memory).
+- Split deployment examples: [`deploy/compose/compose.split.yaml`](deploy/compose/compose.split.yaml)
+  (public, admin and worker containers on one PostgreSQL database, the public role
+  created by [`deploy/postgres/init-roles.sh`](deploy/postgres/init-roles.sh)) and the
+  Kustomize overlay [`deploy/kubernetes/split/`](deploy/kubernetes/split/). See the
+  [split deployment guide](docs/guide/en/02-installation.md#split-deployment).
 
 ### Changed
 
