@@ -1,5 +1,22 @@
 # syntax=docker/dockerfile:1
-FROM node:22-bookworm-slim AS build
+
+# The compiled JavaScript does not depend on the CPU architecture, so it is
+# built once on the native build platform. Emulating this step (e.g. arm64 on
+# an amd64 CI runner) is slow and can stall for a long time.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/server/package.json apps/server/
+COPY apps/web/package.json apps/web/
+RUN pnpm install --frozen-lockfile --ignore-scripts
+COPY . .
+RUN pnpm build
+
+# Production dependencies contain native modules (argon2, better-sqlite3) and
+# are installed for the target platform.
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 RUN corepack enable
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
@@ -7,9 +24,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build
+RUN pnpm install --frozen-lockfile --filter @openstatuspage/server...
+COPY packages/shared packages/shared
+COPY apps/server apps/server
 RUN pnpm --filter @openstatuspage/server deploy --prod --legacy /out/server
 
 FROM node:22-bookworm-slim
@@ -18,7 +35,7 @@ ENV NODE_ENV=production \
     DATABASE_URL=sqlite:/data/openstatuspage.db \
     WEB_DIST_DIR=/app/web
 WORKDIR /app
-COPY --from=build /out/server /app/server
+COPY --from=deps /out/server /app/server
 COPY --from=build /app/apps/server/dist /app/server/dist
 COPY --from=build /app/apps/web/dist /app/web
 RUN mkdir -p /data && chown node:node /data
