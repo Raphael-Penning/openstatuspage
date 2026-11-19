@@ -45,8 +45,12 @@ const provider: MigrationProvider = {
 export async function migrateToLatest(db: DB): Promise<void> {
   const migrator = new Migrator({ db, provider });
   const { error, results } = await migrator.migrateToLatest();
-  for (const r of results ?? []) {
-    if (r.status === 'Error') throw new Error(`Migration ${r.migrationName} failed`);
+  const failed = results?.find((r) => r.status === 'Error');
+  if (failed) {
+    const cause = error instanceof Error ? error.message : error === undefined ? 'unknown error' : String(error);
+    throw new Error(`Migration ${failed.migrationName} failed: ${cause}`, {
+      cause: error,
+    });
   }
   if (error) throw error;
 }
