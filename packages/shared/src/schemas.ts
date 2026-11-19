@@ -1072,6 +1072,10 @@ export interface PublicLocationsResponse {
   counts: Record<ServiceStatus, number>;
 }
 
+/**
+ * History view state of the web client. The API takes it as `page[number]`, `page[size]`,
+ * `filter[type]`, `filter[service]`, `filter[location]` and `filter[month]`.
+ */
 export const HistoryQuery = z.object({
   type: z.enum(['all', 'incident', 'maintenance']).default('all'),
   serviceId: zId.optional(),
@@ -1206,7 +1210,10 @@ export interface NotificationStatus {
 export const TestEmailInput = z.object({ to: z.email().max(254) });
 export type TestEmailInput = z.infer<typeof TestEmailInput>;
 
-/** Error body for every non-2xx response. */
+/**
+ * Error of a failed request as the web client exposes it (`ApiError.body`), built from
+ * the JSON:API error document: code and detail of the first error, field issues.
+ */
 export interface ApiError {
   error: string;
   message: string;
