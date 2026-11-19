@@ -87,7 +87,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
   const save = useAdminMutation(
     (body: MonitorSourceInput) =>
       source
-        ? api.put<AdminMonitorSource>(`/api/admin/monitor-sources/${source.id}`, body)
+        ? api.patch<AdminMonitorSource>(`/api/admin/monitor-sources/${source.id}`, body, { id: source.id })
         : api.post<Created>('/api/admin/monitor-sources', body),
     {
       success: source ? t('sources.saved') : t('sources.created'),
@@ -105,7 +105,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
 
   const changeType = (type: ConfigurableSourceType) => {
     // Stored secrets belong to the stored type; a new type needs new credentials.
-    form.setValues((prev) => ({ ...prev, type, password: '', apiKey: '', icingaDbUrl: '', historyPassword: '' }));
+    form.setValues((prev) => ({ ...prev, sourceType: type, password: '', apiKey: '', icingaDbUrl: '', historyPassword: '' }));
     form.setErrors({});
   };
 
@@ -116,7 +116,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
   };
 
   const secretProps = (key: SecretKey, optional = false) => {
-    const stored = hasStoredSecret(source, key, v.type);
+    const stored = hasStoredSecret(source, key, v.sourceType);
     return {
       type: 'password' as const,
       autoComplete: 'new-password',
@@ -129,18 +129,18 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
     };
   };
 
-  const pull = isPullType(v.type);
+  const pull = isPullType(v.sourceType);
 
   return (
     <>
       <PageHeader
         back={{ to: '/admin/monitoring', label: t('sources.title') }}
         title={source ? source.name : t('sources.new')}
-        description={source ? t(`sources.types.${source.type}`) : t('sources.newIntro')}
+        description={source ? t(`sources.types.${source.sourceType}`) : t('sources.newIntro')}
         actions={
           source && (
             <>
-              {isPullType(source.type) && (
+              {isPullType(source.sourceType) && (
                 <>
                   <Button icon={PlugZap} pending={actions.test.isPending} onClick={() => actions.test.mutate(source)}>
                     {t('sources.test')}
@@ -198,12 +198,12 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
               />
               <SelectField<ConfigurableSourceType>
                 label={t('sources.fields.type')}
-                value={v.type}
+                value={v.sourceType}
                 onValue={changeType}
                 options={CONFIGURABLE_SOURCE_TYPES.map((type) => ({ value: type, label: t(`sources.types.${type}`) }))}
-                help={t(`sources.typeHelp.${v.type}`)}
+                help={t(`sources.typeHelp.${v.sourceType}`)}
               />
-              {v.type !== 'webhook' && (
+              {v.sourceType !== 'webhook' && (
                 <TextField
                   className="md:col-span-2"
                   label={t('sources.fields.baseUrl')}
@@ -211,12 +211,12 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
                   value={v.baseUrl}
                   onValue={(x) => form.set('baseUrl', x)}
                   error={form.error('config.baseUrl')}
-                  placeholder={t(`sources.baseUrlPlaceholder.${v.type}`)}
+                  placeholder={t(`sources.baseUrlPlaceholder.${v.sourceType}`)}
                   help={t('sources.baseUrlHelp')}
                   required
                 />
               )}
-              {v.type === 'icinga2' && (
+              {v.sourceType === 'icinga2' && (
                 <>
                   <TextField
                     label={t('sources.fields.username')}
@@ -241,10 +241,10 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
                   />
                 </>
               )}
-              {(v.type === 'uptimekuma' || v.type === 'openitcockpit') && (
+              {(v.sourceType === 'uptimekuma' || v.sourceType === 'openitcockpit') && (
                 <TextField label={t('sources.fields.apiKey')} {...secretProps('apiKey')} className="md:col-span-2" />
               )}
-              {v.type === 'icinga2' && (
+              {v.sourceType === 'icinga2' && (
                 <fieldset className="flex flex-col gap-3 md:col-span-2">
                   <legend className="mb-2 text-sm font-semibold">{t('sources.historyTitle')}</legend>
                   <TextField
@@ -252,15 +252,15 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
                     {...secretProps('icingaDbUrl', true)}
                     autoComplete="off"
                     placeholder={
-                      hasStoredSecret(source, 'icingaDbUrl', v.type)
+                      hasStoredSecret(source, 'icingaDbUrl', v.sourceType)
                         ? `${SECRET_MASK} (${t('sources.secretUnchanged')})`
                         : 'mysql://reader:••••@db.example.com:3306/icingadb'
                     }
-                    help={hasStoredSecret(source, 'icingaDbUrl', v.type) ? t('sources.secretHelpStored') : t('sources.icingaDbUrlHelp')}
+                    help={hasStoredSecret(source, 'icingaDbUrl', v.sourceType) ? t('sources.secretHelpStored') : t('sources.icingaDbUrlHelp')}
                   />
                 </fieldset>
               )}
-              {v.type === 'uptimekuma' && (
+              {v.sourceType === 'uptimekuma' && (
                 <fieldset className="grid gap-5 md:col-span-2 md:grid-cols-2">
                   <legend className="mb-2 text-sm font-semibold">{t('sources.historyTitle')}</legend>
                   <p className="text-xs text-muted md:col-span-2">{t('sources.historyKumaHelp')}</p>
@@ -294,7 +294,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
                   checked={v.enabled}
                   onChecked={(x) => form.set('enabled', x)}
                 />
-                {(v.type === 'icinga2' || v.type === 'openitcockpit') && (
+                {(v.sourceType === 'icinga2' || v.sourceType === 'openitcockpit') && (
                   <CheckboxField
                     label={t('sources.fields.includeHosts')}
                     help={t('sources.includeHostsHelp')}
@@ -311,7 +311,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
                   />
                 )}
               </div>
-              {v.type === 'webhook' && <p className="text-sm text-muted md:col-span-2">{t('sources.webhookIntro')}</p>}
+              {v.sourceType === 'webhook' && <p className="text-sm text-muted md:col-span-2">{t('sources.webhookIntro')}</p>}
             </div>
             <div className="flex flex-col gap-3 border-t border-border p-4 sm:flex-row sm:items-center sm:justify-end">
               <FormErrorSummary errors={form.errors} />
@@ -339,7 +339,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
             <HistoryImportCard source={source} />
             <Card title={t('ingest.pushTitle')}>
               <div className="flex flex-col gap-3 p-4">
-                <CopyField label={t('ingest.url')} value={typedIngestUrl(source.ingestUrl, source.type)} />
+                <CopyField label={t('ingest.url')} value={typedIngestUrl(source.ingestUrl, source.sourceType)} />
                 <p className="text-xs text-muted">{t('ingest.tokenHidden')}</p>
               </div>
             </Card>
@@ -350,7 +350,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
       {created && (
         <IngestTokenDialog
           open
-          type={created.type}
+          type={created.sourceType}
           ingestUrl={created.ingestUrl}
           token={created.ingestToken}
           onClose={() => {
@@ -364,7 +364,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
         <IngestTokenDialog
           open
           onClose={actions.clearToken}
-          type={actions.token.source.type}
+          type={actions.token.source.sourceType}
           ingestUrl={actions.token.source.ingestUrl}
           token={actions.token.token}
         />

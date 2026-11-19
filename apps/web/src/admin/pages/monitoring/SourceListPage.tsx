@@ -66,7 +66,7 @@ export default function SourceListPage() {
                           {s.name}
                         </Link>
                         <div className="mt-1 flex flex-wrap gap-1">
-                          <Badge tone="accent">{t(`sources.types.${s.type}`)}</Badge>
+                          <Badge tone="accent">{t(`sources.types.${s.sourceType}`)}</Badge>
                           {!s.enabled && <Badge tone="warning">{t('sources.disabled')}</Badge>}
                         </div>
                       </td>
@@ -79,7 +79,7 @@ export default function SourceListPage() {
                         </Link>
                       </td>
                       <td className={`${td} text-right whitespace-nowrap`}>
-                        {isPullType(s.type) && (
+                        {isPullType(s.sourceType) && (
                           <>
                             <IconButton
                               icon={PlugZap}
@@ -138,7 +138,7 @@ export default function SourceListPage() {
         <IngestTokenDialog
           open
           onClose={actions.clearToken}
-          type={actions.token.source.type}
+          type={actions.token.source.sourceType}
           ingestUrl={actions.token.source.ingestUrl}
           token={actions.token.token}
         />

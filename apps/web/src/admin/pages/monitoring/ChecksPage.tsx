@@ -121,7 +121,7 @@ export default function ChecksPage() {
                         <td className={`${td} tabular-nums ${c.serviceCount === 0 ? 'text-muted' : ''}`}>{c.serviceCount}</td>
                         {isAdmin && (
                           <td className={`${td} text-right`}>
-                            {isBundleSource({ type: c.sourceType }) ? (
+                            {isBundleSource(c) ? (
                               // A bundle check goes away with its bundle; the server refuses deleting it here.
                               <Link to="/admin/monitoring/bundles" className="text-sm whitespace-nowrap text-accent underline hover:no-underline">
                                 {t('bundles.manage')}
