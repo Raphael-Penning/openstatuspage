@@ -10,14 +10,14 @@ let otherServiceId: string;
 beforeEach(async () => {
   t = await createTestApp();
   admin = await adminClient(t);
-  serviceId = (await admin.post('/api/admin/services', { name: 'Public API' })).json().id;
-  otherServiceId = (await admin.post('/api/admin/services', { name: 'Dashboard' })).json().id;
+  serviceId = (await admin.post('/api/admin/services', { name: 'Public API' })).json().data.id;
+  otherServiceId = (await admin.post('/api/admin/services', { name: 'Dashboard' })).json().data.id;
 });
 afterEach(async () => {
   await t.close();
 });
 
-const statusOf = async (id: string) => (await admin.get(`/api/admin/services/${id}`)).json().status as string;
+const statusOf = async (id: string) => (await admin.get(`/api/admin/services/${id}`)).json().data.attributes.status as string;
 const historyOf = (id: string) =>
   t.db
     .selectFrom('service_status_history')

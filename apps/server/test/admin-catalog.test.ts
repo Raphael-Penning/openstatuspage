@@ -85,7 +85,7 @@ describe('service groups', () => {
   it('deleting a group keeps its services (group_id becomes null)', async () => {
     const group = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Platform' }));
     expect(group).toMatchObject({ slug: 'platform', isPublic: true, collapsedByDefault: false });
-    const svc = (await admin.post('/api/admin/services', { name: 'API', groupId: group.id })).json();
+    const svc = data<Any>(await admin.post('/api/admin/services', { name: 'API', groupId: group.id }));
     expect(svc.groupId).toBe(group.id);
 
     const renamed = await admin.patch(`/api/admin/service-groups/${group.id}`, { name: 'Core', collapsedByDefault: true });
@@ -93,7 +93,7 @@ describe('service groups', () => {
     expect(data<Any[]>(await admin.get('/api/admin/service-groups')).map((g) => g.name)).toEqual(['Core']);
 
     expect((await admin.delete(`/api/admin/service-groups/${group.id}`)).statusCode).toBe(204);
-    const after = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    const after = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(after.groupId).toBeNull();
   });
 });
@@ -115,7 +115,12 @@ describe('services', () => {
       checks: [{ checkId: checkIds['web1!https'] }, { checkId: checkIds['web2!https'], criticalStatus: 'major_outage' }],
     });
     expect(created.statusCode).toBe(201);
-    const svc = created.json();
+    const svc = data<Any>(created);
+    expect(created.headers.location).toBe(`/api/admin/services/${svc.id}`);
+    expect(created.json().data.relationships).toEqual({
+      group: { data: null },
+      locations: { data: [{ type: 'locations', id: loc.id }] },
+    });
     expect(svc).toMatchObject({ slug: 'web-app', status: 'operational', monitorStatus: 'operational', locationIds: [loc.id] });
     expect(svc.checks).toHaveLength(2);
     expect(svc.checks[0]).toMatchObject({ warningStatus: 'degraded', criticalStatus: 'major_outage', unknownStatus: null });
@@ -123,11 +128,11 @@ describe('services', () => {
 
     // One of two redundant checks fails → quorum caps at partial outage.
     await setCheckState(t, sourceId, { externalId: 'web1!https', name: 'HTTPS', host: 'web1.internal.example.com' }, 'critical');
-    let current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    let current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current.status).toBe('partial_outage');
 
     const preview = await admin.get(`/api/admin/services/${svc.id}/preview`);
-    expect(preview.json()).toEqual({ monitorStatus: 'partial_outage', status: 'partial_outage' });
+    expect(preview.json().meta).toEqual({ monitorStatus: 'partial_outage', status: 'partial_outage' });
 
     // Preview of an unsaved config with "worst" aggregation.
     const unsaved = await admin.post('/api/admin/services/preview', {
@@ -135,17 +140,23 @@ describe('services', () => {
       aggregation: 'worst',
       checks: [{ checkId: checkIds['web1!https'] }],
     });
-    expect(unsaved.json()).toEqual({ monitorStatus: 'major_outage' });
+    expect(unsaved.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { monitorStatus: 'major_outage' } });
 
-    // Switching to manual mode overrides the checks.
-    const manual = await admin.put(`/api/admin/services/${svc.id}`, {
-      name: 'Web App',
-      statusMode: 'manual',
-      manualStatus: 'degraded',
-      checks: [{ checkId: checkIds['web1!https'] }],
+    // Switching to manual mode overrides the checks (PATCH: only the given members change).
+    const manual = await admin.patch(`/api/admin/services/${svc.id}`, {
+      data: {
+        type: 'services',
+        id: svc.id,
+        attributes: { statusMode: 'manual', manualStatus: 'degraded', checks: [{ checkId: checkIds['web1!https'] }] },
+        relationships: { locations: { data: [] } },
+      },
     });
     expect(manual.statusCode).toBe(200);
-    expect(manual.json()).toMatchObject({ status: 'degraded', monitorStatus: 'major_outage', locationIds: [] });
+    expect(data(manual)).toMatchObject({ name: 'Web App', kind: 'site', status: 'degraded', monitorStatus: 'major_outage', locationIds: [] });
+    const badRel = await admin.patch(`/api/admin/services/${svc.id}`, {
+      data: { type: 'services', id: svc.id, relationships: { group: { data: { type: 'service-groups', id: 'missing' } } } },
+    });
+    expect(badRel.statusCode).toBe(400);
 
     // Checks: filters and deletion.
     const unlinked = await admin.get('/api/admin/checks?unlinked=true');
@@ -155,11 +166,11 @@ describe('services', () => {
     const critical = await admin.get(`/api/admin/checks?state=critical&sourceId=${sourceId}`);
     expect(critical.json()).toHaveLength(1);
 
-    await admin.put(`/api/admin/services/${svc.id}`, { name: 'Web App', checks: [{ checkId: checkIds['web1!https'] }] });
-    current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    await admin.patch(`/api/admin/services/${svc.id}`, { statusMode: 'auto' });
+    current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current.status).toBe('major_outage');
     expect((await admin.delete(`/api/admin/checks/${checkIds['web1!https']}`)).statusCode).toBe(204);
-    current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current).toMatchObject({ status: 'operational', checks: [] });
   });
 
@@ -171,12 +182,12 @@ describe('services', () => {
 
     const g1 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'One' }));
     const g2 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Two' }));
-    const a = (await admin.post('/api/admin/services', { name: 'A', groupId: g1.id })).json();
-    const b = (await admin.post('/api/admin/services', { name: 'B', groupId: g1.id })).json();
-    const c = (await admin.post('/api/admin/services', { name: 'C', groupId: g2.id })).json();
+    const a = data<Any>(await admin.post('/api/admin/services', { name: 'A', groupId: g1.id }));
+    const b = data<Any>(await admin.post('/api/admin/services', { name: 'B', groupId: g1.id }));
+    const c = data<Any>(await admin.post('/api/admin/services', { name: 'C', groupId: g2.id }));
     expect((await admin.post('/api/admin/services/reorder', { ids: [a.id, c.id] })).statusCode).toBe(400);
     expect((await admin.post('/api/admin/services/reorder', { ids: [b.id, a.id] })).statusCode).toBe(204);
-    const list = (await admin.get('/api/admin/services')).json() as { id: string }[];
+    const list = data<{ id: string }[]>(await admin.get('/api/admin/services'));
     expect(list.map((s) => s.id)).toEqual([b.id, a.id, c.id]);
 
     expect((await admin.delete(`/api/admin/services/${a.id}`)).statusCode).toBe(204);
@@ -286,16 +297,16 @@ describe('monitoring sources', () => {
     const created = (await admin.post('/api/admin/monitor-sources', { name: 'Hook', type: 'webhook', config: {} })).json();
     await t.app.ctx.ingest.ingest(created.id, [{ externalId: 'x', name: 'X', host: 'h', state: 'critical' }], { full: false });
     const check = (await admin.get(`/api/admin/checks?sourceId=${created.id}`)).json()[0];
-    const svc = (await admin.post('/api/admin/services', { name: 'S', checks: [{ checkId: check.id }] })).json();
+    const svc = data<Any>(await admin.post('/api/admin/services', { name: 'S', checks: [{ checkId: check.id }] }));
     expect(svc.status).toBe('major_outage');
 
     await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: false });
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('operational');
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`)).status).toBe('operational');
 
     await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: true });
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('major_outage');
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`)).status).toBe('major_outage');
 
     await admin.delete(`/api/admin/monitor-sources/${created.id}`);
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json()).toMatchObject({ status: 'operational', checks: [] });
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`))).toMatchObject({ status: 'operational', checks: [] });
   });
 });

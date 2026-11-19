@@ -29,9 +29,9 @@ beforeEach(async () => {
   mailer = new MemoryMailer();
   t = await createTestApp({}, { mailer });
   admin = await adminClient(t);
-  api = (await admin.post('/api/admin/services', { name: 'Public API' })).json().id;
-  web = (await admin.post('/api/admin/services', { name: 'Web App' })).json().id;
-  hidden = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().id;
+  api = (await admin.post('/api/admin/services', { name: 'Public API' })).json().data.id;
+  web = (await admin.post('/api/admin/services', { name: 'Web App' })).json().data.id;
+  hidden = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().data.id;
   await settings({});
 });
 afterEach(async () => {

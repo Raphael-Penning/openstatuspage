@@ -100,6 +100,9 @@ function RadioCard<T extends string>({
   );
 }
 
+/** Request documents of a service: the group and locations are relationships. */
+const SERVICE_DOCUMENT = { type: 'services', relationships: { groupId: 'service-groups', locationIds: 'locations' } };
+
 function ServiceBuilder({ service, siblings = [] }: { service?: AdminService; siblings?: AdminService[] }) {
   const { t } = useTranslation('admin');
   const isAdmin = useIsAdmin();
@@ -114,7 +117,9 @@ function ServiceBuilder({ service, siblings = [] }: { service?: AdminService; si
 
   const save = useAdminMutation(
     (body: ServiceInput) =>
-      service ? api.put<AdminService>(`/api/admin/services/${service.id}`, body) : api.post<AdminService>('/api/admin/services', body),
+      service
+        ? api.patch<AdminService>(`/api/admin/services/${service.id}`, body, { ...SERVICE_DOCUMENT, id: service.id })
+        : api.post<AdminService>('/api/admin/services', body, SERVICE_DOCUMENT),
     {
       success: service ? t('services.saved') : t('services.created'),
       onSuccess: (s) => {
@@ -352,7 +357,7 @@ function PreviewCard({ values, service }: { values: ServiceFormValues; service?:
   // Admins preview the unsaved configuration; editors see the stored configuration.
   const unsaved = useQuery({
     queryKey: [...keys.services, 'preview', debounced],
-    queryFn: () => api.post<PreviewResult>('/api/admin/services/preview', debounced),
+    queryFn: () => api.post<PreviewResult>('/api/admin/services/preview', debounced, SERVICE_DOCUMENT),
     enabled: isAdmin && parsed.success,
     placeholderData: (prev) => prev,
     staleTime: 10_000,

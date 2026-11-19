@@ -18,9 +18,9 @@ beforeEach(async () => {
   mailer = new MemoryMailer();
   t = await createTestApp({}, { mailer });
   admin = await adminClient(t);
-  publicService = (await admin.post('/api/admin/services', { name: 'Public API' })).json().id;
-  otherService = (await admin.post('/api/admin/services', { name: 'Dashboard' })).json().id;
-  hiddenService = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().id;
+  publicService = (await admin.post('/api/admin/services', { name: 'Public API' })).json().data.id;
+  otherService = (await admin.post('/api/admin/services', { name: 'Dashboard' })).json().data.id;
+  hiddenService = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().data.id;
   await enableSubscriptions();
 });
 afterEach(async () => {
@@ -303,7 +303,7 @@ describe('manage and unsubscribe', () => {
     expect((await manage('PUT', id, 'wrong-token-wrong-token', { allServices: true })).statusCode).toBe(404);
 
     // A service hidden later is not revealed in the subscription.
-    expect((await admin.put(`/api/admin/services/${publicService}`, { name: 'Public API', isPublic: false })).statusCode).toBe(
+    expect((await admin.patch(`/api/admin/services/${publicService}`, { isPublic: false })).statusCode).toBe(
       200,
     );
     expect((await manage('GET', id, manageToken)).json().serviceIds).toEqual([]);

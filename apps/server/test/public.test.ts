@@ -67,7 +67,7 @@ beforeEach(async () => {
       locationIds: [fra, hiddenLocation],
       checks: [{ checkId: checkIds['db!pg'] }],
     })
-  ).json().id;
+  ).json().data.id;
   const web = (
     await admin.post('/api/admin/services', {
       name: 'Website',
@@ -75,7 +75,7 @@ beforeEach(async () => {
       url: 'https://www.example.com',
       checks: [{ checkId: checkIds['disk!/var/lib/postgresql'] }],
     })
-  ).json().id;
+  ).json().data.id;
   const hidden = (
     await admin.post('/api/admin/services', {
       name: 'Hidden backend',
@@ -83,8 +83,8 @@ beforeEach(async () => {
       locationIds: [fra],
       checks: [{ checkId: checkIds['db!pg'] }],
     })
-  ).json().id;
-  const inHiddenGroup = (await admin.post('/api/admin/services', { name: 'Billing', groupId: hiddenGroup })).json().id;
+  ).json().data.id;
+  const inHiddenGroup = (await admin.post('/api/admin/services', { name: 'Billing', groupId: hiddenGroup })).json().data.id;
 
   const incident = (
     await admin.post('/api/admin/incidents', {
@@ -270,7 +270,7 @@ describe('public locations', () => {
 
     // Resolve the incident; the api's check is still critical, so move it to manual operational.
     await admin.post(`/api/admin/incidents/${ids.incident}/updates`, { status: 'resolved', message: 'ok' });
-    await admin.put(`/api/admin/services/${ids.api}`, { name: 'Public API', statusMode: 'manual', locationIds: [ids.fra] });
+    await admin.patch(`/api/admin/services/${ids.api}`, { statusMode: 'manual', checks: [] });
     const after = await getData('/api/public/locations');
     // The hidden service is still in major outage, but the public location stays operational.
     expect(after[0].status).toBe('operational');

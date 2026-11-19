@@ -193,7 +193,7 @@ describe('authorization', () => {
   it('requires authentication for the admin API', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/admin/services' });
     expect(res.statusCode).toBe(401);
-    expect(res.json().error).toBe('unauthorized');
+    expect(res.json().errors[0]).toMatchObject({ status: '401', code: 'unauthorized' });
   });
 
   it('enforces roles (editor < admin)', async () => {

@@ -65,7 +65,7 @@ describe('api tokens', () => {
 describe('public endpoints', () => {
   it('history location filter ignores hidden services', async () => {
     const fra = (await admin.post('/api/admin/locations', { name: 'Frankfurt', region: 'europe' })).json().data.id;
-    const hidden = (await admin.post('/api/admin/services', { name: 'Internal', isPublic: false, locationIds: [fra] })).json().id;
+    const hidden = (await admin.post('/api/admin/services', { name: 'Internal', isPublic: false, locationIds: [fra] })).json().data.id;
     await admin.post('/api/admin/incidents', {
       title: 'Only internal',
       message: 'x',
