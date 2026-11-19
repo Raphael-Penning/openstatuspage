@@ -705,12 +705,15 @@ export const OpenItCockpitConfig = zHttpBase.extend({
 
 export const WebhookConfig = z.object({});
 
-/** Create/update a monitoring source. Only configurable types (not the virtual "bundle" source). */
-export const MonitorSourceInput = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('icinga2'), config: Icinga2Config }),
-  z.object({ type: z.literal('uptimekuma'), config: UptimeKumaConfig }),
-  z.object({ type: z.literal('openitcockpit'), config: OpenItCockpitConfig }),
-  z.object({ type: z.literal('webhook'), config: WebhookConfig }),
+/**
+ * Create/update a monitoring source. Only configurable types (not the virtual "bundle" source).
+ * The kind of source is `sourceType`: JSON:API reserves `type` for the resource type.
+ */
+export const MonitorSourceInput = z.discriminatedUnion('sourceType', [
+  z.object({ sourceType: z.literal('icinga2'), config: Icinga2Config }),
+  z.object({ sourceType: z.literal('uptimekuma'), config: UptimeKumaConfig }),
+  z.object({ sourceType: z.literal('openitcockpit'), config: OpenItCockpitConfig }),
+  z.object({ sourceType: z.literal('webhook'), config: WebhookConfig }),
 ]).and(
   z.object({
     name: z.string().min(1).max(120),
@@ -724,7 +727,7 @@ export type MonitorSourceInput = z.infer<typeof MonitorSourceInput>;
 export interface AdminMonitorSource {
   id: string;
   name: string;
-  type: MonitorSourceType;
+  sourceType: MonitorSourceType;
   enabled: boolean;
   pollIntervalSeconds: number;
   /** Secrets are replaced with SECRET_MASK. */
@@ -911,7 +914,7 @@ export interface HistoryImportResult {
   services: number;
 }
 
-/** GET /api/admin/monitor-sources/:id/history-imports[/:importId] */
+/** GET /api/admin/monitor-sources/:id/history-imports[/:importId] (type "history-imports", relationship `source`) */
 export interface AdminHistoryImport {
   id: string;
   sourceId: string;
@@ -925,6 +928,7 @@ export interface AdminHistoryImport {
   /** English message (detail for "source" and "apply_failed"). */
   error: string | null;
   errorCode: HistoryImportErrorCode | null;
+  /** JSON:API: the relationship `createdBy` (type "users", included with its name). */
   createdBy: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -1024,7 +1028,7 @@ export interface AdminCheckBundle {
 export interface BundleCandidateSource {
   id: string;
   name: string;
-  type: MonitorSourceType;
+  sourceType: MonitorSourceType;
   enabled: boolean;
   checks: {
     id: string;

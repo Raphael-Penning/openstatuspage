@@ -182,7 +182,7 @@ function BundleDialog({ bundle, onClose }: { bundle?: AdminCheckBundle; onClose:
 
   const save = useAdminMutation(
     (body: CheckBundleInput) =>
-      bundle ? api.put(`/api/admin/check-bundles/${bundle.id}`, body) : api.post('/api/admin/check-bundles', body),
+      bundle ? api.patch(`/api/admin/check-bundles/${bundle.id}`, body, { id: bundle.id }) : api.post('/api/admin/check-bundles', body),
     { success: bundle ? t('bundles.saved') : t('bundles.created'), onSuccess: onClose, onError: form.applyServerError },
   );
 
@@ -311,7 +311,7 @@ function SourceMembers({
     <fieldset className="rounded-lg border border-border p-3">
       <legend className="flex flex-wrap items-center gap-2 px-1">
         <span className="text-sm font-medium">{source.name}</span>
-        <Badge tone="accent">{t(`sources.types.${source.type}`)}</Badge>
+        <Badge tone="accent">{t(`sources.types.${source.sourceType}`)}</Badge>
         {!source.enabled && <Badge tone="warning">{t('sources.disabled')}</Badge>}
       </legend>
       {rows.length > 0 && (

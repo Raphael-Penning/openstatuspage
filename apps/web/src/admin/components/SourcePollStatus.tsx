@@ -7,7 +7,7 @@ import { isPullType } from '../lib/source-form';
 export function SourcePollStatus({ source }: { source: AdminMonitorSource }) {
   const { t } = useTranslation('admin');
   const fmt = useFormat();
-  if (!isPullType(source.type)) return <span className="text-sm text-muted">{t('sources.pushOnly')}</span>;
+  if (!isPullType(source.sourceType)) return <span className="text-sm text-muted">{t('sources.pushOnly')}</span>;
   if (source.lastPollOk === null) return <span className="text-sm text-muted">{t('sources.neverPolled')}</span>;
   return (
     <div className="text-sm">

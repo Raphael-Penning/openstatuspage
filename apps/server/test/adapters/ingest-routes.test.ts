@@ -35,7 +35,7 @@ describe('POST /api/ingest/:sourceId', () => {
       payload: genericBody,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, created: 1, updated: 0, removed: 0, stateChanges: 0 });
+    expect(res.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { created: 1, updated: 0, removed: 0, stateChanges: 0 } });
     expect(await checks(id)).toEqual([
       { external_id: 'web01!https', name: 'HTTPS', host: 'web01', state: 'critical', output: 'down' },
     ]);
@@ -46,7 +46,7 @@ describe('POST /api/ingest/:sourceId', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: { checks: [{ id: 'web01!https', state: 'ok' }] },
     });
-    expect(again.json()).toEqual({ ok: true, created: 0, updated: 1, removed: 0, stateChanges: 1 });
+    expect(again.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { created: 0, updated: 1, removed: 0, stateChanges: 1 } });
   });
 
   it('accepts the token as query parameter', async () => {
@@ -80,7 +80,7 @@ describe('POST /api/ingest/:sourceId', () => {
       payload: genericBody,
     });
     expect(wrong.statusCode).toBe(401);
-    expect(wrong.json()).toMatchObject({ error: 'unauthorized' });
+    expect(wrong.json().errors[0]).toMatchObject({ code: 'unauthorized' });
     const basic = await t.app.inject({
       method: 'POST',
       url: `/api/ingest/${id}`,
@@ -129,7 +129,9 @@ describe('POST /api/ingest/:sourceId', () => {
       payload: { checks: [{ id: 'x', state: 'broken' }] },
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ error: 'validation_error' });
+    // Native bodies are no JSON:API documents: the pointer refers to the body as sent.
+    expect(res.headers['content-type']).toBe('application/vnd.api+json');
+    expect(res.json().errors[0]).toMatchObject({ status: '400', source: { pointer: '/checks/0/state' } });
   });
 
   it('accepts JSON sent as text/plain', async () => {
@@ -158,7 +160,7 @@ describe('POST /api/ingest/:sourceId', () => {
     await push({ checks: [{ id: 'a', state: 1 }] });
     expect((await checks(id)).map((c) => c.external_id)).toEqual(['a', 'b']);
     const res = await push({ checks: [{ id: 'a', state: 1 }], full: true });
-    expect(res.json()).toMatchObject({ removed: 1 });
+    expect(res.json().meta).toMatchObject({ removed: 1 });
     expect((await checks(id)).map((c) => c.external_id)).toEqual(['a']);
   });
 
@@ -172,7 +174,7 @@ describe('POST /api/ingest/:sourceId', () => {
     await push({ checks: [{ id: 'a', state: 0 }, { id: 'b', state: 0 }] });
     const res = await push({ checks: [{ id: 'a', state: 2 }], full: true });
     expect(res.statusCode).toBe(400);
-    expect(res.json().message).toContain('only supported for sources of type "webhook"');
+    expect(res.json().errors[0].detail).toContain('only supported for sources of type "webhook"');
     expect((await checks(id)).map((c) => [c.external_id, c.state])).toEqual([
       ['a', 'ok'],
       ['b', 'ok'],
@@ -223,7 +225,7 @@ describe('POST /api/ingest/:sourceId', () => {
     // Would remove b and c (2 of 3 linked): rejected, nothing stored.
     const rejected = await push({ checks: [{ id: 'a', state: 2 }, { id: 'd', state: 2 }], full: true });
     expect(rejected.statusCode).toBe(409);
-    expect(rejected.json().message).toContain('remove 2 of 3 checks that are linked to services');
+    expect(rejected.json().errors[0].detail).toContain('remove 2 of 3 checks that are linked to services');
     expect((await checks(id)).map((c) => [c.external_id, c.state])).toEqual([
       ['a', 'ok'],
       ['b', 'ok'],
@@ -234,7 +236,7 @@ describe('POST /api/ingest/:sourceId', () => {
     // Removing one of three linked checks (and any unlinked ones) is a normal sync.
     const res = await push({ checks: [{ id: 'a', state: 0 }, { id: 'b', state: 0 }, { id: 'x', state: 0 }], full: true });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ created: 1, removed: 2 });
+    expect(res.json().meta).toMatchObject({ created: 1, removed: 2 });
     expect(await links()).toEqual(['a', 'b']);
 
     const wipe = await push({ checks: [{ id: 'x', state: 0 }], full: true });
@@ -259,7 +261,7 @@ describe('POST /api/ingest/:sourceId', () => {
     const limited = await push(a);
     expect(limited.statusCode).toBe(429);
     expect(limited.headers['retry-after']).toBe('1');
-    expect(limited.json()).toMatchObject({ error: 'rate_limited' });
+    expect(limited.json().errors[0]).toMatchObject({ code: 'rate_limited' });
     expect((await push(b)).statusCode).toBe(200);
   });
 });
@@ -275,13 +277,13 @@ describe('native push endpoints', () => {
       url: `/api/ingest/${id}/uptimekuma?token=${token}`,
       payload: jsonFixture('uptimekuma-webhook-test.json'),
     });
-    expect(test.json()).toEqual({ ok: true, created: 0, updated: 0, removed: 0, stateChanges: 0 });
+    expect(test.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { created: 0, updated: 0, removed: 0, stateChanges: 0 } });
     const down = await t.app.inject({
       method: 'POST',
       url: `/api/ingest/${id}/uptimekuma?token=${token}`,
       payload: jsonFixture('uptimekuma-webhook-down.json'),
     });
-    expect(down.json()).toMatchObject({ ok: true, created: 1 });
+    expect(down.json().meta).toMatchObject({ created: 1 });
     expect(await checks(id)).toEqual([
       { external_id: 'Mail server', name: 'Mail server', host: 'mail.example.com', state: 'critical', output: 'connect ECONNREFUSED' },
     ]);
@@ -326,7 +328,7 @@ describe('native push endpoints', () => {
       payload: { host: 'web01', service: 'http' },
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json().message).toMatch(/state/);
+    expect(res.json().errors[0].detail).toMatch(/state/);
   });
 });
 
@@ -336,6 +338,7 @@ describe('admin routes', () => {
     for (const action of ['test', 'poll']) {
       const res = await t.app.inject({ method: 'POST', url: `/api/admin/monitor-sources/${id}/${action}` });
       expect(res.statusCode).toBe(401);
+      expect(res.json().errors[0]).toMatchObject({ status: '401', code: 'unauthorized' });
     }
   });
 });

@@ -375,23 +375,23 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/corrections` | `corrections`: `CorrectionInput` (relationship `services`) | `corrections` (201) | editor |
 | GET/PATCH/DELETE | `/api/admin/corrections/:id` | `corrections`: `CorrectionPatchInput` | `corrections`; DELETE 204 | editor |
 | GET | `/api/admin/services/:id/history` | `filter[from]`, `filter[to]` (required, at most 366 days, `ServiceHistoryQuery`) | `service-histories` (id = service id; `AdminServiceHistory`: measured and corrected segments and uptime; relationships `service`, `corrections`) | editor |
-| GET | `/api/admin/monitor-sources` | – | `AdminMonitorSource[]` | admin |
-| POST | `/api/admin/monitor-sources` | `MonitorSourceInput` | `AdminMonitorSource & { ingestToken: string }` (201, token shown once) | admin |
-| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` (`historyUsername` for `historyPassword`) are unchanged, otherwise 400; `icingaDbUrl` is kept regardless) | `AdminMonitorSource` | admin |
-| POST | `/api/admin/monitor-sources/:id/test` | – | `MonitorSourceTestResult` | admin |
-| POST | `/api/admin/monitor-sources/:id/poll` | – | `MonitorSourceTestResult` (polls now and stores the results) | admin |
-| POST | `/api/admin/monitor-sources/:id/rotate-token` | – | `{ ingestToken: string }` | admin |
-| GET | `/api/admin/monitor-sources/:id/history-imports` | – | `AdminHistoryImport[]` (latest 20, newest first) | admin |
-| POST | `/api/admin/monitor-sources/:id/history-imports` | `HistoryImportCreateInput` (body up to ~10 MB for CSV) | `AdminHistoryImport` (202, status `fetching`) | admin |
-| GET | `/api/admin/monitor-sources/:id/history-imports/:importId` | – | `AdminHistoryImport` with `progress`, `preview` (status `ready`) or `result` | admin |
-| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/apply` | – | `AdminHistoryImport` (202, status `applying`; 409 unless `ready`) | admin |
-| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/cancel` | – | `AdminHistoryImport` (aborts `fetching`, discards `ready`; 409 otherwise) | admin |
-| GET | `/api/admin/checks` | query `sourceId`, `q` (search name/host/external id), `state`, `unlinked=true` | `AdminMonitorCheck[]` (`sourceType` is `bundle` for bundle checks) | editor |
-| DELETE | `/api/admin/checks/:id` | – | 204 (409 for the check of a bundle: delete the bundle) | admin |
-| GET | `/api/admin/check-bundles` | – | `AdminCheckBundle[]` with the live vote and per-member breakdown | admin |
-| GET | `/api/admin/check-bundles/candidates` | query `type` (configurable source type) | `BundleCandidateSource[]`: checks that can become members, grouped by source | admin |
-| POST | `/api/admin/check-bundles` | `CheckBundleInput` | `AdminCheckBundle` (201) | admin |
-| GET/PUT/DELETE | `/api/admin/check-bundles/:id` | `CheckBundleInput` (members are replaced) | `AdminCheckBundle`; DELETE 204 removes the bundle check and its service links | admin |
+| GET | `/api/admin/monitor-sources` | – | collection of `monitor-sources` (`AdminMonitorSource`) | admin |
+| POST | `/api/admin/monitor-sources` | `monitor-sources`: `MonitorSourceInput` | `monitor-sources` (201) with the attribute `ingestToken` (shown once) | admin |
+| GET/PATCH/DELETE | `/api/admin/monitor-sources/:id` | `monitor-sources`: partial `MonitorSourceInput` (left-out attributes keep their values, the `config` is kept when left out and replaced as a whole otherwise; secrets equal to `SECRET_MASK` keep the stored value only while `sourceType`, `baseUrl` and `username` (`historyUsername` for `historyPassword`) are unchanged, otherwise 400 `secret_required`; `icingaDbUrl` is kept regardless) | `monitor-sources`; DELETE 204 | admin |
+| POST | `/api/admin/monitor-sources/:id/test` | – | meta `{ ok, message, checkCount? }` (`MonitorSourceTestResult`) | admin |
+| POST | `/api/admin/monitor-sources/:id/poll` | – | meta `{ ok, message, checkCount? }` (polls now and stores the results) | admin |
+| POST | `/api/admin/monitor-sources/:id/rotate-token` | – | meta `{ ingestToken }` | admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports` | – | collection of `history-imports` (latest 20, newest first, `preview` is `null`) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports` | `history-imports`: `HistoryImportCreateInput` (body up to ~10 MB for CSV) | `history-imports` (202 with `Location`, status `fetching`) | admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports/:importId` | – | `history-imports` with `progress`, `preview` (status `ready`) or `result` | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/apply` | – | `history-imports` (202, status `applying`; 409 unless `ready`) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/cancel` | – | `history-imports` (aborts `fetching`, discards `ready`; 409 otherwise) | admin |
+| GET | `/api/admin/checks` | `filter[source]`, `filter[q]` (search name/host/external id), `filter[state]`, `filter[unlinked]=true` | collection of `monitor-checks` (`AdminMonitorCheck`, not paginated; `sourceType` is `bundle` for bundle checks) | editor |
+| GET/DELETE | `/api/admin/checks/:id` | – | `monitor-checks`; DELETE 204 (409 for the check of a bundle: delete the bundle) | GET editor, DELETE admin |
+| GET | `/api/admin/check-bundles` | – | collection of `check-bundles` (`AdminCheckBundle`) with the live vote and per-member breakdown | admin |
+| GET | `/api/admin/check-bundles/candidates` | `filter[sourceType]` (configurable source type) | collection of `monitor-sources` (`BundleCandidateSource`) whose checks (`monitor-checks`, relationship `checks`) are included: the checks that can become members | admin |
+| POST | `/api/admin/check-bundles` | `check-bundles`: `CheckBundleInput` | `check-bundles` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/check-bundles/:id` | `check-bundles`: partial `CheckBundleInput` (`members` replaces the list) | `check-bundles`; DELETE 204 removes the bundle check and its service links | admin |
 | GET | `/api/admin/users` | – | collection of `users` (`AdminUser`), by name | admin |
 | POST | `/api/admin/users` | `users` document (`UserCreateInput`) | the user (201, `Location`) | admin |
 | GET/PATCH/DELETE | `/api/admin/users/:id` | `users` document (`UserUpdateInput`, partial) | the user; DELETE 204 (cannot delete or demote yourself / the last admin: 409) | admin |
@@ -523,7 +523,7 @@ Example (`GET /api/admin/corrections?filter[service]=1b6f…&page[size]=20`):
   return an empty page.
 - Check bundles: each bundle owns a check of the built-in source of type `bundle`
   (`AdminCheckBundle.checkId`) that is linked to services like any check. That
-  source answers `409` to `PUT` and `rotate-token`, `400` to `test`/`poll`, `409`
+  source answers `409` to `PATCH` and `rotate-token`, `400` to `test`/`poll`, `409`
   to ingest and to `DELETE` while bundles exist. Members must be existing checks
   that are not bundle checks (`400`). Voting rules: [adapters/README.md](adapters/README.md#check-bundles).
   Audit actions `check_bundle.create|update|delete`.
@@ -603,12 +603,86 @@ email.
   with `actualEnd = scheduledEnd` and a `completed` update at that time, and
   without email.
 
+### Monitoring resources
+
+| Resource `type` | Attributes | Relationships |
+| --- | --- | --- |
+| `monitor-sources` | `AdminMonitorSource`: the kind of source is `sourceType` (`icinga2`, `uptimekuma`, `openitcockpit`, `webhook`, `bundle`), because JSON:API reserves `type` | – (`checks` on bundle candidates) |
+| `monitor-checks` | `AdminMonitorCheck` without `sourceId` | `source` (`monitor-sources`) |
+| `check-bundles` | `AdminCheckBundle` without `checkId`; `members` and `vote` are value objects | `check` (`monitor-checks`) |
+| `history-imports` | `AdminHistoryImport` without `sourceId` and `createdBy` | `source` (`monitor-sources`), `createdBy` (`users`, included by default with its `name`; `include=` leaves it out) |
+
+```http
+POST /api/admin/monitor-sources
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "monitor-sources",
+    "attributes": {
+      "name": "Uptime Kuma",
+      "sourceType": "uptimekuma",
+      "pollIntervalSeconds": 60,
+      "config": { "baseUrl": "https://kuma.example.com", "apiKey": "uk1_…" }
+    }
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/monitor-sources/5f0c…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "monitor-sources",
+    "id": "5f0c…",
+    "attributes": {
+      "name": "Uptime Kuma",
+      "sourceType": "uptimekuma",
+      "enabled": true,
+      "config": { "baseUrl": "https://kuma.example.com", "apiKey": "••••••••", "verifyTls": true },
+      "ingestUrl": "https://status.example.com/api/ingest/5f0c…",
+      "ingestToken": "…",
+      "checkCount": 0,
+      "…": "…"
+    },
+    "links": { "self": "/api/admin/monitor-sources/5f0c…" }
+  }
+}
+```
+
+```http
+GET /api/admin/checks?filter[source]=5f0c…&filter[state]=critical
+
+{
+  "jsonapi": { "version": "1.1" },
+  "data": [
+    {
+      "type": "monitor-checks",
+      "id": "8a1d…",
+      "attributes": { "name": "HTTPS", "host": "web01", "state": "critical", "sourceName": "Uptime Kuma", "sourceType": "uptimekuma", "serviceCount": 1, "…": "…" },
+      "relationships": { "source": { "data": { "type": "monitor-sources", "id": "5f0c…" } } },
+      "links": { "self": "/api/admin/checks/8a1d…" }
+    }
+  ],
+  "meta": { "total": 1 },
+  "links": { "self": "/api/admin/checks?filter[source]=5f0c…&filter[state]=critical" }
+}
+```
+
 ## Ingest API (`/api/ingest`)
 
 Monitoring systems push check results. Authentication: `Authorization: Bearer <ingest token>`
 of the source (or `?token=` query parameter for systems that cannot set headers; its
 value is redacted in the request log).
-Responses: `{ ok: true, created, updated, removed, stateChanges }`.
+Request bodies are the native payloads below (`application/json`, JSON sent as
+`text/plain` is accepted, too), not JSON:API documents. Responses are JSON:API: a
+meta document `{ "jsonapi": { "version": "1.1" }, "meta": { "created", "updated",
+"removed", "stateChanges" } }`, errors are error documents whose `source.pointer`
+points into the body as sent (e.g. `/checks/0/state`).
 `full: true` (remove checks missing from the payload) is accepted only for sources of type
 `webhook` (`400` otherwise); a full push that would remove more than half of the checks linked
 to services or used as bundle members is rejected with `409` and stores nothing (see docs/adapters/README.md).

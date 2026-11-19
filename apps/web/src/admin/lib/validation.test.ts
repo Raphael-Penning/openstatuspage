@@ -14,7 +14,7 @@ describe('issuesToFieldErrors', () => {
   });
 
   it('maps nested paths and missing values', () => {
-    const res = MonitorSourceInput.safeParse({ type: 'icinga2', name: 'x', config: { baseUrl: 'nope' } });
+    const res = MonitorSourceInput.safeParse({ sourceType: 'icinga2', name: 'x', config: { baseUrl: 'nope' } });
     const errors = issuesToFieldErrors(res.error!.issues);
     expect(errors['config.baseUrl']).toEqual({ key: 'validation.url' });
     expect(errors['config.username']).toEqual({ key: 'validation.required' });

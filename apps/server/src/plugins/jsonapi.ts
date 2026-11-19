@@ -20,6 +20,7 @@
 import {
   JSONAPI_MEDIA_TYPE,
   flattenResource,
+  type ErrorObject,
   type NewResourceObject,
 } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -162,9 +163,22 @@ function unwrap(req: FastifyRequest, config: JsonApiRouteConfig | undefined): vo
   req.body = flattenResource(data as unknown as NewResourceObject);
 }
 
+/**
+ * Native request bodies (ingest/webhooks) are no JSON:API documents: their
+ * validation errors point into the body as sent ("/checks/0/state").
+ */
+function nativePointer(error: ErrorObject): ErrorObject {
+  const pointer = error.source?.pointer;
+  if (pointer === undefined || !pointer.startsWith('/data')) return error;
+  const rest = pointer.startsWith('/data/attributes') ? pointer.slice('/data/attributes'.length) : pointer.slice('/data'.length);
+  return { ...error, source: { ...error.source, pointer: rest } };
+}
+
 /** Error handler body for JSON:API routes: maps `err` and sends the error document. */
 export function sendJsonApiError(err: unknown, req: FastifyRequest, reply: FastifyReply): FastifyReply {
-  const { status, errors } = mapError(err, relationshipsOf(req));
+  const mapped = mapError(err, relationshipsOf(req));
+  const { status } = mapped;
+  const errors = jsonApiConfig(req)?.requestBody === 'native' ? mapped.errors.map(nativePointer) : mapped.errors;
   if (status >= 500) req.log.error({ err }, 'request failed');
   return reply.status(status).type(JSONAPI_MEDIA_TYPE).send(errorDocument(errors));
 }
