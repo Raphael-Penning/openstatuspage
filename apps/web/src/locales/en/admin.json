@@ -292,7 +292,8 @@
     "record": "Record maintenance",
     "retroactiveHint": {
       "past": "This window is already over. It is recorded as completed, no email is sent, and its time counts as maintenance (not as downtime) in the uptime history.",
-      "started": "This window has already started. It starts right away; subscribers only get the \"in progress\" email (no announcement), and the time since the start counts as maintenance in the uptime history."
+      "started": "This window has already started. It starts right away; subscribers only get the \"in progress\" email (no announcement), and the time since the start counts as maintenance in the uptime history.",
+      "hidden": "Note: a hidden maintenance does not change statuses, so it does not correct the uptime history. Use a status correction with the status \"Maintenance\" for an internal window."
     }
   },
   "corrections": {

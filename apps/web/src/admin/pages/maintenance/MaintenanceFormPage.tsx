@@ -165,7 +165,7 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
               error={form.error('scheduledEnd')}
               required
             />
-            {!maintenance && <RetroactiveHint start={v.scheduledStart} end={v.scheduledEnd} autoStart={v.autoStart} />}
+            {!maintenance && <RetroactiveHint start={v.scheduledStart} end={v.scheduledEnd} autoStart={v.autoStart} isPublic={v.isPublic} />}
             <CheckboxField
               label={t('maintenance.fields.autoStart')}
               help={t('maintenance.autoStartHelp')}
@@ -230,7 +230,17 @@ function isPast(localEnd: string): boolean {
 }
 
 /** Explains what happens when a window that already started or ended is entered. */
-function RetroactiveHint({ start, end, autoStart }: { start: string; end: string; autoStart: boolean }) {
+function RetroactiveHint({
+  start,
+  end,
+  autoStart,
+  isPublic,
+}: {
+  start: string;
+  end: string;
+  autoStart: boolean;
+  isPublic: boolean;
+}) {
   const { t } = useTranslation('admin');
   const startIso = localInputToIso(start);
   const endIso = localInputToIso(end);
@@ -246,6 +256,7 @@ function RetroactiveHint({ start, end, autoStart }: { start: string; end: string
   return (
     <p role="note" className="rounded-lg border border-status-maintenance/40 bg-status-maintenance/10 p-3 text-sm md:col-span-2">
       {t(`maintenance.retroactiveHint.${kind}`)}
+      {!isPublic && <> {t('maintenance.retroactiveHint.hidden')}</>}
     </p>
   );
 }
