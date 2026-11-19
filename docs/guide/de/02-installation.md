@@ -356,7 +356,6 @@ docker compose -f compose.split.yaml up -d public admin worker
   Hosts oder mehr Replikate siehe [Kubernetes](#kubernetes) und
   [Mehrere Instanzen betreiben](09-operations.md#mehrere-instanzen-betreiben).
 
-Das Kubernetes-Beispiel für die geteilte Installation liegt in
 Die Manifeste liegen in `deploy/kubernetes/split/` (anwenden mit
 `kubectl apply -k deploy/kubernetes/split`).
 

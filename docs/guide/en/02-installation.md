@@ -343,7 +343,6 @@ docker compose -f compose.split.yaml up -d public admin worker
   hosts or more replicas, see [Kubernetes](#kubernetes) and
   [Running several instances](09-operations.md#running-several-instances).
 
-The Kubernetes example for the split deployment is in
 The manifests are in `deploy/kubernetes/split/` (apply them with
 `kubectl apply -k deploy/kubernetes/split`).
 
