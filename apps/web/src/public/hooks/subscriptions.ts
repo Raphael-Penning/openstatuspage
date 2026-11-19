@@ -1,6 +1,7 @@
 /**
- * Queries and mutations of the public email subscription API. The manage
- * token travels in the X-Subscription-Token header, never in API URLs.
+ * Queries and mutations of the public email subscription API (JSON:API
+ * "subscriptions" resources). The manage token travels in the
+ * X-Subscription-Token header, never in API URLs.
  */
 import {
   SUBSCRIPTION_TOKEN_HEADER,
@@ -18,6 +19,10 @@ export interface ConfirmResult {
   manageToken: string;
 }
 
+const TYPE = 'subscriptions';
+/** serviceIds travel as the `services` relationship. */
+const RELATIONSHIPS = { serviceIds: 'services' };
+
 const path = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 const withToken = (token: string) => ({ headers: { [SUBSCRIPTION_TOKEN_HEADER]: token } });
 
@@ -30,7 +35,9 @@ function retry(failureCount: number, error: unknown): boolean {
 export const subscriptionKey = (id: string) => ['subscription', id] as const;
 
 export function useSubscribe() {
-  return useMutation({ mutationFn: (body: SubscribeInput) => api.post<{ ok: true }>(BASE, body) });
+  return useMutation({
+    mutationFn: (body: SubscribeInput) => api.post<{ accepted: true }>(BASE, body, { type: TYPE, relationships: RELATIONSHIPS }),
+  });
 }
 
 /**
@@ -42,8 +49,14 @@ export function useConfirmSubscription(id: string, token: string) {
   return useQuery({
     queryKey: ['subscription-confirm', id, token],
     queryFn: async () => {
-      const result = await api.post<ConfirmResult>(`${path(id)}/confirm`, { token });
-      queryClient.setQueryData(subscriptionKey(id), result.subscription);
+      // The confirmed subscription carries the manage token as the `manageToken` attribute.
+      const { manageToken, ...subscription } = await api.post<PublicSubscription & { manageToken: string }>(
+        `${path(id)}/confirm`,
+        { token },
+        { type: TYPE },
+      );
+      queryClient.setQueryData(subscriptionKey(id), subscription);
+      const result: ConfirmResult = { subscription, manageToken };
       return result;
     },
     retry,
@@ -64,7 +77,8 @@ export function useSubscription(id: string, token: string) {
 export function useUpdateSubscription(id: string, token: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: SubscriptionPreferencesInput) => api.put<PublicSubscription>(path(id), body, withToken(token)),
+    mutationFn: (body: SubscriptionPreferencesInput) =>
+      api.patch<PublicSubscription>(path(id), body, { ...withToken(token), type: TYPE, id, relationships: RELATIONSHIPS }),
     onSuccess: (saved) => queryClient.setQueryData(subscriptionKey(id), saved),
   });
 }
