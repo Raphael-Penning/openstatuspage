@@ -121,7 +121,10 @@ function UserDialog({ user, self, onClose }: { user?: AdminUser; self: boolean; 
   const v = form.values;
 
   const save = useAdminMutation(
-    (body: UserCreateInput | UserUpdateInput) => (user ? api.put(`/api/admin/users/${user.id}`, body) : api.post('/api/admin/users', body)),
+    (body: UserCreateInput | UserUpdateInput) =>
+      user
+        ? api.patch(`/api/admin/users/${user.id}`, body, { type: 'users', id: user.id })
+        : api.post('/api/admin/users', body, { type: 'users' }),
     { success: user ? t('users.saved') : t('users.created'), onSuccess: onClose, onError: form.applyServerError },
   );
 
