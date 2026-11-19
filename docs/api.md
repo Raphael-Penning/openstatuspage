@@ -36,7 +36,8 @@ Request attributes are validated with the zod schemas named below.
   `services` to `serviceIds` (the shared deserializer flattens them that way).
 - Complex value objects stay attributes (e.g. `uptime: DailyUptime[]`,
   `affectedServices` with the impact per service).
-- Singletons have a stable id: `settings/site`, `summaries/current`.
+- Singletons have a stable id: `settings/site`, `summaries/current`, `sessions/current`,
+  `auth-configs/current`, `overviews/current`, `notification-statuses/current`.
 - Resources carry `links.self` where they can be fetched on their own; documents
   carry a top-level `links.self` (relative URLs).
 
@@ -205,15 +206,52 @@ the settings and a mail transport is configured (the page then offers the subscr
 Double opt-in; see [notifications.md](notifications.md). Responses are sent with
 `Cache-Control: no-store`. Unknown ids and wrong tokens get the same `404`.
 
+A subscription is a `subscriptions` resource (`PublicSubscription`): attributes
+`email`, `locale`, `allServices`, `confirmed`; the selected services are the
+`services` relationship (`serviceIds` on the plain object).
+
 | Method | Path | Body / auth | Response |
 | --- | --- | --- | --- |
-| POST | `/api/public/subscriptions` | `SubscribeInput` | `202 { ok: true }` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated; also for a filled-in honeypot, see below). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public `serviceIds`. Rate limited (5/min per IP). |
-| POST | `/api/public/subscriptions/:id/confirm` | `SubscriptionConfirmInput` (token from the confirmation link) | `{ subscription: PublicSubscription, manageToken: string }`; idempotent |
-| GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` | `PublicSubscription` |
-| PUT | `/api/public/subscriptions/:id` | header as above, `SubscriptionPreferencesInput` | `PublicSubscription` |
+| POST | `/api/public/subscriptions` | `subscriptions` document (`SubscribeInput`, `serviceIds` as the `services` relationship) | `202` with the meta-only document `{ "meta": { "accepted": true } }` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated; also for a filled-in honeypot, see below). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public services. Rate limited (5/min per IP). |
+| POST | `/api/public/subscriptions/:id/confirm` | `subscriptions` document with the attribute `token` (`SubscriptionConfirmInput`, token from the confirmation link) | the subscription; only this response also has the attribute `manageToken`; idempotent |
+| GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` | the subscription |
+| PATCH | `/api/public/subscriptions/:id` | header as above, `subscriptions` document (`SubscriptionPreferencesInput`, partial) | the subscription |
 | DELETE | `/api/public/subscriptions/:id` | header as above | `204`, deletes the subscriber completely |
-| POST | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | empty or `List-Unsubscribe=One-Click` (form encoded) | `{ ok: true }`, deletes the subscriber (RFC 8058 one-click, used by the `List-Unsubscribe` header) |
-| GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | – | `303` to the manage page with the unsubscribe confirmation, `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>` (never deletes) |
+| POST | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | empty or `List-Unsubscribe=One-Click` (form encoded, not JSON:API) | `204`, deletes the subscriber (RFC 8058 one-click, used by the `List-Unsubscribe` header) |
+| GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | – | not JSON:API: `303` to the manage page with the unsubscribe confirmation, `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>` (never deletes) |
+
+```http
+POST /api/public/subscriptions
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "subscriptions",
+    "attributes": { "email": "jane@example.com", "locale": "en", "allServices": false },
+    "relationships": { "services": { "data": [{ "type": "services", "id": "3f0c…" }] } }
+  }
+}
+```
+
+```http
+POST /api/public/subscriptions/8d1e…/confirm
+Content-Type: application/vnd.api+json
+
+{ "data": { "type": "subscriptions", "attributes": { "token": "<confirmToken>" } } }
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "subscriptions",
+    "id": "8d1e…",
+    "attributes": { "email": "jane@example.com", "locale": "en", "allServices": false, "confirmed": true, "manageToken": "<manageToken>" },
+    "relationships": { "services": { "data": [{ "type": "services", "id": "3f0c…" }] } },
+    "links": { "self": "/api/public/subscriptions/8d1e…" }
+  }
+}
+```
 
 Behaviour of `POST /api/public/subscriptions`:
 
@@ -222,7 +260,7 @@ Behaviour of `POST /api/public/subscriptions`:
   choice can be changed on the manage page after confirming);
 - confirmed address: preferences unchanged, email with the manage link;
 - `website` (honeypot, any string up to 500 characters) not empty: answered exactly
-  like a successful subscribe (`202 { ok: true }`), but nothing is created and no
+  like a successful subscribe (`202`, `meta.accepted`), but nothing is created and no
   email is sent. Real visitors never see the field.
 
 The input is validated (`400`) before answering; everything that depends on the
@@ -248,15 +286,48 @@ directly. The server log redacts the value of every `token` query parameter
 
 ## Auth (`/api/auth`)
 
+The signed-in session is the singleton `sessions/current` (attribute `oidcEnabled`,
+to-one relationship `user` to a `users` resource, which is always included). The
+OIDC routes are browser redirects, not JSON:API.
+
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| GET | `/api/auth/config` | – | `AuthConfig` |
-| POST | `/api/auth/login` | `LoginInput` | `SessionInfo`, sets cookie `osp_session` (httpOnly, sameSite=lax, secure when BASE_URL is https). Rate limited (10/min per IP). |
+| GET | `/api/auth/config` | – | `auth-configs/current` (`AuthConfig`) |
+| POST | `/api/auth/login` | `sessions` document (`LoginInput`); another type is `409` | `200` with the session document, sets cookie `osp_session` (httpOnly, sameSite=lax, secure when BASE_URL is https). Wrong credentials: `401` `invalid_credentials`. Rate limited (10/min per IP). |
 | POST | `/api/auth/logout` | – | 204, clears cookie and deletes the session |
-| GET | `/api/auth/session` | – | `SessionInfo` or 401 |
-| POST | `/api/auth/password` | `ChangePasswordInput` | 204 |
+| GET | `/api/auth/session` | – | the session document or 401 |
+| POST | `/api/auth/password` | `passwords` document (`ChangePasswordInput`) | 204; a wrong current password is `400` `invalid_password` |
 | GET | `/api/auth/oidc/login` | – | 302 to the IdP (PKCE + state + nonce stored in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | – | 302 to `/admin` after login, or `/admin/login?error=<code>` |
+
+```http
+POST /api/auth/login
+Content-Type: application/vnd.api+json
+
+{ "data": { "type": "sessions", "attributes": { "email": "admin@example.com", "password": "…" } } }
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "sessions",
+    "id": "current",
+    "attributes": { "oidcEnabled": false },
+    "relationships": { "user": { "data": { "type": "users", "id": "5a7b…" } } },
+    "links": { "self": "/api/auth/session" }
+  },
+  "included": [
+    {
+      "type": "users",
+      "id": "5a7b…",
+      "attributes": { "email": "admin@example.com", "name": "Ada", "role": "admin", "hasPassword": true, "oidcLinked": false, "createdAt": "…", "lastLoginAt": "…" },
+      "links": { "self": "/api/admin/users/5a7b…" }
+    }
+  ],
+  "links": { "self": "/api/auth/session" }
+}
+```
 
 Sessions: random 32-byte token in the cookie, SHA-256 of it stored in `sessions.id`.
 Expired sessions are deleted lazily and by a periodic cleanup task.
@@ -273,8 +344,8 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 
 | Method | Path | Body | Response | Role |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }`; source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries | editor |
-| GET/PUT | `/api/admin/settings` | `SettingsInput` | `PublicPageSettings` | GET editor, PUT admin |
+| GET | `/api/admin/overview` | – | `overviews/current`: attribute `counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }`, relationships `services` (`services`, non-operational first) and `recentAudit` (`audit-entries`), both included; source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries | editor |
+| GET/PATCH | `/api/admin/settings` | `settings` document (`SettingsInput`, partial: omitted attributes keep their value) | `settings/site` (`PublicPageSettings`) | GET editor, PATCH admin |
 | GET | `/api/admin/locations` | – | `AdminLocation[]` | editor |
 | POST | `/api/admin/locations` | `LocationInput` | `AdminLocation` (201) | admin |
 | GET/PUT/DELETE | `/api/admin/locations/:id` | `LocationInput` | `AdminLocation` | GET editor, else admin |
@@ -319,21 +390,21 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | GET | `/api/admin/check-bundles/candidates` | query `type` (configurable source type) | `BundleCandidateSource[]`: checks that can become members, grouped by source | admin |
 | POST | `/api/admin/check-bundles` | `CheckBundleInput` | `AdminCheckBundle` (201) | admin |
 | GET/PUT/DELETE | `/api/admin/check-bundles/:id` | `CheckBundleInput` (members are replaced) | `AdminCheckBundle`; DELETE 204 removes the bundle check and its service links | admin |
-| GET | `/api/admin/users` | – | `AdminUser[]` | admin |
-| POST | `/api/admin/users` | `UserCreateInput` | `AdminUser` (201) | admin |
-| GET/PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
-| GET | `/api/admin/api-tokens` | – | `AdminApiToken[]` | admin |
-| POST | `/api/admin/api-tokens` | `ApiTokenCreateInput` | `AdminApiToken` with `token` (201); created with a token, the new token belongs to that token's owner | admin |
+| GET | `/api/admin/users` | – | collection of `users` (`AdminUser`), by name | admin |
+| POST | `/api/admin/users` | `users` document (`UserCreateInput`) | the user (201, `Location`) | admin |
+| GET/PATCH/DELETE | `/api/admin/users/:id` | `users` document (`UserUpdateInput`, partial) | the user; DELETE 204 (cannot delete or demote yourself / the last admin: 409) | admin |
+| GET | `/api/admin/api-tokens` | – | collection of `api-tokens` (`AdminApiToken`), newest first | admin |
+| POST | `/api/admin/api-tokens` | `api-tokens` document (`ApiTokenCreateInput`) | the token (201, `Location`); only this response has the attribute `token`; created with a token, the new token belongs to that token's owner | admin |
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
-| GET | `/api/admin/subscribers` | query `SubscriberListQuery` (`page`, `pageSize`, `q` email substring, `status=all\|confirmed\|pending`) | `Paginated<AdminSubscriber>` (newest first) | admin |
+| GET | `/api/admin/subscribers` | `page[number]`, `page[size]` (default 50), `filter[q]` (email substring), `filter[status]=all\|confirmed\|pending` | paginated `subscribers` (`AdminSubscriber`, newest first); relationship `services` with the selected services included (`name` only) | admin |
 | DELETE | `/api/admin/subscribers/:id` | – | 204 (audit `subscriber.delete` with masked address) | admin |
-| GET | `/api/admin/notifications/status` | – | `NotificationStatus` | admin |
-| POST | `/api/admin/notifications/test` | `TestEmailInput` | `{ ok: boolean, message: string }`; sends immediately (not queued); 409 without transport | admin |
-| POST | `/api/admin/notifications/retry-failed` | – | `{ requeued: number }` | admin |
+| GET | `/api/admin/notifications/status` | – | `notification-statuses/current` (`NotificationStatus`) | admin |
+| POST | `/api/admin/notifications/test` | `test-emails` document (`TestEmailInput`) | meta-only document `{ "meta": { "ok": boolean, "message": string } }`; sends immediately (not queued); 409 without transport | admin |
+| POST | `/api/admin/notifications/retry-failed` | – | meta-only document `{ "meta": { "requeued": number } }` | admin |
+| GET | `/api/admin/audit-log` | `page[number]`, `page[size]`, `filter[entityType]` | paginated `audit-entries` (`AuditLogEntry`, newest first); relationship `user` (the acting user, `null` for API tokens and deleted users; `userName` stays an attribute) | admin |
 
 API tokens are revoked when their creator is deleted; admin tokens are revoked when
 their creator loses the admin role.
-| GET | `/api/admin/audit-log` | query `page`, `pageSize`, `entityType` | `Paginated<AuditLogEntry>` | admin |
 
 ### Side effects the server must apply
 
@@ -369,7 +440,7 @@ their creator loses the admin role.
   then not be in the future) in line with it.
 - `PUT` bodies are complete objects (schema defaults apply to omitted fields);
   an omitted `slug` keeps the current slug. An explicit slug that is taken is `409`.
-- `PUT /api/admin/users/:id` with `password: null` removes the local password
+- `PATCH /api/admin/users/:id` with `password: null` removes the local password
   (not allowed for yourself). Changing a password signs that user out everywhere.
 - Mutations through API tokens are audited with `userId = null` and
   `details.apiToken = <token name>`; logins are audited as `auth.login`.
