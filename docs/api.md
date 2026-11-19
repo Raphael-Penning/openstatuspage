@@ -330,14 +330,11 @@ curl -g -H "Authorization: Bearer $OSP_TOKEN" -H "Accept: application/vnd.api+js
 ## Endpoints outside JSON:API
 
 These endpoints keep formats that other tools depend on. Their errors are JSON:API
-error documents like everywhere else. `status.json` is a deliberate exception to
-JSON:API: a stable, minimal format for widgets and third-party monitoring that
-stays compatible across releases; the JSON:API equivalent is `/api/public/summary`.
+error documents like everywhere else.
 
 | Method | Path | Response |
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes |
-| GET | `/api/public/status.json` | `application/json` in a stable format for third-party tools and widgets: `{ overall, updatedAt, services: [{ id, name, group, status }], activeIncidents: [{ id, title, status, impact }], activeMaintenances: [{ id, title, scheduledEnd }] }` |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 | GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | `302` to `/admin` after login, or `/admin/login?error=<code>` |
@@ -361,30 +358,6 @@ Content-Type: application/json
 
 </details>
 
-<details>
-<summary><code>GET /api/public/status.json</code></summary>
-
-```http
-GET /api/public/status.json
-```
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-  "overall": "major_outage", "updatedAt": "2026-11-19T21:25:02.850Z",
-  "services": [{"id": "33ea…", "name": "Public API", "group": "Platform", "status": "major_outage"}],
-  "activeIncidents": [
-    {"id": "6c02…", "title": "Database outage (EU)", "status": "identified", "impact": "major"}
-  ],
-  "activeMaintenances": []
-}
-```
-
-</details>
-
-
 ## Public API
 
 No authentication. Only public entities are returned (`is_public = 1`). **Nothing
@@ -394,6 +367,7 @@ outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age
 | Method | Path | Primary data | Included by default |
 | --- | --- | --- | --- |
 | GET | `/api/public/summary` | `summaries/current`: `overall`, `emailSubscriptions`, `generatedAt`; relationships `page` (settings), `groups`, `ungrouped` (services), `activeIncidents`, `recentIncidents`, `activeMaintenances`, `upcomingMaintenances` | everything referenced (settings, groups, services incl. uptime, incidents and maintenance with their updates) |
+| GET | `/api/public/status` | `statuses/current` (compact status for widgets and monitoring): `overall`, `updatedAt`; relationships `services` (display order), `activeIncidents`, `activeMaintenances` | the `service-groups` and services, the active incidents and maintenance with their updates |
 | GET | `/api/public/settings` | `settings/site` (`PublicPageSettings`) | – |
 | GET | `/api/public/services` | `services[]` in display order (grouped services in group order, then ungrouped), `meta.counts: Record<ServiceStatus, number>` | the `service-groups` |
 | GET | `/api/public/services/:idOrSlug` | `services` incl. `uptime: DailyUptime[]`; relationships `incidents` (last 90 days and unresolved), `maintenances` (active and upcoming) | `include`: `incidents`, `incidents.updates`, `maintenances`, `maintenances.updates` (default: all) |
@@ -459,6 +433,61 @@ Content-Type: application/vnd.api+json
   ]
 }
 ```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/status</code></summary>
+
+```http
+GET /api/public/status
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "statuses", "id": "current",
+    "attributes": {"overall": "major_outage", "updatedAt": "2026-11-19T21:25:02.850Z"},
+    "relationships": {
+      "services": {"data": [
+        {"type": "services", "id": "33ea…"}, {"type": "services", "id": "a1f0…"}
+      ]},
+      "activeIncidents": {"data": [{"type": "incidents", "id": "6c02…"}]},
+      "activeMaintenances": {"data": []}
+    },
+    "links": {"self": "/api/public/status"}
+  },
+  "links": {"self": "/api/public/status"},
+  "included": [
+    {
+      "type": "service-groups", "id": "f633…",
+      "attributes": {"name": "Platform", "status": "major_outage"},
+      "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}}
+    },
+    {
+      "type": "services", "id": "33ea…",
+      "attributes": {"name": "Public API", "status": "major_outage"},
+      "relationships": {"group": {"data": {"type": "service-groups", "id": "f633…"}}}
+    },
+    {
+      "type": "services", "id": "a1f0…",
+      "attributes": {"name": "Website", "status": "degraded"},
+      "relationships": {"group": {"data": null}}
+    },
+    {
+      "type": "incidents", "id": "6c02…",
+      "attributes": {"title": "Database outage (EU)", "status": "identified", "impact": "major"}
+    }
+  ]
+}
+```
+
+The attributes of the service and incident resources are those of
+`/api/public/services` and `/api/public/incidents/:id`, abbreviated here.
 
 </details>
 
