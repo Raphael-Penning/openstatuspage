@@ -3,11 +3,17 @@
  * returns SECRET_MASK and the form keeps that value until the user types a
  * new secret.
  */
-import { SECRET_MASK, type AdminMonitorSource, type MonitorSourceType } from '@openstatuspage/shared';
+import {
+  BUNDLE_SOURCE_TYPE,
+  SECRET_MASK,
+  type AdminMonitorSource,
+  type ConfigurableSourceType,
+  type MonitorSourceType,
+} from '@openstatuspage/shared';
 
 export interface SourceFormValues {
   name: string;
-  type: MonitorSourceType;
+  type: ConfigurableSourceType;
   enabled: boolean;
   pollIntervalSeconds: string;
   baseUrl: string;
@@ -22,6 +28,8 @@ export interface SourceFormValues {
 
 export const PULL_TYPES: MonitorSourceType[] = ['icinga2', 'uptimekuma', 'openitcockpit'];
 export const isPullType = (type: MonitorSourceType) => PULL_TYPES.includes(type);
+/** The built-in source holding the check bundles: managed by the server, not editable. */
+export const isBundleSource = (s: Pick<AdminMonitorSource, 'type'>) => s.type === BUNDLE_SOURCE_TYPE;
 
 export const emptySourceForm = (): SourceFormValues => ({
   name: '',
@@ -45,7 +53,8 @@ export function sourceToForm(s: AdminMonitorSource): SourceFormValues {
   const c = s.config;
   return {
     name: s.name,
-    type: s.type,
+    // The bundle source is never edited in this form.
+    type: s.type === BUNDLE_SOURCE_TYPE ? 'webhook' : s.type,
     enabled: s.enabled,
     pollIntervalSeconds: String(s.pollIntervalSeconds),
     baseUrl: str(c.baseUrl),
@@ -59,7 +68,7 @@ export function sourceToForm(s: AdminMonitorSource): SourceFormValues {
 }
 
 /** Whether the stored source has a secret for `key` that is kept when the input stays empty. */
-export function hasStoredSecret(source: AdminMonitorSource | undefined, key: 'password' | 'apiKey', type: MonitorSourceType): boolean {
+export function hasStoredSecret(source: AdminMonitorSource | undefined, key: 'password' | 'apiKey', type: ConfigurableSourceType): boolean {
   return Boolean(source && source.type === type && source.config[key] === SECRET_MASK);
 }
 
