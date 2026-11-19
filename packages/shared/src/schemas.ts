@@ -1168,6 +1168,7 @@ export interface PublicSubscription {
   confirmed: boolean;
 }
 
+/** Subscriber list state of the admin UI; sent as page[number], page[size], filter[q] and filter[status]. */
 export const SubscriberListQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),

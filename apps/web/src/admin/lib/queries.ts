@@ -215,7 +215,11 @@ export const useServiceHistory = (id: string, from: string, to: string, enabled 
 export const useSubscribers = (query: SubscriberListQuery) =>
   useQuery({
     queryKey: keys.subscribers(query),
-    queryFn: () => api.get<Paginated<AdminSubscriber>>('/api/admin/subscribers', { ...query, q: query.q || undefined }),
+    queryFn: () =>
+      api.getPage<AdminSubscriber>('/api/admin/subscribers', {
+        page: { number: query.page, size: query.pageSize },
+        filter: { q: query.q || undefined, status: query.status },
+      }),
     retry: notRetryingClientErrors,
     placeholderData: keepPreviousData,
   });
