@@ -13,17 +13,19 @@
 #        kubectl -n openstatuspage create secret generic openstatuspage-admin \
 #          --from-literal=SECRET_KEY="$(openssl rand -base64 48)" \
 #          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
-#          --from-literal=DATABASE_URL='postgres://openstatuspage:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
+#          --from-literal=DATABASE_URL='postgres://osp_app:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
 #          --from-literal=ADMIN_EMAIL=admin@example.com \
 #          --from-literal=ADMIN_PASSWORD='a-long-password'
 #        kubectl -n openstatuspage create secret generic openstatuspage-worker \
 #          --from-literal=SECRET_KEY="<the SECRET_KEY of the admin secret>" \
 #          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
-#          --from-literal=DATABASE_URL='postgres://openstatuspage:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
+#          --from-literal=DATABASE_URL='postgres://osp_app:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
 #          --from-literal=SMTP_HOST=smtp.example.com --from-literal=SMTP_USER=status@example.com \
 #          --from-literal=SMTP_PASSWORD='...' --from-literal=SMTP_FROM='Example Status <status@example.com>'
-#   2. Create the database roles first (deploy/postgres/roles.sql) and set the
-#      host names, the domains (BASE_URL in the Deployments) and the image tag below.
+#   2. Create the database roles first (deploy/postgres/roles.sql with
+#      public_password and app_password: osp_public and the non-superuser osp_app
+#      of admin and worker) and set the host names, the domains (BASE_URL and
+#      PUBLIC_BASE_URL in the Deployments) and the image tag below.
 #   3. Route the domains with one Ingress per instance (see ../ingress.yaml for
 #      an example). Restrict the admin domain, for example with an IP allowlist.
 #   4. kubectl apply -k deploy/kubernetes/split

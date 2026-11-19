@@ -43,7 +43,7 @@ spec:
               value: https://status.example.com
           envFrom:
             - secretRef:
-                name: openstatuspage-worker # SECRET_KEY, SUBSCRIPTION_TOKEN_KEY, DATABASE_URL (owner), SMTP_*
+                name: openstatuspage-worker # SECRET_KEY, SUBSCRIPTION_TOKEN_KEY, DATABASE_URL (osp_app), SMTP_*
           startupProbe:
             httpGet:
               path: /api/health

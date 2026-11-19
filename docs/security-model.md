@@ -174,6 +174,9 @@ way on every version.
    create the schema `osp_public` (`roles.sql` grants it to `osp_app`). If it is
    missing, the migrations still succeed without that schema and the log says so.
    Grant the privilege and restart: the schema is created on the next start.
+   Do not use a superuser here: the role that migrates owns the `SECURITY
+   DEFINER` functions the public role calls, so they would run as superuser. The
+   instance logs a warning when it migrates as one.
 
 3. Public instance: `APP_ROLE=public` and
    `DATABASE_URL=postgres://osp_public:...@db/openstatuspage`. It waits for the

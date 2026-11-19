@@ -71,12 +71,19 @@ export interface PublicRoleSetup {
   grant: PublicRoleGrant;
   /** Whether the role exists (also when the grant could not be made). */
   roleExists: boolean;
+  /**
+   * The migrating role is a superuser: it owns the SECURITY DEFINER functions the public
+   * role may call, so a bug in one of them would run with superuser rights.
+   */
+  ownerIsSuperuser: boolean;
 }
 
 /** On the start of every instance that migrates: ensurePublicSchema, then grantPublicRole. */
 export async function setUpPublicRole(db: DB, role: string): Promise<PublicRoleSetup> {
   const schema = await ensurePublicSchema(db);
   const grant = await grantPublicRole(db, role);
-  const { rows } = await sql<{ found: boolean }>`select exists (select 1 from pg_roles where rolname = ${role}) as found`.execute(db);
-  return { schema, grant, roleExists: rows[0]?.found === true };
+  const { rows } = await sql<{ found: boolean; superuser: boolean }>`
+    select exists (select 1 from pg_roles where rolname = ${role}) as found,
+      (select rolsuper from pg_roles where rolname = current_user) as superuser`.execute(db);
+  return { schema, grant, roleExists: rows[0]?.found === true, ownerIsSuperuser: rows[0]?.superuser === true };
 }

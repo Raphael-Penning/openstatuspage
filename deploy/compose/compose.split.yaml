@@ -15,9 +15,11 @@
 #   public        -> osp_public: login with no table access, only the osp_public
 #                    views and the subscription functions. The database init script
 #                    creates it when the data volume is created.
-#   admin, worker -> the owner role POSTGRES_USER (openstatuspage): runs the
-#                    migrations and owns the tables. The official image makes this
-#                    role a superuser (see the guide before running it in production).
+#   admin, worker -> osp_app: owns the tables and runs the migrations, but is no
+#                    superuser, so the functions the public role may call do not
+#                    run as one. Created by the same init script.
+#   POSTGRES_USER (openstatuspage) is the superuser of the image; only the init
+#   script uses it.
 #
 # The fixed project name gives the volumes their own names
 # (openstatuspage-split_pg), so this file can run next to a single-instance
@@ -37,8 +39,9 @@ services:
       POSTGRES_DB: openstatuspage
       POSTGRES_USER: openstatuspage
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      # Read by the init script only, which creates the public role with it.
+      # Read by the init script only, which creates the public and the app role with them.
       POSTGRES_PUBLIC_PASSWORD: ${POSTGRES_PUBLIC_PASSWORD:?set POSTGRES_PUBLIC_PASSWORD in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}
     volumes:
       - pg:/var/lib/postgresql/data
       # Runs once, on an empty data volume (see deploy/postgres/init-roles.sh).
@@ -103,7 +106,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
       SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
-      DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
+      DATABASE_URL: postgres://osp_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}@db:5432/openstatuspage
     depends_on:
       db:
         condition: service_healthy
@@ -123,7 +126,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
       SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
-      DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
+      DATABASE_URL: postgres://osp_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}@db:5432/openstatuspage
     depends_on:
       db:
         condition: service_healthy

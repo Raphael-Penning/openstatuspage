@@ -80,6 +80,7 @@ describe('a migrating role without CREATE on the database', () => {
     await prepareDatabase(db, config, log);
     expect(logs).toContain('public schema created');
     expect(logs).toContain('public database role granted');
+    expect(logs.filter((l) => l.includes('superuser'))).toEqual([]);
     const pub = await pgdb.connect('public');
     try {
       expect(await connectionRestricted(pub)).toBe(true);

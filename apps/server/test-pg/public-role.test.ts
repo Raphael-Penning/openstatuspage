@@ -336,6 +336,8 @@ afterAll(async () => {
 describe('start-up', () => {
   it('grants the public role when an admin instance starts', () => {
     expect(logs).toContainEqual({ msg: 'public database role granted', obj: { role: pgdb.publicRole, granted: true } });
+    // The tests migrate as a superuser (PG_TEST_URL): the instance warns about it.
+    expect(logs.map((l) => l.msg)).toContainEqual(expect.stringMatching(/^WARN this instance migrates as a superuser/));
   });
 
   it('lets a public instance see the expected schema through its views and confirms it is restricted', async () => {

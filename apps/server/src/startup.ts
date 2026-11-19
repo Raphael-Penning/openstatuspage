@@ -68,6 +68,14 @@ export async function prepareDatabase(
             ? 'public database role granted'
             : 'public database role does not exist (only needed for APP_ROLE=public, see deploy/postgres/roles.sql)',
         );
+        if (granted && result.ownerIsSuperuser) {
+          (log.warn ?? log.info).call(
+            log,
+            { role },
+            'this instance migrates as a superuser, so the functions the public role may call run as superuser: ' +
+              'use a separate app role without SUPERUSER for admin and worker (deploy/postgres/roles.sql, app_password)',
+          );
+        }
       }
     }
     return;

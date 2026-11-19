@@ -251,8 +251,9 @@ git clone https://github.com/Raphael-Penning/openstatuspage.git
 cd openstatuspage/deploy/compose
 cp .env.example .env
 chmod 600 .env
-printf 'SECRET_KEY=%s\nSUBSCRIPTION_TOKEN_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
-  "$(openssl rand -base64 48)" "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
+printf 'SECRET_KEY=%s\nSUBSCRIPTION_TOKEN_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\nPOSTGRES_APP_PASSWORD=%s\n' \
+  "$(openssl rand -base64 48)" "$(openssl rand -base64 48)" \
+  "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
 # edit .env, see below
 docker compose -f compose.split.yaml up -d
 ```
@@ -267,14 +268,16 @@ In `.env`, uncomment and set the variables of the section *Split deployment*:
 - `PUBLIC_BIND` and `ADMIN_BIND` keep the default `127.0.0.1` when your reverse
   proxy runs on the same host.
 
-Use letters and digits only in `POSTGRES_PASSWORD` and `POSTGRES_PUBLIC_PASSWORD`:
-both are part of a connection URL. `BASE_URL` in `.env` is not used by this file;
+Use letters and digits only in `POSTGRES_PASSWORD`, `POSTGRES_PUBLIC_PASSWORD`
+and `POSTGRES_APP_PASSWORD`: they are part of connection URLs. `BASE_URL` in `.env` is not used by this file;
 the compose file sets the base URL of each container. Only admin and worker
 get `SECRET_KEY`; the public container gets `SUBSCRIPTION_TOKEN_KEY`, the key of
 the subscription links, instead.
 
-The database init script creates the role `osp_public` with
-`POSTGRES_PUBLIC_PASSWORD` when the data volume is created for the first time.
+The database init script creates the roles `osp_public` (public container,
+`POSTGRES_PUBLIC_PASSWORD`) and `osp_app` (admin and worker,
+`POSTGRES_APP_PASSWORD`, not a superuser) when the data volume is created for
+the first time.
 If that step failed, the database is initialized already and the script does not
 run again: stop the stack, remove the volume `openstatuspage-split_pg` (this
 deletes the data) and start again.
@@ -314,24 +317,23 @@ make a backup first ([Operations](09-operations.md)). Then run
 `docker compose -f compose.split.yaml up -d`. The admin instance migrates the
 schema; the public instance waits for it (`SCHEMA_WAIT_SECONDS`).
 
-To change `POSTGRES_PUBLIC_PASSWORD` later, change it in `.env` (letters and
-digits only), then:
+To change `POSTGRES_PUBLIC_PASSWORD` or `POSTGRES_APP_PASSWORD` later, change
+it in `.env` (letters and digits only), then:
 
 ```bash
 docker compose -f compose.split.yaml up -d db
 docker compose -f compose.split.yaml exec db /docker-entrypoint-initdb.d/10-roles.sh
-docker compose -f compose.split.yaml up -d public
+docker compose -f compose.split.yaml up -d public admin worker
 ```
 
 ### What the split does not cover
 
-- **The owner role is a superuser.** The official PostgreSQL image makes
-  `POSTGRES_USER` a superuser, and admin and worker connect with it. A compromised
-  admin or worker container therefore has full access to the database. The
-  separation protects the public side: the public role is the only one that
-  faces the internet. For a stricter setup, create a non-superuser application
-  role with `deploy/postgres/roles.sql` (`app_password`) and point `DATABASE_URL`
-  of admin and worker to it.
+- **Admin and worker own the tables.** They connect as `osp_app`, which is not
+  a superuser but owns every table and can read and change all data. A
+  compromised admin or worker container therefore has full access to the
+  application's data (not to other databases or the server). The separation
+  protects the public side: the public role is the only one that faces the
+  internet.
 - **Shared secrets.** Admin and worker hold `SECRET_KEY`, all three containers
   hold `SUBSCRIPTION_TOKEN_KEY`. Keep the `.env` file private and back it up,
   see [Operations](09-operations.md#secret_key).

@@ -262,8 +262,9 @@ git clone https://github.com/Raphael-Penning/openstatuspage.git
 cd openstatuspage/deploy/compose
 cp .env.example .env
 chmod 600 .env
-printf 'SECRET_KEY=%s\nSUBSCRIPTION_TOKEN_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
-  "$(openssl rand -base64 48)" "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
+printf 'SECRET_KEY=%s\nSUBSCRIPTION_TOKEN_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\nPOSTGRES_APP_PASSWORD=%s\n' \
+  "$(openssl rand -base64 48)" "$(openssl rand -base64 48)" \
+  "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
 # .env bearbeiten, siehe unten
 docker compose -f compose.split.yaml up -d
 ```
@@ -279,14 +280,17 @@ das Kommentarzeichen davor:
 - `PUBLIC_BIND` und `ADMIN_BIND` behältst du auf `127.0.0.1`, wenn dein Reverse
   Proxy auf demselben Host läuft.
 
-Verwende in `POSTGRES_PASSWORD` und `POSTGRES_PUBLIC_PASSWORD` nur Buchstaben und
-Ziffern: Beide stehen in einer Verbindungs-URL. `BASE_URL` in `.env` nutzt diese
+Verwende in `POSTGRES_PASSWORD`, `POSTGRES_PUBLIC_PASSWORD` und
+`POSTGRES_APP_PASSWORD` nur Buchstaben und Ziffern: Sie stehen in
+Verbindungs-URLs. `BASE_URL` in `.env` nutzt diese
 Datei nicht; die Compose-Datei setzt die Basis-URL jedes Containers selbst.
 Nur Admin und Worker bekommen `SECRET_KEY`; der öffentliche Container bekommt
 stattdessen `SUBSCRIPTION_TOKEN_KEY`, den Schlüssel der Abonnement-Links.
 
-Das Init-Skript legt die Rolle `osp_public` mit `POSTGRES_PUBLIC_PASSWORD` an,
-wenn das Datenvolumen zum ersten Mal erstellt wird. Ist dieser Schritt
+Das Init-Skript legt die Rollen `osp_public` (öffentlicher Container,
+`POSTGRES_PUBLIC_PASSWORD`) und `osp_app` (Admin und Worker,
+`POSTGRES_APP_PASSWORD`, kein Superuser) an, wenn das Datenvolumen zum ersten
+Mal erstellt wird. Ist dieser Schritt
 fehlgeschlagen, ist die Datenbank bereits initialisiert, und das Skript läuft
 nicht erneut: Stoppe den Stack, entferne das Volume `openstatuspage-split_pg`
 (dabei gehen die Daten verloren) und starte neu.
@@ -326,24 +330,23 @@ dann `docker compose -f compose.split.yaml pull` und
 `docker compose -f compose.split.yaml up -d` aus. Die Admin-Instanz migriert das
 Schema; die öffentliche Instanz wartet darauf (`SCHEMA_WAIT_SECONDS`).
 
-Um `POSTGRES_PUBLIC_PASSWORD` später zu ändern, passe es in `.env` an (nur
-Buchstaben und Ziffern) und führe dann aus:
+Um `POSTGRES_PUBLIC_PASSWORD` oder `POSTGRES_APP_PASSWORD` später zu ändern,
+passe es in `.env` an (nur Buchstaben und Ziffern) und führe dann aus:
 
 ```bash
 docker compose -f compose.split.yaml up -d db
 docker compose -f compose.split.yaml exec db /docker-entrypoint-initdb.d/10-roles.sh
-docker compose -f compose.split.yaml up -d public
+docker compose -f compose.split.yaml up -d public admin worker
 ```
 
 ### Was die geteilte Installation nicht abdeckt
 
-- **Die Eigentümerrolle ist Superuser.** Das offizielle PostgreSQL-Image macht
-  `POSTGRES_USER` zum Superuser, und Admin und Worker verbinden sich damit. Ein
-  kompromittierter Admin- oder Worker-Container hat deshalb vollen Zugriff auf
-  die Datenbank. Die Trennung schützt die öffentliche Seite: Nur die Rolle
-  `osp_public` ist dem Internet zugewandt. Für eine strengere Einrichtung lege
-  mit `deploy/postgres/roles.sql` (`app_password`) eine Anwendungsrolle ohne
-  Superuser-Rechte an und setze `DATABASE_URL` von Admin und Worker auf sie.
+- **Admin und Worker besitzen die Tabellen.** Sie verbinden sich als
+  `osp_app`. Diese Rolle ist kein Superuser, besitzt aber alle Tabellen und darf
+  alle Daten lesen und ändern. Ein kompromittierter Admin- oder Worker-Container
+  hat deshalb vollen Zugriff auf die Daten der Anwendung (nicht auf andere
+  Datenbanken oder den Server). Die Trennung schützt die öffentliche Seite: Nur
+  die Rolle `osp_public` ist dem Internet zugewandt.
 - **Gemeinsame Geheimnisse.** Admin und Worker haben `SECRET_KEY`, alle drei
   Container haben `SUBSCRIPTION_TOKEN_KEY`. Halte die `.env`-Datei privat und
   sichere sie, siehe [Betrieb](09-operations.md#secret_key).
