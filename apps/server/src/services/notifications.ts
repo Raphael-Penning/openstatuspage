@@ -166,7 +166,7 @@ export class NotificationService {
     const settings = await getSettings(this.db);
     if (!settings.emailSubscriptionsEnabled) return null;
     return {
-      site: { siteName: settings.siteName, baseUrl: this.config.BASE_URL, accentColor: settings.accentColor },
+      site: { siteName: settings.siteName, baseUrl: this.config.PUBLIC_BASE_URL, accentColor: settings.accentColor },
       reminderHours: settings.maintenanceReminderHours,
     };
   }
@@ -384,7 +384,7 @@ export class NotificationService {
     if (isUnrenderedAccountMail(row)) {
       // Queued by the database function of the public role, which never takes mail content.
       const settings = await getSettings(this.db);
-      const site = { siteName: settings.siteName, baseUrl: this.config.BASE_URL, accentColor: settings.accentColor };
+      const site = { siteName: settings.siteName, baseUrl: this.config.PUBLIC_BASE_URL, accentColor: settings.accentColor };
       const links = subscriberLinks(this.config, sub.id, TOKEN_PLACEHOLDERS);
       const mail =
         row.kind === 'confirm'
@@ -498,7 +498,7 @@ export class NotificationService {
     if (!mailerConfigured(this.mailer)) throw conflict('No mail transport configured (MAIL_TRANSPORT=none)');
     const settings = await getSettings(this.db);
     const mail = testMail(
-      { siteName: settings.siteName, baseUrl: this.config.BASE_URL, accentColor: settings.accentColor },
+      { siteName: settings.siteName, baseUrl: this.config.PUBLIC_BASE_URL, accentColor: settings.accentColor },
       settings.defaultLocale,
     );
     try {

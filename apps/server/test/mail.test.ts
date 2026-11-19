@@ -121,6 +121,19 @@ describe('subscriber links', () => {
     });
   });
 
+  it('use PUBLIC_BASE_URL instead of the BASE_URL of an admin or worker instance', () => {
+    const split = loadConfig({
+      NODE_ENV: 'test',
+      SECRET_KEY: 'test-secret-key-that-is-long-enough-1234567890',
+      BASE_URL: 'https://status.admin.example.com',
+      PUBLIC_BASE_URL: 'https://status.example.com/',
+    });
+    expect(split.PUBLIC_BASE_URL).toBe('https://status.example.com');
+    expect(config.PUBLIC_BASE_URL).toBe(config.BASE_URL);
+    const links = subscriberLinks(split, 'sub-1', { confirm: 'ct', manage: 'mt' });
+    for (const url of Object.values(links)) expect(url.startsWith('https://status.example.com/')).toBe(true);
+  });
+
   it('fills placeholders with the derived tokens', () => {
     const sub = { id: 'sub-1', token_salt: 'salt' };
     const tokens = subscriberTokens(config, sub);

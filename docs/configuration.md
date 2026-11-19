@@ -17,7 +17,8 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `NODE_ENV` | `production` | `development`, `production` or `test`. `pnpm dev` uses `development`. Outside development/test `SECRET_KEY` is mandatory and logs are JSON. |
 | `HOST` | `0.0.0.0` | Interface the HTTP server binds to. |
 | `PORT` | `3000` | HTTP port. |
-| `BASE_URL` | `http://localhost:3000` | Public URL of the status page, without trailing slash. Used for feed links, links in notification emails, OIDC redirect URIs and ingest URLs. When it starts with `https://` cookies are marked `Secure`. |
+| `BASE_URL` | `http://localhost:3000` | URL of this instance, without trailing slash: the public URL of the status page, or the admin domain of an `admin` instance. Used for OIDC redirect URIs and ingest URLs, and for feed and email links unless `PUBLIC_BASE_URL` is set. When it starts with `https://` cookies are marked `Secure`. |
+| `PUBLIC_BASE_URL` | `BASE_URL` | Public URL of the status page, used for every link in feeds and emails (incident and maintenance pages, confirm, manage and one-click unsubscribe links). Set it on `admin` and `worker` instances of a [split deployment](#split-deployment), so mails sent from the admin domain still link to the public page. |
 | `TRUST_PROXY` | `false` | Behind a reverse proxy (nginx, Traefik, Caddy, ...) client IPs (rate limiting, session metadata) and the protocol are taken from `X-Forwarded-*` headers. Set the number of proxies in front of the app (`1` for a single proxy; `true` means `1`) or a comma separated list of trusted proxy addresses/CIDRs (e.g. `10.0.0.0/8,127.0.0.1`). Entries further left in `X-Forwarded-For` are set by the client and are never trusted. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
 | `WEB_DIST_DIR` | – | Directory with the built web client. By default the server looks for `apps/web/dist`. |
@@ -137,7 +138,10 @@ monitoring systems need to reach the admin host, not the public one.
 Each role can run as several instances (e.g. two `worker` instances for
 availability, several `public` instances behind a load balancer): background tasks
 and polls are coordinated through the database, and every instance can serve every
-request. Use the same `SECRET_KEY` everywhere. Rate limits are counted per instance
+request. Set `PUBLIC_BASE_URL` to the public domain on admin and worker
+instances: mails are written on the instance where an incident is created (the
+admin instance), and their links must not point to the restricted admin domain.
+Use the same `SECRET_KEY` everywhere. Rate limits are counted per instance
 (see [Rate limits](#rate-limits)). Details: [architecture.md](architecture.md#several-instances).
 
 SQLite is a single-file database for one instance: with SQLite only `APP_ROLE=all`

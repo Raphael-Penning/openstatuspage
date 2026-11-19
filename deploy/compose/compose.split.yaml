@@ -97,6 +97,8 @@ services:
       PORT: "3000"
       WORKER_ENABLED: "false"
       BASE_URL: ${ADMIN_BASE_URL:?set ADMIN_BASE_URL in .env}
+      # Links in subscriber mails and feeds point to the public page.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
       DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
     depends_on:
@@ -115,6 +117,7 @@ services:
       WORKER_ENABLED: "true"
       # Mail links (subscription confirmation, unsubscribe) point to the public page.
       BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
       DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
     depends_on:

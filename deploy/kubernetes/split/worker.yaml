@@ -39,6 +39,8 @@ spec:
             # Mail links (subscription confirmation, unsubscribe) point to the public page.
             - name: BASE_URL
               value: https://status.example.com
+            - name: PUBLIC_BASE_URL
+              value: https://status.example.com
           envFrom:
             - secretRef:
                 name: openstatuspage-worker # SECRET_KEY, DATABASE_URL (owner), SMTP_*

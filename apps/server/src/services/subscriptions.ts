@@ -150,12 +150,12 @@ export interface SubscriberLinkSet {
  */
 export function subscriberLinks(config: Config, subscriberId: string, tokens: SubscriptionTokens): SubscriberLinkSet {
   const id = encodeURIComponent(subscriberId);
-  const managePage = `${config.BASE_URL}/subscription/manage?id=${id}`;
+  const managePage = `${config.PUBLIC_BASE_URL}/subscription/manage?id=${id}`;
   return {
-    confirmUrl: `${config.BASE_URL}/subscription/confirm?id=${id}#token=${tokens.confirm}`,
+    confirmUrl: `${config.PUBLIC_BASE_URL}/subscription/confirm?id=${id}#token=${tokens.confirm}`,
     manageUrl: `${managePage}#token=${tokens.manage}`,
     unsubscribeUrl: `${managePage}&unsubscribe=1#token=${tokens.manage}`,
-    oneClickUrl: `${config.BASE_URL}/api/public/subscriptions/${id}/unsubscribe?token=${tokens.manage}`,
+    oneClickUrl: `${config.PUBLIC_BASE_URL}/api/public/subscriptions/${id}/unsubscribe?token=${tokens.manage}`,
   };
 }
 
@@ -253,7 +253,7 @@ function throttled(sub: Subscriber, now: Date): boolean {
 
 async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm' | 'manage', now: Date): Promise<void> {
   const settings = await getSettings(ctx.db);
-  const site = { siteName: settings.siteName, baseUrl: ctx.config.BASE_URL, accentColor: settings.accentColor };
+  const site = { siteName: settings.siteName, baseUrl: ctx.config.PUBLIC_BASE_URL, accentColor: settings.accentColor };
   // Placeholders only: the real token is filled in right before sending.
   const links = subscriberLinks(ctx.config, sub.id, TOKEN_PLACEHOLDERS);
   const mail =

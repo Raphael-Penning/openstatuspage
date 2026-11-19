@@ -91,6 +91,10 @@ breaking changes.
     needed for `APP_ROLE=public`. After `GRANT CREATE ON DATABASE <database> TO <role>`
     the next start of an admin, worker or all instance creates it. A failing
     migration now logs its cause.
+- `PUBLIC_BASE_URL` (default `BASE_URL`): the public URL used for every link in
+  emails and feeds. Admin and worker instances of a split deployment set it, so
+  mails written on the admin instance link to the public page and its one-click
+  unsubscribe endpoint instead of the admin domain.
 - `WORKER_ENABLED` defaults to `false` for `APP_ROLE=admin`; contradicting settings
   stop the server on start.
 - **Several instances with background tasks** on PostgreSQL: every task (and the

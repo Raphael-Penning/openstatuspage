@@ -29,8 +29,14 @@ const EnvSchema = z.object({
   SCHEMA_WAIT_SECONDS: z.coerce.number().int().min(0).max(3600).default(120),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  /** Public base URL, used for links in feeds, OIDC redirects and ingest URLs. */
+  /** Base URL of this instance, used for OIDC redirects, ingest URLs and secure cookies. */
   BASE_URL: z.string().url().default('http://localhost:3000'),
+  /**
+   * Base URL of the public status page, used for every link in mails and feeds.
+   * Defaults to BASE_URL. Set it on admin and worker instances of a split deployment,
+   * whose BASE_URL is the admin domain.
+   */
+  PUBLIC_BASE_URL: z.string().url().optional(),
   /** `sqlite:<path>` or `postgres://user:pass@host:5432/db`. */
   DATABASE_URL: z.string().default('sqlite:./data/openstatuspage.db'),
   /**
@@ -127,7 +133,12 @@ const EnvSchema = z.object({
   SMTP_TLS_REJECT_UNAUTHORIZED: bool.default(true),
 });
 
-export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT' | 'SESSION_MAX_AGE_HOURS' | 'WORKER_ENABLED'> & {
+export type Config = Omit<
+  z.infer<typeof EnvSchema>,
+  'MAIL_TRANSPORT' | 'SESSION_MAX_AGE_HOURS' | 'WORKER_ENABLED' | 'PUBLIC_BASE_URL'
+> & {
+  /** Effective: PUBLIC_BASE_URL or BASE_URL, without trailing slash. */
+  PUBLIC_BASE_URL: string;
   SECRET_KEY: string;
   /** Effective: WORKER_ENABLED or the default of APP_ROLE. */
   WORKER_ENABLED: boolean;
@@ -248,6 +259,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     ...c,
     WORKER_ENABLED: workerEnabled,
     BASE_URL: c.BASE_URL.replace(/\/+$/, ''),
+    PUBLIC_BASE_URL: (c.PUBLIC_BASE_URL ?? c.BASE_URL).replace(/\/+$/, ''),
     SECRET_KEY: secret,
     insecureSecret: secret === DEV_SECRET,
     oidcEnabled,

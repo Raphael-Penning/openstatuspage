@@ -98,6 +98,24 @@ async function seedSubscribers() {
 }
 
 describe('incident notifications', () => {
+  it('link to PUBLIC_BASE_URL when sent from an admin instance on its own domain', async () => {
+    await t.close();
+    mailer = new MemoryMailer();
+    const adminDomain = 'https://status.admin.example.com';
+    t = await createTestApp({ APP_ROLE: 'admin', BASE_URL: adminDomain, PUBLIC_BASE_URL: BASE_URL }, { mailer });
+    admin = await adminClient(t);
+    await settings({});
+    await addSubscriber('all@example.com');
+    const created = await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
+    const [mail] = await deliver();
+    expect(mail!.text).toContain(`${BASE_URL}/incidents/${created.json().data.id}`);
+    expect(mail!.text).toContain(`${BASE_URL}/subscription/manage?id=`);
+    expect(mail!.headers!['List-Unsubscribe']).toMatch(new RegExp(`^<${BASE_URL}/api/public/subscriptions/`));
+    for (const part of [mail!.text, mail!.html, JSON.stringify(mail!.headers)]) {
+      expect(part).not.toContain('status.admin.example.com');
+    }
+  });
+
   it('selects recipients by affected public services', async () => {
     await seedSubscribers();
     const created = await admin.post('/api/admin/incidents', {

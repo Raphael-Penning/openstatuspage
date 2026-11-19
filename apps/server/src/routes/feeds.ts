@@ -238,8 +238,8 @@ export async function registerFeedRoutes(app: FastifyInstance): Promise<void> {
   // Feed texts use the page's default language.
   async function load() {
     const settings = await getSettings(db);
-    const meta = { title: settings.siteName, description: settings.description, baseUrl: config.BASE_URL };
-    return { meta, items: await loadFeedItems(db, config.BASE_URL, settings.defaultLocale) };
+    const meta = { title: settings.siteName, description: settings.description, baseUrl: config.PUBLIC_BASE_URL };
+    return { meta, items: await loadFeedItems(db, config.PUBLIC_BASE_URL, settings.defaultLocale) };
   }
 
   app.get('/feed.rss', async (_req, reply) => {

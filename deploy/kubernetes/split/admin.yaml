@@ -42,6 +42,9 @@ spec:
               value: "false"
             - name: BASE_URL
               value: https://status.admin.example.com
+            # Links in subscriber mails and feeds point to the public page.
+            - name: PUBLIC_BASE_URL
+              value: https://status.example.com
             - name: TRUST_PROXY
               value: "1"
           envFrom:
