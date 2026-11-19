@@ -100,7 +100,11 @@ stop a leak on its own; together they are defense in depth:
    blanking. Admin and
    worker instances call it on every start (and `pnpm db:migrate` does), so the
    grants follow every migration. It refuses a role that is the connecting role,
-   a superuser, has `BYPASSRLS` or is a member of the owner.
+   a superuser, has `BYPASSRLS` or is a member of any role (predefined roles such
+   as `pg_read_all_data` would bypass the column privileges). Functions the
+   migrating role creates are not executable by `PUBLIC` by default
+   (`ALTER DEFAULT PRIVILEGES`), so a function added later is only callable by
+   the roles it is granted to.
 2. **Views.** The views select only public rows (`is_public = 1`, links whose
    both ends are public, the `page` settings row) and only public columns; hidden
    group ids and unpublished notes are blanked. Conditions of the caller (for
@@ -113,7 +117,9 @@ stop a leak on its own; together they are defense in depth:
    registered in `osp_public_roles` (current user or session user, so `SET ROLE`
    does not escape it) only public rows are visible and no row can be written.
    Tables without public data have no visible row at all. Even a privilege
-   granted by mistake therefore exposes nothing hidden.
+   granted by mistake therefore exposes nothing hidden. The PostgreSQL tests
+   check that every table (except Kysely's own) has these policies, so a table
+   added by a later migration without them fails CI.
 4. **Functions.** The only writes are `SECURITY DEFINER` functions owned by the
    table owner, with `search_path` pinned to the table schema and `pg_temp`
    (so objects the caller creates cannot hijack them). They validate every input

@@ -38,8 +38,8 @@ export async function ensurePublicSchema(db: DB): Promise<PublicSchemaState> {
  * Registers `role` as public role and grants it exactly the osp_public schema
  * (idempotent, safe for concurrent starts). Returns `missing` when the role does
  * not exist yet and `no-schema` when osp_public does not exist. Fails when the
- * role is the connecting role, a superuser, has BYPASSRLS or is a member of the
- * connecting role. Needs the table owner.
+ * role is the connecting role, a superuser, has BYPASSRLS or is a member of any
+ * role. Needs the table owner.
  */
 export async function grantPublicRole(db: DB, role: string): Promise<PublicRoleGrant> {
   if (!(await publicSchemaExists(db))) return 'no-schema';

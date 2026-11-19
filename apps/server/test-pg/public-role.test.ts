@@ -355,6 +355,17 @@ describe('start-up', () => {
     expect(granted).toBe(false);
     await expect(sql`select osp_grant_public_role(current_user::text)`.execute(owner)).rejects.toThrow(/must be a separate login/);
   });
+
+  it('refuses a public role that is a member of any role', async () => {
+    const role = `osp_t_member_${Date.now().toString(36)}`;
+    await sql.raw(`create role ${role} login`).execute(owner);
+    try {
+      await sql.raw(`grant pg_read_all_data to ${role}`).execute(owner);
+      await expect(sql`select osp_grant_public_role(${role})`.execute(owner)).rejects.toThrow(/membership in any role/);
+    } finally {
+      await sql.raw(`drop role ${role}`).execute(owner);
+    }
+  });
 });
 
 describe('views of the public role', () => {
@@ -527,6 +538,32 @@ describe('tables', () => {
     }
     expect(await ownerRows("select id from services where name = 'pwned'")).toEqual([]);
     expect(await ownerRows('select id from incidents')).toHaveLength(2);
+  });
+
+  it('all have row level security with the policy of the public role', async () => {
+    // Also every table a later migration adds: a new table without RLS fails here.
+    const tables = await ownerRows<{ name: string; rls: boolean; policy: boolean }>(`
+      select c.relname as name, c.relrowsecurity as rls,
+        exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'osp_public_role') as policy
+      from pg_class c where c.relnamespace = current_schema()::regnamespace and c.relkind in ('r', 'p')
+        and c.relname not like 'kysely\\_%'`);
+    expect(tables.length).toBeGreaterThan(20);
+    expect(tables.filter((t) => !t.rls || !t.policy).map((t) => t.name)).toEqual([]);
+  });
+
+  it('let the public role execute no function of the table schema but the policy check', async () => {
+    const executable = await ownerRows<{ name: string }>(`
+      select p.proname as name from pg_proc p
+      where p.pronamespace = current_schema()::regnamespace
+        and has_function_privilege('${pgdb.publicRole}', p.oid, 'EXECUTE') order by 1`);
+    expect(executable.map((f) => f.name)).toEqual(['osp_is_public_role']);
+    // Also functions created later: PUBLIC gets no EXECUTE by default.
+    await sql`create function osp_test_later() returns int language sql as 'select 1'`.execute(owner);
+    try {
+      expect(await attempt('select public.osp_test_later()')).toBe('42501');
+    } finally {
+      await sql`drop function osp_test_later()`.execute(owner);
+    }
   });
 
   it('do not let the public role call internal functions', async () => {

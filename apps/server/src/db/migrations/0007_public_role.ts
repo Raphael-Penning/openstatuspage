@@ -22,8 +22,10 @@ import { PostgresAdapter, sql, type Kysely } from 'kysely';
  *   writes of the public role: subscribe, confirm, read/update preferences and
  *   unsubscribe. Tokens are checked against their hashes (0006), mails are queued
  *   without content (the worker renders them).
+ * - Functions the migrating role creates are not executable by PUBLIC by default
+ *   (ALTER DEFAULT PRIVILEGES): a later helper is only callable where granted.
  * - `osp_grant_public_role(role)`: registers a role as public role and grants it
- *   exactly the above. Instances that migrate call it on every start for
+ *   exactly the above (refusing roles that are members of any role). Instances that migrate call it on every start for
  *   DB_PUBLIC_ROLE (once the role exists, see deploy/postgres/roles.sql).
  *
  * The base tables stay where they are (the schema the migrations run in).
@@ -308,6 +310,11 @@ function statements(b: string, schemaName: string, invokerViews: boolean): State
   const out: string[] = [];
   const schema: string[] = [];
 
+  // Functions the migrating role creates from now on are not executable by PUBLIC: every
+  // function a role needs is granted explicitly. (Default privileges for PUBLIC can only be
+  // changed for the whole database, not per schema.)
+  out.push(`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`);
+
   // Registry of the public roles, read by the RLS policies.
   out.push(`CREATE TABLE ${b}.osp_public_roles (role_name text PRIMARY KEY)`);
   out.push(`REVOKE ALL ON ${b}.osp_public_roles FROM PUBLIC`);
@@ -317,6 +324,7 @@ function statements(b: string, schemaName: string, invokerViews: boolean): State
     LANGUAGE sql STABLE SECURITY DEFINER ${pin} AS $$
       SELECT EXISTS (SELECT 1 FROM ${b}.osp_public_roles r WHERE r.role_name IN (p_role, session_user))
     $$`);
+  out.push(`GRANT EXECUTE ON FUNCTION ${b}.osp_is_public_role(name) TO PUBLIC`);
 
   schema.push(`CREATE SCHEMA ${s}`);
   schema.push(`REVOKE ALL ON SCHEMA ${s} FROM PUBLIC`);
@@ -337,7 +345,8 @@ function statements(b: string, schemaName: string, invokerViews: boolean): State
         `USING (${restricted} OR (${t.filter ? t.filter(b) : 'true'})) WITH CHECK (${restricted})`,
     );
   }
-  for (const table of PRIVATE_TABLES) {
+  // The registry too: its function reads it with the owner's rights, which bypass RLS.
+  for (const table of [...PRIVATE_TABLES, 'osp_public_roles']) {
     out.push(`ALTER TABLE ${b}.${table} ENABLE ROW LEVEL SECURITY`);
     out.push(`CREATE POLICY osp_access ON ${b}.${table} USING (true) WITH CHECK (true)`);
     out.push(`CREATE POLICY osp_public_role ON ${b}.${table} AS RESTRICTIVE USING (${restricted}) WITH CHECK (${restricted})`);
@@ -544,10 +553,13 @@ function statements(b: string, schemaName: string, invokerViews: boolean): State
       IF NOT FOUND THEN
         RETURN false;
       END IF;
+      -- No membership in any role: predefined roles such as pg_read_all_data would bypass the
+      -- column privileges (RLS still applies), the owner's role would bypass everything.
       IF p_role = current_user OR p_role = session_user OR v_role.rolsuper OR v_role.rolbypassrls
-        OR pg_has_role(p_role, current_user, 'MEMBER') THEN
-        RAISE EXCEPTION 'The public database role "%" must be a separate login without SUPERUSER, BYPASSRLS or membership in "%"',
-          p_role, current_user USING ERRCODE = '42501';
+        OR pg_has_role(p_role, current_user, 'MEMBER')
+        OR EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = v_role.oid) THEN
+        RAISE EXCEPTION 'The public database role "%" must be a separate login without SUPERUSER, BYPASSRLS or membership in any role',
+          p_role USING ERRCODE = '42501';
       END IF;
       -- Concurrent starts of several instances.
       PERFORM pg_advisory_xact_lock(hashtext('osp_grant_public_role'));
@@ -652,4 +664,5 @@ export async function down(db: Kysely<any>): Promise<void> {
     await sql.raw(`DROP FUNCTION IF EXISTS ${b}.${fn}`).execute(db);
   }
   await sql.raw(`DROP TABLE IF EXISTS ${b}.osp_public_roles`).execute(db);
+  await sql.raw(`ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC`).execute(db);
 }
