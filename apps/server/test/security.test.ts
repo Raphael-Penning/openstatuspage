@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SECRET_MASK } from '@openstatuspage/shared';
-import { adminClient, client, createTestApp, createUser, login, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, login, page, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -71,8 +71,8 @@ describe('public endpoints', () => {
       message: 'x',
       affectedServices: [{ serviceId: hidden, status: 'major_outage' }],
     });
-    expect((await t.app.inject({ url: '/api/public/history' })).json().total).toBe(1);
-    expect((await t.app.inject({ url: `/api/public/history?locationId=${fra}` })).json().total).toBe(0);
+    expect(page(await t.app.inject({ url: '/api/public/history' })).total).toBe(1);
+    expect(page(await t.app.inject({ url: `/api/public/history?filter[location]=${fra}` })).total).toBe(0);
   });
 
   it('hides locations when the page disables them', async () => {

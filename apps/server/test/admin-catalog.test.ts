@@ -1,6 +1,6 @@
 import { SECRET_MASK } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { adminClient, createTestApp, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -189,7 +189,7 @@ describe('settings', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ siteName: 'Example Status', uptimeDays: 30, showUptime: true });
     expect((await admin.put('/api/admin/settings', { siteName: '' })).statusCode).toBe(400);
-    expect((await t.app.inject({ method: 'GET', url: '/api/public/settings' })).json().siteName).toBe('Example Status');
+    expect(data<{ siteName: string }>(await t.app.inject({ method: 'GET', url: '/api/public/settings' })).siteName).toBe('Example Status');
   });
 });
 

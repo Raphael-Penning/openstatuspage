@@ -1,7 +1,10 @@
+import type { LightMyRequestResponse } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import { subscriptionToken, TOKEN_PLACEHOLDERS } from '../src/services/subscriptions.js';
-import { adminClient, BASE_URL, createTestApp, type Client, type TestApp } from './helpers.js';
+import { adminClient, BASE_URL, createTestApp, data, type Client, type TestApp } from './helpers.js';
+
+const emailSubscriptions = (res: LightMyRequestResponse) => data<{ emailSubscriptions: boolean }>(res).emailSubscriptions;
 
 let t: TestApp;
 let mailer: MemoryMailer;
@@ -254,10 +257,10 @@ describe('subscribe and confirm', () => {
   it('is 404 when disabled in the settings or without mail transport', async () => {
     await enableSubscriptions(false);
     expect((await subscribe({ email: 'jane@example.com' })).statusCode).toBe(404);
-    expect((await t.app.inject({ method: 'GET', url: '/api/public/summary' })).json().emailSubscriptions).toBe(false);
+    expect(emailSubscriptions(await t.app.inject({ method: 'GET', url: '/api/public/summary' }))).toBe(false);
 
     await enableSubscriptions(true);
-    expect((await t.app.inject({ method: 'GET', url: '/api/public/summary' })).json().emailSubscriptions).toBe(true);
+    expect(emailSubscriptions(await t.app.inject({ method: 'GET', url: '/api/public/summary' }))).toBe(true);
 
     const noTransport = await createTestApp();
     try {
@@ -269,7 +272,7 @@ describe('subscribe and confirm', () => {
         payload: { email: 'jane@example.com' },
       });
       expect(res.statusCode).toBe(404);
-      expect((await noTransport.app.inject({ method: 'GET', url: '/api/public/summary' })).json().emailSubscriptions).toBe(
+      expect(emailSubscriptions(await noTransport.app.inject({ method: 'GET', url: '/api/public/summary' }))).toBe(
         false,
       );
     } finally {

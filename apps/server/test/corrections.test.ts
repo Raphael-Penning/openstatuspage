@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newId } from '../src/lib/ids.js';
 import { runMaintenanceTransitions } from '../src/services/maintenance-scheduler.js';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
-import { adminClient, client, createTestApp, createUser, login, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, data, login, page, type Client, type TestApp } from './helpers.js';
+
+/** Plain object of a public service response (uptime, status). */
+type PublicServiceBody = { status: string; uptimePercent: number | null; uptime: { status: string; minutes: Record<string, number>; corrected?: boolean }[] };
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -41,7 +44,7 @@ async function deliver(): Promise<MailMessage[]> {
 async function publicPercent(serviceId: string): Promise<number | null> {
   const res = await get(`/api/public/services/${serviceId}`);
   expect(res.statusCode).toBe(200);
-  return res.json().uptimePercent;
+  return data<PublicServiceBody>(res).uptimePercent;
 }
 
 beforeEach(async () => {
@@ -171,7 +174,7 @@ describe('status corrections', () => {
     const summary = await get('/api/public/summary');
     const body = summary.body;
     expect(body).not.toContain('INTERNAL-REASON-42');
-    const json = summary.json();
+    const json = data<{ ungrouped: unknown[]; groups: { services: unknown[] }[] }>(summary);
     const services = [...json.ungrouped, ...json.groups.flatMap((g: { services: unknown[] }) => g.services)] as { id: string; uptime: { corrected?: boolean; correctionNotes?: string[]; uptime: number | null }[] }[];
     const apiDays = services.find((s) => s.id === api)!.uptime;
     const marked = apiDays.filter((d) => d.corrected);
@@ -183,7 +186,7 @@ describe('status corrections', () => {
 
     const detail = await get(`/api/public/services/${api}`);
     expect(detail.body).not.toContain('INTERNAL-REASON-42');
-    expect(detail.json().uptime.some((d: { corrected?: boolean }) => d.corrected)).toBe(true);
+    expect(data<PublicServiceBody>(detail).uptime.some((d) => d.corrected)).toBe(true);
 
     // Deleting restores the measured data.
     await admin.delete(`/api/admin/corrections/${pub.json().id}`);
@@ -299,14 +302,14 @@ describe('retroactive maintenance', () => {
 
     expect(before).toBeLessThan(100);
     expect(await publicPercent(api)).toBe(100);
-    const days = (await get(`/api/public/services/${api}`)).json().uptime as { status: string; minutes: Record<string, number> }[];
+    const days = data<PublicServiceBody>(await get(`/api/public/services/${api}`)).uptime;
     expect(days.some((d) => d.status === 'maintenance')).toBe(true);
     // The current status is not affected.
-    expect((await get(`/api/public/services/${api}`)).json().status).toBe('operational');
+    expect(data<PublicServiceBody>(await get(`/api/public/services/${api}`)).status).toBe('operational');
 
     // Public history lists it like any other maintenance.
-    const history = await get('/api/public/history?type=maintenance');
-    expect(history.json().items.map((i: { maintenance: { id: string } }) => i.maintenance.id)).toContain(m.id);
+    const history = await get('/api/public/history?filter[type]=maintenance');
+    expect(page<{ id: string }>(history).items.map((i) => i.id)).toContain(m.id);
 
     // Moving the window keeps the actual times in line; deleting removes the correction.
     const moved = await admin.patch(`/api/admin/maintenances/${m.id}`, { scheduledStart: iso(26 * HOUR) });
@@ -331,7 +334,8 @@ describe('retroactive maintenance', () => {
       })
     ).json();
     expect(await publicPercent(api)).toBe(before);
-    const history = await get('/api/public/history?type=maintenance');
+    const history = await get('/api/public/history?filter[type]=maintenance');
+    expect(history.statusCode).toBe(200);
     expect(history.body).not.toContain(m.id);
   });
 
@@ -350,7 +354,7 @@ describe('retroactive maintenance', () => {
     const mails = await deliver();
     expect(mails).toHaveLength(1);
     expect(mails[0]!.subject).toContain('Running since yesterday: In progress');
-    expect((await get(`/api/public/services/${api}`)).json().status).toBe('maintenance');
+    expect(data<PublicServiceBody>(await get(`/api/public/services/${api}`)).status).toBe('maintenance');
     expect(await publicPercent(api)).toBe(100);
   });
 
@@ -377,7 +381,7 @@ describe('retroactive maintenance', () => {
     expect(await deliver()).toHaveLength(0);
     // Only 25 h..23 h counts as maintenance: the outage up to 22 h ago still partly counts.
     expect(await publicPercent(api)).toBeLessThan(100);
-    expect((await get(`/api/public/services/${api}`)).json().status).not.toBe('maintenance');
+    expect(data<PublicServiceBody>(await get(`/api/public/services/${api}`)).status).not.toBe('maintenance');
   });
 
   it('keeps the existing behavior for upcoming windows and windows starting now', async () => {

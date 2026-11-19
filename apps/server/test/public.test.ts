@@ -1,6 +1,7 @@
+import { deserializeDocument, resourceType, type DataDocument } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newId } from '../src/lib/ids.js';
-import { adminClient, createTestApp, seedChecks, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, errors, page, seedChecks, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -35,6 +36,10 @@ const SECRETS = [
 ];
 
 const get = (url: string) => t.app.inject({ method: 'GET', url });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+const getData = async (url: string): Promise<Any> => data<Any>(await get(url));
+const getPage = async (url: string) => page<Any>(await get(url));
 
 beforeEach(async () => {
   t = await createTestApp();
@@ -146,8 +151,8 @@ describe('public API privacy', () => {
       `/api/public/incidents/${ids.incident}`,
       `/api/public/maintenances/${ids.maintenance}`,
       '/api/public/history',
-      `/api/public/history?serviceId=${ids.api}`,
-      `/api/public/history?locationId=${ids.fra}`,
+      `/api/public/history?filter[service]=${ids.api}`,
+      `/api/public/history?filter[location]=${ids.fra}`,
       '/api/public/status.json',
       '/feed.rss',
       '/feed.atom',
@@ -165,15 +170,24 @@ describe('public API privacy', () => {
     expect((await get(`/api/public/incidents/${ids.privateIncident}`)).statusCode).toBe(404);
     expect((await get('/api/public/incidents/does-not-exist')).statusCode).toBe(404);
     // Filtering by hidden entities yields nothing (does not reveal links).
-    expect((await get(`/api/public/history?serviceId=${ids.hidden}`)).json().total).toBe(0);
-    expect((await get(`/api/public/history?locationId=${ids.hiddenLocation}`)).json().total).toBe(0);
+    expect((await getPage(`/api/public/history?filter[service]=${ids.hidden}`)).total).toBe(0);
+    expect((await getPage(`/api/public/history?filter[location]=${ids.hiddenLocation}`)).total).toBe(0);
+    const missing = await get('/api/public/incidents/does-not-exist');
+    expect(missing.headers['content-type']).toBe('application/vnd.api+json');
+    expect(errors(missing)).toEqual([{ status: '404', code: 'not_found', title: 'Not Found', detail: 'Incident not found' }]);
   });
 });
 
 describe('public summary and services', () => {
   it('returns groups, statuses, incidents and maintenance', async () => {
     const res = await get('/api/public/summary');
-    const summary = res.json();
+    expect(res.headers['content-type']).toBe('application/vnd.api+json');
+    expect(res.json()).toMatchObject({
+      jsonapi: { version: '1.1' },
+      data: { type: 'summaries', id: 'current' },
+      links: { self: '/api/public/summary' },
+    });
+    const summary = data<Any>(res);
     expect(summary.overall).toBe('major_outage');
     expect(summary.groups).toHaveLength(1);
     expect(summary.groups[0]).toMatchObject({ id: ids.group, name: 'Platform', status: 'major_outage' });
@@ -200,48 +214,69 @@ describe('public summary and services', () => {
   });
 
   it('lists services with counts and details', async () => {
-    const res = (await get('/api/public/services')).json();
-    expect(res.counts).toEqual({ operational: 1, maintenance: 0, degraded: 1, partial_outage: 0, major_outage: 1 });
+    const doc = (await get('/api/public/services')).json() as DataDocument;
+    expect(doc.meta).toEqual({
+      total: 3,
+      counts: { operational: 1, maintenance: 0, degraded: 1, partial_outage: 0, major_outage: 1 },
+    });
+    const { data: services, included } = deserializeDocument<Any[]>(doc);
+    // Display order: grouped services first, then ungrouped ones.
+    expect(services.map((s: Any) => s.id)).toEqual([ids.api, ids.inHiddenGroup, ids.web]);
+    expect(services[0]).toMatchObject({ groupId: ids.group, locationIds: [ids.fra] });
+    expect(included.map((g) => [resourceType(g), g.id, g.serviceIds])).toEqual([['service-groups', ids.group, [ids.api]]]);
 
-    const detail = (await get('/api/public/services/public-api')).json();
+    const detailRes = await get('/api/public/services/public-api');
+    expect(detailRes.json().data.links).toEqual({ self: '/api/public/services/public-api' });
+    const detail = data<Any>(detailRes);
     expect(detail).toMatchObject({ id: ids.api, groupId: ids.group, status: 'major_outage' });
     expect(detail.uptime).toHaveLength(90);
     expect(detail.incidents.map((i: { id: string }) => i.id)).toEqual([ids.incident]);
+    expect(detail.incidents[0].updates).toEqual([
+      expect.objectContaining({ status: 'investigating', message: 'We are investigating.' }),
+    ]);
     expect(detail.maintenances).toEqual([]);
 
-    const site = (await get('/api/public/services/website')).json();
+    const site = await getData('/api/public/services/website');
     expect(site.maintenances.map((m: { id: string }) => m.id)).toEqual([ids.maintenance]);
+
+    // include limits the compound document; unsupported paths are rejected.
+    const lean = (await get('/api/public/services/public-api?include=incidents')).json() as DataDocument;
+    expect(lean.included?.map((r) => r.type)).toEqual(['incidents']);
+    const bad = await get('/api/public/services/public-api?include=checks');
+    expect(bad.statusCode).toBe(400);
+    expect(errors(bad)[0]).toMatchObject({ code: 'unsupported_include', source: { parameter: 'include' } });
   });
 
   it('respects showUptime and uptimeDays', async () => {
     await admin.put('/api/admin/settings', { siteName: 'Status', showUptime: false });
-    const off = (await get('/api/public/services')).json();
-    expect(off.groups[0].services[0].uptime).toBeUndefined();
-    expect(off.groups[0].services[0].uptimePercent).toBeNull();
+    const off = await getData('/api/public/services');
+    expect(off[0].uptime).toBeUndefined();
+    expect(off[0].uptimePercent).toBeNull();
 
     await admin.put('/api/admin/settings', { siteName: 'Status', uptimeDays: 30 });
-    const on = (await get('/api/public/services')).json();
-    expect(on.groups[0].services[0].uptime).toHaveLength(30);
+    const on = await getData('/api/public/services');
+    expect(on[0].uptime).toHaveLength(30);
   });
 });
 
 describe('public locations', () => {
   it('derive status from public services only', async () => {
-    const res = (await get('/api/public/locations')).json();
-    expect(res.locations).toHaveLength(1);
+    const res = (await get('/api/public/locations')).json() as DataDocument;
+    const locations = deserializeDocument<Any[]>(res).data;
+    expect(locations).toHaveLength(1);
     // Hidden backend (major outage) is at FRA too but must not count; Public API is major_outage itself.
-    expect(res.locations[0]).toMatchObject({ id: ids.fra, code: 'FRA-1', status: 'major_outage', serviceIds: [ids.api] });
-    expect(res.counts.major_outage).toBe(1);
+    expect(locations[0]).toMatchObject({ id: ids.fra, code: 'FRA-1', status: 'major_outage', serviceIds: [ids.api] });
+    expect((res.meta?.counts as Any).major_outage).toBe(1);
 
     // Resolve the incident; the api's check is still critical, so move it to manual operational.
     await admin.post(`/api/admin/incidents/${ids.incident}/updates`, { status: 'resolved', message: 'ok' });
     await admin.put(`/api/admin/services/${ids.api}`, { name: 'Public API', statusMode: 'manual', locationIds: [ids.fra] });
-    const after = (await get('/api/public/locations')).json();
+    const after = await getData('/api/public/locations');
     // The hidden service is still in major outage, but the public location stays operational.
-    expect(after.locations[0].status).toBe('operational');
+    expect(after[0].status).toBe('operational');
 
     await admin.put(`/api/admin/locations/${ids.fra}`, { name: 'Frankfurt', region: 'europe', statusOverride: 'degraded' });
-    expect((await get('/api/public/locations')).json().locations[0].status).toBe('degraded');
+    expect((await getData('/api/public/locations'))[0].status).toBe('degraded');
   });
 });
 
@@ -263,27 +298,43 @@ describe('public history', () => {
       startedAt: '2026-01-15T08:00:00.000Z',
     });
 
-    const all = (await get('/api/public/history')).json();
+    const all = await getPage('/api/public/history');
     // Upcoming maintenance is excluded; private incident too.
     expect(all.total).toBe(3);
-    expect(all.items.map((i: { type: string }) => i.type)).toEqual(['incident', 'incident', 'maintenance']);
-    expect(all.items[0].incident.id).toBe(ids.incident);
+    expect(all.items.map((i) => resourceType(i))).toEqual(['incidents', 'incidents', 'maintenances']);
+    expect(all.items[0].id).toBe(ids.incident);
+    expect(all.items[0].updates).toHaveLength(1);
 
-    const january = (await get('/api/public/history?month=2026-01')).json();
-    expect(january.items.map((i: { date: string }) => i.date)).toEqual([
+    const january = await getPage('/api/public/history?filter[month]=2026-01');
+    expect(january.items.map((i) => i.startedAt ?? i.scheduledStart)).toEqual([
       '2026-01-15T08:00:00.000Z',
       '2026-01-10T10:00:00.000Z',
     ]);
-    const maint = (await get('/api/public/history?type=maintenance')).json();
-    expect(maint.items).toEqual([expect.objectContaining({ type: 'maintenance', maintenance: expect.objectContaining({ id: past.id }) })]);
+    const maint = await getPage('/api/public/history?filter[type]=maintenance');
+    expect(maint.items).toEqual([expect.objectContaining({ id: past.id, title: 'Past work' })]);
 
-    const paged = (await get('/api/public/history?page=2&pageSize=2')).json();
+    const pagedRes = await get('/api/public/history?page[number]=2&page[size]=2');
+    const paged = page(pagedRes);
     expect(paged).toMatchObject({ total: 3, page: 2, pageSize: 2 });
     expect(paged.items).toHaveLength(1);
+    expect(pagedRes.json().links).toEqual({
+      self: '/api/public/history?page[number]=2&page[size]=2',
+      first: '/api/public/history?page[number]=1&page[size]=2',
+      prev: '/api/public/history?page[number]=1&page[size]=2',
+      next: null,
+      last: '/api/public/history?page[number]=2&page[size]=2',
+    });
 
-    expect((await get(`/api/public/history?serviceId=${ids.api}`)).json().total).toBe(1);
-    expect((await get(`/api/public/history?locationId=${ids.fra}`)).json().total).toBe(1);
-    expect((await get('/api/public/history?month=2026-13-01')).statusCode).toBe(400);
+    // Without updates in the compound document.
+    expect((await get('/api/public/history?include=')).json()).not.toHaveProperty('included');
+
+    expect((await getPage(`/api/public/history?filter[service]=${ids.api}`)).total).toBe(1);
+    expect((await getPage(`/api/public/history?filter[location]=${ids.fra}`)).total).toBe(1);
+    const badMonth = await get('/api/public/history?filter[month]=2026-13-01');
+    expect(badMonth.statusCode).toBe(400);
+    expect(errors(badMonth)[0]).toMatchObject({ status: '400', source: { parameter: 'filter[month]' } });
+    expect((await get('/api/public/history?filter[secret]=1')).statusCode).toBe(400);
+    expect((await get('/api/public/history?page[size]=1000')).statusCode).toBe(400);
   });
 });
 

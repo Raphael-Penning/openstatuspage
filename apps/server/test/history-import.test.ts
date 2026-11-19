@@ -6,7 +6,7 @@ import { nowIso } from '../src/lib/time.js';
 import type { HistoryImporter } from '../src/importers/types.js';
 import { BUNDLE_SOURCE_ID } from '../src/services/bundles.js';
 import { IMPORT_PREVIEW_TTL_MS, IMPORT_STALE_MS } from '../src/services/history-import.js';
-import { adminClient, client, createTestApp, createUser, login, seedChecks, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, data, login, seedChecks, type Client, type TestApp } from './helpers.js';
 import { fakeKuma } from './importers/fake-kuma.js';
 
 const H = 3_600_000;
@@ -170,7 +170,7 @@ describe('history import (CSV)', () => {
     // The public uptime bars now include the imported days.
     const pub = await t.app.inject({ method: 'GET', url: '/api/public/services/website' });
     expect(pub.statusCode).toBe(200);
-    const uptime = pub.json<{ uptime: { date: string; uptime: number | null }[] }>().uptime;
+    const uptime = data<{ uptime: { date: string; uptime: number | null }[] }>(pub).uptime;
     const day = (offset: number) => uptime.find((u) => u.date === at(offset).slice(0, 10))!;
     expect(day(-2.5 * DAY).uptime).not.toBeNull();
     expect(JSON.stringify(pub.json())).not.toContain('web01');

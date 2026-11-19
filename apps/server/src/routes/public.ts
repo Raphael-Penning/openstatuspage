@@ -1,24 +1,22 @@
 /**
- * /api/public: unauthenticated read API for the public status page.
+ * /api/public: unauthenticated read API for the public status page (JSON:API 1.1).
  *
  * Only public entities are returned and every object is serialized
- * explicitly (see services/public-catalog.ts, incidents.ts, maintenances.ts).
- * Nothing about monitoring sources or checks is ever exposed here.
+ * explicitly (see services/public-catalog.ts, incidents.ts, maintenances.ts,
+ * serializers/public.ts). Nothing about monitoring sources or checks is ever
+ * exposed here.
+ *
+ * /api/public/status.json and the feeds are not JSON:API (stable formats for
+ * third-party tools and feed readers).
  */
-import {
-  HistoryQuery,
-  overallStatus,
-  type HistoryItem,
-  type PublicIncident,
-  type PublicLocationsResponse,
-  type PublicMaintenance,
-  type PublicSummary,
-} from '@openstatuspage/shared';
+import { overallStatus, zId, type PublicIncident, type PublicMaintenance, type ResourceObject } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from '../db/index.js';
 import { notFound } from '../lib/errors.js';
-import { offsetOf, paginated, parse } from '../lib/http.js';
+import { parse } from '../lib/http.js';
+import { collection, document, Included, resource, selfLink, toMany, toOne } from '../lib/jsonapi.js';
+import { parseInclude, parseListQuery } from '../lib/jsonapi-query.js';
 import { mailerConfigured } from '../mail/mailer.js';
 import { loadIncidents, toPublicIncident } from '../services/incidents.js';
 import { loadMaintenances, toPublicMaintenance } from '../services/maintenances.js';
@@ -29,6 +27,17 @@ import {
   loadPublicService,
 } from '../services/public-catalog.js';
 import { getSettings } from '../services/settings.js';
+import { useJsonApi } from '../plugins/jsonapi.js';
+import {
+  groupResource,
+  incidentResource,
+  locationResource,
+  maintenanceResource,
+  PUBLIC_TYPES,
+  serviceResource,
+  settingsResource,
+  SETTINGS_ID,
+} from '../serializers/public.js';
 import { registerFeedRoutes } from './feeds.js';
 
 const DAY_MS = 86400_000;
@@ -36,6 +45,29 @@ const SERVICE_INCIDENT_DAYS = 90;
 
 const IdOrSlugParams = z.object({ idOrSlug: z.string().min(1).max(100) });
 const IdParams = z.object({ id: z.string().min(1).max(64) });
+
+/** Filters of /api/public/history (all values refer to public entities only). */
+const HistoryFilter = {
+  type: z.enum(['all', 'incident', 'maintenance']).default('all'),
+  service: zId.optional(),
+  location: zId.optional(),
+  /** Month, YYYY-MM. */
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, 'Expected YYYY-MM')
+    .optional(),
+};
+
+/** `include` paths of a resource with updates (incidents, maintenances). */
+const UPDATE_INCLUDES = ['updates'];
+
+const cacheHeaders = (scope: FastifyInstance) =>
+  scope.addHook('onSend', async (req, reply, payload) => {
+    if (req.method === 'GET' && reply.statusCode === 200) {
+      reply.header('cache-control', 'public, max-age=30');
+    }
+    return payload;
+  });
 
 // --- Queries (ids only; records are loaded and serialized afterwards) ----------
 
@@ -101,19 +133,18 @@ function monthRange(month: string): [string, string] {
 // --- Routes ----------------------------------------------------------------------
 
 export async function registerPublicRoutes(app: FastifyInstance): Promise<void> {
+  const { db } = app.ctx;
+
+  // JSON:API routes.
   await app.register(async (scope) => {
-    const { db } = app.ctx;
+    useJsonApi(scope);
+    cacheHeaders(scope);
 
-    scope.addHook('onSend', async (req, reply, payload) => {
-      if (req.method === 'GET' && reply.statusCode === 200) {
-        reply.header('cache-control', 'public, max-age=30');
-      }
-      return payload;
-    });
+    scope.get('/api/public/settings', async (req) =>
+      document(settingsResource(await getSettings(db)), { links: { self: selfLink(req) } }),
+    );
 
-    scope.get('/api/public/settings', async () => getSettings(db));
-
-    scope.get('/api/public/summary', async (): Promise<PublicSummary> => {
+    scope.get('/api/public/summary', async (req) => {
       const now = new Date();
       const nowIso = now.toISOString();
       const settings = await getSettings(db);
@@ -125,28 +156,56 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
         activeMaintenanceIds(db).then((ids) => publicMaintenances(db, ids)),
         upcomingMaintenanceIds(db, nowIso).then((ids) => publicMaintenances(db, ids)),
       ]);
-      return {
-        page: settings,
-        overall: overallStatus(catalog.services.map((s) => s.status)),
-        groups: catalog.groups,
-        ungrouped: catalog.ungrouped,
-        activeIncidents: active,
-        recentIncidents: recent,
-        activeMaintenances: activeMaint,
-        upcomingMaintenances: upcoming,
-        emailSubscriptions: settings.emailSubscriptionsEnabled && mailerConfigured(app.ctx.mailer),
-        generatedAt: nowIso,
-      };
+      const included = new Included().add(settingsResource(settings));
+      included.add(...catalog.groups.map((g) => groupResource(g, included)));
+      included.add(...catalog.ungrouped.map((s) => serviceResource(s)));
+      for (const inc of [...active, ...recent]) included.add(incidentResource(inc, included));
+      for (const m of [...activeMaint, ...upcoming]) included.add(maintenanceResource(m, included));
+      const ids = (list: { id: string }[]) => list.map((x) => x.id);
+      const summary = resource(
+        PUBLIC_TYPES.summary,
+        'current',
+        {
+          overall: overallStatus(catalog.services.map((s) => s.status)),
+          emailSubscriptions: settings.emailSubscriptionsEnabled && mailerConfigured(app.ctx.mailer),
+          generatedAt: nowIso,
+        },
+        {
+          relationships: {
+            page: toOne(PUBLIC_TYPES.settings, SETTINGS_ID),
+            groups: toMany(PUBLIC_TYPES.group, ids(catalog.groups)),
+            ungrouped: toMany(PUBLIC_TYPES.service, ids(catalog.ungrouped)),
+            activeIncidents: toMany(PUBLIC_TYPES.incident, ids(active)),
+            recentIncidents: toMany(PUBLIC_TYPES.incident, ids(recent)),
+            activeMaintenances: toMany(PUBLIC_TYPES.maintenance, ids(activeMaint)),
+            upcomingMaintenances: toMany(PUBLIC_TYPES.maintenance, ids(upcoming)),
+          },
+        },
+      );
+      return document(summary, { included, links: { self: selfLink(req) } });
     });
 
-    scope.get('/api/public/services', async () => {
+    /** Public services in display order (grouped ones in group order, then ungrouped); groups in `included`. */
+    scope.get('/api/public/services', async (req) => {
       const settings = await getSettings(db);
       const catalog = await loadPublicCatalog(db, settings, new Date());
-      return { groups: catalog.groups, ungrouped: catalog.ungrouped, counts: catalog.counts };
+      const services = [...catalog.groups.flatMap((g) => g.services), ...catalog.ungrouped];
+      // The group's services are primary data already.
+      const included = catalog.groups.map((g) => groupResource(g, new Included()));
+      return collection(
+        req,
+        services.map((s) => serviceResource(s)),
+        { included, meta: { counts: catalog.counts } },
+      );
     });
 
     scope.get('/api/public/services/:idOrSlug', async (req) => {
       const { idOrSlug } = parse(IdOrSlugParams, req.params);
+      const include = parseInclude(
+        req.query as Record<string, unknown>,
+        ['incidents', 'incidents.updates', 'maintenances', 'maintenances.updates'],
+        ['incidents.updates', 'maintenances.updates'],
+      );
       const now = new Date();
       const settings = await getSettings(db);
       const service = await loadPublicService(db, idOrSlug, settings, now);
@@ -179,79 +238,106 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
           .execute(),
       ]);
 
-      return {
-        ...service,
+      const incidentIds = incidentRows.map((r) => r.id);
+      const maintenanceIds = maintenanceRows.map((r) => r.id);
+
+      const included = new Included();
+      const wants = (path: string) => include.has(path) || include.has(`${path}.updates`);
+      if (wants('incidents')) {
+        const updates = include.has('incidents.updates') ? included : undefined;
+        for (const inc of await publicIncidents(db, incidentIds)) included.add(incidentResource(inc, updates));
+      }
+      if (wants('maintenances')) {
+        const updates = include.has('maintenances.updates') ? included : undefined;
+        for (const m of await publicMaintenances(db, maintenanceIds)) included.add(maintenanceResource(m, updates));
+      }
+      const data = serviceResource(
         // Empty when uptime display is disabled in the settings.
-        uptime: service.uptime ?? [],
-        incidents: await publicIncidents(
-          db,
-          incidentRows.map((r) => r.id),
-        ),
-        maintenances: await publicMaintenances(
-          db,
-          maintenanceRows.map((r) => r.id),
-        ),
-      };
+        { ...service, uptime: service.uptime ?? [] },
+        {
+          incidents: toMany(PUBLIC_TYPES.incident, incidentIds),
+          maintenances: toMany(PUBLIC_TYPES.maintenance, maintenanceIds),
+        },
+      );
+      return document(data, { included, links: { self: selfLink(req) } });
     });
 
-    scope.get('/api/public/locations', async (): Promise<PublicLocationsResponse> => {
+    scope.get('/api/public/locations', async (req) => {
       if (!(await getSettings(db)).showLocations) throw notFound('Locations');
       const locations = await loadPublicLocations(db);
-      return { locations, counts: countStatuses(locations.map((l) => l.status)) };
+      return collection(req, locations.map(locationResource), {
+        meta: { counts: countStatuses(locations.map((l) => l.status)) },
+      });
     });
 
-    scope.get('/api/public/incidents/:id', async (req): Promise<PublicIncident> => {
+    scope.get('/api/public/incidents/:id', async (req) => {
       const { id } = parse(IdParams, req.params);
+      const include = parseInclude(req.query as Record<string, unknown>, UPDATE_INCLUDES, UPDATE_INCLUDES);
       const [rec] = await loadIncidents(db, [id]);
       if (!rec || rec.row.is_public !== 1) throw notFound('Incident');
-      return toPublicIncident(rec);
+      const included = new Included();
+      const data = incidentResource(toPublicIncident(rec), include.has('updates') ? included : undefined);
+      return document(data, { included, links: { self: selfLink(req) } });
     });
 
-    scope.get('/api/public/maintenances/:id', async (req): Promise<PublicMaintenance> => {
+    scope.get('/api/public/maintenances/:id', async (req) => {
       const { id } = parse(IdParams, req.params);
+      const include = parseInclude(req.query as Record<string, unknown>, UPDATE_INCLUDES, UPDATE_INCLUDES);
       const [rec] = await loadMaintenances(db, [id]);
       if (!rec || rec.row.is_public !== 1) throw notFound('Maintenance');
-      return toPublicMaintenance(rec);
+      const included = new Included();
+      const data = maintenanceResource(toPublicMaintenance(rec), include.has('updates') ? included : undefined);
+      return document(data, { included, links: { self: selfLink(req) } });
     });
 
+    /**
+     * Incidents and maintenance windows, newest first: a heterogeneous collection
+     * (`incidents` ordered by startedAt, `maintenances` by scheduledStart).
+     */
     scope.get('/api/public/history', async (req) => {
-      const q = parse(HistoryQuery, req.query);
+      const q = parseListQuery(req.query, {
+        filter: HistoryFilter,
+        include: { allowed: UPDATE_INCLUDES, default: UPDATE_INCLUDES },
+      });
       const now = new Date().toISOString();
-      const range = q.month ? monthRange(q.month) : null;
+      const range = q.filter.month ? monthRange(q.filter.month) : null;
+      const serviceFilter = q.filter.service;
+      const locationFilter = q.filter.location;
+      const emptyPage = () => collection(req, [], { page: q.page, total: 0 });
 
       // Filters must only match public entities, otherwise the result would reveal hidden links.
-      if (q.serviceId) {
+      if (serviceFilter) {
         const svc = await db
           .selectFrom('services')
           .select('id')
-          .where('id', '=', q.serviceId)
+          .where('id', '=', serviceFilter)
           .where('is_public', '=', 1)
           .executeTakeFirst();
-        if (!svc) return paginated([], 0, q);
+        if (!svc) return emptyPage();
       }
-      if (q.locationId) {
+      if (locationFilter) {
         const loc = await db
           .selectFrom('locations')
           .select('id')
-          .where('id', '=', q.locationId)
+          .where('id', '=', locationFilter)
           .where('is_public', '=', 1)
           .executeTakeFirst();
-        if (!loc) return paginated([], 0, q);
+        if (!loc) return emptyPage();
       }
 
       const entries: { type: 'incident' | 'maintenance'; id: string; date: string }[] = [];
 
-      if (q.type !== 'maintenance') {
+      if (q.filter.type !== 'maintenance') {
         let iq = db.selectFrom('incidents').select(['id', 'started_at as date']).where('is_public', '=', 1);
         if (range) iq = iq.where('started_at', '>=', range[0]).where('started_at', '<', range[1]);
-        if (q.serviceId) {
-          const serviceId = q.serviceId;
+        if (serviceFilter) {
+          const serviceId = serviceFilter;
           iq = iq.where('id', 'in', (eb) =>
             eb.selectFrom('incident_services').select('incident_id').where('service_id', '=', serviceId),
           );
         }
-        if (q.locationId) {
-          const locationId = q.locationId;
+        if (locationFilter) {
+          const locationId = locationFilter;
           iq = iq.where((eb) =>
             eb.or([
               eb('id', 'in', eb.selectFrom('incident_locations').select('incident_id').where('location_id', '=', locationId)),
@@ -273,7 +359,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
         for (const r of await iq.execute()) entries.push({ type: 'incident', id: r.id, date: r.date });
       }
 
-      if (q.type !== 'incident') {
+      if (q.filter.type !== 'incident') {
         let mq = db
           .selectFrom('maintenances')
           .select(['id', 'scheduled_start as date'])
@@ -281,14 +367,14 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
           // Future windows that have not started yet are announcements, not history.
           .where((eb) => eb.not(eb.and([eb('status', '=', 'scheduled'), eb('scheduled_start', '>', now)])));
         if (range) mq = mq.where('scheduled_start', '>=', range[0]).where('scheduled_start', '<', range[1]);
-        if (q.serviceId) {
-          const serviceId = q.serviceId;
+        if (serviceFilter) {
+          const serviceId = serviceFilter;
           mq = mq.where('id', 'in', (eb) =>
             eb.selectFrom('maintenance_services').select('maintenance_id').where('service_id', '=', serviceId),
           );
         }
-        if (q.locationId) {
-          const locationId = q.locationId;
+        if (locationFilter) {
+          const locationId = locationFilter;
           mq = mq.where((eb) =>
             eb.or([
               eb(
@@ -315,7 +401,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       }
 
       entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id.localeCompare(b.id)));
-      const page = entries.slice(offsetOf(q), offsetOf(q) + q.pageSize);
+      const page = entries.slice(q.page.offset, q.page.offset + q.page.size);
 
       const [incidents, maintenances] = await Promise.all([
         loadIncidents(
@@ -330,16 +416,23 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       const incidentById = new Map(incidents.map((r) => [r.row.id, r]));
       const maintenanceById = new Map(maintenances.map((r) => [r.row.id, r]));
 
-      const items: HistoryItem[] = page.flatMap((e): HistoryItem[] => {
+      const included = new Included();
+      const updates = q.include.has('updates') ? included : undefined;
+      const data = page.flatMap((e): ResourceObject[] => {
         if (e.type === 'incident') {
           const rec = incidentById.get(e.id);
-          return rec ? [{ type: 'incident', date: e.date, incident: toPublicIncident(rec) }] : [];
+          return rec ? [incidentResource(toPublicIncident(rec), updates)] : [];
         }
         const rec = maintenanceById.get(e.id);
-        return rec ? [{ type: 'maintenance', date: e.date, maintenance: toPublicMaintenance(rec) }] : [];
+        return rec ? [maintenanceResource(toPublicMaintenance(rec), updates)] : [];
       });
-      return paginated(items, entries.length, q);
+      return collection(req, data, { included, page: q.page, total: entries.length });
     });
+  });
+
+  // Plain JSON and feeds (not JSON:API).
+  await app.register(async (scope) => {
+    cacheHeaders(scope);
 
     scope.get('/api/public/status.json', async () => {
       const now = new Date();
