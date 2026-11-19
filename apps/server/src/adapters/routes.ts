@@ -8,7 +8,7 @@
  * Ingest authentication: `Authorization: Bearer <token>` or `?token=<token>`;
  * the SHA-256 of the token is compared with `monitor_sources.ingest_token_hash`.
  */
-import type { MonitorSourceTestResult } from '@openstatuspage/shared';
+import { BUNDLE_SOURCE_TYPE, type MonitorSourceTestResult } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import type { AppContext } from '../context.js';
@@ -142,6 +142,8 @@ async function handleIngest(
       : undefined;
   if (!source) throw notFound('Monitoring source');
   if (!verifyIngestToken(source, extractIngestToken(req))) throw unauthorized('Invalid or missing ingest token');
+  // Bundle states are computed from their members, never pushed.
+  if (source.type === BUNDLE_SOURCE_TYPE) throw conflict('Check bundle states are computed and cannot be pushed');
   if (source.enabled !== 1) throw conflict('Monitoring source is disabled');
   if (format !== null && format !== source.type && source.type !== 'webhook') {
     throw badRequest(
@@ -189,6 +191,7 @@ export async function testMonitorSource(
   options: RunnerOptions = {},
 ): Promise<MonitorSourceTestResult> {
   const source = await loadSource(ctx, id);
+  if (source.type === BUNDLE_SOURCE_TYPE) throw badRequest('The check bundle source has no connection to test');
   return testSource(ctx, source, options);
 }
 

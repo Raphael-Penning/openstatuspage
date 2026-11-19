@@ -2,12 +2,13 @@ import { CHECK_STATES, type AdminMonitorCheck, type CheckState } from '@openstat
 import { Lock, Search, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { api } from '../../../lib/api';
 import { ConfirmDialog, useConfirm } from '../../components/Dialog';
 import { CheckboxField, InlineSelect, inputClass } from '../../components/fields';
 import { Card, CheckStateBadge, EmptyState, IconButton, PageHeader, QueryState, Table, td, th, tr } from '../../components/ui';
 import { useFormat } from '../../lib/format';
+import { isBundleSource } from '../../lib/source-form';
 import { useAdminMutation, useChecks } from '../../lib/queries';
 import { useDebounced } from '../../lib/useDebounced';
 import { useIsAdmin } from '../../session';
@@ -120,17 +121,24 @@ export default function ChecksPage() {
                         <td className={`${td} tabular-nums ${c.serviceCount === 0 ? 'text-muted' : ''}`}>{c.serviceCount}</td>
                         {isAdmin && (
                           <td className={`${td} text-right`}>
-                            <IconButton
-                              icon={Trash2}
-                              label={t('common:actions.delete')}
-                              onClick={() =>
-                                confirm.ask({
-                                  title: t('checks.deleteTitle'),
-                                  message: t('checks.deleteConfirm', { name: c.name, count: c.serviceCount }),
-                                  action: () => remove.mutate(c),
-                                })
-                              }
-                            />
+                            {isBundleSource({ type: c.sourceType }) ? (
+                              // A bundle check goes away with its bundle; the server refuses deleting it here.
+                              <Link to="/admin/monitoring/bundles" className="text-sm whitespace-nowrap text-accent underline hover:no-underline">
+                                {t('bundles.manage')}
+                              </Link>
+                            ) : (
+                              <IconButton
+                                icon={Trash2}
+                                label={t('common:actions.delete')}
+                                onClick={() =>
+                                  confirm.ask({
+                                    title: t('checks.deleteTitle'),
+                                    message: t('checks.deleteConfirm', { name: c.name, count: c.serviceCount }),
+                                    action: () => remove.mutate(c),
+                                  })
+                                }
+                              />
+                            )}
                           </td>
                         )}
                       </tr>

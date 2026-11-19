@@ -677,6 +677,7 @@ export const OpenItCockpitConfig = zHttpBase.extend({
 
 export const WebhookConfig = z.object({});
 
+/** Create/update a monitoring source. Only configurable types (not the virtual "bundle" source). */
 export const MonitorSourceInput = z.discriminatedUnion('type', [
   z.object({ type: z.literal('icinga2'), config: Icinga2Config }),
   z.object({ type: z.literal('uptimekuma'), config: UptimeKumaConfig }),
@@ -714,6 +715,8 @@ export interface AdminMonitorCheck {
   id: string;
   sourceId: string;
   sourceName: string;
+  /** Type of the source; "bundle" for the checks of check bundles. */
+  sourceType: MonitorSourceType;
   externalId: string;
   name: string;
   host: string | null;
@@ -730,6 +733,110 @@ export interface MonitorSourceTestResult {
   ok: boolean;
   message: string;
   checkCount?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Check bundles: weighted voting over checks of several sources (internal only)
+// ---------------------------------------------------------------------------
+
+/** Upper bound for the votes of one bundle member. */
+export const MAX_BUNDLE_MEMBER_VOTES = 1000;
+/** Upper bound for the members of one bundle. */
+export const MAX_BUNDLE_MEMBERS = 100;
+
+export const CheckBundleMemberInput = z.object({
+  checkId: zId,
+  /** Weight of this member in the vote (integer >= 1). */
+  votes: z.number().int().min(1).max(MAX_BUNDLE_MEMBER_VOTES).default(1),
+});
+export type CheckBundleMemberInput = z.infer<typeof CheckBundleMemberInput>;
+
+export const CheckBundleInput = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().max(1000).nullish(),
+  members: z
+    .array(CheckBundleMemberInput)
+    .max(MAX_BUNDLE_MEMBERS)
+    .default([])
+    .refine((list) => new Set(list.map((m) => m.checkId)).size === list.length, {
+      message: 'each check may only be added once',
+    }),
+});
+export type CheckBundleInput = z.infer<typeof CheckBundleInput>;
+
+/**
+ * Why a member counts (`reporting`) or does not count in the vote.
+ * - source_disabled: its monitoring source is disabled
+ * - poll_failed: the last poll of its (pull) source failed
+ * - state_unknown: the check reports "unknown"
+ * - never_checked: no result received yet
+ * - stale: the last result is too old (see docs/adapters/README.md)
+ */
+export const BUNDLE_MEMBER_REASONS = [
+  'reporting',
+  'source_disabled',
+  'poll_failed',
+  'state_unknown',
+  'never_checked',
+  'stale',
+] as const;
+export type BundleMemberReason = (typeof BUNDLE_MEMBER_REASONS)[number];
+
+/** Result of the weighted vote of a bundle. */
+export interface BundleVoteSummary {
+  /** ok | warning | critical, or unknown when no member reports. */
+  state: CheckState;
+  /** Votes of all members. */
+  totalVotes: number;
+  /** Votes of the members that report; the base for the majority. */
+  reportingVotes: number;
+  criticalVotes: number;
+  warningVotes: number;
+  okVotes: number;
+}
+
+export interface AdminCheckBundleMember {
+  checkId: string;
+  votes: number;
+  checkName: string;
+  host: string | null;
+  sourceId: string;
+  sourceName: string;
+  sourceType: MonitorSourceType;
+  state: CheckState;
+  lastCheckAt: string | null;
+  reporting: boolean;
+  reason: BundleMemberReason;
+}
+
+export interface AdminCheckBundle {
+  id: string;
+  name: string;
+  description: string | null;
+  /** The bundle's own check (source type "bundle"); link it to services like any check. */
+  checkId: string;
+  /** Live result, evaluated when the response was built. */
+  vote: BundleVoteSummary;
+  members: AdminCheckBundleMember[];
+  /** Number of services the bundle check feeds into. */
+  serviceCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Checks that can become bundle members, grouped by source. */
+export interface BundleCandidateSource {
+  id: string;
+  name: string;
+  type: MonitorSourceType;
+  enabled: boolean;
+  checks: {
+    id: string;
+    name: string;
+    host: string | null;
+    state: CheckState;
+    lastCheckAt: string | null;
+  }[];
 }
 
 /**

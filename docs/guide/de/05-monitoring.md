@@ -84,8 +84,9 @@ Checks sind: Fehlende Checks werden entfernt, samt ihrer Verknüpfungen zu
 Services. Das geht nur bei Quellen vom Typ **Webhook (Push)**; andere Typen
 bekommen ihre Liste per Abfrage, dort antwortet der Server mit `400`. Als
 Schutz wird ein vollständiger Push, der mehr als die Hälfte der mit Services
-verknüpften Checks entfernen würde, mit `409` abgelehnt und ändert nichts. Ist
-das Entfernen gewollt, lös die Verknüpfungen vorher.
+verknüpften oder in Check-Bündeln verwendeten Checks entfernen würde, mit `409`
+abgelehnt und ändert nichts. Ist das Entfernen gewollt, lös die Verknüpfungen
+vorher (bzw. nimm die Checks aus dem Bündel).
 
 ## Services aus Checks zusammensetzen
 
@@ -120,6 +121,66 @@ Ein öffentlicher Service besteht aus beliebig vielen internen Checks:
 Kunden sehen immer nur den resultierenden Status. Vorfälle und Wartungen
 pflegst du getrennt; sie überschreiben den Status aus den Checks (siehe
 [Überblick](01-overview.md#wie-ein-service-seinen-status-bekommt)).
+
+## Check-Bündel: mehrere Nodes stimmen ab
+
+Überwachst du dasselbe Ziel von mehreren Orten aus, zum Beispiel mit zwei oder
+drei Uptime-Kuma-Instanzen in verschiedenen Rechenzentren, soll ein einzelner
+Node deine Statusseite nicht in einen Ausfall versetzen können: Vielleicht ist
+nur sein eigenes Netz gestört. Ein **Check-Bündel** fasst einen Check pro Node
+zu einem Check zusammen, über den eine **Mehrheitsabstimmung** entscheidet.
+
+**Wann ein Bündel passt:** Die Checks messen *dasselbe* von *verschiedenen*
+Orten aus. Für verschiedene Komponenten (Webserver, Datenbank, …) verknüpfst
+du die Checks weiterhin direkt mit dem Service und nutzt die Zusammenfassung
+(schlechtester Check / Quorum).
+
+**Bündel anlegen:**
+
+1. Leg jeden Monitoring-Node als eigene Quelle an (z. B. *Kuma Frankfurt*,
+   *Kuma Amsterdam*, *Kuma New York*).
+2. **Monitoring → Bündel → Neues Bündel**: Gib einen Namen ein, wähl dann für
+   jeden Node den Check, der das Ziel überwacht, und klick auf
+   **Hinzufügen**. Die Liste zeigt Uptime-Kuma-Quellen; über den Filter kannst
+   du einen anderen Quelltyp wählen.
+3. Leg die **Stimmen** jedes Mitglieds fest (ganze Zahl, mindestens 1). Gib
+   einem Node mehr Stimmen, wenn du ihm mehr vertraust, etwa weil er an einem
+   besser angebundenen Standort läuft.
+4. Speichere und verknüpfe das Bündel im Service wie jeden anderen Check
+   (**Checks verknüpfen**, nach dem Bündelnamen suchen). Verknüpfe die
+   einzelnen Node-Checks nicht zusätzlich, sonst kann ein einzelner Node den
+   Service weiterhin verändern.
+
+**So funktioniert die Abstimmung:** Es zählen nur Nodes, die gerade
+**melden**. Ein Node meldet nicht, wenn seine Quelle deaktiviert ist, seine
+letzte Abfrage fehlgeschlagen ist, sein Check *Unbekannt* ist oder sein
+Node verstummt ist: bei abgefragten Quellen weder eine erfolgreiche Abfrage
+noch ein neues Ergebnis innerhalb von 3 Abfrageintervallen (mindestens
+5 Minuten), bei reinen Webhook-Quellen standardmäßig seit einer Stunde kein
+Ergebnis. Eine erfolgreiche Abfrage reicht, ein Icinga-Check, der vor
+6 Minuten zuletzt lief, zählt also weiter, solange Icinga antwortet.
+Von den Stimmen der meldenden Nodes gilt:
+
+- mehr als die Hälfte sagt *down* → das Bündel ist **kritisch**;
+- sonst sagt mehr als die Hälfte *down* oder *pending/Warnung* → **Warnung**;
+- sonst → **OK**;
+- kein Node meldet → **Unbekannt** (mit der Standard-Zuordnung ignoriert).
+
+Genau die Hälfte ist **keine** Mehrheit. Beispiele mit drei Nodes, Frankfurt
+2 Stimmen, Amsterdam und New York je 1 Stimme (4 Stimmen):
+
+| Frankfurt | Amsterdam | New York | Bündel |
+| --- | --- | --- | --- |
+| down | up | up | OK (2 von 4, genau die Hälfte) |
+| down | down | up | kritisch (3 von 4) |
+| up | down | down | OK (2 von 4) |
+| down | meldet nicht | up | kritisch (2 von 3 meldenden Stimmen) |
+| down | pending | up | Warnung (3 von 4 down oder pending) |
+
+Die Seite **Bündel** zeigt jedes Bündel mit seinem aktuellen Ergebnis und pro
+Node die Stimmen, den Zustand und ob (und warum nicht) er mitzählt. Sie
+aktualisiert sich von selbst. All das ist intern; Kunden sehen nur den
+resultierenden Service-Status.
 
 ## Tipps
 

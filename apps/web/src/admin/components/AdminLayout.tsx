@@ -7,6 +7,7 @@ import { clsx } from 'clsx';
 import {
   Boxes,
   ChevronUp,
+  Combine,
   CircleHelp,
   ExternalLink,
   FolderTree,
@@ -73,6 +74,7 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
       items: [
         { to: '/admin/monitoring', label: t('nav.sources'), icon: Radar, end: true, adminOnly: true },
         { to: '/admin/monitoring/checks', label: t('nav.checks'), icon: ListChecks },
+        { to: '/admin/monitoring/bundles', label: t('nav.bundles'), icon: Combine, adminOnly: true },
       ],
     },
     {

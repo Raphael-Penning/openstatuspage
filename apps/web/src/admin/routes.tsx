@@ -52,6 +52,7 @@ export const adminRoutes: RouteObject[] = [
           { path: 'monitoring', ...adminPage(() => import('./pages/monitoring/SourceListPage')) },
           { path: 'monitoring/new', ...adminPage(() => import('./pages/monitoring/SourceEditPage')) },
           { path: 'monitoring/checks', ...page(() => import('./pages/monitoring/ChecksPage')) },
+          { path: 'monitoring/bundles', ...adminPage(() => import('./pages/monitoring/BundlesPage')) },
           { path: 'monitoring/:id', ...adminPage(() => import('./pages/monitoring/SourceEditPage')) },
           { path: 'settings', ...adminPage(() => import('./pages/SettingsPage')) },
           { path: 'users', ...adminPage(() => import('./pages/UsersPage')) },

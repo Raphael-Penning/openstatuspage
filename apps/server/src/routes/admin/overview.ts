@@ -1,4 +1,4 @@
-import { SERVICE_STATUS_SEVERITY, SettingsInput, type AuditLogEntry } from '@openstatuspage/shared';
+import { BUNDLE_SOURCE_TYPE, SERVICE_STATUS_SEVERITY, SettingsInput, type AuditLogEntry } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from '../../db/index.js';
@@ -90,20 +90,36 @@ export async function registerOverviewRoutes(app: FastifyInstance): Promise<void
           .where('status', '=', 'scheduled')
           .where('scheduled_end', '>', now),
       ),
-      count(db, (d) => d.selectFrom('monitor_sources').select((eb) => eb.fn.countAll<number>().as('n'))),
+      // The virtual bundle source and its checks are left out: a down target would
+      // otherwise count twice (each member plus the bundle check).
       count(db, (d) =>
         d
           .selectFrom('monitor_sources')
           .select((eb) => eb.fn.countAll<number>().as('n'))
+          .where('type', '!=', BUNDLE_SOURCE_TYPE),
+      ),
+      count(db, (d) =>
+        d
+          .selectFrom('monitor_sources')
+          .select((eb) => eb.fn.countAll<number>().as('n'))
+          .where('type', '!=', BUNDLE_SOURCE_TYPE)
           .where('enabled', '=', 1)
           .where('last_poll_ok', '=', 0),
       ),
-      count(db, (d) => d.selectFrom('monitor_checks').select((eb) => eb.fn.countAll<number>().as('n'))),
       count(db, (d) =>
         d
           .selectFrom('monitor_checks')
+          .innerJoin('monitor_sources', 'monitor_sources.id', 'monitor_checks.source_id')
           .select((eb) => eb.fn.countAll<number>().as('n'))
-          .where('state', 'in', ['warning', 'critical']),
+          .where('monitor_sources.type', '!=', BUNDLE_SOURCE_TYPE),
+      ),
+      count(db, (d) =>
+        d
+          .selectFrom('monitor_checks')
+          .innerJoin('monitor_sources', 'monitor_sources.id', 'monitor_checks.source_id')
+          .select((eb) => eb.fn.countAll<number>().as('n'))
+          .where('monitor_sources.type', '!=', BUNDLE_SOURCE_TYPE)
+          .where('monitor_checks.state', 'in', ['warning', 'critical']),
       ),
       loadAuditEntries(db, { limit: 10, offset: 0, entityTypes: auditTypes }),
     ]);

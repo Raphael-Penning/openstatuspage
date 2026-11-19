@@ -4,6 +4,7 @@ import { loadConfig } from './config.js';
 import { createDb, migrateToLatest } from './db/index.js';
 import { syncPollers } from './adapters/poller.js';
 import { runMaintenanceTransitions } from './services/maintenance-scheduler.js';
+import { registerBundleTasks } from './services/bundles.js';
 import { registerNotificationTasks } from './services/notifications.js';
 import { registerSessionCleanup } from './services/sessions.js';
 
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
     });
     registerSessionCleanup(ctx);
     registerNotificationTasks(ctx);
+    registerBundleTasks(ctx);
     await syncPollers(ctx);
     ctx.worker.start();
   }

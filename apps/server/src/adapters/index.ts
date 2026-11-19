@@ -9,7 +9,7 @@ import {
   WebhookConfig,
   type MonitorSourceType,
 } from '@openstatuspage/shared';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { genericPushParser } from './generic.js';
 import { icinga2PollAdapter, icinga2PushParser } from './icinga2.js';
 import { openItCockpitPollAdapter, openItCockpitPushParser } from './openitcockpit.js';
@@ -48,6 +48,11 @@ export const adapters: Record<MonitorSourceType, AdapterDefinition> = {
   },
   webhook: {
     configSchema: WebhookConfig,
+    secretKeys: [],
+  },
+  // Virtual source of the check bundles: states are computed, never polled or pushed.
+  bundle: {
+    configSchema: z.object({}),
     secretKeys: [],
   },
 };
