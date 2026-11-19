@@ -53,6 +53,11 @@ Rules live in `apps/server/src/services/status-rules.ts` (pure, unit tested);
 `StatusEngine` loads data and persists results. Every code path that changes an
 input of a service must call `ctx.engine.recompute(serviceIds)`.
 
+History corrections (status overrides for a past range, retroactive maintenance)
+are a layer over `service_status_history`: they are applied when uptime is
+computed (`services/history-corrections.ts`), never written into the history.
+See [api.md](api.md#history-corrections).
+
 Uptime bars use UTC days. A day counts only the time that was observed
 (a service created today is judged by the time since its creation);
 `degraded` and `maintenance` count as up.

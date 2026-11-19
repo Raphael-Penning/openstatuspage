@@ -60,6 +60,9 @@ export function issueMessage(issue: IssueLike): ErrorMessage {
       return { key: 'validation.invalid' };
     case 'custom':
       if (pathKey(issue.path) === 'scheduledEnd') return { key: 'validation.endAfterStart' };
+      if (pathKey(issue.path) === 'endsAt') {
+        return /days/.test(issue.message ?? '') ? { key: 'validation.rangeTooLong' } : { key: 'validation.endAfterStart' };
+      }
       return { key: 'validation.invalid' };
     default:
       return { key: 'validation.invalid' };

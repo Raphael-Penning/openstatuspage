@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { formatRelative, formatUtcOffset, isoToLocalInput, localInputToIso, timeZoneLabel } from './datetime';
+import { dateInputToIso, formatRelative, formatUtcOffset, isoToLocalInput, localInputToIso, timeZoneLabel } from './datetime';
 
 const originalTz = process.env.TZ;
 
@@ -21,6 +21,14 @@ describe('datetime-local conversion', () => {
     expect(localInputToIso('2026-01-15T11:30')).toBe('2026-01-15T10:30:00.000Z');
     expect(localInputToIso('2026-07-15T12:30')).toBe('2026-07-15T10:30:00.000Z');
     expect(localInputToIso('2026-07-15T12:30:45')).toBe('2026-07-15T10:30:45.000Z');
+  });
+
+  it('converts date input values to local midnight in UTC', () => {
+    expect(dateInputToIso('2026-01-15')).toBe('2026-01-14T23:00:00.000Z');
+    expect(dateInputToIso('2026-07-15', 1)).toBe('2026-07-15T22:00:00.000Z');
+    expect(dateInputToIso('2026-02-31')).toBeNull();
+    expect(dateInputToIso('')).toBeNull();
+    expect(dateInputToIso('15.01.2026')).toBeNull();
   });
 
   it('round-trips', () => {

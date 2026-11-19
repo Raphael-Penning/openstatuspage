@@ -41,6 +41,7 @@ export const adminRoutes: RouteObject[] = [
           { path: 'maintenance/new', ...page(() => import('./pages/maintenance/MaintenanceFormPage')) },
           { path: 'maintenance/:id', ...page(() => import('./pages/maintenance/MaintenanceDetailPage')) },
           { path: 'maintenance/:id/edit', ...page(() => import('./pages/maintenance/MaintenanceFormPage')) },
+          { path: 'corrections', ...page(() => import('./pages/CorrectionsPage')) },
           { path: 'services', ...page(() => import('./pages/services/ServiceListPage')) },
           { path: 'services/new', ...adminPage(() => import('./pages/services/ServiceEditPage')) },
           { path: 'services/:id', ...page(() => import('./pages/services/ServiceEditPage')) },

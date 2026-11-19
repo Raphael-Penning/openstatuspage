@@ -14,6 +14,7 @@ import { useNavigate, useParams } from 'react-router';
 import { api } from '../../../lib/api';
 import { CheckLinksEditor } from '../../components/CheckLinksEditor';
 import { ConfirmDialog, useConfirm } from '../../components/Dialog';
+import { ServiceHistoryCompare } from '../../components/ServiceHistoryCompare';
 import { CheckboxField, FormErrorSummary, SelectField, TextAreaField, TextField } from '../../components/fields';
 import { LocationsPicker } from '../../components/pickers';
 import { Button, Card, LinkButton, PageHeader, QueryState, Spinner, StatusBadge } from '../../components/ui';
@@ -330,6 +331,11 @@ function ServiceBuilder({ service, siblings = [] }: { service?: AdminService; si
           </div>
         </fieldset>
       </form>
+      {service && (
+        <div className="mt-6">
+          <ServiceHistoryCompare serviceId={service.id} />
+        </div>
+      )}
       <ConfirmDialog {...confirm.dialogProps(remove.isPending)} />
     </>
   );

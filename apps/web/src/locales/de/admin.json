@@ -22,7 +22,8 @@
     "users": "Benutzer",
     "apiTokens": "API-Tokens",
     "auditLog": "Audit-Log",
-    "subscribers": "Abonnenten"
+    "subscribers": "Abonnenten",
+    "corrections": "Korrekturen"
   },
   "userMenu": {
     "label": "Konto und Einstellungen",
@@ -98,7 +99,9 @@
     "slugTaken": "Dieser Slug wird bereits verwendet.",
     "emailTaken": "Es gibt bereits einen Benutzer mit dieser E-Mail-Adresse.",
     "passwordMismatch": "Die Passwörter stimmen nicht überein.",
-    "wrongPassword": "Das aktuelle Passwort ist falsch."
+    "wrongPassword": "Das aktuelle Passwort ist falsch.",
+    "rangeTooLong": "Der Zeitraum darf höchstens 366 Tage umfassen.",
+    "notInFuture": "Korrekturen ändern nur die Vergangenheit: Das Ende darf nicht in der Zukunft liegen."
   },
   "form": {
     "isPublic": "Auf der öffentlichen Statusseite sichtbar",
@@ -285,7 +288,67 @@
       "cancelled": "Die Wartung wurde abgesagt."
     },
     "deleteTitle": "Wartung löschen",
-    "deleteConfirm": "„{{title}}“ mit allen Updates löschen? Das kann nicht rückgängig gemacht werden."
+    "deleteConfirm": "„{{title}}“ mit allen Updates löschen? Das kann nicht rückgängig gemacht werden.",
+    "retroactive": "Nachträglich eingetragen",
+    "record": "Wartung eintragen",
+    "retroactiveHint": {
+      "past": "Dieses Fenster ist schon vorbei. Es wird als abgeschlossen eingetragen, es geht keine E-Mail raus, und die Zeit zählt im Uptime-Verlauf als Wartung (nicht als Ausfall).",
+      "started": "Dieses Fenster hat schon begonnen. Es startet sofort; Abonnenten bekommen nur die E-Mail „Die Wartung hat begonnen“ (keine Ankündigung), und die Zeit seit dem Start zählt im Uptime-Verlauf als Wartung.",
+      "hidden": "Hinweis: Eine versteckte Wartung ändert keine Status und korrigiert deshalb auch nicht den Uptime-Verlauf. Für einen internen Zeitraum nimm eine Statuskorrektur mit dem Status „Wartung“."
+    }
+  },
+  "corrections": {
+    "title": "Korrekturen",
+    "description": "Korrigiere den Uptime-Verlauf nachträglich, z. B. einen Fehlalarm oder einen Ausfall, den das Monitoring nicht bemerkt hat. Die gemessenen Daten bleiben erhalten; Korrekturen werden darübergelegt und lassen sich jederzeit bearbeiten oder löschen.",
+    "new": "Neue Korrektur",
+    "editTitle": "Korrektur bearbeiten",
+    "created": "Korrektur erstellt.",
+    "saved": "Korrektur gespeichert.",
+    "deleted": "Korrektur gelöscht.",
+    "empty": "Keine Korrekturen gefunden.",
+    "allServices": "Alle Services",
+    "filterLabel": "Korrekturen filtern",
+    "filterFrom": "Von",
+    "filterTo": "Bis",
+    "until": "bis {{time}}",
+    "createdBy": "Von {{name}}, {{time}}",
+    "public": "Öffentlich markiert",
+    "internal": "Nur intern",
+    "editLabel": "Korrektur vom {{time}} bearbeiten",
+    "deleteLabel": "Korrektur vom {{time}} löschen",
+    "deleteTitle": "Korrektur löschen",
+    "deleteConfirm": "Diese Korrektur löschen? Der Uptime-Verlauf zeigt für diesen Zeitraum dann wieder die gemessenen Daten.",
+    "dialogIntro": "Die ausgewählten Services bekommen für den Zeitraum diesen Status. Überschneiden sich Korrekturen, gilt die zuletzt erstellte. Eine vergessene Wartung trägst du besser als Wartung mit ihrem echten Zeitfenster ein.",
+    "endsAtHelp": "Nicht in der Zukunft.",
+    "statusHelp": "„Betriebsbereit“ markiert einen Fehlalarm; ein Ausfall-Status trägt einen verpassten Ausfall nach.",
+    "reasonHelp": "Intern, wird nie öffentlich angezeigt. Wird auch im Audit-Log festgehalten.",
+    "showPublicHelp": "Tage mit dieser Korrektur werden auf der öffentlichen Statusseite als „nachträglich korrigiert“ markiert.",
+    "publicNoteHelp": "Optional. Wird mit der Markierung angezeigt, z. B. „Fehlalarm des Monitorings.“",
+    "fields": {
+      "service": "Service",
+      "services": "Services",
+      "range": "Zeitraum",
+      "status": "Status",
+      "reason": "Grund",
+      "visibility": "Öffentliche Seite",
+      "startsAt": "Beginn",
+      "endsAt": "Ende",
+      "showPublic": "Hinweis auf der öffentlichen Seite zeigen",
+      "publicNote": "Öffentlicher Hinweis"
+    },
+    "compare": {
+      "title": "Verlauf: gemessen und korrigiert",
+      "add": "Korrektur hinzufügen",
+      "intro": "Vergleicht den gemessenen Statusverlauf mit dem Verlauf nach Korrekturen und nachträglich eingetragenen Wartungen. Eingeschränkte Leistung und Wartung zählen in der Uptime als verfügbar.",
+      "measured": "Gemessen",
+      "corrected": "Korrigiert",
+      "none": "Keine Korrekturen in diesem Zeitraum.",
+      "changes": "Korrigierte Zeiträume",
+      "correctedStatus": "Korrigierter Status",
+      "source": "Quelle",
+      "maintenance": "Wartung „{{title}}“",
+      "correction": "Korrektur"
+    }
   },
   "services": {
     "title": "Services & Sites",
@@ -746,7 +809,8 @@
       "user": "Benutzer",
       "api_token": "API-Token",
       "subscriber": "Abonnent",
-      "notifications": "E-Mail-Benachrichtigungen"
+      "notifications": "E-Mail-Benachrichtigungen",
+      "correction": "Korrektur"
     },
     "actions": {
       "auth_login": "Angemeldet",
@@ -789,7 +853,10 @@
       "api_token_delete": "API-Token widerrufen",
       "subscriber_delete": "Abonnent gelöscht",
       "notifications_test": "Test-E-Mail gesendet",
-      "notifications_retry_failed": "Fehlgeschlagene E-Mails erneut eingeplant"
+      "notifications_retry_failed": "Fehlgeschlagene E-Mails erneut eingeplant",
+      "correction_create": "Korrektur erstellt",
+      "correction_update": "Korrektur bearbeitet",
+      "correction_delete": "Korrektur gelöscht"
     }
   },
   "notify": {

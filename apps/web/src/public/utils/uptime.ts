@@ -76,3 +76,8 @@ export function tooltipAlign(index: number, count: number): 'start' | 'center' |
   if (pos > 0.8) return 'end';
   return 'center';
 }
+
+/** Buckets whose data was corrected afterwards (public corrections), newest first. */
+export function correctedDays(days: readonly DailyUptime[]): DailyUptime[] {
+  return days.filter((d) => d.corrected === true).reverse();
+}

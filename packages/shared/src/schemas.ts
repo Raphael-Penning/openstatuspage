@@ -281,6 +281,13 @@ export interface DailyUptime {
   uptime: number | null;
   /** Minutes per non-operational status that day. */
   minutes: Partial<Record<ServiceStatus, number>>;
+  /**
+   * Present (true) when a correction marked as public changed this day's data
+   * afterwards. Values above already include all corrections.
+   */
+  corrected?: true;
+  /** Public notes of those corrections (may be empty). */
+  correctionNotes?: string[];
 }
 
 export interface PublicService {
@@ -522,8 +529,120 @@ export interface AdminMaintenance extends PublicMaintenance {
   notify: boolean;
   /** When the reminder email was queued, null if not (yet). */
   reminderSentAt: string | null;
+  /**
+   * The window had already started when it was entered. It counts as
+   * "maintenance" in the corrected history; no announcement or reminder is sent,
+   * and a window that had already ended is created as completed without any email.
+   */
+  retroactive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// History corrections (status overrides for a past time range)
+// ---------------------------------------------------------------------------
+
+/** Longest time range of one correction and of the admin history comparison. */
+export const CORRECTION_MAX_DAYS = 366;
+const DAY_MS = 86_400_000;
+
+const correctionFields = {
+  serviceIds: z.array(zId).min(1).max(500),
+  startsAt: zTimestamp,
+  /** Exclusive. Must not be in the future: corrections only change the past. */
+  endsAt: zTimestamp,
+  /** Status the services had in [startsAt, endsAt), e.g. operational for a false alarm. */
+  status: zServiceStatus,
+  /** Internal reason (required). Never shown publicly. */
+  reason: z.string().trim().min(1).max(2000),
+  /** Mark the affected days as "corrected afterwards" on the public page. */
+  showPublic: z.boolean(),
+  /** Optional text shown with the public marker. */
+  publicNote: z.string().trim().max(500).nullish(),
+};
+
+function validRange(v: { startsAt?: string; endsAt?: string }): boolean {
+  if (!v.startsAt || !v.endsAt) return true;
+  return new Date(v.endsAt) > new Date(v.startsAt);
+}
+function notTooLong(v: { startsAt?: string; endsAt?: string }): boolean {
+  if (!v.startsAt || !v.endsAt) return true;
+  return new Date(v.endsAt).getTime() - new Date(v.startsAt).getTime() <= CORRECTION_MAX_DAYS * DAY_MS;
+}
+
+export const CorrectionInput = z
+  .object({ ...correctionFields, showPublic: correctionFields.showPublic.default(false) })
+  .refine(validRange, { message: 'endsAt must be after startsAt', path: ['endsAt'] })
+  .refine(notTooLong, { message: `at most ${CORRECTION_MAX_DAYS} days`, path: ['endsAt'] });
+export type CorrectionInput = z.infer<typeof CorrectionInput>;
+
+export const CorrectionPatchInput = z
+  .object(correctionFields)
+  .partial()
+  .refine(validRange, { message: 'endsAt must be after startsAt', path: ['endsAt'] })
+  .refine(notTooLong, { message: `at most ${CORRECTION_MAX_DAYS} days`, path: ['endsAt'] });
+export type CorrectionPatchInput = z.infer<typeof CorrectionPatchInput>;
+
+export const CorrectionListQuery = z.object({
+  serviceId: zId.optional(),
+  /** Only corrections overlapping [from, to). */
+  from: zTimestamp.optional(),
+  to: zTimestamp.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type CorrectionListQuery = z.infer<typeof CorrectionListQuery>;
+
+export interface AdminCorrection {
+  id: string;
+  services: { id: string; name: string }[];
+  startsAt: string;
+  endsAt: string;
+  status: ServiceStatus;
+  reason: string;
+  showPublic: boolean;
+  publicNote: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ServiceHistoryQuery = z
+  .object({ from: zTimestamp, to: zTimestamp })
+  .refine((v) => new Date(v.to) > new Date(v.from), { message: 'to must be after from', path: ['to'] })
+  .refine((v) => new Date(v.to).getTime() - new Date(v.from).getTime() <= CORRECTION_MAX_DAYS * DAY_MS, {
+    message: `at most ${CORRECTION_MAX_DAYS} days`,
+    path: ['to'],
+  });
+export type ServiceHistoryQuery = z.infer<typeof ServiceHistoryQuery>;
+
+/** Where a history segment comes from. */
+export type HistorySegmentSource = 'measured' | 'maintenance' | 'correction';
+
+export interface HistorySegment {
+  status: ServiceStatus;
+  startedAt: string;
+  /** null = still open (only for the measured current segment). */
+  endedAt: string | null;
+  source: HistorySegmentSource;
+  /** Maintenance or correction id for corrected segments. */
+  sourceId: string | null;
+}
+
+/** Measured vs corrected status history of one service in [from, to) (admin only). */
+export interface AdminServiceHistory {
+  from: string;
+  to: string;
+  measured: HistorySegment[];
+  corrected: HistorySegment[];
+  measuredUptime: number | null;
+  correctedUptime: number | null;
+  /** Corrections overlapping the range. */
+  corrections: AdminCorrection[];
+  /** Retroactive maintenance windows overlapping the range. */
+  maintenances: { id: string; title: string; start: string; end: string }[];
 }
 
 // ---------------------------------------------------------------------------

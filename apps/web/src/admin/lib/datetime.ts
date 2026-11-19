@@ -27,6 +27,22 @@ export function localInputToIso(value: string | null | undefined): string | null
   return date.toISOString();
 }
 
+const DATE_INPUT = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Local "YYYY-MM-DD" (`<input type="date">`) -> UTC ISO timestamp of local
+ * midnight, `addDays` days later. Returns null for empty or invalid input.
+ */
+export function dateInputToIso(value: string | null | undefined, addDays = 0): string | null {
+  if (!value) return null;
+  const m = DATE_INPUT.exec(value.trim());
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const check = new Date(Number(y), Number(mo) - 1, Number(d));
+  if (check.getMonth() !== Number(mo) - 1 || check.getDate() !== Number(d)) return null;
+  return new Date(Number(y), Number(mo) - 1, Number(d) + addDays).toISOString();
+}
+
 /** Current local time as a datetime-local value. */
 export function nowLocalInput(offsetMinutes = 0): string {
   return isoToLocalInput(new Date(Date.now() + offsetMinutes * 60_000).toISOString());

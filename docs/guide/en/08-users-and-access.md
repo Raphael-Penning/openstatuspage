@@ -8,6 +8,7 @@ and the admin API are for your team.
 | | Editor | Administrator |
 | --- | --- | --- |
 | Incidents and maintenance | create, update, delete | create, update, delete |
+| History corrections | create, update, delete | create, update, delete |
 | Services, groups, locations, checks | read | manage |
 | Monitoring sources | – | manage |
 | Settings, email subscribers | – | manage |

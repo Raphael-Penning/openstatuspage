@@ -96,6 +96,7 @@ export function toAdminMaintenance(rec: MaintenanceRecord): AdminMaintenance {
     isPublic: rec.row.is_public === 1,
     notify: rec.row.notify_subscribers === 1,
     reminderSentAt: rec.row.reminder_sent_at,
+    retroactive: rec.row.retroactive === 1,
     createdAt: rec.row.created_at,
     updatedAt: rec.row.updated_at,
   };

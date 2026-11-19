@@ -8,6 +8,7 @@ Die öffentliche Statusseite braucht nie eine Anmeldung. Die Verwaltung unter
 | | Redakteur | Administrator |
 | --- | --- | --- |
 | Vorfälle und Wartungen | anlegen, aktualisieren, löschen | anlegen, aktualisieren, löschen |
+| Verlaufskorrekturen | anlegen, aktualisieren, löschen | anlegen, aktualisieren, löschen |
 | Services, Gruppen, Standorte, Checks | lesen | verwalten |
 | Monitoring-Quellen | – | verwalten |
 | Einstellungen, E-Mail-Abonnenten | – | verwalten |

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   averageUptime,
   barDaysForWidth,
+  correctedDays,
   formatPercent,
   lastDays,
   outageMinutes,
@@ -91,5 +92,17 @@ describe('tooltipAlign', () => {
     expect(tooltipAlign(45, 90)).toBe('center');
     expect(tooltipAlign(89, 90)).toBe('end');
     expect(tooltipAlign(0, 1)).toBe('center');
+  });
+});
+
+describe('correctedDays', () => {
+  it('returns the corrected buckets, newest first', () => {
+    const days: DailyUptime[] = [
+      { ...day('a', 100), corrected: true, correctionNotes: ['False alarm'] },
+      day('b', 100),
+      { ...day('c', 99), corrected: true, correctionNotes: [] },
+    ];
+    expect(correctedDays(days).map((d) => d.date)).toEqual(['c', 'a']);
+    expect(correctedDays([day('x', 100)])).toEqual([]);
   });
 });
