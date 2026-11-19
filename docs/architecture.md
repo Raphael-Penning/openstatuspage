@@ -249,6 +249,14 @@ monitoring source polled every 10 s from a local fake Uptime Kuma for 40 s
 | all | 85 MB | 106 MB | 95 MB | 110 MB |
 | all (SQLite) | 95 MB | 101 MB | 101 MB | 116 MB |
 
+What the target covers: `public` and `worker` stay below 100 MB at every
+point, also at their kernel peak. `admin` and `all` stay below it after start and
+at steady state, but exceed it briefly under load: up to 102 MB (admin) and
+106 MB (all) in the samples, 110–116 MB at the kernel peak, mostly while a
+password is checked (see below). Size memory limits for these peaks, not for the
+target: the Kubernetes examples request 128 MiB and limit at 256 MiB, and
+`deploy/compose/compose.split.yaml` sets the same limits.
+
 The same build and load before the changes below: public 98 / 118 / 105 MB,
 admin 113 / 133 / 120 MB, worker 105 / 112 / 100 MB and all 108 / 129 / 117 MB
 (after start / peak / after load).

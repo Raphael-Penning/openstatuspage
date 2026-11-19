@@ -29,6 +29,10 @@ name: openstatuspage-split
 x-image: &image
   image: ${OSP_IMAGE:-ghcr.io/raphael-penning/openstatuspage}:${OSP_VERSION:-latest}
   restart: unless-stopped
+  # Like the Kubernetes example: about 80-100 MB in use, short peaks above that
+  # (docs/architecture.md#memory).
+  mem_reservation: 128m
+  mem_limit: 256m
 
 services:
   db:
