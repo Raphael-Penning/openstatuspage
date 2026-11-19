@@ -36,13 +36,17 @@ export async function createTestApp(
   env: Record<string, string> = {},
   options: { mailer?: Mailer; onRoute?: (route: RouteOptions) => void } = {},
 ): Promise<TestApp> {
-  const config = loadConfig({
-    NODE_ENV: 'test',
-    DATABASE_URL: 'sqlite::memory:',
-    SECRET_KEY: 'test-secret-key-that-is-long-enough-1234567890',
-    BASE_URL,
-    ...env,
-  });
+  // Tests run every APP_ROLE on in-memory SQLite (production needs PostgreSQL for split roles).
+  const config = loadConfig(
+    {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'sqlite::memory:',
+      SECRET_KEY: 'test-secret-key-that-is-long-enough-1234567890',
+      BASE_URL,
+      ...env,
+    },
+    { allowSqliteForAnyRole: true },
+  );
   const db = await createDb(config);
   await migrateToLatest(db);
   const app = await buildApp({ config, db, serveWeb: false, mailer: options.mailer, onRoute: options.onRoute });

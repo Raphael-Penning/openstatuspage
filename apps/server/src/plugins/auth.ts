@@ -55,9 +55,14 @@ export function sessionCookieOptions(config: Config, maxAgeSeconds: number) {
   };
 }
 
-/** Decorates every request with `authUser`. */
-export async function registerAuth(app: FastifyInstance): Promise<void> {
+/**
+ * Decorates every request with `authUser`. With `enabled: false` (instances
+ * without the admin API) every request stays anonymous and the session and
+ * token tables are never read.
+ */
+export async function registerAuth(app: FastifyInstance, options: { enabled?: boolean } = {}): Promise<void> {
   app.decorateRequest('authUser', null);
+  if (options.enabled === false) return;
   app.addHook('onRequest', async (req, reply) => {
     const path = req.url;
     if (!path.startsWith('/api/admin') && !path.startsWith('/api/auth')) return;
