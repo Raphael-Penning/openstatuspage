@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SECRET_MASK } from '@openstatuspage/shared';
-import { adminClient, client, createTestApp, createUser, login, page, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, data, login, page, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -39,7 +39,7 @@ describe('monitoring credentials', () => {
 
 describe('api tokens', () => {
   async function tokenOf(c: Client, role: 'admin' | 'editor') {
-    return (await c.post('/api/admin/api-tokens', { name: `t-${role}`, role })).json().token as string;
+    return data<{ token: string }>(await c.post('/api/admin/api-tokens', { name: `t-${role}`, role })).token;
   }
 
   it('are revoked when their creator is deleted or loses the admin role', async () => {
@@ -50,10 +50,10 @@ describe('api tokens', () => {
     const asToken = (token: string) => client(t.app, { token }).get('/api/admin/overview');
     expect((await asToken(adminToken)).statusCode).toBe(200);
 
-    const users = (await admin.get('/api/admin/users')).json() as { id: string; email: string }[];
+    const users = data<{ id: string; email: string }[]>(await admin.get('/api/admin/users'));
     const secondId = users.find((u) => u.email === 'second@example.com')!.id;
 
-    await admin.put(`/api/admin/users/${secondId}`, { role: 'editor' });
+    await admin.patch(`/api/admin/users/${secondId}`, { role: 'editor' });
     expect((await asToken(adminToken)).statusCode).toBe(401);
     expect((await asToken(editorToken)).statusCode).toBe(200);
 

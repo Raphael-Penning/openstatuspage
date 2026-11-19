@@ -9,11 +9,21 @@ import { nowIso } from '../../lib/time.js';
 import { actorUserId, owningUserId } from '../../plugins/auth.js';
 import { deleteUserSessions, newApiToken, SESSION_COOKIE } from '../../services/sessions.js';
 import { changeUserRole, countAdmins, toAdminUser } from '../../services/users.js';
+import { collection, created, document, noContent, selfLink } from '../../lib/jsonapi.js';
+import { useJsonApi } from '../../plugins/jsonapi.js';
+import { apiTokenResource, AUTH_TYPES, userResource } from '../../serializers/auth-users.js';
 import { admin, auditRequest } from './util.js';
 
-/** /api/admin/users and /api/admin/api-tokens (admin) */
+/** /api/admin/users and /api/admin/api-tokens (admin, JSON:API) */
 export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(registerUserScope);
+}
+
+async function registerUserScope(app: FastifyInstance): Promise<void> {
+  useJsonApi(app);
   const { db } = app.ctx;
+  const usersRoute = { ...admin, config: { jsonapi: { type: AUTH_TYPES.user } } };
+  const tokensRoute = { ...admin, config: { jsonapi: { type: AUTH_TYPES.apiToken } } };
 
   const getUser = async (id: string) => {
     const user = await db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst();
@@ -27,12 +37,12 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
     if (await q.executeTakeFirst()) throw conflict('A user with this e-mail already exists');
   };
 
-  app.get('/api/admin/users', admin, async () => {
+  app.get('/api/admin/users', admin, async (req) => {
     const rows = await db.selectFrom('users').selectAll().orderBy('name').orderBy('email').execute();
-    return rows.map(toAdminUser);
+    return collection(req, rows.map((r) => userResource(toAdminUser(r))));
   });
 
-  app.post('/api/admin/users', admin, async (req, reply) => {
+  app.post('/api/admin/users', usersRoute, async (req, reply) => {
     const input = parse(UserCreateInput, req.body);
     const email = input.email.trim().toLowerCase();
     await assertEmailFree(email);
@@ -53,12 +63,14 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
       })
       .execute();
     await auditRequest(db, req, 'user.create', 'user', id, { email, role: input.role });
-    return reply.status(201).send(toAdminUser(await getUser(id)));
+    return created(reply, document(userResource(toAdminUser(await getUser(id)))), `/api/admin/users/${id}`);
   });
 
-  app.get('/api/admin/users/:id', admin, async (req) => toAdminUser(await getUser(parse(IdParams, req.params).id)));
+  app.get('/api/admin/users/:id', admin, async (req) =>
+    document(userResource(toAdminUser(await getUser(parse(IdParams, req.params).id))), { links: { self: selfLink(req) } }),
+  );
 
-  app.put('/api/admin/users/:id', admin, async (req) => {
+  app.patch('/api/admin/users/:id', usersRoute, async (req) => {
     const { id } = parse(IdParams, req.params);
     const input = parse(UserUpdateInput, req.body);
     const user = await getUser(id);
@@ -94,7 +106,7 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
       fields: Object.keys(input).filter((k) => k !== 'password'),
       ...(passwordChanged ? { passwordChanged: true } : {}),
     });
-    return toAdminUser(await getUser(id));
+    return document(userResource(toAdminUser(await getUser(id))));
   });
 
   app.delete('/api/admin/users/:id', admin, async (req, reply) => {
@@ -109,21 +121,29 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
       await trx.deleteFrom('users').where('id', '=', id).execute();
     });
     await auditRequest(db, req, 'user.delete', 'user', id, { email: user.email });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
   // --- API tokens -------------------------------------------------------------------
 
-  app.get('/api/admin/api-tokens', admin, async (): Promise<AdminApiToken[]> => {
+  app.get('/api/admin/api-tokens', admin, async (req) => {
     const rows = await db
       .selectFrom('api_tokens')
       .select(['id', 'name', 'role', 'created_at', 'last_used_at'])
       .orderBy('created_at', 'desc')
       .execute();
-    return rows.map((t) => ({ id: t.id, name: t.name, role: t.role, createdAt: t.created_at, lastUsedAt: t.last_used_at }));
+    const tokens: AdminApiToken[] = rows.map((t) => ({
+      id: t.id,
+      name: t.name,
+      role: t.role,
+      createdAt: t.created_at,
+      lastUsedAt: t.last_used_at,
+    }));
+    return collection(req, tokens.map(apiTokenResource));
   });
 
-  app.post('/api/admin/api-tokens', admin, async (req, reply) => {
+  // The plain token is only part of this response (attribute `token`).
+  app.post('/api/admin/api-tokens', tokensRoute, async (req, reply) => {
     const input = parse(ApiTokenCreateInput, req.body);
     const id = newId();
     const token = newApiToken();
@@ -143,7 +163,7 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
       .execute();
     await auditRequest(db, req, 'api_token.create', 'api_token', id, { name: input.name, role: input.role });
     const body: AdminApiToken = { id, name: input.name, role: input.role, createdAt: now, lastUsedAt: null, token };
-    return reply.status(201).send(body);
+    return created(reply, document(apiTokenResource(body)), `/api/admin/api-tokens/${id}`);
   });
 
   app.delete('/api/admin/api-tokens/:id', admin, async (req, reply) => {
@@ -152,6 +172,6 @@ export async function registerUserRoutes(app: FastifyInstance): Promise<void> {
     if (!row) throw notFound('API token');
     await db.deleteFrom('api_tokens').where('id', '=', id).execute();
     await auditRequest(db, req, 'api_token.delete', 'api_token', id, { name: row.name });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 }

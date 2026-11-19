@@ -253,11 +253,13 @@ describe('authorization', () => {
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
     const created = await admin.post('/api/admin/api-tokens', { name: 'CI', role: 'editor' });
     expect(created.statusCode).toBe(201);
-    const { token, id } = created.json();
+    expect(created.json().data).toMatchObject({ type: 'api-tokens', attributes: { name: 'CI' } });
+    const { token, id } = data<{ token: string; id: string }>(created);
+    expect(created.headers.location).toBe(`/api/admin/api-tokens/${id}`);
     expect(token).toMatch(/^osp_/);
 
     const list = await admin.get('/api/admin/api-tokens');
-    expect(list.json()).toEqual([expect.objectContaining({ id, name: 'CI', role: 'editor', lastUsedAt: null })]);
+    expect(data(list)).toEqual([expect.objectContaining({ id, name: 'CI', role: 'editor', lastUsedAt: null })]);
     expect(list.body).not.toContain(token);
 
     const bot = client(t.app, { token });
@@ -268,7 +270,7 @@ describe('authorization', () => {
     const audit = await admin.get('/api/admin/audit-log?entityType=incident');
     expect(audit.json().items[0]).toMatchObject({ action: 'incident.create', userId: null, details: { apiToken: 'CI' } });
     const tokens = await admin.get('/api/admin/api-tokens');
-    expect(tokens.json()[0].lastUsedAt).not.toBeNull();
+    expect(data<{ lastUsedAt: string | null }[]>(tokens)[0]!.lastUsedAt).not.toBeNull();
 
     expect((await admin.delete(`/api/admin/api-tokens/${id}`)).statusCode).toBe(204);
     expect((await bot.get('/api/admin/services')).statusCode).toBe(401);
@@ -281,7 +283,7 @@ describe('user management guards', () => {
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
 
     expect((await admin.delete(`/api/admin/users/${adminId}`)).statusCode).toBe(409);
-    expect((await admin.put(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
+    expect((await admin.patch(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
 
     const created = await admin.post('/api/admin/users', {
       email: 'second@example.com',
@@ -290,7 +292,8 @@ describe('user management guards', () => {
       password: 'another-long-password',
     });
     expect(created.statusCode).toBe(201);
-    const second = created.json();
+    expect(created.headers.location).toMatch(/^\/api\/admin\/users\//);
+    const second = data<{ id: string }>(created);
     expect(second).toMatchObject({ email: 'second@example.com', hasPassword: true, oidcLinked: false });
     expect(created.body).not.toContain('password_hash');
 
@@ -298,19 +301,43 @@ describe('user management guards', () => {
     expect(duplicate.statusCode).toBe(409);
 
     // Demoting another admin works while another admin remains.
-    const demoted = await admin.put(`/api/admin/users/${second.id}`, { role: 'editor' });
+    const demoted = await admin.patch(`/api/admin/users/${second.id}`, { role: 'editor' });
     expect(demoted.statusCode).toBe(200);
-    expect(demoted.json().role).toBe('editor');
+    expect(data<{ role: string }>(demoted).role).toBe('editor');
     expect((await admin.delete(`/api/admin/users/${second.id}`)).statusCode).toBe(204);
+  });
+
+  it('lists users as a JSON:API collection and checks PATCH documents', async () => {
+    const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin', name: 'Ada' });
+    const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
+
+    const list = await admin.get('/api/admin/users');
+    expect(list.headers['content-type']).toBe('application/vnd.api+json');
+    expect(list.json()).toMatchObject({
+      jsonapi: { version: '1.1' },
+      data: [{ type: 'users', id: adminId, attributes: { email: 'admin@example.com', name: 'Ada' }, links: { self: `/api/admin/users/${adminId}` } }],
+      meta: { total: 1 },
+    });
+    expect(list.body).not.toContain('password_hash');
+
+    const mismatch = await admin.patch(`/api/admin/users/${adminId}`, { data: { type: 'users', id: 'other', attributes: { name: 'X' } } });
+    expect(mismatch.statusCode).toBe(409);
+    expect(errors(mismatch)[0]).toMatchObject({ code: 'id_mismatch' });
+    const renamed = await admin.patch(`/api/admin/users/${adminId}`, doc('users', { name: 'Ada L.' }, { id: adminId }));
+    expect(data<{ name: string }>(renamed).name).toBe('Ada L.');
+
+    const invalid = await admin.post('/api/admin/users', { email: 'nope', name: 'X', role: 'editor' });
+    expect(invalid.statusCode).toBe(400);
+    expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/email' } });
   });
 
   it('protects the last admin against other admins being removed via token', async () => {
     const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
-    const { token } = (await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' })).json();
+    const { token } = data<{ token: string }>(await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' }));
     const bot = client(t.app, { token });
     expect((await bot.delete(`/api/admin/users/${adminId}`)).statusCode).toBe(409);
-    expect((await bot.put(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
+    expect((await bot.patch(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
   });
 });
 
@@ -320,16 +347,17 @@ describe('token ownership', () => {
     const secondId = await createUser(t.db, { email: 'second@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
     const second = client(t.app, { cookie: await login(t.app, 'second@example.com') });
-    const { token } = (await second.post('/api/admin/api-tokens', { name: 'parent', role: 'admin' })).json();
+    const { token } = data<{ token: string }>(await second.post('/api/admin/api-tokens', { name: 'parent', role: 'admin' }));
 
     const child = await client(t.app, { token }).post('/api/admin/api-tokens', { name: 'child', role: 'admin' });
     expect(child.statusCode).toBe(201);
-    const row = await t.db.selectFrom('api_tokens').select('created_by').where('id', '=', child.json().id).executeTakeFirstOrThrow();
+    const childToken = data<{ id: string; token: string }>(child);
+    const row = await t.db.selectFrom('api_tokens').select('created_by').where('id', '=', childToken.id).executeTakeFirstOrThrow();
     expect(row.created_by).toBe(secondId);
 
     // Demoting the owner revokes both tokens.
-    expect((await admin.put(`/api/admin/users/${secondId}`, { role: 'editor' })).statusCode).toBe(200);
-    expect((await client(t.app, { token: child.json().token }).get('/api/admin/overview')).statusCode).toBe(401);
+    expect((await admin.patch(`/api/admin/users/${secondId}`, { role: 'editor' })).statusCode).toBe(200);
+    expect((await client(t.app, { token: childToken.token }).get('/api/admin/overview')).statusCode).toBe(401);
     expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
   });
 });
@@ -369,7 +397,7 @@ describe('create-user reset', () => {
 
     await createUser(t.db, { email: 'second@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
-    const { token } = (await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' })).json();
+    const { token } = data<{ token: string }>(await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' }));
     expect(await createOrResetLocalUser(t.db, input)).toEqual({ ok: true, created: false });
     const user = await t.db.selectFrom('users').select('role').where('id', '=', adminId).executeTakeFirstOrThrow();
     expect(user.role).toBe('editor');
