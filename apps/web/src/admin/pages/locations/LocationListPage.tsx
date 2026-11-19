@@ -18,6 +18,7 @@ import {
   VisibilityBadge,
 } from '../../components/ui';
 import { countryName } from '../../lib/countries';
+import { ORDERING_DOCUMENT } from '../../lib/documents';
 import { useFormat } from '../../lib/format';
 import { bySortOrder, moveId } from '../../lib/ordering';
 import { useAdminMutation, useLocations } from '../../lib/queries';
@@ -28,7 +29,7 @@ export default function LocationListPage() {
   const isAdmin = useIsAdmin();
   const fmt = useFormat();
   const locations = useLocations();
-  const reorder = useAdminMutation((ids: string[]) => api.post('/api/admin/locations/reorder', { ids }), {
+  const reorder = useAdminMutation((ids: string[]) => api.post('/api/admin/locations/reorder', { ids }, ORDERING_DOCUMENT), {
     success: t('reorder.saved'),
   });
 

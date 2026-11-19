@@ -9,6 +9,7 @@ import { LocationsPicker, ServicesPicker } from '../../components/pickers';
 import { Button, Card, LinkButton, PageHeader, QueryState } from '../../components/ui';
 import { isoToLocalInput, localInputToIso } from '../../lib/datetime';
 import { useAdminMutation, useMaintenance } from '../../lib/queries';
+import { MAINTENANCE_DOCUMENT } from '../../lib/documents';
 import { useForm } from '../../lib/useForm';
 
 interface Values {
@@ -86,8 +87,8 @@ function MaintenanceForm({ maintenance }: { maintenance?: AdminMaintenance }) {
   const save = useAdminMutation(
     (body: MaintenanceCreateInput) =>
       maintenance
-        ? api.patch<AdminMaintenance>(`/api/admin/maintenances/${maintenance.id}`, body)
-        : api.post<AdminMaintenance>('/api/admin/maintenances', body),
+        ? api.patch<AdminMaintenance>(`/api/admin/maintenances/${maintenance.id}`, body, { ...MAINTENANCE_DOCUMENT, id: maintenance.id })
+        : api.post<AdminMaintenance>('/api/admin/maintenances', body, MAINTENANCE_DOCUMENT),
     {
       success: maintenance ? t('maintenance.saved') : t('maintenance.created'),
       onSuccess: (m) => navigate(`/admin/maintenance/${m.id}`),

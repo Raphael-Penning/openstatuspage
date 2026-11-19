@@ -293,7 +293,7 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
   const { t } = useTranslation('admin');
   const empty = { currentPassword: '', newPassword: '', confirm: '' };
   const form = useForm(empty);
-  const mutation = useAdminMutation((body: { currentPassword: string; newPassword: string }) => api.post('/api/auth/password', body), {
+  const mutation = useAdminMutation((body: { currentPassword: string; newPassword: string }) => api.post('/api/auth/password', body, { type: 'passwords' }), {
     success: t('userMenu.passwordChanged'),
     onSuccess: () => {
       form.setValues(empty);

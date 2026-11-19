@@ -8,7 +8,7 @@ import { emptySourceForm, hasStoredSecret, sourceFormToPayload, sourceToForm } f
 const source = (over: Partial<AdminMonitorSource> = {}): AdminMonitorSource => ({
   id: 'src-1',
   name: 'Monitoring',
-  type: 'icinga2',
+  sourceType: 'icinga2',
   enabled: true,
   pollIntervalSeconds: 60,
   config: { baseUrl: 'https://monitoring.example.com:5665', username: 'status', password: SECRET_MASK, includeHosts: false, verifyTls: true },
@@ -42,22 +42,22 @@ describe('source form', () => {
   it('requires new secrets when the type changes', () => {
     const s = source();
     expect(hasStoredSecret(s, 'apiKey', 'uptimekuma')).toBe(false);
-    const payload = sourceFormToPayload({ ...sourceToForm(s), type: 'uptimekuma', apiKey: '' }, s);
+    const payload = sourceFormToPayload({ ...sourceToForm(s), sourceType: 'uptimekuma', apiKey: '' }, s);
     const res = MonitorSourceInput.safeParse(payload);
     expect(res.success).toBe(false);
   });
 
   it('builds type specific configs', () => {
     const base = { ...emptySourceForm(), name: 'Kuma', baseUrl: 'https://uptime.example.com', apiKey: 'key' };
-    expect(sourceFormToPayload({ ...base, type: 'uptimekuma' }).config).toEqual({
+    expect(sourceFormToPayload({ ...base, sourceType: 'uptimekuma' }).config).toEqual({
       baseUrl: 'https://uptime.example.com',
       apiKey: 'key',
       verifyTls: true,
       historyUsername: null,
       historyPassword: null,
     });
-    const webhook = sourceFormToPayload({ ...emptySourceForm(), name: 'Push', type: 'webhook', pollIntervalSeconds: '' });
-    expect(webhook).toMatchObject({ type: 'webhook', config: {}, pollIntervalSeconds: 60 });
+    const webhook = sourceFormToPayload({ ...emptySourceForm(), name: 'Push', sourceType: 'webhook', pollIntervalSeconds: '' });
+    expect(webhook).toMatchObject({ sourceType: 'webhook', config: {}, pollIntervalSeconds: 60 });
     expect(MonitorSourceInput.safeParse(webhook).success).toBe(true);
   });
 
@@ -74,7 +74,7 @@ describe('source form', () => {
     expect(MonitorSourceInput.safeParse(fresh).success).toBe(true);
     const kuma = sourceFormToPayload({
       ...emptySourceForm(),
-      type: 'uptimekuma',
+      sourceType: 'uptimekuma',
       name: 'Kuma',
       baseUrl: 'https://uptime.example.com',
       apiKey: 'k',

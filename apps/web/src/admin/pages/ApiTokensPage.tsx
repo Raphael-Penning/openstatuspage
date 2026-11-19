@@ -126,7 +126,7 @@ function CreateTokenDialog({ onClose, onCreated }: { onClose: () => void; onCrea
   const { t } = useTranslation('admin');
   const opts = useOptions();
   const form = useForm({ name: '', role: 'editor' as UserRole });
-  const create = useAdminMutation((body: { name: string; role: UserRole }) => api.post<AdminApiToken>('/api/admin/api-tokens', body), {
+  const create = useAdminMutation((body: { name: string; role: UserRole }) => api.post<AdminApiToken>('/api/admin/api-tokens', body, { type: 'api-tokens' }), {
     success: t('tokens.created'),
     onSuccess: onCreated,
     onError: form.applyServerError,

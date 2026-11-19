@@ -27,7 +27,7 @@ management area.
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
-- **Public API and RSS/Atom feeds**
+- **[JSON:API 1.1](docs/api.md) HTTP API and RSS/Atom feeds** (since 0.2.0; a breaking change for API clients of 0.1.x, see the [changelog](CHANGELOG.md))
 
 ## Quick start (Docker Compose)
 
@@ -78,6 +78,15 @@ covers the Compose setup in detail, SQLite, Kubernetes
   under **Help**)
 - [Documentation index](docs/README.md): configuration, API, monitoring
   adapters, OIDC, architecture design and releasing
+- [HTTP API reference](docs/api.md): [JSON:API 1.1](https://jsonapi.org/format/1.1/)
+  with an example for every endpoint. Since 0.2.0 requests and responses use
+  `application/vnd.api+json`; API clients written for 0.1.x need to be updated
+  (see the [changelog](CHANGELOG.md)).
+
+```sh
+curl -g -H "Authorization: Bearer $OSP_TOKEN" \
+  "https://status.example.com/api/admin/incidents?filter[status]=active&page[size]=10"
+```
 
 ## License
 

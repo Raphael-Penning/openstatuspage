@@ -13,7 +13,7 @@ import {
 
 export interface SourceFormValues {
   name: string;
-  type: ConfigurableSourceType;
+  sourceType: ConfigurableSourceType;
   enabled: boolean;
   pollIntervalSeconds: string;
   baseUrl: string;
@@ -34,11 +34,11 @@ export interface SourceFormValues {
 export const PULL_TYPES: MonitorSourceType[] = ['icinga2', 'uptimekuma', 'openitcockpit'];
 export const isPullType = (type: MonitorSourceType) => PULL_TYPES.includes(type);
 /** The built-in source holding the check bundles: managed by the server, not editable. */
-export const isBundleSource = (s: Pick<AdminMonitorSource, 'type'>) => s.type === BUNDLE_SOURCE_TYPE;
+export const isBundleSource = (s: Pick<AdminMonitorSource, 'sourceType'>) => s.sourceType === BUNDLE_SOURCE_TYPE;
 
 export const emptySourceForm = (): SourceFormValues => ({
   name: '',
-  type: 'icinga2',
+  sourceType: 'icinga2',
   enabled: true,
   pollIntervalSeconds: '60',
   baseUrl: '',
@@ -62,7 +62,7 @@ export function sourceToForm(s: AdminMonitorSource): SourceFormValues {
   return {
     name: s.name,
     // The bundle source is never edited in this form.
-    type: s.type === BUNDLE_SOURCE_TYPE ? 'webhook' : s.type,
+    sourceType: s.sourceType === BUNDLE_SOURCE_TYPE ? 'webhook' : s.sourceType,
     enabled: s.enabled,
     pollIntervalSeconds: String(s.pollIntervalSeconds),
     baseUrl: str(c.baseUrl),
@@ -84,14 +84,14 @@ export type SecretKey = 'password' | 'apiKey' | 'icingaDbUrl' | 'historyPassword
 const OPTIONAL_SECRETS: readonly SecretKey[] = ['icingaDbUrl', 'historyPassword'];
 
 export function hasStoredSecret(source: AdminMonitorSource | undefined, key: SecretKey, type: ConfigurableSourceType): boolean {
-  return Boolean(source && source.type === type && source.config[key] === SECRET_MASK);
+  return Boolean(source && source.sourceType === type && source.config[key] === SECRET_MASK);
 }
 
 /** MonitorSourceInput payload. Empty secret inputs send SECRET_MASK when a stored secret exists. */
 export function sourceFormToPayload(v: SourceFormValues, source?: AdminMonitorSource) {
   const secret = (key: SecretKey) => {
     if (v[key] !== '') return key === 'icingaDbUrl' ? v[key].trim() : v[key];
-    if (hasStoredSecret(source, key, v.type)) return SECRET_MASK;
+    if (hasStoredSecret(source, key, v.sourceType)) return SECRET_MASK;
     return OPTIONAL_SECRETS.includes(key) ? null : '';
   };
   const interval = Number(v.pollIntervalSeconds);
@@ -101,11 +101,11 @@ export function sourceFormToPayload(v: SourceFormValues, source?: AdminMonitorSo
     pollIntervalSeconds: Number.isFinite(interval) && v.pollIntervalSeconds.trim() !== '' ? interval : Number.NaN,
   };
   const baseUrl = v.baseUrl.trim();
-  switch (v.type) {
+  switch (v.sourceType) {
     case 'icinga2':
       return {
         ...common,
-        type: v.type,
+        sourceType: v.sourceType,
         config: {
           baseUrl,
           username: v.username.trim(),
@@ -119,7 +119,7 @@ export function sourceFormToPayload(v: SourceFormValues, source?: AdminMonitorSo
     case 'uptimekuma':
       return {
         ...common,
-        type: v.type,
+        sourceType: v.sourceType,
         config: {
           baseUrl,
           apiKey: secret('apiKey'),
@@ -131,11 +131,11 @@ export function sourceFormToPayload(v: SourceFormValues, source?: AdminMonitorSo
     case 'openitcockpit':
       return {
         ...common,
-        type: v.type,
+        sourceType: v.sourceType,
         config: { baseUrl, apiKey: secret('apiKey'), includeHosts: v.includeHosts, verifyTls: v.verifyTls },
       };
     case 'webhook':
       // Webhook sources only receive pushes; the interval is ignored but must stay valid.
-      return { ...common, pollIntervalSeconds: Number.isNaN(common.pollIntervalSeconds) ? 60 : common.pollIntervalSeconds, type: v.type, config: {} };
+      return { ...common, pollIntervalSeconds: Number.isNaN(common.pollIntervalSeconds) ? 60 : common.pollIntervalSeconds, sourceType: v.sourceType, config: {} };
   }
 }

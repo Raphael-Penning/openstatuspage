@@ -8,6 +8,7 @@ import { CheckboxField, FormErrorSummary, TextAreaField, TextField } from '../co
 import { Badge, Button, Card, EmptyState, IconButton, PageHeader, QueryState, Table, td, th, tr, VisibilityBadge } from '../components/ui';
 import { bySortOrder, moveId, nextSortOrder } from '../lib/ordering';
 import { useAdminMutation, useGroups, useServices } from '../lib/queries';
+import { GROUP_DOCUMENT, ORDERING_DOCUMENT } from '../lib/documents';
 import { useForm } from '../lib/useForm';
 import { useIsAdmin } from '../session';
 
@@ -19,7 +20,7 @@ export default function GroupsPage() {
   const confirm = useConfirm();
   const [editing, setEditing] = useState<AdminServiceGroup | 'new' | null>(null);
 
-  const reorder = useAdminMutation((ids: string[]) => api.post('/api/admin/service-groups/reorder', { ids }), {
+  const reorder = useAdminMutation((ids: string[]) => api.post('/api/admin/service-groups/reorder', { ids }, ORDERING_DOCUMENT), {
     success: t('reorder.saved'),
   });
   const remove = useAdminMutation((id: string) => api.delete(`/api/admin/service-groups/${id}`), {
@@ -133,7 +134,9 @@ function GroupDialog({ group, sortOrder, onClose }: { group?: AdminServiceGroup;
   const v = form.values;
   const save = useAdminMutation(
     (body: ServiceGroupInput) =>
-      group ? api.put(`/api/admin/service-groups/${group.id}`, body) : api.post('/api/admin/service-groups', body),
+      group
+        ? api.patch(`/api/admin/service-groups/${group.id}`, body, { ...GROUP_DOCUMENT, id: group.id })
+        : api.post('/api/admin/service-groups', body, GROUP_DOCUMENT),
     { success: group ? t('groups.saved') : t('groups.created'), onSuccess: onClose, onError: form.applyServerError },
   );
 

@@ -221,8 +221,8 @@ funktionieren soll.
 
 Weitere Möglichkeiten, den Status anderswo anzuzeigen:
 
-- `GET /api/public/status.json`: kompakter, maschinenlesbarer Status
-  (Gesamtstatus, öffentliche Services, aktive Vorfälle und Wartungen).
+- `GET /api/public/status`: kompakter, maschinenlesbarer Status als
+  JSON:API-Dokument (Gesamtstatus, öffentliche Services, aktive Vorfälle und Wartungen).
 - `/feed.rss` und `/feed.atom`: Vorfälle und Wartungen als Feed.
 
 ## Checkliste

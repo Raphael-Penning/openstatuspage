@@ -72,7 +72,7 @@ function ImportForm({
 }) {
   const { t } = useTranslation('admin');
   const formId = useId();
-  const [v, setV] = useState<HistoryImportFormValues>(() => emptyImportForm(source.type));
+  const [v, setV] = useState<HistoryImportFormValues>(() => emptyImportForm(source.sourceType));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [csvIssues, setCsvIssues] = useState<HistoryCsvIssue[]>([]);
   const set = <K extends keyof HistoryImportFormValues>(key: K, value: HistoryImportFormValues[K]) => {
@@ -82,7 +82,7 @@ function ImportForm({
       return rest;
     });
   };
-  const apiCapable = API_IMPORT_TYPES.includes(source.type);
+  const apiCapable = API_IMPORT_TYPES.includes(source.sourceType);
   const stored = (key: string) => source.config[key] !== undefined && source.config[key] !== null && source.config[key] !== '';
 
   const start = useAdminMutation(
@@ -107,19 +107,19 @@ function ImportForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const next: Record<string, string> = {};
-    const payload = importFormToPayload(v, source.type);
+    const payload = importFormToPayload(v, source.sourceType);
     if (!payload.from) next.from = t('validation.required');
     if (!payload.to) next.to = t('validation.required');
     if (payload.from && payload.to && Date.parse(String(payload.from)) >= Date.parse(String(payload.to))) {
       next.to = t('historyImport.rangeOrder');
     }
     if (v.method === 'csv' && !v.csv) next.csv = t('historyImport.csvRequired');
-    if (v.method === 'source' && source.type === 'uptimekuma') {
+    if (v.method === 'source' && source.sourceType === 'uptimekuma') {
       if (!v.username.trim() && !stored('historyUsername')) next.username = t('validation.required');
       if (!v.password && !stored('historyPassword')) next.password = t('validation.required');
       if (v.totp.trim() && !/^\d{6}$/.test(v.totp.trim())) next.totp = t('historyImport.totpInvalid');
     }
-    if (v.method === 'source' && source.type === 'icinga2' && !v.databaseUrl.trim() && !stored('icingaDbUrl')) {
+    if (v.method === 'source' && source.sourceType === 'icinga2' && !v.databaseUrl.trim() && !stored('icingaDbUrl')) {
       next.databaseUrl = t('validation.required');
     }
     setErrors(next);
@@ -178,7 +178,7 @@ function ImportForm({
                   onChange={() => set('method', m)}
                   className="mt-0.5 size-4 accent-[var(--accent)]"
                 />
-                <span>{m === 'source' ? t('historyImport.methodSource', { type: t(`sources.types.${source.type}`) }) : t('historyImport.methodCsv')}</span>
+                <span>{m === 'source' ? t('historyImport.methodSource', { type: t(`sources.types.${source.sourceType}`) }) : t('historyImport.methodCsv')}</span>
               </label>
             ))}
           </fieldset>
@@ -189,7 +189,7 @@ function ImportForm({
           <DateTimeField label={t('historyImport.to')} value={v.to} onValue={(x) => set('to', x)} error={errors.to} required />
         </div>
 
-        {v.method === 'source' && source.type === 'uptimekuma' && (
+        {v.method === 'source' && source.sourceType === 'uptimekuma' && (
           <div className="grid gap-4 sm:grid-cols-2">
             <p className="text-muted sm:col-span-2">{t('historyImport.kumaHelp')}</p>
             <TextField
@@ -223,7 +223,7 @@ function ImportForm({
             />
           </div>
         )}
-        {v.method === 'source' && source.type === 'icinga2' && (
+        {v.method === 'source' && source.sourceType === 'icinga2' && (
           <TextField
             label={t('historyImport.databaseUrl')}
             type="password"
@@ -236,7 +236,7 @@ function ImportForm({
             required={!stored('icingaDbUrl')}
           />
         )}
-        {v.method === 'source' && source.type === 'openitcockpit' && <p className="text-muted">{t('historyImport.oitcHelp')}</p>}
+        {v.method === 'source' && source.sourceType === 'openitcockpit' && <p className="text-muted">{t('historyImport.oitcHelp')}</p>}
 
         {v.method === 'csv' && (
           <FieldShell id={fileId} label={t('historyImport.csvFile')} help={t('historyImport.csvHelp')} error={errors.csv} required>

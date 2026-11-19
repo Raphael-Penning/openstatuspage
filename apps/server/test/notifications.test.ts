@@ -1,3 +1,4 @@
+import type { AdminSubscriber, NotificationStatus } from '@openstatuspage/shared';
 import { sql } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId } from '../src/lib/ids.js';
@@ -11,10 +12,17 @@ import {
   client,
   createTestApp,
   createUser,
+  data,
+  errors,
+  doc,
   login,
+  page,
   type Client,
   type TestApp,
 } from './helpers.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
 
 const HOUR = 3600_000;
 
@@ -29,9 +37,9 @@ beforeEach(async () => {
   mailer = new MemoryMailer();
   t = await createTestApp({}, { mailer });
   admin = await adminClient(t);
-  api = (await admin.post('/api/admin/services', { name: 'Public API' })).json().id;
-  web = (await admin.post('/api/admin/services', { name: 'Web App' })).json().id;
-  hidden = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().id;
+  api = (await admin.post('/api/admin/services', { name: 'Public API' })).json().data.id;
+  web = (await admin.post('/api/admin/services', { name: 'Web App' })).json().data.id;
+  hidden = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().data.id;
   await settings({});
 });
 afterEach(async () => {
@@ -39,7 +47,7 @@ afterEach(async () => {
 });
 
 async function settings(extra: object) {
-  const res = await admin.put('/api/admin/settings', {
+  const res = await admin.patch('/api/admin/settings', {
     siteName: 'Example Status',
     emailSubscriptionsEnabled: true,
     ...extra,
@@ -122,7 +130,7 @@ describe('incident notifications', () => {
     expect(mail.subject).toBe('[Example Status] Incident: Elevated error rates');
     expect(mail.text).toContain('Public API');
     expect(mail.text).toContain('We are investigating.');
-    expect(mail.text).toContain(`${BASE_URL}/incidents/${created.json().id}`);
+    expect(mail.text).toContain(`${BASE_URL}/incidents/${created.json().data.id}`);
     for (const body of [mail.text, mail.html]) {
       expect(body).not.toContain('Hidden backend');
       expect(body).toContain('/subscription/manage?id=');
@@ -143,11 +151,11 @@ describe('incident notifications', () => {
     expect(`${mail.text}${mail.html}`).not.toContain('__OSP_');
 
     // Update moves to another service.
-    await admin.post(`/api/admin/incidents/${created.json().id}/updates`, {
+    await admin.post(`/api/admin/incidents/${created.json().data.id}/updates`, doc('incident-updates', {
       status: 'identified',
       message: 'Root cause found.',
       affectedServices: [{ serviceId: web, status: 'degraded' }],
-    });
+    }));
     const updates = await deliver();
     expect(recipients(updates)).toEqual(['all@example.com', 'web@example.com']);
     expect(updates[0]!.subject).toBe('[Example Status] Elevated error rates: Identified');
@@ -167,18 +175,18 @@ describe('incident notifications', () => {
   it('never notifies about private incidents or with notify=false', async () => {
     await seedSubscribers();
     const priv = await admin.post('/api/admin/incidents', { title: 'Private', message: 'x', isPublic: false });
-    await admin.post(`/api/admin/incidents/${priv.json().id}/updates`, { status: 'resolved', message: 'done' });
+    await admin.post(`/api/admin/incidents/${priv.json().data.id}/updates`, doc('incident-updates', { status: 'resolved', message: 'done' }));
     const quiet = await admin.post('/api/admin/incidents', { title: 'Quiet', message: 'x', notify: false });
-    await admin.post(`/api/admin/incidents/${quiet.json().id}/updates`, {
+    await admin.post(`/api/admin/incidents/${quiet.json().data.id}/updates`, doc('incident-updates', {
       status: 'resolved',
       message: 'done',
       notify: false,
-    });
+    }));
     expect(await deliver()).toHaveLength(0);
     expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
 
     // A notifying update of the quiet incident does send.
-    await admin.post(`/api/admin/incidents/${quiet.json().id}/updates`, { status: 'monitoring', message: 'again' });
+    await admin.post(`/api/admin/incidents/${quiet.json().data.id}/updates`, doc('incident-updates', { status: 'monitoring', message: 'again' }));
     expect(recipients(await deliver())).toEqual(['all@example.com']);
   });
 
@@ -215,8 +223,8 @@ describe('maintenance notifications', () => {
       ...window(48),
     });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({ notify: true, reminderSentAt: null });
-    const id = created.json().id;
+    expect(data<Any>(created)).toMatchObject({ notify: true, reminderSentAt: null });
+    const id = data<Any>(created).id;
 
     const announced = await deliver();
     expect(recipients(announced)).toEqual(['all@example.com', 'web@example.com']);
@@ -239,15 +247,15 @@ describe('maintenance notifications', () => {
 
     // Stored flag off: no announcement, no automatic notifications.
     const quiet = await admin.post('/api/admin/maintenances', { title: 'Quiet', notify: false, ...window(48) });
-    expect(quiet.json().notify).toBe(false);
+    expect(data<Any>(quiet).notify).toBe(false);
     await runMaintenanceTransitions(db, engine, new Date(Date.now() + 49 * HOUR).toISOString(), notifications);
     expect(await deliver()).toHaveLength(0);
     // A manual update with notify (form checkbox) still sends.
-    await admin.post(`/api/admin/maintenances/${quiet.json().id}/updates`, { status: 'in_progress', message: 'Still busy.' });
+    await admin.post(`/api/admin/maintenances/${data<Any>(quiet).id}/updates`, doc('maintenance-updates', { status: 'in_progress', message: 'Still busy.' }));
     expect((await deliver())[0]!.text).toContain('Still busy.');
     // PATCH notify updates the stored flag.
-    const patched = await admin.patch(`/api/admin/maintenances/${quiet.json().id}`, { notify: true });
-    expect(patched.json().notify).toBe(true);
+    const patched = await admin.patch(`/api/admin/maintenances/${data<Any>(quiet).id}`, { notify: true });
+    expect(data<Any>(patched).notify).toBe(true);
     await runMaintenanceTransitions(db, engine, new Date(Date.now() + 51 * HOUR).toISOString(), notifications);
     expect((await deliver())[0]!.subject).toContain('Quiet: Completed');
   });
@@ -267,7 +275,7 @@ describe('maintenance notifications', () => {
     await addSubscriber('all@example.com');
     await addSubscriber('web@example.com', { services: [web] });
     const created = await admin.post('/api/admin/maintenances', { title: 'Overlap', serviceIds: [web], ...window(1) });
-    const id = created.json().id;
+    const id = data<Any>(created).id;
     await deliver();
     const { db, engine, notifications } = t.app.ctx;
     const updates = (status: 'in_progress' | 'completed') =>
@@ -314,7 +322,7 @@ describe('maintenance notifications', () => {
     const rows = await db
       .selectFrom('maintenance_updates')
       .select('status')
-      .where('maintenance_id', '=', created.json().id)
+      .where('maintenance_id', '=', data<Any>(created).id)
       .where('created_by', 'is', null)
       .execute();
     expect(rows.map((r) => r.status).sort()).toEqual(['completed', 'in_progress']);
@@ -326,7 +334,7 @@ describe('maintenance notifications', () => {
   it('never notifies about private maintenance', async () => {
     await addSubscriber('all@example.com');
     const m = await admin.post('/api/admin/maintenances', { title: 'Private', isPublic: false, ...window(1) });
-    await admin.post(`/api/admin/maintenances/${m.json().id}/updates`, { status: 'in_progress', message: 'x' });
+    await admin.post(`/api/admin/maintenances/${data<Any>(m).id}/updates`, doc('maintenance-updates', { status: 'in_progress', message: 'x' }));
     const { db, engine, notifications } = t.app.ctx;
     await runMaintenanceTransitions(db, engine, new Date(Date.now() + 5 * HOUR).toISOString(), notifications);
     expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
@@ -336,7 +344,7 @@ describe('maintenance notifications', () => {
     await addSubscriber('all@example.com');
     const { notifications } = t.app.ctx;
     const created = await admin.post('/api/admin/maintenances', { title: 'Upgrade', ...window(72) });
-    const id = created.json().id;
+    const id = data<Any>(created).id;
     const late = await admin.post('/api/admin/maintenances', { title: 'Short notice', ...window(12) });
     await deliver();
 
@@ -347,18 +355,18 @@ describe('maintenance notifications', () => {
     expect(reminder!.subject).toBe('[Example Status] Reminder: maintenance Upgrade');
     expect(reminder!.text).toContain('This maintenance starts on');
     expect(await notifications.sendDueReminders(now)).toBe(0);
-    expect((await admin.get(`/api/admin/maintenances/${id}`)).json().reminderSentAt).toEqual(expect.any(String));
-    expect((await admin.get(`/api/admin/maintenances/${late.json().id}`)).json().reminderSentAt).toBeNull();
+    expect(data<Any>(await admin.get(`/api/admin/maintenances/${id}`)).reminderSentAt).toEqual(expect.any(String));
+    expect(data<Any>(await admin.get(`/api/admin/maintenances/${data<Any>(late).id}`)).reminderSentAt).toBeNull();
 
     // Moving the window later resets the reminder.
     const moved = await admin.patch(`/api/admin/maintenances/${id}`, window(120));
-    expect(moved.json().reminderSentAt).toBeNull();
+    expect(data<Any>(moved).reminderSentAt).toBeNull();
     expect(await notifications.sendDueReminders(now)).toBe(0);
     expect(await notifications.sendDueReminders(new Date(Date.now() + 100 * HOUR))).toBe(1);
 
     // Moving earlier keeps it.
     const earlier = await admin.patch(`/api/admin/maintenances/${id}`, window(110));
-    expect(earlier.json().reminderSentAt).toEqual(expect.any(String));
+    expect(data<Any>(earlier).reminderSentAt).toEqual(expect.any(String));
   });
 
   it('does not remind when disabled or without notify flag', async () => {
@@ -398,15 +406,15 @@ describe('outbox delivery', () => {
     expect(await notifications.deliverDue(new Date(now))).toEqual({ sent: 0, retried: 0, failed: 1 });
     expect(await row()).toMatchObject({ status: 'failed', attempts: MAX_ATTEMPTS, last_error: '550 simulated delivery failure' });
 
-    const status = (await admin.get('/api/admin/notifications/status')).json();
+    const status = data<NotificationStatus>(await admin.get('/api/admin/notifications/status'));
     expect(status.queue).toEqual({ pending: 0, failed: 1 });
     expect(status.lastError).toMatchObject({ message: '550 simulated delivery failure' });
 
     const retry = await admin.post('/api/admin/notifications/retry-failed');
-    expect(retry.json()).toEqual({ requeued: 1 });
+    expect(retry.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { requeued: 1 } });
     expect(await deliver()).toHaveLength(1);
     expect(await row()).toMatchObject({ status: 'sent', last_error: null });
-    const after = (await admin.get('/api/admin/notifications/status')).json();
+    const after = data<NotificationStatus>(await admin.get('/api/admin/notifications/status'));
     expect(after.queue).toEqual({ pending: 0, failed: 0 });
     expect(after.lastSentAt).toEqual(expect.any(String));
   });
@@ -457,8 +465,8 @@ describe('outbox delivery', () => {
     expect(row.last_error).toBe('550 5.1.1 <j***@example.com>: Recipient address rejected');
     expect(JSON.stringify(warn.mock.calls)).not.toContain('jane.doe@example.com');
     expect(JSON.stringify(warn.mock.calls)).toContain('j***@example.com');
-    const status = (await admin.get('/api/admin/notifications/status')).json();
-    expect(status.lastError.message).not.toContain('jane.doe');
+    const status = data<NotificationStatus>(await admin.get('/api/admin/notifications/status'));
+    expect(status.lastError!.message).not.toContain('jane.doe');
   });
 
   it('drops a queued mail whose subscriber is gone at delivery time', async () => {
@@ -564,18 +572,26 @@ describe('admin endpoints', () => {
     await addSubscriber('john_doe@example.com', { confirmed: false });
     await addSubscriber('johnxdoe@example.com');
 
-    const list = (await admin.get('/api/admin/subscribers')).json();
+    const res = await admin.get('/api/admin/subscribers');
+    expect(res.json()).toMatchObject({ meta: { total: 3, page: { number: 1, size: 50 } }, data: expect.any(Array) });
+    expect(res.json().data[0]).toMatchObject({ type: 'subscribers', relationships: { services: { data: expect.any(Array) } } });
+    const list = page<AdminSubscriber>(res);
     expect(list.total).toBe(3);
-    const jane = list.items.find((s: { email: string }) => s.email === 'jane@example.com');
+    const jane = list.items.find((s) => s.email === 'jane@example.com')!;
     expect(jane).toMatchObject({ allServices: false, confirmed: true, confirmedAt: expect.any(String) });
-    expect(jane.services.map((s: { name: string }) => s.name).sort()).toEqual(['Hidden backend', 'Public API']);
+    expect(jane.services.map((s) => s.name).sort()).toEqual(['Hidden backend', 'Public API']);
 
-    expect((await admin.get('/api/admin/subscribers?status=pending')).json().total).toBe(1);
-    expect((await admin.get('/api/admin/subscribers?status=confirmed')).json().total).toBe(2);
+    expect(page(await admin.get('/api/admin/subscribers?filter[status]=pending')).total).toBe(1);
+    expect(page(await admin.get('/api/admin/subscribers?filter[status]=confirmed')).total).toBe(2);
     // LIKE wildcards are escaped: "_" only matches itself.
-    const search = (await admin.get('/api/admin/subscribers?q=JOHN_')).json();
-    expect(search.items.map((s: { email: string }) => s.email)).toEqual(['john_doe@example.com']);
-    expect((await admin.get('/api/admin/subscribers?pageSize=1&page=2')).json().items).toHaveLength(1);
+    const search = page<AdminSubscriber>(await admin.get('/api/admin/subscribers?filter[q]=JOHN_'));
+    expect(search.items.map((s) => s.email)).toEqual(['john_doe@example.com']);
+    const second = await admin.get('/api/admin/subscribers?page[size]=1&page[number]=2');
+    expect(page(second).items).toHaveLength(1);
+    expect(second.json().links).toMatchObject({ prev: expect.stringContaining('page[number]=1'), next: expect.stringContaining('page[number]=3') });
+    const badFilter = await admin.get('/api/admin/subscribers?filter[status]=gone');
+    expect(badFilter.statusCode).toBe(400);
+    expect(errors(badFilter)[0]).toMatchObject({ source: { parameter: 'filter[status]' } });
 
     await createUser(t.db, { email: 'editor@example.com', role: 'editor' });
     const editor = client(t.app, { cookie: await login(t.app, 'editor@example.com') });
@@ -597,7 +613,9 @@ describe('admin endpoints', () => {
   it('reports status and sends test mails immediately', async () => {
     await addSubscriber('a@example.com');
     await addSubscriber('b@example.com', { confirmed: false });
-    const status = (await admin.get('/api/admin/notifications/status')).json();
+    const statusRes = await admin.get('/api/admin/notifications/status');
+    expect(statusRes.json().data).toMatchObject({ type: 'notification-statuses', id: 'current' });
+    const { id: _id, ...status } = data<NotificationStatus & { id: string }>(statusRes);
     expect(status).toEqual({
       transport: 'smtp',
       configured: true,
@@ -610,14 +628,14 @@ describe('admin endpoints', () => {
     });
 
     const ok = await admin.post('/api/admin/notifications/test', { to: 'ops@example.com' });
-    expect(ok.json()).toEqual({ ok: true, message: 'Test email sent' });
+    expect(ok.json().meta).toEqual({ ok: true, message: 'Test email sent' });
     expect(mailer.sent.at(-1)).toMatchObject({ to: 'ops@example.com', subject: '[Example Status] Test email' });
     expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
 
     mailer.failNext = 1;
     const failed = await admin.post('/api/admin/notifications/test', { to: 'ops@example.com' });
     expect(failed.statusCode).toBe(200);
-    expect(failed.json()).toEqual({ ok: false, message: '550 simulated delivery failure' });
+    expect(failed.json().meta).toEqual({ ok: false, message: '550 simulated delivery failure' });
     expect((await admin.post('/api/admin/notifications/test', { to: 'nope' })).statusCode).toBe(400);
     const audits = await t.db.selectFrom('audit_log').select('details').where('action', '=', 'notifications.test').execute();
     expect(audits).toHaveLength(2);
@@ -627,7 +645,7 @@ describe('admin endpoints', () => {
     try {
       const a = await adminClient(none);
       expect((await a.post('/api/admin/notifications/test', { to: 'ops@example.com' })).statusCode).toBe(409);
-      expect((await a.get('/api/admin/notifications/status')).json()).toMatchObject({
+      expect(data(await a.get('/api/admin/notifications/status'))).toMatchObject({
         transport: 'none',
         configured: false,
         from: null,
@@ -639,18 +657,20 @@ describe('admin endpoints', () => {
   });
 
   it('round-trips the subscription settings', async () => {
-    const saved = await admin.put('/api/admin/settings', {
+    const saved = await admin.patch('/api/admin/settings', {
       siteName: 'Example Status',
       emailSubscriptionsEnabled: true,
       maintenanceReminderHours: 6,
     });
-    expect(saved.json()).toMatchObject({ emailSubscriptionsEnabled: true, maintenanceReminderHours: 6 });
-    expect((await admin.get('/api/admin/settings')).json()).toMatchObject({
+    expect(data(saved)).toMatchObject({ emailSubscriptionsEnabled: true, maintenanceReminderHours: 6 });
+    expect(data(await admin.get('/api/admin/settings'))).toMatchObject({
       emailSubscriptionsEnabled: true,
       maintenanceReminderHours: 6,
     });
-    const defaults = await admin.put('/api/admin/settings', { siteName: 'Example Status' });
-    expect(defaults.json()).toMatchObject({ emailSubscriptionsEnabled: false, maintenanceReminderHours: 24 });
-    expect((await admin.put('/api/admin/settings', { siteName: 'x', maintenanceReminderHours: 500 })).statusCode).toBe(400);
+    const kept = await admin.patch('/api/admin/settings', { siteName: 'Example Status' });
+    expect(data(kept)).toMatchObject({ emailSubscriptionsEnabled: true, maintenanceReminderHours: 6 });
+    const off = await admin.patch('/api/admin/settings', { emailSubscriptionsEnabled: false });
+    expect(data(off)).toMatchObject({ emailSubscriptionsEnabled: false, maintenanceReminderHours: 6 });
+    expect((await admin.patch('/api/admin/settings', { siteName: 'x', maintenanceReminderHours: 500 })).statusCode).toBe(400);
   });
 });

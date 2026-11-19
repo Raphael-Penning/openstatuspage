@@ -3,6 +3,7 @@ import {
   IncidentUpdateEditInput,
   IncidentUpdateInput,
   type AdminIncident,
+  type AdminIncidentUpdate,
   type IncidentImpact,
   type IncidentStatus,
   type IncidentUpdateEntry,
@@ -28,9 +29,10 @@ import { Badge, Button, Card, IconButton, PageHeader, QueryState, StatusBadge, V
 import { isoToLocalInput, localInputToIso } from '../../lib/datetime';
 import { useFormat, useOptions } from '../../lib/format';
 import { useAdminMutation, useIncident, useLocations } from '../../lib/queries';
+import { INCIDENT_DOCUMENT, INCIDENT_UPDATE_DOCUMENT } from '../../lib/documents';
 import { useForm } from '../../lib/useForm';
 
-const toAffected = (i: AdminIncident): AffectedValue[] => i.affectedServices.map((s) => ({ serviceId: s.id, status: s.status }));
+const toAffected = (i: Pick<AdminIncident, 'affectedServices'>): AffectedValue[] => i.affectedServices.map((s) => ({ serviceId: s.id, status: s.status }));
 
 export default function IncidentDetailPage() {
   const { id } = useParams();
@@ -181,15 +183,16 @@ function PostUpdateForm({ incident }: { incident: AdminIncident }) {
   const v = form.values;
 
   const post = useAdminMutation(
-    (body: IncidentUpdateInput) => api.post<AdminIncident>(`/api/admin/incidents/${incident.id}/updates`, body),
+    (body: IncidentUpdateInput) =>
+      api.post<AdminIncidentUpdate>(`/api/admin/incidents/${incident.id}/updates`, body, INCIDENT_UPDATE_DOCUMENT),
     {
       success: t('incidents.updatePosted'),
-      onSuccess: (updated) =>
+      onSuccess: (posted) =>
         form.setValues({
-          status: suggestedStatus(updated.status),
+          status: suggestedStatus(posted.incident?.status ?? posted.status),
           message: '',
           adjust: false,
-          affectedServices: toAffected(updated),
+          affectedServices: toAffected(posted.incident ?? incident),
           notify: true,
         }),
       onError: form.applyServerError,
@@ -264,11 +267,14 @@ function UpdateItem({ incident, update, canDelete }: { incident: AdminIncident; 
   const form = useForm({ message: update.message });
   const url = `/api/admin/incidents/${incident.id}/updates/${update.id}`;
 
-  const save = useAdminMutation((body: { message: string }) => api.patch<AdminIncident>(url, body), {
-    success: t('incidents.updateSaved'),
-    onSuccess: () => setEditing(false),
-    onError: form.applyServerError,
-  });
+  const save = useAdminMutation(
+    (body: { message: string }) => api.patch<AdminIncidentUpdate>(url, body, { ...INCIDENT_UPDATE_DOCUMENT, id: update.id }),
+    {
+      success: t('incidents.updateSaved'),
+      onSuccess: () => setEditing(false),
+      onError: form.applyServerError,
+    },
+  );
   const remove = useAdminMutation(() => api.delete(url), {
     success: t('incidents.updateDeleted'),
     onSuccess: () => confirm.close(),
@@ -345,7 +351,8 @@ function ResolveDialog({ incident, open, onClose }: { incident: AdminIncident; o
   const { t } = useTranslation('admin');
   const form = useForm({ message: '', notify: true });
   const resolve = useAdminMutation(
-    (body: IncidentUpdateInput) => api.post<AdminIncident>(`/api/admin/incidents/${incident.id}/updates`, body),
+    (body: IncidentUpdateInput) =>
+      api.post<AdminIncidentUpdate>(`/api/admin/incidents/${incident.id}/updates`, body, INCIDENT_UPDATE_DOCUMENT),
     { success: t('incidents.resolved'), onSuccess: onClose, onError: form.applyServerError },
   );
   const submit = (e: FormEvent) => {
@@ -425,11 +432,15 @@ function EditIncidentDialog({ incident, open, onClose }: { incident: AdminIncide
     }
   }
 
-  const save = useAdminMutation((body: IncidentPatchInput) => api.patch<AdminIncident>(`/api/admin/incidents/${incident.id}`, body), {
-    success: t('incidents.saved'),
-    onSuccess: onClose,
-    onError: form.applyServerError,
-  });
+  const save = useAdminMutation(
+    (body: IncidentPatchInput) =>
+      api.patch<AdminIncident>(`/api/admin/incidents/${incident.id}`, body, { ...INCIDENT_DOCUMENT, id: incident.id }),
+    {
+      success: t('incidents.saved'),
+      onSuccess: onClose,
+      onError: form.applyServerError,
+    },
+  );
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

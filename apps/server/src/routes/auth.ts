@@ -1,5 +1,9 @@
 /**
  * /api/auth: local login, logout, session info, password change and OIDC.
+ *
+ * config, login, logout, session and password speak JSON:API 1.1 (the session
+ * is the singleton resource `sessions/current` with the user included). The
+ * OIDC routes are browser redirects and stay plain.
  */
 import { ChangePasswordInput, LoginInput, type AuthConfig, type SessionInfo } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -18,6 +22,9 @@ import {
 } from '../services/oidc.js';
 import { createSession, deleteSession, deleteUserSessions, SESSION_COOKIE, sessionTtlMs } from '../services/sessions.js';
 import { toAdminUser } from '../services/users.js';
+import { document, Included, noContent } from '../lib/jsonapi.js';
+import { useJsonApi } from '../plugins/jsonapi.js';
+import { AUTH_TYPES, authConfigResource, sessionResource } from '../serializers/auth-users.js';
 
 const OIDC_COOKIE_PATH = '/api/auth/oidc';
 
@@ -44,64 +51,79 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     return { user: toAdminUser(user), oidcEnabled: config.oidcEnabled };
   }
 
-  app.get('/api/auth/config', async (): Promise<AuthConfig> => ({
-    oidcEnabled: config.oidcEnabled,
-    oidcLabel: config.OIDC_LABEL,
-    localLoginEnabled: config.LOCAL_LOGIN_ENABLED,
-  }));
+  /** Session document: `sessions/current` with the user in `included`. */
+  const sessionDocument = (info: SessionInfo) => {
+    const included = new Included();
+    const data = sessionResource(info, included);
+    return document(data, { included, links: { self: '/api/auth/session' } });
+  };
 
-  app.post(
-    '/api/auth/login',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
-    async (req, reply): Promise<SessionInfo> => {
-      if (!config.LOCAL_LOGIN_ENABLED) throw forbidden('Local login is disabled');
-      const body = parse(LoginInput, req.body);
-      const user = await db
-        .selectFrom('users')
-        .selectAll()
-        .where('email', '=', body.email.trim().toLowerCase())
-        .executeTakeFirst();
-      // Always verify a hash so response times do not reveal whether the account exists.
-      const valid = await verifyPassword(user?.password_hash ?? (await getDummyHash()), body.password);
-      if (!user || !user.password_hash || !valid) {
-        throw new HttpError(401, 'invalid_credentials', 'Invalid e-mail or password');
+  await app.register(async (scope) => {
+    useJsonApi(scope);
+
+    scope.get('/api/auth/config', async () => {
+      const authConfig: AuthConfig = {
+        oidcEnabled: config.oidcEnabled,
+        oidcLabel: config.OIDC_LABEL,
+        localLoginEnabled: config.LOCAL_LOGIN_ENABLED,
+      };
+      return document(authConfigResource(authConfig), { links: { self: '/api/auth/config' } });
+    });
+
+    // Login creates the session: the request document is `{ data: { type: "sessions", attributes: { email, password } } }`.
+    scope.post(
+      '/api/auth/login',
+      { config: { rateLimit: { max: 10, timeWindow: '1 minute' }, jsonapi: { type: AUTH_TYPES.session } } },
+      async (req, reply) => {
+        if (!config.LOCAL_LOGIN_ENABLED) throw forbidden('Local login is disabled');
+        const body = parse(LoginInput, req.body);
+        const user = await db
+          .selectFrom('users')
+          .selectAll()
+          .where('email', '=', body.email.trim().toLowerCase())
+          .executeTakeFirst();
+        // Always verify a hash so response times do not reveal whether the account exists.
+        const valid = await verifyPassword(user?.password_hash ?? (await getDummyHash()), body.password);
+        if (!user || !user.password_hash || !valid) {
+          throw new HttpError(401, 'invalid_credentials', 'Invalid e-mail or password');
+        }
+        await startSession(req, reply, user.id);
+        await audit(db, { userId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, details: { method: 'password' } });
+        return sessionDocument(await sessionInfo(user.id));
+      },
+    );
+
+    scope.post('/api/auth/logout', async (req, reply) => {
+      assertCsrf(req);
+      const token = req.cookies[SESSION_COOKIE];
+      if (token) await deleteSession(db, token);
+      reply.clearCookie(SESSION_COOKIE, { path: '/' });
+      return noContent(reply);
+    });
+
+    scope.get('/api/auth/session', async (req) => {
+      if (!req.authUser || req.authUser.via !== 'session') throw unauthorized();
+      return sessionDocument(await sessionInfo(req.authUser.id));
+    });
+
+    scope.post('/api/auth/password', { preHandler: requireSession() }, async (req, reply) => {
+      const body = parse(ChangePasswordInput, req.body);
+      const userId = req.authUser!.id;
+      const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirstOrThrow();
+      if (!user.password_hash) throw badRequest('This account has no local password');
+      if (!(await verifyPassword(user.password_hash, body.currentPassword))) {
+        throw new HttpError(400, 'invalid_password', 'Current password is incorrect');
       }
-      await startSession(req, reply, user.id);
-      await audit(db, { userId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, details: { method: 'password' } });
-      return sessionInfo(user.id);
-    },
-  );
-
-  app.post('/api/auth/logout', async (req, reply) => {
-    assertCsrf(req);
-    const token = req.cookies[SESSION_COOKIE];
-    if (token) await deleteSession(db, token);
-    reply.clearCookie(SESSION_COOKIE, { path: '/' });
-    return reply.status(204).send();
-  });
-
-  app.get('/api/auth/session', async (req): Promise<SessionInfo> => {
-    if (!req.authUser || req.authUser.via !== 'session') throw unauthorized();
-    return sessionInfo(req.authUser.id);
-  });
-
-  app.post('/api/auth/password', { preHandler: requireSession() }, async (req, reply) => {
-    const body = parse(ChangePasswordInput, req.body);
-    const userId = req.authUser!.id;
-    const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirstOrThrow();
-    if (!user.password_hash) throw badRequest('This account has no local password');
-    if (!(await verifyPassword(user.password_hash, body.currentPassword))) {
-      throw new HttpError(400, 'invalid_password', 'Current password is incorrect');
-    }
-    await db
-      .updateTable('users')
-      .set({ password_hash: await hashPassword(body.newPassword), updated_at: nowIso() })
-      .where('id', '=', userId)
-      .execute();
-    // Sign out every other session of this user.
-    await deleteUserSessions(db, userId, req.cookies[SESSION_COOKIE]);
-    await audit(db, { userId, action: 'user.password_change', entityType: 'user', entityId: userId });
-    return reply.status(204).send();
+      await db
+        .updateTable('users')
+        .set({ password_hash: await hashPassword(body.newPassword), updated_at: nowIso() })
+        .where('id', '=', userId)
+        .execute();
+      // Sign out every other session of this user.
+      await deleteUserSessions(db, userId, req.cookies[SESSION_COOKIE]);
+      await audit(db, { userId, action: 'user.password_change', entityType: 'user', entityId: userId });
+      return noContent(reply);
+    });
   });
 
   // --- OIDC -------------------------------------------------------------------

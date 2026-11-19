@@ -114,6 +114,22 @@ Anmeldung. **Administration → API-Tokens** (Administratoren):
      -H "Authorization: Bearer $OSP_API_TOKEN"
    ```
 
+Die API spricht [JSON:API 1.1](https://jsonapi.org/format/1.1/) (seit 0.2.0):
+Antworten sind Dokumente mit `data`, `included`, `meta` und `links`, Fehler
+stehen in `errors`. Anfragen mit Inhalt sendest du mit
+`Content-Type: application/vnd.api+json` und packst die Felder in `data`. So
+meldest du zum Beispiel eine Störung:
+
+```bash
+curl -fsS https://status.example.com/api/admin/incidents \
+  -H "Authorization: Bearer $OSP_API_TOKEN" \
+  -H 'Content-Type: application/vnd.api+json' \
+  -d '{"data":{"type":"incidents","attributes":{"title":"Langsame Anmeldung","message":"Wir untersuchen das Problem."}}}'
+```
+
+Änderungen schickst du per `PATCH`; dabei ändern sich nur die Felder, die du
+mitsendest.
+
 Tokens werden automatisch widerrufen, wenn der Benutzer gelöscht wird, der sie
 angelegt hat; Administrator-Tokens auch dann, wenn dieser die
 Administratorrolle verliert. Ein Token, das mit einem anderen Token angelegt

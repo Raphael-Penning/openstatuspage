@@ -18,6 +18,18 @@ import type {
   PublicSummary,
   ServiceStatus,
 } from '@openstatuspage/shared';
+import {
+  historyDocument,
+  incidentDocument,
+  locationsDocument,
+  maintenanceDocument,
+  serviceDocument,
+  servicesDocument,
+  settingsDocument,
+  summaryDocument,
+  subscribeAcceptedDocument,
+  subscriptionDocument,
+} from './documents';
 
 const DAY = 86_400_000;
 const now = Date.now();
@@ -227,19 +239,22 @@ export const SUBSCRIPTION_TOKEN = 'token-0123456789abcdef';
 export function respond(method: string, path: string): { status: number; body: unknown } {
   const ok = (body: unknown) => ({ status: 200, body });
   if (method === 'GET') {
-    if (path === '/api/public/settings') return ok(settings);
-    if (path === '/api/public/summary') return ok(summary);
-    if (path === '/api/public/services') return ok({ groups, ungrouped, counts });
-    if (path === '/api/public/services/api') return ok({ ...api, incidents: [incident, resolvedIncident], maintenances: [maintenance] });
-    if (path === '/api/public/locations') return ok(locations);
-    if (path === '/api/public/incidents/inc-1') return ok(incident);
-    if (path === '/api/public/maintenances/m-1') return ok(maintenance);
-    if (path === '/api/public/history') return ok(history);
-    if (path === '/api/public/subscriptions/sub-1') return ok(subscription);
+    if (path === '/api/public/settings') return ok(settingsDocument(settings));
+    if (path === '/api/public/summary') return ok(summaryDocument(summary));
+    if (path === '/api/public/services') return ok(servicesDocument(groups, ungrouped, counts));
+    if (path === '/api/public/services/api') return ok(serviceDocument(api, [incident, resolvedIncident], [maintenance]));
+    if (path === '/api/public/locations') return ok(locationsDocument(locations.locations, locations.counts));
+    if (path === '/api/public/incidents/inc-1') return ok(incidentDocument(incident));
+    if (path === '/api/public/maintenances/m-1') return ok(maintenanceDocument(maintenance));
+    if (path === '/api/public/history') return ok(historyDocument(history));
+    if (path === '/api/public/subscriptions/sub-1') return ok(subscriptionDocument(subscription));
   }
   if (method === 'POST' && path === '/api/public/subscriptions/sub-1/confirm') {
-    return ok({ subscription, manageToken: SUBSCRIPTION_TOKEN });
+    return ok(subscriptionDocument(subscription, SUBSCRIPTION_TOKEN));
   }
-  if (method === 'POST' && path === '/api/public/subscriptions') return ok({ ok: true });
-  return { status: 404, body: { error: 'not_found', message: 'Not found' } };
+  if (method === 'POST' && path === '/api/public/subscriptions') return { status: 202, body: subscribeAcceptedDocument };
+  return {
+    status: 404,
+    body: { jsonapi: { version: '1.1' }, errors: [{ status: '404', code: 'not_found', title: 'Not Found', detail: 'Not found' }] },
+  };
 }

@@ -71,6 +71,13 @@ curl -fsS https://status.example.com/api/ingest/<source-id> \
   -d '{"checks":[{"id":"backup-nightly","name":"Nightly backup","state":"ok"}]}'
 ```
 
+The body is plain JSON, not a JSON:API document. The answer is a JSON:API
+document that counts what changed:
+
+```json
+{"jsonapi":{"version":"1.1"},"meta":{"created":1,"updated":0,"removed":0,"stateChanges":0}}
+```
+
 States are `ok`, `warning`, `critical`, `unknown` or `0`–`3`. Prefer the
 `Authorization` header over the `?token=` query parameter: query strings tend
 to end up in proxy logs. The full format is described in

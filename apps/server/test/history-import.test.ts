@@ -6,7 +6,7 @@ import { nowIso } from '../src/lib/time.js';
 import type { HistoryImporter } from '../src/importers/types.js';
 import { BUNDLE_SOURCE_ID } from '../src/services/bundles.js';
 import { IMPORT_PREVIEW_TTL_MS, IMPORT_STALE_MS } from '../src/services/history-import.js';
-import { adminClient, client, createTestApp, createUser, login, seedChecks, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, data, errors, login, seedChecks, type Client, type TestApp } from './helpers.js';
 import { fakeKuma } from './importers/fake-kuma.js';
 
 const H = 3_600_000;
@@ -72,14 +72,20 @@ const csv = (rows: [string, number, number, string][], column: 'check' | 'servic
 async function start(sourceId: string, body: Record<string, unknown>, c: Client = admin): Promise<AdminHistoryImport> {
   const res = await c.post(`/api/admin/monitor-sources/${sourceId}/history-imports`, body);
   expect(res.statusCode, res.body).toBe(202);
-  return res.json<AdminHistoryImport>();
+  const job = data<AdminHistoryImport & { createdById: string | null }>(res);
+  expect(res.json().data.type).toBe('history-imports');
+  expect(res.headers.location).toBe(`/api/admin/monitor-sources/${sourceId}/history-imports/${job.id}`);
+  expect(job.sourceId).toBe(sourceId);
+  // The user who started the job is included (id and name).
+  if (c === admin) expect(job.createdBy).toEqual({ id: job.createdById, name: expect.any(String) });
+  return job;
 }
 
 async function settle(sourceId: string, id: string): Promise<AdminHistoryImport> {
   await t.app.ctx.worker.idle();
   const res = await admin.get(`/api/admin/monitor-sources/${sourceId}/history-imports/${id}`);
   expect(res.statusCode).toBe(200);
-  return res.json<AdminHistoryImport>();
+  return data<AdminHistoryImport>(res);
 }
 
 async function apply(sourceId: string, id: string): Promise<AdminHistoryImport> {
@@ -170,7 +176,7 @@ describe('history import (CSV)', () => {
     // The public uptime bars now include the imported days.
     const pub = await t.app.inject({ method: 'GET', url: '/api/public/services/website' });
     expect(pub.statusCode).toBe(200);
-    const uptime = pub.json<{ uptime: { date: string; uptime: number | null }[] }>().uptime;
+    const uptime = data<{ uptime: { date: string; uptime: number | null }[] }>(pub).uptime;
     const day = (offset: number) => uptime.find((u) => u.date === at(offset).slice(0, 10))!;
     expect(day(-2.5 * DAY).uptime).not.toBeNull();
     expect(JSON.stringify(pub.json())).not.toContain('web01');
@@ -226,7 +232,7 @@ describe('history import (CSV)', () => {
       ],
     });
     expect(res.statusCode).toBe(201);
-    const bundleService = await addService('Web', [res.json<{ checkId: string }>().checkId]);
+    const bundleService = await addService('Web', [data<{ checkId: string }>(res).checkId]);
 
     const job = await start(sourceId, {
       from: at(-3 * DAY),
@@ -330,7 +336,7 @@ describe('history import (CSV)', () => {
     await t.db.updateTable('history_imports').set({ updated_at: old }).where('id', '=', job.id).execute();
 
     const list = await admin.get(`/api/admin/monitor-sources/${sourceId}/history-imports`);
-    expect(list.json<AdminHistoryImport[]>()[0]).toMatchObject({ status: 'cancelled', errorCode: 'expired' });
+    expect(data<AdminHistoryImport[]>(list)[0]).toMatchObject({ status: 'cancelled', errorCode: 'expired' });
     expect(await t.db.selectFrom('history_import_intervals').selectAll().execute()).toHaveLength(0);
     expect((await admin.post(`/api/admin/monitor-sources/${sourceId}/history-imports/${job.id}/apply`)).statusCode).toBe(409);
   });
@@ -355,7 +361,7 @@ describe('history import (CSV)', () => {
     expect((await admin.post(base, { ...body, from: at(-800 * DAY) })).statusCode).toBe(400);
     const invalid = await admin.post(base, { ...body, csv: 'check,start,end,state\nweb01!http,yesterday,today,ok' });
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json<{ issues: { line: number }[] }>().issues[0]!.line).toBe(2);
+    expect(errors(invalid)[0]).toMatchObject({ status: '400', meta: { line: 2 } });
 
     const job = await start(sourceId, body);
     await settle(sourceId, job.id);
@@ -369,13 +375,13 @@ describe('history import (CSV)', () => {
     // Cancel discards the preview; it can no longer be applied.
     const cancelled = await admin.post(`${base}/${job.id}/cancel`);
     expect(cancelled.statusCode).toBe(200);
-    expect(cancelled.json<AdminHistoryImport>().status).toBe('cancelled');
+    expect(data<AdminHistoryImport>(cancelled).status).toBe('cancelled');
     expect((await admin.post(`${base}/${job.id}/apply`)).statusCode).toBe(409);
     expect((await admin.post(`${base}/${job.id}/cancel`)).statusCode).toBe(409);
     expect(await t.db.selectFrom('history_import_intervals').selectAll().execute()).toHaveLength(0);
 
     const list = await admin.get(base);
-    expect(list.json<AdminHistoryImport[]>().map((j) => j.status)).toEqual(['cancelled']);
+    expect(data<AdminHistoryImport[]>(list).map((j) => j.status)).toEqual(['cancelled']);
   });
 });
 
@@ -442,23 +448,23 @@ describe('history import (sources)', () => {
   it('stores the history login as an encrypted, masked secret of the source', async () => {
     const res = await admin.post('/api/admin/monitor-sources', {
       name: 'Kuma',
-      type: 'uptimekuma',
+      sourceType: 'uptimekuma',
       config: { baseUrl: 'https://kuma.example.com', apiKey: 'uk1_key', historyUsername: 'history', historyPassword: 'stored-secret' },
     });
     expect(res.statusCode, res.body).toBe(201);
-    const source = res.json<AdminMonitorSource>();
+    const source = data<AdminMonitorSource>(res);
     expect(source.config.historyPassword).toBe('••••••••');
     expect(res.body).not.toContain('stored-secret');
     // Changing the history user requires the password again.
-    const put = await admin.put(`/api/admin/monitor-sources/${source.id}`, {
+    const put = await admin.patch(`/api/admin/monitor-sources/${source.id}`, {
       name: 'Kuma',
-      type: 'uptimekuma',
+      sourceType: 'uptimekuma',
       config: { baseUrl: 'https://kuma.example.com', apiKey: '••••••••', historyUsername: 'other', historyPassword: '••••••••' },
     });
     expect(put.statusCode).toBe(400);
-    const keep = await admin.put(`/api/admin/monitor-sources/${source.id}`, {
+    const keep = await admin.patch(`/api/admin/monitor-sources/${source.id}`, {
       name: 'Kuma renamed',
-      type: 'uptimekuma',
+      sourceType: 'uptimekuma',
       config: { baseUrl: 'https://kuma.example.com', apiKey: '••••••••', historyUsername: 'history', historyPassword: '••••••••' },
     });
     expect(keep.statusCode, keep.body).toBe(200);
@@ -497,7 +503,7 @@ describe('history import (sources)', () => {
     const job = await start(sourceId, { from: at(-2 * DAY), to: at(-DAY) });
     await running;
     const cancel = await admin.post(`/api/admin/monitor-sources/${sourceId}/history-imports/${job.id}/cancel`);
-    expect(cancel.json<AdminHistoryImport>().status).toBe('cancelled');
+    expect(data<AdminHistoryImport>(cancel).status).toBe('cancelled');
     expect((await settle(sourceId, job.id)).status).toBe('cancelled');
   });
 
@@ -539,7 +545,7 @@ describe('history import (sources)', () => {
     expect(failed.status).toBe('failed');
     expect(failed.error).toBe("Access denied for user 'reader' using password '***'");
     const list = await admin.get(`/api/admin/monitor-sources/${id}/history-imports`);
-    expect(list.json<AdminHistoryImport[]>()[0]!.preview).toBeNull();
+    expect(data<AdminHistoryImport[]>(list)[0]!.preview).toBeNull();
   });
 
   it('fails jobs that stopped making progress', async () => {
@@ -597,7 +603,7 @@ describe('live check history', () => {
     expect(rows.every((r) => r.source === 'live')).toBe(true);
 
     const res = await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: id, votes: 1 }] });
-    const bundleCheck = res.json<{ checkId: string }>().checkId;
+    const bundleCheck = data<{ checkId: string }>(res).checkId;
     const bundleRows = await t.db.selectFrom('monitor_check_history').select('state').where('check_id', '=', bundleCheck).orderBy('started_at').execute();
     // Created as unknown, then the first vote.
     expect(bundleRows.map((r) => r.state).sort()).toEqual(['ok', 'unknown']);

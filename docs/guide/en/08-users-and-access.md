@@ -114,6 +114,21 @@ login. **Administration → API tokens** (administrators):
      -H "Authorization: Bearer $OSP_API_TOKEN"
    ```
 
+The API speaks [JSON:API 1.1](https://jsonapi.org/format/1.1/) (since 0.2.0):
+answers are documents with `data`, `included`, `meta` and `links`, errors are
+listed in `errors`. Requests with a body send
+`Content-Type: application/vnd.api+json` and wrap the fields in `data`. For
+example, to post an incident:
+
+```bash
+curl -fsS https://status.example.com/api/admin/incidents \
+  -H "Authorization: Bearer $OSP_API_TOKEN" \
+  -H 'Content-Type: application/vnd.api+json' \
+  -d '{"data":{"type":"incidents","attributes":{"title":"Slow logins","message":"We are investigating."}}}'
+```
+
+Updates use `PATCH` and only change the fields you send.
+
 Tokens are revoked automatically when the user who created them is deleted;
 administrator tokens also when their creator loses the administrator role.
 A token created with another token belongs to the owner of that token.

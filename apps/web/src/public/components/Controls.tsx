@@ -121,7 +121,7 @@ export function FeedMenu({ email = false }: { email?: boolean }) {
   const items = [
     { href: '/feed.rss', label: t('feeds.rss'), Icon: Rss },
     { href: '/feed.atom', label: t('feeds.atom'), Icon: Rss },
-    { href: '/api/public/status.json', label: t('feeds.json'), Icon: Braces },
+    { href: '/api/public/status', label: t('feeds.json'), Icon: Braces },
   ];
 
   return (

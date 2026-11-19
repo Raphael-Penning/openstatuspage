@@ -1,8 +1,19 @@
 /**
  * Test helpers: an app on an in-memory SQLite database plus small HTTP helpers.
  */
-import type { UserRole } from '@openstatuspage/shared';
-import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
+import {
+  deserialize,
+  deserializePage,
+  inferResourceType,
+  JSONAPI_MEDIA_TYPE,
+  toRequestDocument,
+  type DataDocument,
+  type ErrorObject,
+  type Paginated,
+  type ToResourceOptions,
+  type UserRole,
+} from '@openstatuspage/shared';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse, RouteOptions } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { createDb, migrateToLatest, type DB } from '../src/db/index.js';
@@ -23,7 +34,7 @@ export interface TestApp {
 
 export async function createTestApp(
   env: Record<string, string> = {},
-  options: { mailer?: Mailer } = {},
+  options: { mailer?: Mailer; onRoute?: (route: RouteOptions) => void } = {},
 ): Promise<TestApp> {
   const config = loadConfig({
     NODE_ENV: 'test',
@@ -34,7 +45,7 @@ export async function createTestApp(
   });
   const db = await createDb(config);
   await migrateToLatest(db);
-  const app = await buildApp({ config, db, serveWeb: false, mailer: options.mailer });
+  const app = await buildApp({ config, db, serveWeb: false, mailer: options.mailer, onRoute: options.onRoute });
   await app.ready();
   return {
     app,
@@ -70,9 +81,19 @@ export async function createUser(
   return id;
 }
 
+/** POST /api/auth/login with the JSON:API request document (type "sessions"). */
+export function loginRequest(email: string, password: string, headers: Record<string, string> = {}): InjectOptions {
+  return {
+    method: 'POST',
+    url: '/api/auth/login',
+    headers: { 'content-type': JSONAPI_MEDIA_TYPE, ...headers },
+    payload: JSON.stringify(doc('sessions', { email, password })),
+  };
+}
+
 /** Logs in and returns the `Cookie` header value. */
 export async function login(app: FastifyInstance, email: string, password = PASSWORD): Promise<string> {
-  const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
+  const res = await app.inject(loginRequest(email, password));
   if (res.statusCode !== 200) throw new Error(`login failed: ${res.statusCode} ${res.body}`);
   const cookie = res.cookies.find((c) => c.name === 'osp_session');
   if (!cookie) throw new Error('no session cookie');
@@ -87,7 +108,42 @@ export interface Client {
   delete(url: string): Promise<LightMyRequestResponse>;
 }
 
-/** HTTP client authenticated by cookie (with CSRF header) or by bearer token. */
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Request document for a test payload. Already wrapped documents (`{ data: ... }`)
+ * are kept; plain objects are wrapped with the type inferred from the URL.
+ */
+export function asDocument(url: string, payload: unknown): unknown {
+  if (!isPlainObject(payload) || 'data' in payload) return payload;
+  return toRequestDocument(inferResourceType(url), payload);
+}
+
+/** `{ data: { type, attributes, relationships } }` for explicit request bodies in tests. */
+export const doc = (type: string, values: Record<string, unknown>, options?: ToResourceOptions) =>
+  toRequestDocument(type, values, options);
+
+/** Primary data of a JSON:API response as plain object(s) (see deserialize). */
+export function data<T = Record<string, unknown>>(res: LightMyRequestResponse): T {
+  return deserialize<T>(res.json() as DataDocument);
+}
+
+/** Collection response → `{ items, total, page, pageSize }`. */
+export function page<T = Record<string, unknown>>(res: LightMyRequestResponse): Paginated<T> {
+  return deserializePage<T>(res.json() as DataDocument);
+}
+
+/** Error objects of a JSON:API error response. */
+export function errors(res: LightMyRequestResponse): ErrorObject[] {
+  return (res.json() as { errors?: ErrorObject[] }).errors ?? [];
+}
+
+/**
+ * HTTP client authenticated by cookie (with CSRF header) or by bearer token.
+ * Object payloads are sent as JSON:API request documents (see asDocument).
+ * `put` only exists to check that former PUT routes are gone (404).
+ */
 export function client(app: FastifyInstance, auth: { cookie?: string; token?: string }): Client {
   const headers: Record<string, string> = {};
   if (auth.cookie) {
@@ -95,8 +151,12 @@ export function client(app: FastifyInstance, auth: { cookie?: string; token?: st
     headers['x-requested-with'] = 'openstatuspage';
   }
   if (auth.token) headers.authorization = `Bearer ${auth.token}`;
-  const send = (method: InjectOptions['method'], url: string, payload?: unknown) =>
-    app.inject({ method, url, headers, ...(payload !== undefined ? { payload: payload as object } : {}) });
+  const send = (method: InjectOptions['method'], url: string, payload?: unknown) => {
+    if (payload === undefined) return app.inject({ method, url, headers });
+    const body = asDocument(url, payload);
+    const contentType = isPlainObject(body) ? JSONAPI_MEDIA_TYPE : 'application/json';
+    return app.inject({ method, url, headers: { ...headers, 'content-type': contentType }, payload: JSON.stringify(body) });
+  };
   return {
     get: (url) => send('GET', url),
     post: (url, payload) => send('POST', url, payload ?? {}),

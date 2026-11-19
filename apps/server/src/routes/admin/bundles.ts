@@ -1,13 +1,15 @@
 /**
  * Check bundles (admin only): weighted voting over checks of several monitoring
  * sources. Each bundle owns one check of the virtual "bundle" source, which is
- * linked to services like any other check.
+ * linked to services like any other check. JSON:API type "check-bundles"
+ * (relationship `check`; `members` and `vote` are attributes).
  *
  *   GET    /api/admin/check-bundles
- *   GET    /api/admin/check-bundles/candidates?type=<source type>
+ *   GET    /api/admin/check-bundles/candidates?filter[sourceType]=<source type>
+ *          monitor-sources with their checks (relationship `checks`, included)
  *   GET    /api/admin/check-bundles/:id
  *   POST   /api/admin/check-bundles
- *   PUT    /api/admin/check-bundles/:id
+ *   PATCH  /api/admin/check-bundles/:id   partial update (`members` replaces the list)
  *   DELETE /api/admin/check-bundles/:id
  */
 import {
@@ -23,11 +25,15 @@ import type { DB } from '../../db/index.js';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { newId } from '../../lib/ids.js';
 import { IdParams, parse } from '../../lib/http.js';
+import { collection, created, document, Included, noContent, selfLink } from '../../lib/jsonapi.js';
+import { parseFilter } from '../../lib/jsonapi-query.js';
 import { nowIso } from '../../lib/time.js';
+import { useJsonApi } from '../../plugins/jsonapi.js';
+import { bundleLink, bundleResource, candidateSourceResource, MONITORING_TYPES } from '../../serializers/monitoring.js';
 import { admin, auditRequest } from './util.js';
 import { recordCheckState } from '../../services/check-history.js';
 
-const CandidatesQuery = z.object({ type: z.enum(CONFIGURABLE_SOURCE_TYPES).optional() });
+const CandidatesFilter = { sourceType: z.enum(CONFIGURABLE_SOURCE_TYPES).optional() };
 
 /** Member checks must exist and must not be bundle checks (no nesting). */
 async function assertMemberChecks(db: DB, checkIds: string[]): Promise<void> {
@@ -40,15 +46,25 @@ async function assertMemberChecks(db: DB, checkIds: string[]): Promise<void> {
     .execute();
   const found = new Map(rows.map((r) => [r.id, r.type]));
   const missing = checkIds.filter((id) => !found.has(id));
-  if (missing.length > 0) throw badRequest(`Unknown checks: ${missing.join(', ')}`);
+  if (missing.length > 0) {
+    const message = `Unknown checks: ${missing.join(', ')}`;
+    throw badRequest(message, [{ path: ['members'], message, code: 'unknown_checks', checkIds: missing }]);
+  }
   if (rows.some((r) => r.type === BUNDLE_SOURCE_TYPE)) {
-    throw badRequest('A bundle cannot contain the check of another bundle');
+    const message = 'A bundle cannot contain the check of another bundle';
+    throw badRequest(message, [{ path: ['members'], message, code: 'nested_bundle' }]);
   }
 }
 
-export async function registerBundleRoutes(app: FastifyInstance): Promise<void> {
+export async function registerBundleRoutes(root: FastifyInstance): Promise<void> {
+  await root.register(bundleRoutes);
+}
+
+async function bundleRoutes(app: FastifyInstance): Promise<void> {
+  useJsonApi(app);
   const { ctx } = app;
   const { db, engine, bundles } = ctx;
+  const bundleBody = { config: { jsonapi: { type: MONITORING_TYPES.bundle } } };
 
   const getBundle = async (id: string): Promise<AdminCheckBundle> => {
     const [bundle] = await bundles.loadAdmin([id]);
@@ -56,44 +72,54 @@ export async function registerBundleRoutes(app: FastifyInstance): Promise<void> 
     return bundle;
   };
 
-  app.get('/api/admin/check-bundles', admin, async () => bundles.loadAdmin());
+  app.get('/api/admin/check-bundles', admin, async (req) => collection(req, (await bundles.loadAdmin()).map(bundleResource)));
 
-  app.get('/api/admin/check-bundles/candidates', admin, async (req): Promise<BundleCandidateSource[]> => {
-    const q = parse(CandidatesQuery, req.query);
+  app.get('/api/admin/check-bundles/candidates', admin, async (req) => {
+    const filter = parseFilter((req.query ?? {}) as Record<string, unknown>, CandidatesFilter);
     let sourcesQuery = db
       .selectFrom('monitor_sources')
       .select(['id', 'name', 'type', 'enabled'])
       .where('type', '!=', BUNDLE_SOURCE_TYPE)
       .orderBy('name')
       .orderBy('id');
-    if (q.type) sourcesQuery = sourcesQuery.where('type', '=', q.type);
+    if (filter.sourceType) sourcesQuery = sourcesQuery.where('type', '=', filter.sourceType);
     const sources = await sourcesQuery.execute();
-    if (sources.length === 0) return [];
-    const checks = await db
-      .selectFrom('monitor_checks')
-      .select(['id', 'source_id', 'name', 'host', 'state', 'last_check_at'])
-      .where(
-        'source_id',
-        'in',
-        sources.map((s) => s.id),
-      )
-      .orderBy('host')
-      .orderBy('name')
-      .execute();
-    return sources.map((s) => ({
+    const checks =
+      sources.length === 0
+        ? []
+        : await db
+            .selectFrom('monitor_checks')
+            .select(['id', 'source_id', 'name', 'host', 'state', 'last_check_at'])
+            .where(
+              'source_id',
+              'in',
+              sources.map((s) => s.id),
+            )
+            .orderBy('host')
+            .orderBy('name')
+            .execute();
+    const candidates: BundleCandidateSource[] = sources.map((s) => ({
       id: s.id,
       name: s.name,
-      type: s.type,
+      sourceType: s.type,
       enabled: s.enabled === 1,
       checks: checks
         .filter((c) => c.source_id === s.id)
         .map((c) => ({ id: c.id, name: c.name, host: c.host, state: c.state, lastCheckAt: c.last_check_at })),
     }));
+    const included = new Included();
+    return collection(
+      req,
+      candidates.map((c) => candidateSourceResource(c, included)),
+      { included },
+    );
   });
 
-  app.get('/api/admin/check-bundles/:id', admin, async (req) => getBundle(parse(IdParams, req.params).id));
+  app.get('/api/admin/check-bundles/:id', admin, async (req) =>
+    document(bundleResource(await getBundle(parse(IdParams, req.params).id)), { links: { self: selfLink(req) } }),
+  );
 
-  app.post('/api/admin/check-bundles', admin, async (req, reply) => {
+  app.post('/api/admin/check-bundles', { ...admin, ...bundleBody }, async (req, reply) => {
     const input = parse(CheckBundleInput, req.body);
     await assertMemberChecks(db, input.members.map((m) => m.checkId));
     const id = newId();
@@ -134,14 +160,25 @@ export async function registerBundleRoutes(app: FastifyInstance): Promise<void> 
       name: input.name,
       members: input.members.map((m) => ({ checkId: m.checkId, votes: m.votes })),
     });
-    return reply.status(201).send(await getBundle(id));
+    return created(reply, document(bundleResource(await getBundle(id))), bundleLink(id));
   });
 
-  app.put('/api/admin/check-bundles/:id', admin, async (req) => {
+  app.patch('/api/admin/check-bundles/:id', { ...admin, ...bundleBody }, async (req) => {
     const { id } = parse(IdParams, req.params);
-    const input = parse(CheckBundleInput, req.body);
     const current = await db.selectFrom('check_bundles').selectAll().where('id', '=', id).executeTakeFirst();
     if (!current) throw notFound('Check bundle');
+    // Partial update: attributes left out keep their stored values.
+    const members = await db
+      .selectFrom('check_bundle_members')
+      .select(['check_id as checkId', 'votes'])
+      .where('bundle_id', '=', id)
+      .execute();
+    const input = parse(CheckBundleInput, {
+      name: current.name,
+      description: current.description,
+      members,
+      ...((req.body ?? {}) as Record<string, unknown>),
+    });
     await assertMemberChecks(db, input.members.map((m) => m.checkId));
     const now = nowIso();
     await db.transaction().execute(async (trx) => {
@@ -165,7 +202,7 @@ export async function registerBundleRoutes(app: FastifyInstance): Promise<void> 
       name: input.name,
       members: input.members.map((m) => ({ checkId: m.checkId, votes: m.votes })),
     });
-    return getBundle(id);
+    return document(bundleResource(await getBundle(id)), { links: { self: selfLink(req) } });
   });
 
   app.delete('/api/admin/check-bundles/:id', admin, async (req, reply) => {
@@ -177,6 +214,6 @@ export async function registerBundleRoutes(app: FastifyInstance): Promise<void> 
     await db.deleteFrom('monitor_checks').where('id', '=', current.check_id).execute();
     await engine.recompute(links.map((l) => l.service_id));
     await auditRequest(db, req, 'check_bundle.delete', 'check_bundle', id, { name: current.name });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 }

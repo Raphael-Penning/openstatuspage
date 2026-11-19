@@ -3,7 +3,7 @@ import { loadConfig } from '../src/config.js';
 import { sha256 } from '../src/lib/crypto.js';
 import { cleanupExpiredSessions } from '../src/services/sessions.js';
 import { createOrResetLocalUser } from '../src/services/users.js';
-import { PASSWORD, client, createTestApp, createUser, login, type TestApp } from './helpers.js';
+import { PASSWORD, client, createTestApp, createUser, data, doc, errors, login, loginRequest, page, type TestApp } from './helpers.js';
 
 const HOUR_MS = 3600_000;
 
@@ -19,13 +19,15 @@ describe('login / logout / session', () => {
   it('logs in, reports the session and logs out', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin', name: 'Ada Admin' });
 
-    const res = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'Admin@Example.com', password: PASSWORD },
-    });
+    const res = await t.app.inject(loginRequest('Admin@Example.com', PASSWORD));
     expect(res.statusCode).toBe(200);
-    expect(res.json().user).toMatchObject({ email: 'admin@example.com', role: 'admin', hasPassword: true });
+    expect(res.headers['content-type']).toBe('application/vnd.api+json');
+    expect(res.json()).toMatchObject({
+      jsonapi: { version: '1.1' },
+      data: { type: 'sessions', id: 'current', relationships: { user: { data: { type: 'users' } } } },
+      included: [{ type: 'users', attributes: { email: 'admin@example.com' } }],
+    });
+    expect(data<{ user: object }>(res).user).toMatchObject({ email: 'admin@example.com', role: 'admin', hasPassword: true });
     const cookie = res.cookies.find((c) => c.name === 'osp_session')!;
     expect(cookie.httpOnly).toBe(true);
     expect(cookie.sameSite).toBe('Lax');
@@ -37,7 +39,7 @@ describe('login / logout / session', () => {
     const headers = { cookie: `osp_session=${cookie.value}` };
     const session = await t.app.inject({ method: 'GET', url: '/api/auth/session', headers });
     expect(session.statusCode).toBe(200);
-    expect(session.json()).toMatchObject({ user: { name: 'Ada Admin' }, oidcEnabled: false });
+    expect(data(session)).toMatchObject({ id: 'current', user: { name: 'Ada Admin' }, oidcEnabled: false });
 
     const logout = await t.app.inject({
       method: 'POST',
@@ -52,39 +54,46 @@ describe('login / logout / session', () => {
 
   it('returns the same generic error for unknown users and wrong passwords', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
-    const wrong = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'admin@example.com', password: 'nope-nope-nope' },
-    });
-    const unknown = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'ghost@example.com', password: 'nope-nope-nope' },
-    });
+    const wrong = await t.app.inject(loginRequest('admin@example.com', 'nope-nope-nope'));
+    const unknown = await t.app.inject(loginRequest('ghost@example.com', 'nope-nope-nope'));
     expect(wrong.statusCode).toBe(401);
     expect(unknown.statusCode).toBe(401);
     expect(wrong.json()).toEqual(unknown.json());
+    expect(errors(wrong)).toEqual([expect.objectContaining({ status: '401', code: 'invalid_credentials' })]);
+  });
+
+  it('only accepts a JSON:API "sessions" document for login', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const plain = await t.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'admin@example.com', password: PASSWORD },
+    });
+    expect(plain.statusCode).toBe(415);
+    expect(errors(plain)[0]).toMatchObject({ code: 'unsupported_media_type' });
+
+    const wrongType = await t.app.inject({
+      ...loginRequest('admin@example.com', PASSWORD),
+      payload: JSON.stringify(doc('users', { email: 'admin@example.com', password: PASSWORD })),
+    });
+    expect(wrongType.statusCode).toBe(409);
+    expect(errors(wrongType)[0]).toMatchObject({ code: 'type_mismatch', source: { pointer: '/data/type' } });
+
+    const invalid = await t.app.inject(loginRequest('not-an-email', PASSWORD));
+    expect(invalid.statusCode).toBe(400);
+    expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/email' } });
   });
 
   it('rejects users without a local password', async () => {
     await createUser(t.db, { email: 'sso@example.com', role: 'editor', password: null });
-    const res = await t.app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'sso@example.com', password: PASSWORD },
-    });
+    const res = await t.app.inject(loginRequest('sso@example.com', PASSWORD));
     expect(res.statusCode).toBe(401);
   });
 
   it('rate limits login attempts', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 11; i++) {
-      const res = await t.app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        payload: { email: 'ghost@example.com', password: 'nope' },
-      });
+      const res = await t.app.inject(loginRequest('ghost@example.com', 'nope'));
       codes.push(res.statusCode);
     }
     expect(codes.slice(0, 10).every((c) => c === 401)).toBe(true);
@@ -183,7 +192,8 @@ describe('login / logout / session', () => {
 
   it('exposes the auth configuration', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/auth/config' });
-    expect(res.json()).toEqual({ oidcEnabled: false, oidcLabel: 'Single Sign-On', localLoginEnabled: true });
+    expect(res.json().data).toMatchObject({ type: 'auth-configs', id: 'current' });
+    expect(data(res)).toEqual({ id: 'current', oidcEnabled: false, oidcLabel: 'Single Sign-On', localLoginEnabled: true });
     const oidc = await t.app.inject({ method: 'GET', url: '/api/auth/oidc/login' });
     expect(oidc.statusCode).toBe(404);
   });
@@ -193,7 +203,7 @@ describe('authorization', () => {
   it('requires authentication for the admin API', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/admin/services' });
     expect(res.statusCode).toBe(401);
-    expect(res.json().error).toBe('unauthorized');
+    expect(res.json().errors[0]).toMatchObject({ status: '401', code: 'unauthorized' });
   });
 
   it('enforces roles (editor < admin)', async () => {
@@ -206,7 +216,7 @@ describe('authorization', () => {
     expect((await editor.post('/api/admin/locations', { name: 'X', region: 'europe' })).statusCode).toBe(403);
     expect((await editor.get('/api/admin/users')).statusCode).toBe(403);
     expect((await editor.get('/api/admin/monitor-sources')).statusCode).toBe(403);
-    expect((await editor.put('/api/admin/settings', { siteName: 'X' })).statusCode).toBe(403);
+    expect((await editor.patch('/api/admin/settings', { siteName: 'X' })).statusCode).toBe(403);
     const incident = await editor.post('/api/admin/incidents', { title: 'Slow', message: 'Investigating' });
     expect(incident.statusCode).toBe(201);
   });
@@ -218,8 +228,8 @@ describe('authorization', () => {
     const without = await t.app.inject({
       method: 'POST',
       url: '/api/admin/service-groups',
-      headers: { cookie },
-      payload: { name: 'Platform' },
+      headers: { cookie, 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
     });
     expect(without.statusCode).toBe(403);
 
@@ -229,8 +239,8 @@ describe('authorization', () => {
     const withHeader = await t.app.inject({
       method: 'POST',
       url: '/api/admin/service-groups',
-      headers: { cookie, 'x-requested-with': 'openstatuspage' },
-      payload: { name: 'Platform' },
+      headers: { cookie, 'x-requested-with': 'openstatuspage', 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
     });
     expect(withHeader.statusCode).toBe(201);
 
@@ -243,11 +253,13 @@ describe('authorization', () => {
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
     const created = await admin.post('/api/admin/api-tokens', { name: 'CI', role: 'editor' });
     expect(created.statusCode).toBe(201);
-    const { token, id } = created.json();
+    expect(created.json().data).toMatchObject({ type: 'api-tokens', attributes: { name: 'CI' } });
+    const { token, id } = data<{ token: string; id: string }>(created);
+    expect(created.headers.location).toBe(`/api/admin/api-tokens/${id}`);
     expect(token).toMatch(/^osp_/);
 
     const list = await admin.get('/api/admin/api-tokens');
-    expect(list.json()).toEqual([expect.objectContaining({ id, name: 'CI', role: 'editor', lastUsedAt: null })]);
+    expect(data(list)).toEqual([expect.objectContaining({ id, name: 'CI', role: 'editor', lastUsedAt: null })]);
     expect(list.body).not.toContain(token);
 
     const bot = client(t.app, { token });
@@ -255,10 +267,10 @@ describe('authorization', () => {
     expect((await bot.post('/api/admin/service-groups', { name: 'Nope' })).statusCode).toBe(403);
     expect((await client(t.app, { token: 'osp_invalid' }).get('/api/admin/services')).statusCode).toBe(401);
 
-    const audit = await admin.get('/api/admin/audit-log?entityType=incident');
-    expect(audit.json().items[0]).toMatchObject({ action: 'incident.create', userId: null, details: { apiToken: 'CI' } });
+    const audit = await admin.get('/api/admin/audit-log?filter[entityType]=incident');
+    expect(page(audit).items[0]).toMatchObject({ action: 'incident.create', userId: null, details: { apiToken: 'CI' } });
     const tokens = await admin.get('/api/admin/api-tokens');
-    expect(tokens.json()[0].lastUsedAt).not.toBeNull();
+    expect(data<{ lastUsedAt: string | null }[]>(tokens)[0]!.lastUsedAt).not.toBeNull();
 
     expect((await admin.delete(`/api/admin/api-tokens/${id}`)).statusCode).toBe(204);
     expect((await bot.get('/api/admin/services')).statusCode).toBe(401);
@@ -271,7 +283,7 @@ describe('user management guards', () => {
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
 
     expect((await admin.delete(`/api/admin/users/${adminId}`)).statusCode).toBe(409);
-    expect((await admin.put(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
+    expect((await admin.patch(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
 
     const created = await admin.post('/api/admin/users', {
       email: 'second@example.com',
@@ -280,7 +292,8 @@ describe('user management guards', () => {
       password: 'another-long-password',
     });
     expect(created.statusCode).toBe(201);
-    const second = created.json();
+    expect(created.headers.location).toMatch(/^\/api\/admin\/users\//);
+    const second = data<{ id: string }>(created);
     expect(second).toMatchObject({ email: 'second@example.com', hasPassword: true, oidcLinked: false });
     expect(created.body).not.toContain('password_hash');
 
@@ -288,19 +301,43 @@ describe('user management guards', () => {
     expect(duplicate.statusCode).toBe(409);
 
     // Demoting another admin works while another admin remains.
-    const demoted = await admin.put(`/api/admin/users/${second.id}`, { role: 'editor' });
+    const demoted = await admin.patch(`/api/admin/users/${second.id}`, { role: 'editor' });
     expect(demoted.statusCode).toBe(200);
-    expect(demoted.json().role).toBe('editor');
+    expect(data<{ role: string }>(demoted).role).toBe('editor');
     expect((await admin.delete(`/api/admin/users/${second.id}`)).statusCode).toBe(204);
+  });
+
+  it('lists users as a JSON:API collection and checks PATCH documents', async () => {
+    const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin', name: 'Ada' });
+    const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
+
+    const list = await admin.get('/api/admin/users');
+    expect(list.headers['content-type']).toBe('application/vnd.api+json');
+    expect(list.json()).toMatchObject({
+      jsonapi: { version: '1.1' },
+      data: [{ type: 'users', id: adminId, attributes: { email: 'admin@example.com', name: 'Ada' }, links: { self: `/api/admin/users/${adminId}` } }],
+      meta: { total: 1 },
+    });
+    expect(list.body).not.toContain('password_hash');
+
+    const mismatch = await admin.patch(`/api/admin/users/${adminId}`, { data: { type: 'users', id: 'other', attributes: { name: 'X' } } });
+    expect(mismatch.statusCode).toBe(409);
+    expect(errors(mismatch)[0]).toMatchObject({ code: 'id_mismatch' });
+    const renamed = await admin.patch(`/api/admin/users/${adminId}`, doc('users', { name: 'Ada L.' }, { id: adminId }));
+    expect(data<{ name: string }>(renamed).name).toBe('Ada L.');
+
+    const invalid = await admin.post('/api/admin/users', { email: 'nope', name: 'X', role: 'editor' });
+    expect(invalid.statusCode).toBe(400);
+    expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/email' } });
   });
 
   it('protects the last admin against other admins being removed via token', async () => {
     const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
-    const { token } = (await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' })).json();
+    const { token } = data<{ token: string }>(await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' }));
     const bot = client(t.app, { token });
     expect((await bot.delete(`/api/admin/users/${adminId}`)).statusCode).toBe(409);
-    expect((await bot.put(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
+    expect((await bot.patch(`/api/admin/users/${adminId}`, { role: 'editor' })).statusCode).toBe(409);
   });
 });
 
@@ -310,16 +347,17 @@ describe('token ownership', () => {
     const secondId = await createUser(t.db, { email: 'second@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
     const second = client(t.app, { cookie: await login(t.app, 'second@example.com') });
-    const { token } = (await second.post('/api/admin/api-tokens', { name: 'parent', role: 'admin' })).json();
+    const { token } = data<{ token: string }>(await second.post('/api/admin/api-tokens', { name: 'parent', role: 'admin' }));
 
     const child = await client(t.app, { token }).post('/api/admin/api-tokens', { name: 'child', role: 'admin' });
     expect(child.statusCode).toBe(201);
-    const row = await t.db.selectFrom('api_tokens').select('created_by').where('id', '=', child.json().id).executeTakeFirstOrThrow();
+    const childToken = data<{ id: string; token: string }>(child);
+    const row = await t.db.selectFrom('api_tokens').select('created_by').where('id', '=', childToken.id).executeTakeFirstOrThrow();
     expect(row.created_by).toBe(secondId);
 
     // Demoting the owner revokes both tokens.
-    expect((await admin.put(`/api/admin/users/${secondId}`, { role: 'editor' })).statusCode).toBe(200);
-    expect((await client(t.app, { token: child.json().token }).get('/api/admin/overview')).statusCode).toBe(401);
+    expect((await admin.patch(`/api/admin/users/${secondId}`, { role: 'editor' })).statusCode).toBe(200);
+    expect((await client(t.app, { token: childToken.token }).get('/api/admin/overview')).statusCode).toBe(401);
     expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
   });
 });
@@ -359,7 +397,7 @@ describe('create-user reset', () => {
 
     await createUser(t.db, { email: 'second@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
-    const { token } = (await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' })).json();
+    const { token } = data<{ token: string }>(await admin.post('/api/admin/api-tokens', { name: 'ops', role: 'admin' }));
     expect(await createOrResetLocalUser(t.db, input)).toEqual({ ok: true, created: false });
     const user = await t.db.selectFrom('users').select('role').where('id', '=', adminId).executeTakeFirstOrThrow();
     expect(user.role).toBe('editor');
@@ -380,7 +418,7 @@ describe('dashboard activity', () => {
     await editor.post('/api/admin/incidents', { title: 'Slow', message: 'Investigating' });
 
     const types = async (c: typeof admin) =>
-      ((await c.get('/api/admin/overview')).json().recentAudit as { entityType: string }[]).map((e) => e.entityType);
+      data<{ recentAudit: { entityType: string }[] }>(await c.get('/api/admin/overview')).recentAudit.map((e) => e.entityType);
     expect(await types(editor)).toEqual(['incident']);
     expect(await types(admin)).toEqual(expect.arrayContaining(['incident', 'user', 'api_token']));
   });

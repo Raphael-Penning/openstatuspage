@@ -447,6 +447,12 @@ export interface AdminIncident extends PublicIncident {
   createdBy: string | null;
 }
 
+/** An `incident-updates` resource as answered by the admin API, with its incident (without the updates). */
+export interface AdminIncidentUpdate extends IncidentUpdateEntry {
+  incidentId: string;
+  incident?: Omit<AdminIncident, 'updates'>;
+}
+
 // ---------------------------------------------------------------------------
 // Maintenance
 // ---------------------------------------------------------------------------
@@ -539,6 +545,12 @@ export interface AdminMaintenance extends PublicMaintenance {
   updatedAt: string;
 }
 
+/** A `maintenance-updates` resource as answered by the admin API, with its maintenance (without the updates). */
+export interface AdminMaintenanceUpdate extends MaintenanceUpdateEntry {
+  maintenanceId: string;
+  maintenance?: Omit<AdminMaintenance, 'updates'>;
+}
+
 // ---------------------------------------------------------------------------
 // History corrections (status overrides for a past time range)
 // ---------------------------------------------------------------------------
@@ -584,15 +596,13 @@ export const CorrectionPatchInput = z
   .refine(notTooLong, { message: `at most ${CORRECTION_MAX_DAYS} days`, path: ['endsAt'] });
 export type CorrectionPatchInput = z.infer<typeof CorrectionPatchInput>;
 
-export const CorrectionListQuery = z.object({
-  serviceId: zId.optional(),
+/** `filter[...]` parameters of GET /api/admin/corrections. */
+export const CorrectionListFilter = {
+  service: zId.optional(),
   /** Only corrections overlapping [from, to). */
   from: zTimestamp.optional(),
   to: zTimestamp.optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-});
-export type CorrectionListQuery = z.infer<typeof CorrectionListQuery>;
+};
 
 export interface AdminCorrection {
   id: string;
@@ -609,6 +619,7 @@ export interface AdminCorrection {
   updatedAt: string;
 }
 
+/** `filter[from]` and `filter[to]` of GET /api/admin/services/:id/history. */
 export const ServiceHistoryQuery = z
   .object({ from: zTimestamp, to: zTimestamp })
   .refine((v) => new Date(v.to) > new Date(v.from), { message: 'to must be after from', path: ['to'] })
@@ -694,12 +705,15 @@ export const OpenItCockpitConfig = zHttpBase.extend({
 
 export const WebhookConfig = z.object({});
 
-/** Create/update a monitoring source. Only configurable types (not the virtual "bundle" source). */
-export const MonitorSourceInput = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('icinga2'), config: Icinga2Config }),
-  z.object({ type: z.literal('uptimekuma'), config: UptimeKumaConfig }),
-  z.object({ type: z.literal('openitcockpit'), config: OpenItCockpitConfig }),
-  z.object({ type: z.literal('webhook'), config: WebhookConfig }),
+/**
+ * Create/update a monitoring source. Only configurable types (not the virtual "bundle" source).
+ * The kind of source is `sourceType`: JSON:API reserves `type` for the resource type.
+ */
+export const MonitorSourceInput = z.discriminatedUnion('sourceType', [
+  z.object({ sourceType: z.literal('icinga2'), config: Icinga2Config }),
+  z.object({ sourceType: z.literal('uptimekuma'), config: UptimeKumaConfig }),
+  z.object({ sourceType: z.literal('openitcockpit'), config: OpenItCockpitConfig }),
+  z.object({ sourceType: z.literal('webhook'), config: WebhookConfig }),
 ]).and(
   z.object({
     name: z.string().min(1).max(120),
@@ -713,7 +727,7 @@ export type MonitorSourceInput = z.infer<typeof MonitorSourceInput>;
 export interface AdminMonitorSource {
   id: string;
   name: string;
-  type: MonitorSourceType;
+  sourceType: MonitorSourceType;
   enabled: boolean;
   pollIntervalSeconds: number;
   /** Secrets are replaced with SECRET_MASK. */
@@ -900,7 +914,7 @@ export interface HistoryImportResult {
   services: number;
 }
 
-/** GET /api/admin/monitor-sources/:id/history-imports[/:importId] */
+/** GET /api/admin/monitor-sources/:id/history-imports[/:importId] (type "history-imports", relationship `source`) */
 export interface AdminHistoryImport {
   id: string;
   sourceId: string;
@@ -914,6 +928,7 @@ export interface AdminHistoryImport {
   /** English message (detail for "source" and "apply_failed"). */
   error: string | null;
   errorCode: HistoryImportErrorCode | null;
+  /** JSON:API: the relationship `createdBy` (type "users", included with its name). */
   createdBy: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -1013,7 +1028,7 @@ export interface AdminCheckBundle {
 export interface BundleCandidateSource {
   id: string;
   name: string;
-  type: MonitorSourceType;
+  sourceType: MonitorSourceType;
   enabled: boolean;
   checks: {
     id: string;
@@ -1072,6 +1087,10 @@ export interface PublicLocationsResponse {
   counts: Record<ServiceStatus, number>;
 }
 
+/**
+ * History view state of the web client. The API takes it as `page[number]`, `page[size]`,
+ * `filter[type]`, `filter[service]`, `filter[location]` and `filter[month]`.
+ */
 export const HistoryQuery = z.object({
   type: z.enum(['all', 'incident', 'maintenance']).default('all'),
   serviceId: zId.optional(),
@@ -1164,6 +1183,7 @@ export interface PublicSubscription {
   confirmed: boolean;
 }
 
+/** Subscriber list state of the admin UI; sent as page[number], page[size], filter[q] and filter[status]. */
 export const SubscriberListQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
@@ -1206,7 +1226,10 @@ export interface NotificationStatus {
 export const TestEmailInput = z.object({ to: z.email().max(254) });
 export type TestEmailInput = z.infer<typeof TestEmailInput>;
 
-/** Error body for every non-2xx response. */
+/**
+ * Error of a failed request as the web client exposes it (`ApiError.body`), built from
+ * the JSON:API error document: code and detail of the first error, field issues.
+ */
 export interface ApiError {
   error: string;
   message: string;

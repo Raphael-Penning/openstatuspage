@@ -72,7 +72,7 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
   const form = useForm({ to: user.email });
   const [result, setResult] = useState<TestResult | null>(null);
 
-  const test = useAdminMutation((body: TestEmailInput) => api.post<TestEmailResponse>('/api/admin/notifications/test', body), {
+  const test = useAdminMutation((body: TestEmailInput) => api.post<TestEmailResponse>('/api/admin/notifications/test', body, { type: 'test-emails' }), {
     onSuccess: (r, body) => {
       const msg = testResultMessage(r, s.transport, body.to);
       const message = 'text' in msg ? msg.text : t(msg.key, msg.values ?? {});

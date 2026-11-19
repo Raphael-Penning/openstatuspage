@@ -1,6 +1,9 @@
 import { SECRET_MASK } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { adminClient, createTestApp, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, doc, errors, page, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
 
 let t: TestApp;
 let admin: Client;
@@ -23,37 +26,52 @@ describe('locations', () => {
       longitude: 8.7,
     });
     expect(a.statusCode).toBe(201);
-    expect(a.json()).toMatchObject({ slug: 'frankfurt', status: 'operational', serviceIds: [], isPublic: true });
+    expect(a.headers['content-type']).toBe('application/vnd.api+json');
+    const locA = data<Any>(a);
+    expect(a.headers.location).toBe(`/api/admin/locations/${locA.id}`);
+    expect(a.json().data).toMatchObject({ type: 'locations', relationships: { services: { data: [] } } });
+    expect(locA).toMatchObject({ slug: 'frankfurt', status: 'operational', serviceIds: [], isPublic: true });
 
     const b = await admin.post('/api/admin/locations', { name: 'Frankfurt', region: 'europe' });
-    expect(b.json().slug).toBe('frankfurt-2');
+    const locB = data<Any>(b);
+    expect(locB.slug).toBe('frankfurt-2');
 
     const dup = await admin.post('/api/admin/locations', { name: 'X', slug: 'frankfurt', region: 'europe' });
     expect(dup.statusCode).toBe(409);
 
     const invalid = await admin.post('/api/admin/locations', { name: 'X', region: 'mars' });
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json().error).toBe('validation_error');
+    expect(errors(invalid)[0]).toMatchObject({ status: '400', source: { pointer: '/data/attributes/region' } });
 
-    const updated = await admin.put(`/api/admin/locations/${a.json().id}`, {
+    // PATCH is partial: missing attributes keep their values.
+    const updated = await admin.patch(`/api/admin/locations/${locA.id}`, {
       name: 'Frankfurt am Main',
-      region: 'europe',
       statusOverride: 'maintenance',
     });
     expect(updated.statusCode).toBe(200);
     // Slug is kept when not provided.
-    expect(updated.json()).toMatchObject({ slug: 'frankfurt', name: 'Frankfurt am Main', status: 'maintenance' });
+    expect(data(updated)).toMatchObject({ slug: 'frankfurt', name: 'Frankfurt am Main', status: 'maintenance', code: 'FRA-1', latitude: 50.1 });
+    expect((await admin.put(`/api/admin/locations/${locA.id}`, { name: 'X', region: 'europe' })).statusCode).toBe(404);
+    const mismatch = await admin.patch(`/api/admin/locations/${locA.id}`, {
+      data: { type: 'locations', id: locB.id, attributes: { name: 'X' } },
+    });
+    expect(mismatch.statusCode).toBe(409);
+    const wrongType = await admin.patch(`/api/admin/locations/${locA.id}`, { data: { type: 'services', attributes: { name: 'X' } } });
+    expect(errors(wrongType)[0]).toMatchObject({ status: '409', code: 'type_mismatch' });
 
-    expect((await admin.post('/api/admin/locations/reorder', { ids: [b.json().id, a.json().id] })).statusCode).toBe(204);
+    expect((await admin.post('/api/admin/locations/reorder', doc('orderings', { ids: [locB.id, locA.id] }))).statusCode).toBe(204);
     const list = await admin.get('/api/admin/locations');
-    expect(list.json().map((l: { id: string }) => l.id)).toEqual([b.json().id, a.json().id]);
+    expect(list.json().meta).toEqual({ total: 2 });
+    expect(data<{ id: string }[]>(list).map((l) => l.id)).toEqual([locB.id, locA.id]);
 
-    expect((await admin.delete(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(204);
-    expect((await admin.get(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(404);
+    expect((await admin.delete(`/api/admin/locations/${locA.id}`)).statusCode).toBe(204);
+    const gone = await admin.get(`/api/admin/locations/${locA.id}`);
+    expect(gone.statusCode).toBe(404);
+    expect(errors(gone)[0]).toMatchObject({ status: '404', code: 'not_found' });
 
-    const audit = await admin.get('/api/admin/audit-log?entityType=location');
+    const audit = await admin.get('/api/admin/audit-log?filter[entityType]=location');
     // Entries within the same millisecond have no defined order, so compare sorted.
-    expect(audit.json().items.map((e: { action: string }) => e.action).sort()).toEqual([
+    expect(page<{ action: string }>(audit).items.map((e: { action: string }) => e.action).sort()).toEqual([
       'location.create',
       'location.create',
       'location.delete',
@@ -65,16 +83,17 @@ describe('locations', () => {
 
 describe('service groups', () => {
   it('deleting a group keeps its services (group_id becomes null)', async () => {
-    const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json();
+    const group = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Platform' }));
     expect(group).toMatchObject({ slug: 'platform', isPublic: true, collapsedByDefault: false });
-    const svc = (await admin.post('/api/admin/services', { name: 'API', groupId: group.id })).json();
+    const svc = data<Any>(await admin.post('/api/admin/services', { name: 'API', groupId: group.id }));
     expect(svc.groupId).toBe(group.id);
 
-    const renamed = await admin.put(`/api/admin/service-groups/${group.id}`, { name: 'Core', collapsedByDefault: true });
-    expect(renamed.json()).toMatchObject({ name: 'Core', slug: 'platform', collapsedByDefault: true });
+    const renamed = await admin.patch(`/api/admin/service-groups/${group.id}`, { name: 'Core', collapsedByDefault: true });
+    expect(data(renamed)).toMatchObject({ name: 'Core', slug: 'platform', collapsedByDefault: true, isPublic: true });
+    expect(data<Any[]>(await admin.get('/api/admin/service-groups')).map((g) => g.name)).toEqual(['Core']);
 
     expect((await admin.delete(`/api/admin/service-groups/${group.id}`)).statusCode).toBe(204);
-    const after = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    const after = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(after.groupId).toBeNull();
   });
 });
@@ -85,7 +104,7 @@ describe('services', () => {
       { externalId: 'web1!https', name: 'HTTPS', host: 'web1.internal.example.com', state: 'ok' },
       { externalId: 'web2!https', name: 'HTTPS', host: 'web2.internal.example.com', state: 'ok' },
     ]);
-    const loc = (await admin.post('/api/admin/locations', { name: 'Amsterdam', region: 'europe' })).json();
+    const loc = data<Any>(await admin.post('/api/admin/locations', { name: 'Amsterdam', region: 'europe' }));
 
     const created = await admin.post('/api/admin/services', {
       name: 'Web App',
@@ -96,7 +115,12 @@ describe('services', () => {
       checks: [{ checkId: checkIds['web1!https'] }, { checkId: checkIds['web2!https'], criticalStatus: 'major_outage' }],
     });
     expect(created.statusCode).toBe(201);
-    const svc = created.json();
+    const svc = data<Any>(created);
+    expect(created.headers.location).toBe(`/api/admin/services/${svc.id}`);
+    expect(created.json().data.relationships).toEqual({
+      group: { data: null },
+      locations: { data: [{ type: 'locations', id: loc.id }] },
+    });
     expect(svc).toMatchObject({ slug: 'web-app', status: 'operational', monitorStatus: 'operational', locationIds: [loc.id] });
     expect(svc.checks).toHaveLength(2);
     expect(svc.checks[0]).toMatchObject({ warningStatus: 'degraded', criticalStatus: 'major_outage', unknownStatus: null });
@@ -104,11 +128,11 @@ describe('services', () => {
 
     // One of two redundant checks fails → quorum caps at partial outage.
     await setCheckState(t, sourceId, { externalId: 'web1!https', name: 'HTTPS', host: 'web1.internal.example.com' }, 'critical');
-    let current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    let current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current.status).toBe('partial_outage');
 
     const preview = await admin.get(`/api/admin/services/${svc.id}/preview`);
-    expect(preview.json()).toEqual({ monitorStatus: 'partial_outage', status: 'partial_outage' });
+    expect(preview.json().meta).toEqual({ monitorStatus: 'partial_outage', status: 'partial_outage' });
 
     // Preview of an unsaved config with "worst" aggregation.
     const unsaved = await admin.post('/api/admin/services/preview', {
@@ -116,31 +140,37 @@ describe('services', () => {
       aggregation: 'worst',
       checks: [{ checkId: checkIds['web1!https'] }],
     });
-    expect(unsaved.json()).toEqual({ monitorStatus: 'major_outage' });
+    expect(unsaved.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { monitorStatus: 'major_outage' } });
 
-    // Switching to manual mode overrides the checks.
-    const manual = await admin.put(`/api/admin/services/${svc.id}`, {
-      name: 'Web App',
-      statusMode: 'manual',
-      manualStatus: 'degraded',
-      checks: [{ checkId: checkIds['web1!https'] }],
+    // Switching to manual mode overrides the checks (PATCH: only the given members change).
+    const manual = await admin.patch(`/api/admin/services/${svc.id}`, {
+      data: {
+        type: 'services',
+        id: svc.id,
+        attributes: { statusMode: 'manual', manualStatus: 'degraded', checks: [{ checkId: checkIds['web1!https'] }] },
+        relationships: { locations: { data: [] } },
+      },
     });
     expect(manual.statusCode).toBe(200);
-    expect(manual.json()).toMatchObject({ status: 'degraded', monitorStatus: 'major_outage', locationIds: [] });
+    expect(data(manual)).toMatchObject({ name: 'Web App', kind: 'site', status: 'degraded', monitorStatus: 'major_outage', locationIds: [] });
+    const badRel = await admin.patch(`/api/admin/services/${svc.id}`, {
+      data: { type: 'services', id: svc.id, relationships: { group: { data: { type: 'service-groups', id: 'missing' } } } },
+    });
+    expect(badRel.statusCode).toBe(400);
 
     // Checks: filters and deletion.
-    const unlinked = await admin.get('/api/admin/checks?unlinked=true');
-    expect(unlinked.json().map((c: { externalId: string }) => c.externalId)).toEqual(['web2!https']);
-    const search = await admin.get('/api/admin/checks?q=WEB1.internal');
-    expect(search.json()).toHaveLength(1);
-    const critical = await admin.get(`/api/admin/checks?state=critical&sourceId=${sourceId}`);
-    expect(critical.json()).toHaveLength(1);
+    const unlinked = await admin.get('/api/admin/checks?filter[unlinked]=true');
+    expect(data<{ externalId: string }[]>(unlinked).map((c) => c.externalId)).toEqual(['web2!https']);
+    const search = await admin.get('/api/admin/checks?filter[q]=WEB1.internal');
+    expect(data<unknown[]>(search)).toHaveLength(1);
+    const critical = await admin.get(`/api/admin/checks?filter[state]=critical&filter[source]=${sourceId}`);
+    expect(data<{ sourceId: string }[]>(critical)).toEqual([expect.objectContaining({ sourceId })]);
 
-    await admin.put(`/api/admin/services/${svc.id}`, { name: 'Web App', checks: [{ checkId: checkIds['web1!https'] }] });
-    current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    await admin.patch(`/api/admin/services/${svc.id}`, { statusMode: 'auto' });
+    current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current.status).toBe('major_outage');
     expect((await admin.delete(`/api/admin/checks/${checkIds['web1!https']}`)).statusCode).toBe(204);
-    current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current).toMatchObject({ status: 'operational', checks: [] });
   });
 
@@ -150,14 +180,14 @@ describe('services', () => {
     const badGroup = await admin.post('/api/admin/services', { name: 'X', groupId: 'missing' });
     expect(badGroup.statusCode).toBe(400);
 
-    const g1 = (await admin.post('/api/admin/service-groups', { name: 'One' })).json();
-    const g2 = (await admin.post('/api/admin/service-groups', { name: 'Two' })).json();
-    const a = (await admin.post('/api/admin/services', { name: 'A', groupId: g1.id })).json();
-    const b = (await admin.post('/api/admin/services', { name: 'B', groupId: g1.id })).json();
-    const c = (await admin.post('/api/admin/services', { name: 'C', groupId: g2.id })).json();
-    expect((await admin.post('/api/admin/services/reorder', { ids: [a.id, c.id] })).statusCode).toBe(400);
-    expect((await admin.post('/api/admin/services/reorder', { ids: [b.id, a.id] })).statusCode).toBe(204);
-    const list = (await admin.get('/api/admin/services')).json() as { id: string }[];
+    const g1 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'One' }));
+    const g2 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Two' }));
+    const a = data<Any>(await admin.post('/api/admin/services', { name: 'A', groupId: g1.id }));
+    const b = data<Any>(await admin.post('/api/admin/services', { name: 'B', groupId: g1.id }));
+    const c = data<Any>(await admin.post('/api/admin/services', { name: 'C', groupId: g2.id }));
+    expect((await admin.post('/api/admin/services/reorder', doc('orderings', { ids: [a.id, c.id] }))).statusCode).toBe(400);
+    expect((await admin.post('/api/admin/services/reorder', doc('orderings', { ids: [b.id, a.id] }))).statusCode).toBe(204);
+    const list = data<{ id: string }[]>(await admin.get('/api/admin/services'));
     expect(list.map((s) => s.id)).toEqual([b.id, a.id, c.id]);
 
     expect((await admin.delete(`/api/admin/services/${a.id}`)).statusCode).toBe(204);
@@ -169,7 +199,10 @@ describe('services', () => {
     await admin.post('/api/admin/services', { name: 'Fine' });
     const res = await admin.get('/api/admin/overview');
     expect(res.statusCode).toBe(200);
-    expect(res.json().counts).toEqual({
+    expect(res.json().data).toMatchObject({ type: 'overviews', id: 'current' });
+    const overview = data<{ counts: object; recentAudit: { action: string }[]; services: { id: string; name: string }[] }>(res);
+    expect(overview.services.map((s) => s.name)).toEqual(['Fine']);
+    expect(overview.counts).toEqual({
       services: 1,
       incidentsActive: 0,
       maintenancesActive: 0,
@@ -179,24 +212,30 @@ describe('services', () => {
       checks: 1,
       checksFailing: 1,
     });
-    expect(res.json().recentAudit.map((e: { action: string }) => e.action)).toContain('service.create');
+    expect(overview.recentAudit.map((e) => e.action)).toContain('service.create');
   });
 });
 
 describe('settings', () => {
   it('validates and stores settings', async () => {
-    const res = await admin.put('/api/admin/settings', { siteName: 'Example Status', uptimeDays: 30 });
+    const res = await admin.patch('/api/admin/settings', { siteName: 'Example Status', uptimeDays: 30 });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ siteName: 'Example Status', uptimeDays: 30, showUptime: true });
-    expect((await admin.put('/api/admin/settings', { siteName: '' })).statusCode).toBe(400);
-    expect((await t.app.inject({ method: 'GET', url: '/api/public/settings' })).json().siteName).toBe('Example Status');
+    expect(res.json().data).toMatchObject({ type: 'settings', id: 'site' });
+    expect(data(res)).toMatchObject({ siteName: 'Example Status', uptimeDays: 30, showUptime: true });
+    const invalid = await admin.patch('/api/admin/settings', { siteName: '' });
+    expect(invalid.statusCode).toBe(400);
+    expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/siteName' } });
+    // PATCH is partial: attributes left out keep their value.
+    expect(data(await admin.patch('/api/admin/settings', { showUptime: false }))).toMatchObject({ siteName: 'Example Status', uptimeDays: 30, showUptime: false });
+    expect((await admin.put('/api/admin/settings', { siteName: 'X' })).statusCode).toBe(404);
+    expect(data<{ siteName: string }>(await t.app.inject({ method: 'GET', url: '/api/public/settings' })).siteName).toBe('Example Status');
   });
 });
 
 describe('monitoring sources', () => {
   const icinga = {
     name: 'Icinga',
-    type: 'icinga2',
+    sourceType: 'icinga2',
     config: {
       baseUrl: 'https://monitoring.example.com:5665',
       username: 'statuspage',
@@ -207,7 +246,10 @@ describe('monitoring sources', () => {
   it('encrypts and masks secrets, keeps them when the mask is sent back', async () => {
     const created = await admin.post('/api/admin/monitor-sources', icinga);
     expect(created.statusCode).toBe(201);
-    const source = created.json();
+    expect(created.headers['content-type']).toBe('application/vnd.api+json');
+    expect(created.json().data).toMatchObject({ type: 'monitor-sources', attributes: { sourceType: 'icinga2' } });
+    const source = data<{ id: string; ingestToken: string; ingestUrl: string; config: Record<string, unknown> }>(created);
+    expect(created.headers.location).toBe(`/api/admin/monitor-sources/${source.id}`);
     expect(source.ingestToken).toEqual(expect.any(String));
     expect(source.config.password).toBe(SECRET_MASK);
     expect(source.config.username).toBe('statuspage');
@@ -221,15 +263,21 @@ describe('monitoring sources', () => {
     const list = await admin.get('/api/admin/monitor-sources');
     expect(list.body).not.toContain('super-secret-password');
     expect(list.body).not.toContain(source.ingestToken);
+    expect(list.json().meta).toEqual({ total: 1 });
 
     // Update with the mask keeps the stored password.
-    const updated = await admin.put(`/api/admin/monitor-sources/${source.id}`, {
+    const updated = await admin.patch(`/api/admin/monitor-sources/${source.id}`, {
       ...icinga,
       name: 'Icinga (primary)',
       config: { ...icinga.config, password: SECRET_MASK, includeHosts: false },
     });
     expect(updated.statusCode).toBe(200);
-    expect(updated.json()).toMatchObject({ name: 'Icinga (primary)', config: { password: SECRET_MASK, includeHosts: false } });
+    expect(data(updated)).toMatchObject({ name: 'Icinga (primary)', config: { password: SECRET_MASK, includeHosts: false } });
+
+    // Partial update: the config stays when it is left out.
+    const renamed = await admin.patch(`/api/admin/monitor-sources/${source.id}`, { name: 'Icinga' });
+    expect(data(renamed)).toMatchObject({ name: 'Icinga', sourceType: 'icinga2', config: { includeHosts: false } });
+    expect(data(await admin.get(`/api/admin/monitor-sources/${source.id}`))).not.toHaveProperty('ingestToken');
     const stored = t.app.ctx.secrets.decryptJson<Record<string, unknown>>(
       (await t.db.selectFrom('monitor_sources').select('config_encrypted').where('id', '=', source.id).executeTakeFirstOrThrow())
         .config_encrypted,
@@ -237,12 +285,17 @@ describe('monitoring sources', () => {
     expect(stored.password).toBe('super-secret-password');
 
     // Changing the type requires new credentials.
-    const typeChange = await admin.put(`/api/admin/monitor-sources/${source.id}`, {
+    const typeChange = await admin.patch(`/api/admin/monitor-sources/${source.id}`, {
       name: 'Kuma',
-      type: 'uptimekuma',
+      sourceType: 'uptimekuma',
       config: { baseUrl: 'https://kuma.example.com', apiKey: SECRET_MASK },
     });
     expect(typeChange.statusCode).toBe(400);
+    expect(errors(typeChange)[0]).toMatchObject({ code: 'secret_required', source: { pointer: '/data/attributes/config/apiKey' } });
+    // A new type without a config: the config is required.
+    const noConfig = await admin.patch(`/api/admin/monitor-sources/${source.id}`, { sourceType: 'webhook' });
+    expect(noConfig.statusCode).toBe(400);
+    expect(errors(noConfig)[0]?.source).toEqual({ pointer: '/data/attributes/config' });
 
     // The mask is not accepted as a real secret on create.
     const masked = await admin.post('/api/admin/monitor-sources', {
@@ -250,33 +303,46 @@ describe('monitoring sources', () => {
       config: { ...icinga.config, password: SECRET_MASK },
     });
     expect(masked.statusCode).toBe(400);
+    expect(errors(masked)[0]?.source).toEqual({ pointer: '/data/attributes/config/password' });
+
+    // Request documents of another type are rejected.
+    const wrongType = await admin.post('/api/admin/monitor-sources', doc('services', icinga));
+    expect(wrongType.statusCode).toBe(409);
 
     const rotated = await admin.post(`/api/admin/monitor-sources/${source.id}/rotate-token`);
     expect(rotated.statusCode).toBe(200);
-    expect(rotated.json().ingestToken).not.toBe(source.ingestToken);
+    const { ingestToken } = rotated.json().meta as { ingestToken: string };
+    expect(ingestToken).not.toBe(source.ingestToken);
 
-    const audit = await admin.get('/api/admin/audit-log?entityType=monitor_source');
+    const audit = await admin.get('/api/admin/audit-log?filter[entityType]=monitor_source');
     expect(audit.body).not.toContain('super-secret-password');
-    expect(audit.body).not.toContain(rotated.json().ingestToken);
+    expect(audit.body).not.toContain(ingestToken);
 
     expect((await admin.delete(`/api/admin/monitor-sources/${source.id}`)).statusCode).toBe(204);
     expect((await admin.get(`/api/admin/monitor-sources/${source.id}`)).statusCode).toBe(404);
   });
 
   it('disabling a source removes the influence of its checks', async () => {
-    const created = (await admin.post('/api/admin/monitor-sources', { name: 'Hook', type: 'webhook', config: {} })).json();
+    const created = data<{ id: string }>(await admin.post('/api/admin/monitor-sources', { name: 'Hook', sourceType: 'webhook', config: {} }));
     await t.app.ctx.ingest.ingest(created.id, [{ externalId: 'x', name: 'X', host: 'h', state: 'critical' }], { full: false });
-    const check = (await admin.get(`/api/admin/checks?sourceId=${created.id}`)).json()[0];
-    const svc = (await admin.post('/api/admin/services', { name: 'S', checks: [{ checkId: check.id }] })).json();
+    const checks = await admin.get(`/api/admin/checks?filter[source]=${created.id}`);
+    expect(checks.json().data[0]).toMatchObject({
+      type: 'monitor-checks',
+      relationships: { source: { data: { type: 'monitor-sources', id: created.id } } },
+    });
+    const check = data<{ id: string }[]>(checks)[0]!;
+    expect(data(await admin.get(`/api/admin/checks/${check.id}`))).toMatchObject({ id: check.id, sourceId: created.id });
+    expect(errors(await admin.get('/api/admin/checks?filter[nope]=1'))[0]?.source).toEqual({ parameter: 'filter[nope]' });
+    const svc = data<Any>(await admin.post('/api/admin/services', { name: 'S', checks: [{ checkId: check.id }] }));
     expect(svc.status).toBe('major_outage');
 
-    await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: false });
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('operational');
+    await admin.patch(`/api/admin/monitor-sources/${created.id}`, { enabled: false });
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`)).status).toBe('operational');
 
-    await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: true });
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('major_outage');
+    await admin.patch(`/api/admin/monitor-sources/${created.id}`, { enabled: true });
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`)).status).toBe('major_outage');
 
     await admin.delete(`/api/admin/monitor-sources/${created.id}`);
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json()).toMatchObject({ status: 'operational', checks: [] });
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`))).toMatchObject({ status: 'operational', checks: [] });
   });
 });

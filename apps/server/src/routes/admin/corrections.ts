@@ -1,20 +1,25 @@
 import {
   CORRECTION_MAX_DAYS,
   CorrectionInput,
-  CorrectionListQuery,
+  CorrectionListFilter,
   CorrectionPatchInput,
   ServiceHistoryQuery,
+  zTimestamp,
   type AdminCorrection,
   type AdminServiceHistory,
   type HistorySegment,
 } from '@openstatuspage/shared';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { DB } from '../../db/index.js';
-import { badRequest, notFound } from '../../lib/errors.js';
+import { badRequest, invalidParameter, notFound } from '../../lib/errors.js';
 import { newId } from '../../lib/ids.js';
-import { IdParams, offsetOf, paginated, parse, unique } from '../../lib/http.js';
+import { IdParams, parse, unique } from '../../lib/http.js';
+import { collection, created, document, Included, noContent, selfLink } from '../../lib/jsonapi.js';
+import { parseFilter, parseInclude, parseListQuery } from '../../lib/jsonapi-query.js';
 import { nowIso, toIso } from '../../lib/time.js';
 import { actorUserId } from '../../plugins/auth.js';
+import { useJsonApi, withInclude } from '../../plugins/jsonapi.js';
+import { CATALOG_TYPES, correctionResource, serviceHistoryResource } from '../../serializers/catalog.js';
 import { loadCorrectionLayers, loadCorrections } from '../../services/corrections.js';
 import { applyCorrections, type CorrectedSegment } from '../../services/history-corrections.js';
 import { loadSegments } from '../../services/public-catalog.js';
@@ -111,18 +116,37 @@ function clip(
   return out;
 }
 
+/** `include` paths of a correction document (the services, as sparse resources with their name). */
+const INCLUDES = { allowed: ['services'], default: ['services'] };
+
 /**
- * /api/admin/corrections (editor): status overrides for past time ranges, and
+ * /api/admin/corrections (editor, JSON:API): status overrides for past time ranges, and
  * GET /api/admin/services/:id/history: measured vs corrected history.
  */
 export async function registerCorrectionRoutes(app: FastifyInstance): Promise<void> {
-  const { db } = app.ctx;
+  await app.register(async (scope) => {
+    useJsonApi(scope);
+    await registerRoutes(scope);
+  });
+}
 
-  app.get('/api/admin/corrections', editor, async (req) => {
-    const q = parse(CorrectionListQuery, req.query);
+async function registerRoutes(app: FastifyInstance): Promise<void> {
+  const { db } = app.ctx;
+  const correctionType = { config: { jsonapi: { type: CATALOG_TYPES.correction, include: true, relationships: { services: CATALOG_TYPES.service } } } };
+
+  const correctionDocument = async (req: FastifyRequest, id: string) => {
+    const include = parseInclude((req.query ?? {}) as Record<string, unknown>, INCLUDES.allowed, INCLUDES.default);
+    const included = new Included();
+    const res = correctionResource(await getCorrection(db, id), include.has('services') ? included : undefined);
+    return document(res, { included, links: { self: selfLink(req) } });
+  };
+
+  app.get('/api/admin/corrections', { ...editor, ...withInclude }, async (req) => {
+    const q = parseListQuery(req.query, { filter: CorrectionListFilter, include: INCLUDES });
+    const { filter } = q;
     let base = db.selectFrom('status_corrections');
-    if (q.serviceId) {
-      const serviceId = q.serviceId;
+    if (filter.service) {
+      const serviceId = filter.service;
       base = base.where((eb) =>
         eb.exists(
           eb
@@ -133,8 +157,8 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
         ),
       );
     }
-    if (q.from) base = base.where('status_corrections.ends_at', '>', toIso(q.from));
-    if (q.to) base = base.where('status_corrections.starts_at', '<', toIso(q.to));
+    if (filter.from) base = base.where('status_corrections.ends_at', '>', toIso(filter.from));
+    if (filter.to) base = base.where('status_corrections.starts_at', '<', toIso(filter.to));
     const [total, rows] = await Promise.all([
       base
         .select((eb) => eb.fn.countAll<number>().as('n'))
@@ -144,20 +168,22 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
         .select('status_corrections.id')
         .orderBy('status_corrections.starts_at', 'desc')
         .orderBy('status_corrections.id')
-        .limit(q.pageSize)
-        .offset(offsetOf(q))
+        .limit(q.page.size)
+        .offset(q.page.offset)
         .execute(),
     ]);
     const items = await loadCorrections(
       db,
       rows.map((r) => r.id),
     );
-    return paginated(items, total, q);
+    const included = new Included();
+    const resources = items.map((c) => correctionResource(c, q.include.has('services') ? included : undefined));
+    return collection(req, resources, { page: q.page, total, included });
   });
 
-  app.get('/api/admin/corrections/:id', editor, async (req) => getCorrection(db, parse(IdParams, req.params).id));
+  app.get('/api/admin/corrections/:id', { ...editor, ...withInclude }, async (req) => correctionDocument(req, parse(IdParams, req.params).id));
 
-  app.post('/api/admin/corrections', editor, async (req, reply) => {
+  app.post('/api/admin/corrections', { ...editor, ...correctionType }, async (req, reply) => {
     const input = parse(CorrectionInput, req.body);
     const serviceIds = await assertExist(db, 'services', input.serviceIds, 'service');
     const now = await nextCreatedAt(db);
@@ -192,10 +218,10 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
       showPublic: input.showPublic,
       publicNote: input.publicNote || null,
     });
-    return reply.status(201).send(await getCorrection(db, id));
+    return created(reply, await correctionDocument(req, id), `/api/admin/corrections/${id}`);
   });
 
-  app.patch('/api/admin/corrections/:id', editor, async (req) => {
+  app.patch('/api/admin/corrections/:id', { ...editor, ...correctionType }, async (req) => {
     const { id } = parse(IdParams, req.params);
     const input = parse(CorrectionPatchInput, req.body);
     const current = await db.selectFrom('status_corrections').selectAll().where('id', '=', id).executeTakeFirst();
@@ -228,7 +254,7 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
       before: before ? auditView(before) : null,
       after: auditView(after),
     });
-    return after;
+    return correctionDocument(req, id);
   });
 
   app.delete('/api/admin/corrections/:id', editor, async (req, reply) => {
@@ -243,12 +269,16 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
       status: current.status,
       reason: current.reason,
     });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
-  app.get('/api/admin/services/:id/history', editor, async (req): Promise<AdminServiceHistory> => {
+  // A `service-histories` resource (id = service id) with the overlapping corrections included.
+  app.get('/api/admin/services/:id/history', editor, async (req) => {
     const { id } = parse(IdParams, req.params);
-    const q = parse(ServiceHistoryQuery, req.query);
+    const range = parseFilter((req.query ?? {}) as Record<string, unknown>, { from: zTimestamp, to: zTimestamp });
+    const checked = ServiceHistoryQuery.safeParse(range);
+    if (!checked.success) throw invalidParameter('filter[to]', checked.error.issues[0]?.message ?? 'Invalid range');
+    const q = checked.data;
     const service = await db.selectFrom('services').select('id').where('id', '=', id).executeTakeFirst();
     if (!service) throw notFound('Service');
     const now = new Date();
@@ -275,7 +305,7 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
     ]);
     const titles = new Map(maintenances.map((m) => [m.id, m.title]));
 
-    return {
+    const history: AdminServiceHistory = {
       from,
       to,
       measured: clip(measured, from, to, nowStr),
@@ -287,5 +317,7 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
         .filter((l) => l.kind === 'maintenance')
         .map((l) => ({ id: l.id, title: titles.get(l.id) ?? '', start: l.start, end: l.end ?? nowStr })),
     };
+    const included = new Included();
+    return document(serviceHistoryResource(id, history, included), { included, links: { self: selfLink(req) } });
   });
 }

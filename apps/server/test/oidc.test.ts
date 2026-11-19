@@ -197,7 +197,7 @@ describe('OIDC routes', () => {
     });
     try {
       const config = await t.app.inject({ method: 'GET', url: '/api/auth/config' });
-      expect(config.json().oidcEnabled).toBe(true);
+      expect(config.json().data.attributes.oidcEnabled).toBe(true);
       const callback = await t.app.inject({ method: 'GET', url: '/api/auth/oidc/callback?code=x&state=y' });
       expect(callback.statusCode).toBe(302);
       expect(callback.headers.location).toBe('/admin/login?error=invalid_state');

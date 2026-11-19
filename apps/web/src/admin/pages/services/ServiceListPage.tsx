@@ -18,6 +18,7 @@ import {
   tr,
   VisibilityBadge,
 } from '../../components/ui';
+import { ORDERING_DOCUMENT } from '../../lib/documents';
 import { groupByParent, moveId } from '../../lib/ordering';
 import { useAdminMutation, useGroups, useServices } from '../../lib/queries';
 import { useIsAdmin } from '../../session';
@@ -25,7 +26,7 @@ import { useIsAdmin } from '../../session';
 function ServiceTable({ services }: { services: AdminService[] }) {
   const { t } = useTranslation('admin');
   const isAdmin = useIsAdmin();
-  const reorder = useAdminMutation((ids: string[]) => api.post('/api/admin/services/reorder', { ids }), {
+  const reorder = useAdminMutation((ids: string[]) => api.post('/api/admin/services/reorder', { ids }, ORDERING_DOCUMENT), {
     success: t('reorder.saved'),
   });
   const ids = services.map((s) => s.id);

@@ -119,7 +119,9 @@ storing anything.
 Call the ingest URL by hand with `curl` and look at the answer: `401` wrong
 token (rotated?), `404` wrong source ID, `409` source disabled or full sync
 rejected because it would remove most linked checks, `413` request too large
-for the reverse proxy, `429` more than 120 requests per minute.
+for the reverse proxy, `429` more than 120 requests per minute. The reason is
+in `errors[0].detail` of the answer (`source.pointer` names the field of an
+invalid payload, e.g. `/checks/0/state`).
 Run the notification scripts with `OSP_DRY_RUN=1` to see the payload.
 
 **A service stays operational although a check is critical.**
