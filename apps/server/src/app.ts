@@ -1,8 +1,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import cookie from '@fastify/cookie';
-import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -10,6 +8,7 @@ import type { DB } from './db/index.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
+import { roleFeatures } from './role.js';
 import { registerRoutes } from './routes/index.js';
 import { webAssetPolicy } from './web-assets.js';
 
@@ -89,7 +88,11 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     ctx.mailer.close();
   });
 
-  await app.register(cookie, { secret: config.SECRET_KEY });
+  // Cookies only carry sessions and the OIDC state: the admin side alone needs them.
+  if (roleFeatures(config.APP_ROLE).adminApi) {
+    const { default: cookie } = await import('@fastify/cookie');
+    await app.register(cookie, { secret: config.SECRET_KEY });
+  }
 
   // Basic hardening headers. The public page may be embedded (iframe) by
   // customers; the management UI and the API may not.
@@ -115,6 +118,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   // Per role (web-assets.ts): public serves public.html and its files only, worker nothing.
   const web = serveWeb && webDir ? webAssetPolicy(config.APP_ROLE, webDir) : null;
   if (web && webDir) {
+    const { default: fastifyStatic } = await import('@fastify/static');
     await app.register(fastifyStatic, {
       root: webDir,
       wildcard: false,
