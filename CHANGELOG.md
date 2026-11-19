@@ -76,5 +76,13 @@ breaking changes.
   without the management UI chunks, never connects to monitoring systems or sends
   mail, and never runs migrations (it waits for the expected schema,
   `SCHEMA_WAIT_SECONDS`). See [docs/configuration.md](docs/configuration.md#split-deployment).
+- **Restricted database role for the public instance** (PostgreSQL): with
+  `DB_PUBLIC_ROLE` (default `osp_public`, created with `deploy/postgres/roles.sql`)
+  a public instance reads only views of public rows and columns (schema
+  `osp_public`) and writes only through checked `SECURITY DEFINER` functions for
+  email subscriptions; row level security policies back this up. Admin and worker
+  instances grant the role on every start. Subscription tokens are additionally
+  stored as SHA-256 hashes so the database can check them. See
+  [docs/security-model.md](docs/security-model.md).
 - `WORKER_ENABLED` defaults to `false` for `APP_ROLE=admin`; contradicting settings
   stop the server on start.

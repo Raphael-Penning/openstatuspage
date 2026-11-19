@@ -10,7 +10,10 @@ async function main(): Promise<void> {
   const features = roleFeatures(config.APP_ROLE);
   const db = await createDb(config);
   // Before buildApp, as before: nothing may read the database ahead of the expected schema.
-  await prepareDatabase(db, config, { info: (obj, msg) => console.log(`${msg} ${JSON.stringify(obj)}`) });
+  await prepareDatabase(db, config, {
+    info: (obj, msg) => console.log(`${msg} ${JSON.stringify(obj)}`),
+    warn: (obj, msg) => console.warn(`${msg} ${JSON.stringify(obj)}`),
+  });
 
   const app = await buildApp({ config, db });
   const { ctx } = app;

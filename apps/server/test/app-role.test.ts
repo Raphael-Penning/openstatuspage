@@ -51,6 +51,14 @@ describe('APP_ROLE configuration', () => {
     expect(() => loadConfig({ ...env, APP_ROLE: 'admin' })).toThrow(/SMTP_HOST/);
   });
 
+  it('names the public database role', () => {
+    expect(loadConfig({ NODE_ENV: 'test', DATABASE_URL: PG }).DB_PUBLIC_ROLE).toBe('osp_public');
+    expect(loadConfig({ NODE_ENV: 'test', DATABASE_URL: PG, DB_PUBLIC_ROLE: 'status_web' }).DB_PUBLIC_ROLE).toBe('status_web');
+    for (const role of ['Status', 'status-web', 'x; drop table users', '1status']) {
+      expect(() => loadConfig({ NODE_ENV: 'test', DATABASE_URL: PG, DB_PUBLIC_ROLE: role }), role).toThrow(/DB_PUBLIC_ROLE/);
+    }
+  });
+
   it('only enables OIDC where the login is served', () => {
     const env = { NODE_ENV: 'test', DATABASE_URL: PG, OIDC_ISSUER_URL: 'https://idp.example.com', OIDC_CLIENT_ID: 'osp' };
     expect(loadConfig({ ...env, APP_ROLE: 'admin' }).oidcEnabled).toBe(true);

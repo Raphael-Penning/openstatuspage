@@ -21,6 +21,10 @@ Go through this list before going live and after larger changes.
       own build or a mirror you control.
 - [ ] Only the proxy ports (80/443) are open to the internet. PostgreSQL is
       not published.
+- [ ] Split deployment: the `public` instance logs in as its own restricted
+      role (`DB_PUBLIC_ROLE`, created with `deploy/postgres/roles.sql`) and
+      logs no warning about an unrestricted login; the admin host is not
+      reachable from the internet. See [Security model](../../security-model.md).
 
 ## Secrets
 
