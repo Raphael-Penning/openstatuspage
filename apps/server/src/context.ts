@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { Config } from './config.js';
 import type { DB } from './db/index.js';
 import { SecretBox } from './lib/crypto.js';
+import { TaskLeases } from './lib/task-leases.js';
 import { createMailer, type Mailer } from './mail/mailer.js';
 import { BundleService } from './services/bundles.js';
 import { HistoryImportService } from './services/history-import.js';
@@ -23,6 +24,11 @@ export interface AppContext {
   /** History import jobs (fetch, preview, apply). */
   historyImports: HistoryImportService;
   worker: Worker;
+  /**
+   * Task leases shared by all instances on PostgreSQL (lib/task-leases.ts); null on
+   * SQLite (single instance) and for APP_ROLE=public, which runs no tasks.
+   */
+  leases: TaskLeases | null;
   /** Mail transport (MAIL_TRANSPORT). */
   mailer: Mailer;
   /** Subscriber notifications and the mail outbox. */
@@ -41,7 +47,9 @@ export function createContext(
   options: CreateContextOptions = {},
 ): AppContext {
   const engine = new StatusEngine(db);
-  const worker = new Worker(log);
+  const leases =
+    config.database.dialect === 'postgres' && config.APP_ROLE !== 'public' ? new TaskLeases(db) : null;
+  const worker = new Worker(log, leases);
   const mailer = options.mailer ?? createMailer(config, log);
   const secrets = new SecretBox(config.SECRET_KEY);
   const bundles = new BundleService(db, engine, secrets, config.BUNDLE_PUSH_STALE_SECONDS * 1000);
@@ -55,6 +63,7 @@ export function createContext(
     bundles,
     historyImports: new HistoryImportService(db, secrets, worker, log, config.database.dialect),
     worker,
+    leases,
     mailer,
     notifications: new NotificationService(db, config, mailer, log, worker),
   };
