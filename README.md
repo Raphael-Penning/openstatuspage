@@ -84,7 +84,7 @@ covers the Compose setup in detail, SQLite, Kubernetes
   (see the [changelog](CHANGELOG.md)).
 
 ```sh
-curl -H "Authorization: Bearer $OSP_TOKEN" \
+curl -g -H "Authorization: Bearer $OSP_TOKEN" \
   "https://status.example.com/api/admin/incidents?filter[status]=active&page[size]=10"
 ```
 

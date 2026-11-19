@@ -315,9 +315,12 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
   subscription token endpoints 30/min per IP, ingest 120/min per source.
 
 ```sh
-curl -H "Authorization: Bearer $OSP_TOKEN" -H "Accept: application/vnd.api+json" \
+curl -g -H "Authorization: Bearer $OSP_TOKEN" -H "Accept: application/vnd.api+json" \
   "https://status.example.com/api/admin/incidents?filter[status]=active"
 ```
+
+`-g` (`--globoff`) keeps curl from reading the brackets of `filter[...]` and
+`page[...]` as a URL glob.
 
 ## Endpoints outside JSON:API
 
