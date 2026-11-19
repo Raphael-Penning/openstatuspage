@@ -48,7 +48,16 @@ breaking changes.
     stateChanges }`) instead of `{ ok: true, ... }`.
   - All error responses are JSON:API error documents, also those of the routes that
     stay outside JSON:API; former `PUT` routes answer `404`.
+  - Spec checks: `include` and `sort` are answered with `400`
+    (`unsupported_include`, `unsupported_sort`) on endpoints that do not support
+    them; a `data.id` in a create request with `403` `client_id_unsupported`;
+    relationships of an unexpected name with `400` `unknown_relationship` and
+    resource linkage of the wrong type with `409` `type_mismatch`. The reorder
+    actions take documents of type `orderings`. Body errors use stable codes
+    (`invalid_json`, `empty_body`, `payload_too_large`).
   - Unchanged: `/api/public/status.json`, `/api/health` and the RSS/Atom feeds.
+    `status.json` deliberately stays plain JSON: it is a stable, minimal format
+    for third-party widgets and monitoring tools (only its errors are JSON:API).
   - Migrating a client: send `Content-Type: application/vnd.api+json` and wrap
     bodies in `data`; read `data.attributes` (or use `deserialize()` from
     `@openstatuspage/shared`); replace `PUT` by `PATCH`; rename list parameters

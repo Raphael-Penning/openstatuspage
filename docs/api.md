@@ -330,7 +330,9 @@ curl -g -H "Authorization: Bearer $OSP_TOKEN" -H "Accept: application/vnd.api+js
 ## Endpoints outside JSON:API
 
 These endpoints keep formats that other tools depend on. Their errors are JSON:API
-error documents like everywhere else.
+error documents like everywhere else. `status.json` is a deliberate exception to
+JSON:API: a stable, minimal format for widgets and third-party monitoring that
+stays compatible across releases; the JSON:API equivalent is `/api/public/summary`.
 
 | Method | Path | Response |
 | --- | --- | --- |
