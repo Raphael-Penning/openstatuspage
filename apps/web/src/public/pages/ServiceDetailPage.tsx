@@ -8,7 +8,8 @@ import { Card, EmptyState, ErrorState, SectionHeader, Skeleton, SkeletonList, St
 import { useDocumentTitle, useViewportWidth } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useLocations, usePublicSettings, useService } from '../hooks/queries';
-import { averageUptime, formatPercent, lastDays } from '../utils/uptime';
+import { formatUtcDay } from '../utils/time';
+import { averageUptime, correctedDays, formatPercent, lastDays } from '../utils/uptime';
 import { NotFoundState } from './NotFoundState';
 
 export function ServiceDetailPage() {
@@ -46,6 +47,7 @@ export function ServiceDetailPage() {
     .filter((n) => n < data.uptime.length)
     .map((n) => ({ label: t('service.lastDays', { count: n }), value: averageUptime(lastDays(data.uptime, n)) }));
   stats.push({ label: t('service.lastDays', { count: data.uptime.length }), value: data.uptimePercent });
+  const corrected = correctedDays(data.uptime);
 
   return (
     <div className="space-y-10">
@@ -102,6 +104,30 @@ export function ServiceDetailPage() {
               </div>
             ))}
           </dl>
+          {corrected.length > 0 && (
+            <section aria-labelledby="service-corrections" className="mt-6">
+              <h3 id="service-corrections" className="text-sm font-semibold">
+                {t('service.corrections')}
+              </h3>
+              <p className="mt-1 text-sm text-muted">{t('service.correctionsIntro')}</p>
+              <ul className="mt-3 space-y-2 text-sm">
+                {corrected.map((d) => (
+                  <li key={d.date} className="rounded-xl bg-surface-2 px-3 py-2">
+                    <span className="font-medium">{formatUtcDay(d.date, f.locale)}</span>
+                    {d.correctionNotes && d.correctionNotes.length > 0 ? (
+                      d.correctionNotes.map((note) => (
+                        <span key={note} className="block text-muted">
+                          {note}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="block text-muted">{t('uptime.corrected')}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </Card>
       )}
 

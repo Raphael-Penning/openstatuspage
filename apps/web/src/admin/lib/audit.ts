@@ -6,6 +6,7 @@
 export const AUDIT_ENTITY_TYPES = [
   'incident',
   'maintenance',
+  'correction',
   'service',
   'service_group',
   'location',
