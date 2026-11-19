@@ -383,6 +383,58 @@ describe('maintenance notifications', () => {
 });
 
 describe('outbox delivery', () => {
+  it('renders confirmation and manage mails that were queued without content', async () => {
+    // As queued by the database functions of the restricted public role (0007_public_role).
+    const pending = await addSubscriber('pending@example.com', { confirmed: false, locale: 'de' });
+    const confirmed = await addSubscriber('confirmed@example.com');
+    const now = new Date().toISOString();
+    for (const [subscriber_id, recipient, kind] of [
+      [pending, 'pending@example.com', 'confirm'],
+      [confirmed, 'confirmed@example.com', 'manage'],
+    ] as const) {
+      await t.db
+        .insertInto('email_outbox')
+        .values({
+          id: newId(),
+          subscriber_id,
+          recipient,
+          kind,
+          subject: '',
+          text_body: '',
+          html_body: '',
+          headers: JSON.stringify({ 'Auto-Submitted': 'auto-generated' }),
+          status: 'pending',
+          attempts: 0,
+          next_attempt_at: now,
+          last_error: null,
+          last_attempt_at: null,
+          created_at: now,
+          sent_at: null,
+        })
+        .execute();
+    }
+
+    const mails = await deliver();
+    const byTo = new Map(mails.map((m) => [m.to, m]));
+    const subs = await t.db.selectFrom('subscribers').select(['id', 'token_salt']).execute();
+    const salt = (id: string) => subs.find((s) => s.id === id)!.token_salt;
+
+    const confirmMail = byTo.get('pending@example.com')!;
+    expect(confirmMail.subject).toBe('[Example Status] Bitte bestätige dein Abonnement');
+    const confirmToken = subscriptionToken(t.config.SECRET_KEY, 'confirm', pending, salt(pending));
+    expect(confirmMail.text).toContain(`${BASE_URL}/subscription/confirm?id=${pending}#token=${confirmToken}`);
+    expect(confirmMail.headers).toEqual({ 'Auto-Submitted': 'auto-generated' });
+
+    const manageMail = byTo.get('confirmed@example.com')!;
+    const manageToken = subscriptionToken(t.config.SECRET_KEY, 'manage', confirmed, salt(confirmed));
+    expect(manageMail.text).toContain(`${BASE_URL}/subscription/manage?id=${confirmed}#token=${manageToken}`);
+    expect(manageMail.text).not.toContain(TOKEN_PLACEHOLDERS.manage);
+
+    // The status view keeps the subject the mail was sent with.
+    const rows = await t.db.selectFrom('email_outbox').select(['subject', 'status', 'text_body']).execute();
+    expect(rows.every((r) => r.status === 'sent' && r.subject !== '' && r.text_body === '')).toBe(true);
+  });
+
   it('retries with backoff, marks failed after the last attempt and can be retried', async () => {
     await addSubscriber('all@example.com');
     await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });

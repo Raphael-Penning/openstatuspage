@@ -29,7 +29,9 @@ import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { mailerConfigured, type Mailer } from '../mail/mailer.js';
 import {
+  confirmationMail,
   incidentMail,
+  manageMail,
   maintenanceMail,
   testMail,
   type MailSite,
@@ -85,6 +87,15 @@ export interface DeliveryResult {
 }
 
 const BASE_HEADERS = { 'Auto-Submitted': 'auto-generated' };
+
+/**
+ * A confirmation or "manage" mail queued without content. The database functions of
+ * the restricted public role (0007_public_role) queue them like this, so a public
+ * instance can never decide what a mail says; the worker renders them before sending.
+ */
+function isUnrenderedAccountMail(row: OutboxRow): boolean {
+  return (row.kind === 'confirm' || row.kind === 'manage') && row.text_body === '' && row.html_body === '';
+}
 
 export class NotificationService {
   /** Current time; replaced in tests. */
@@ -350,19 +361,34 @@ export class NotificationService {
    * here, never stored). Rows without subscriber are used as they are. Returns null
    * when the subscriber no longer exists.
    */
-  private async prepare(row: OutboxRow): Promise<{ text: string; html: string; headers?: string } | null> {
+  private async prepare(
+    row: OutboxRow,
+  ): Promise<{ subject: string; text: string; html: string; headers?: string } | null> {
     const headers = row.headers ?? undefined;
-    if (row.subscriber_id === null) return { text: row.text_body, html: row.html_body, headers };
+    if (row.subscriber_id === null) return { subject: row.subject, text: row.text_body, html: row.html_body, headers };
     const sub = await this.db
       .selectFrom('subscribers')
-      .select(['id', 'token_salt'])
+      .select(['id', 'token_salt', 'locale'])
       .where('id', '=', row.subscriber_id)
       .executeTakeFirst();
     if (!sub) return null;
     const tokens = subscriberTokens(this.config, sub);
+    let { subject, text_body: text, html_body: html } = row;
+    if (isUnrenderedAccountMail(row)) {
+      // Queued by the database function of the public role, which never takes mail content.
+      const settings = await getSettings(this.db);
+      const site = { siteName: settings.siteName, baseUrl: this.config.BASE_URL, accentColor: settings.accentColor };
+      const links = subscriberLinks(this.config, sub.id, TOKEN_PLACEHOLDERS);
+      const mail =
+        row.kind === 'confirm'
+          ? confirmationMail(site, sub.locale, links.confirmUrl)
+          : manageMail(site, sub.locale, links.manageUrl);
+      ({ subject, text, html } = mail);
+    }
     return {
-      text: fillTokens(row.text_body, tokens),
-      html: fillTokens(row.html_body, tokens),
+      subject,
+      text: fillTokens(text, tokens),
+      html: fillTokens(html, tokens),
       headers: headers === undefined ? undefined : fillTokens(headers, tokens),
     };
   }
@@ -377,7 +403,7 @@ export class NotificationService {
     try {
       await this.mailer.send({
         to: row.recipient,
-        subject: row.subject,
+        subject: mail.subject,
         text: mail.text,
         html: mail.html,
         headers: mail.headers ? (JSON.parse(mail.headers) as Record<string, string>) : undefined,
@@ -388,6 +414,8 @@ export class NotificationService {
         .updateTable('email_outbox')
         .set({
           status: 'sent',
+          // Rows queued without content get the subject they were sent with.
+          subject: mail.subject,
           attempts,
           sent_at: sentAt,
           last_attempt_at: sentAt,
