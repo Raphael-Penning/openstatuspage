@@ -51,6 +51,11 @@ Contents: [Conventions](#conventions) · [Authentication](#authentication) ·
 - Resources carry `links.self` where they can be fetched on their own; documents
   carry a top-level `links.self` (relative URLs).
 
+### Sparse fieldsets
+
+Sparse fieldsets (`fields[type]=a,b`) are not supported. The parameter is
+ignored (the spec allows that) and resources always carry all their attributes.
+
 ### Compound documents
 
 Related resources needed by the UI are part of the response (`included`). The
@@ -967,7 +972,7 @@ included). The OIDC routes are browser redirects (see
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | GET | `/api/auth/config` | – | `auth-configs/current` (`AuthConfig`) |
-| POST | `/api/auth/login` | `sessions` (`LoginInput`); another type is `409` | `200` with the session document; sets the cookie `osp_session` (httpOnly, sameSite=lax, secure when `BASE_URL` is https). Wrong credentials: `401` `invalid_credentials`. |
+| POST | `/api/auth/login` | `sessions` (`LoginInput`); another type is `409` | `200` with the session document `sessions/current` (an action, not a create: no `201`/`Location`, since the session is a singleton reached at `/api/auth/session`); sets the cookie `osp_session` (httpOnly, sameSite=lax, secure when `BASE_URL` is https). Wrong credentials: `401` `invalid_credentials`. |
 | POST | `/api/auth/logout` | – | `204`, clears the cookie and deletes the session |
 | GET | `/api/auth/session` | – | the session document or `401` |
 | POST | `/api/auth/password` | `passwords` (`ChangePasswordInput`) | `204`; a wrong current password is `400` `invalid_password` |
