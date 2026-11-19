@@ -5,22 +5,26 @@ import {
   type AdminMonitorSource,
   type ConfigurableSourceType,
 } from '@openstatuspage/shared';
-import { Combine, KeyRound, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
+import { Combine, History, KeyRound, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 import { api } from '../../../lib/api';
 import { CopyField } from '../../components/CopyField';
+import { HistoryImportDialog } from '../../components/HistoryImportDialog';
 import { ConfirmDialog, useConfirm } from '../../components/Dialog';
 import { CheckboxField, FormErrorSummary, SelectField, TextAreaField, TextField } from '../../components/fields';
 import { IngestTokenDialog, typedIngestUrl } from '../../components/IngestTokenDialog';
 import { SourcePollStatus } from '../../components/SourcePollStatus';
-import { Button, Card, LinkButton, PageHeader, QueryState } from '../../components/ui';
-import { useAdminMutation, useSource } from '../../lib/queries';
+import { Badge, Button, Card, LinkButton, PageHeader, QueryState } from '../../components/ui';
+import { useFormat } from '../../lib/format';
+import { activeImport } from '../../lib/history-import';
+import { useAdminMutation, useHistoryImports, useSource } from '../../lib/queries';
 import {
   emptySourceForm,
   hasStoredSecret,
   isBundleSource,
+  type SecretKey,
   isPullType,
   sourceFormToPayload,
   sourceToForm,
@@ -101,7 +105,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
 
   const changeType = (type: ConfigurableSourceType) => {
     // Stored secrets belong to the stored type; a new type needs new credentials.
-    form.setValues((prev) => ({ ...prev, type, password: '', apiKey: '' }));
+    form.setValues((prev) => ({ ...prev, type, password: '', apiKey: '', icingaDbUrl: '', historyPassword: '' }));
     form.setErrors({});
   };
 
@@ -111,7 +115,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
     if (body) save.mutate(body);
   };
 
-  const secretProps = (key: 'password' | 'apiKey') => {
+  const secretProps = (key: SecretKey, optional = false) => {
     const stored = hasStoredSecret(source, key, v.type);
     return {
       type: 'password' as const,
@@ -121,7 +125,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
       placeholder: stored ? `${SECRET_MASK} (${t('sources.secretUnchanged')})` : undefined,
       help: stored ? t('sources.secretHelpStored') : t('sources.secretHelp'),
       error: form.error(`config.${key}`),
-      required: !stored,
+      required: !stored && !optional,
     };
   };
 
@@ -240,6 +244,36 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
               {(v.type === 'uptimekuma' || v.type === 'openitcockpit') && (
                 <TextField label={t('sources.fields.apiKey')} {...secretProps('apiKey')} className="md:col-span-2" />
               )}
+              {v.type === 'icinga2' && (
+                <fieldset className="flex flex-col gap-3 md:col-span-2">
+                  <legend className="mb-2 text-sm font-semibold">{t('sources.historyTitle')}</legend>
+                  <TextField
+                    label={t('sources.fields.icingaDbUrl')}
+                    {...secretProps('icingaDbUrl', true)}
+                    autoComplete="off"
+                    placeholder={
+                      hasStoredSecret(source, 'icingaDbUrl', v.type)
+                        ? `${SECRET_MASK} (${t('sources.secretUnchanged')})`
+                        : 'mysql://reader:••••@db.example.com:3306/icingadb'
+                    }
+                    help={hasStoredSecret(source, 'icingaDbUrl', v.type) ? t('sources.secretHelpStored') : t('sources.icingaDbUrlHelp')}
+                  />
+                </fieldset>
+              )}
+              {v.type === 'uptimekuma' && (
+                <fieldset className="grid gap-5 md:col-span-2 md:grid-cols-2">
+                  <legend className="mb-2 text-sm font-semibold">{t('sources.historyTitle')}</legend>
+                  <p className="text-xs text-muted md:col-span-2">{t('sources.historyKumaHelp')}</p>
+                  <TextField
+                    label={t('sources.fields.historyUsername')}
+                    value={v.historyUsername}
+                    onValue={(x) => form.set('historyUsername', x)}
+                    error={form.error('config.historyUsername')}
+                    autoComplete="off"
+                  />
+                  <TextField label={t('sources.fields.historyPassword')} {...secretProps('historyPassword', true)} />
+                </fieldset>
+              )}
               {pull && (
                 <TextField
                   label={t('sources.fields.pollInterval')}
@@ -302,6 +336,7 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
                 </LinkButton>
               </div>
             </Card>
+            <HistoryImportCard source={source} />
             <Card title={t('ingest.pushTitle')}>
               <div className="flex flex-col gap-3 p-4">
                 <CopyField label={t('ingest.url')} value={typedIngestUrl(source.ingestUrl, source.type)} />
@@ -336,5 +371,38 @@ function SourceForm({ source }: { source?: AdminMonitorSource }) {
       )}
       <ConfirmDialog {...confirm.dialogProps(remove.isPending)} />
     </>
+  );
+}
+
+/** Sidebar card: start or resume a history import and see the latest ones. */
+function HistoryImportCard({ source }: { source: AdminMonitorSource }) {
+  const { t } = useTranslation('admin');
+  const fmt = useFormat();
+  const jobs = useHistoryImports(source.id);
+  const [open, setOpen] = useState(false);
+  const active = activeImport(jobs.data);
+  const recent = (jobs.data ?? []).slice(0, 3);
+  return (
+    <Card title={t('historyImport.title')}>
+      <div className="flex flex-col gap-3 p-4 text-sm">
+        <p className="text-muted">{t('historyImport.cardHelp')}</p>
+        {recent.length > 0 && (
+          <ul className="flex flex-col gap-1.5" aria-label={t('historyImport.recent')}>
+            {recent.map((j) => (
+              <li key={j.id} className="flex flex-wrap items-center gap-2">
+                <Badge tone={j.status === 'completed' ? 'success' : j.status === 'failed' ? 'danger' : j.status === 'cancelled' ? 'neutral' : 'accent'}>
+                  {t(`historyImport.status.${j.status}`)}
+                </Badge>
+                <span className="text-xs text-muted">{fmt.dateTime(j.createdAt)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button size="sm" icon={History} onClick={() => setOpen(true)}>
+          {active ? t('historyImport.resume') : t('historyImport.start')}
+        </Button>
+      </div>
+      {open && <HistoryImportDialog source={source} initialJobId={active?.id ?? null} onClose={() => setOpen(false)} />}
+    </Card>
   );
 }

@@ -53,10 +53,35 @@ describe('source form', () => {
       baseUrl: 'https://uptime.example.com',
       apiKey: 'key',
       verifyTls: true,
+      historyUsername: null,
+      historyPassword: null,
     });
     const webhook = sourceFormToPayload({ ...emptySourceForm(), name: 'Push', type: 'webhook', pollIntervalSeconds: '' });
     expect(webhook).toMatchObject({ type: 'webhook', config: {}, pollIntervalSeconds: 60 });
     expect(MonitorSourceInput.safeParse(webhook).success).toBe(true);
+  });
+
+  it('keeps optional history secrets masked and sends null when none is stored', () => {
+    const s = source({ config: { ...source().config, icingaDbUrl: SECRET_MASK } });
+    const values = sourceToForm(s);
+    expect(values.icingaDbUrl).toBe('');
+    expect(sourceFormToPayload(values, s).config).toMatchObject({ icingaDbUrl: SECRET_MASK });
+    expect(sourceFormToPayload({ ...values, icingaDbUrl: ' mysql://reader:pw@db.example.com/icingadb ' }, s).config).toMatchObject({
+      icingaDbUrl: 'mysql://reader:pw@db.example.com/icingadb',
+    });
+    const fresh = sourceFormToPayload({ ...emptySourceForm(), name: 'Icinga', baseUrl: 'https://icinga.example.com', username: 'u', password: 'p' });
+    expect(fresh.config).toMatchObject({ icingaDbUrl: null });
+    expect(MonitorSourceInput.safeParse(fresh).success).toBe(true);
+    const kuma = sourceFormToPayload({
+      ...emptySourceForm(),
+      type: 'uptimekuma',
+      name: 'Kuma',
+      baseUrl: 'https://uptime.example.com',
+      apiKey: 'k',
+      historyUsername: ' reader ',
+      historyPassword: 'pw',
+    });
+    expect(kuma.config).toMatchObject({ historyUsername: 'reader', historyPassword: 'pw' });
   });
 
   it('rejects an empty poll interval for pull sources', () => {

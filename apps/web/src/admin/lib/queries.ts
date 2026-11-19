@@ -5,6 +5,7 @@
 import type {
   AdminApiToken,
   AdminCheckBundle,
+  AdminHistoryImport,
   AdminIncident,
   AdminLocation,
   AdminMaintenance,
@@ -69,6 +70,8 @@ export const keys = {
   maintenance: (id: string) => ['admin', 'maintenances', id] as const,
   sources: ['admin', 'monitor-sources'] as const,
   source: (id: string) => ['admin', 'monitor-sources', id] as const,
+  historyImports: (sourceId: string) => ['admin', 'monitor-sources', sourceId, 'history-imports'] as const,
+  historyImport: (sourceId: string, id: string) => ['admin', 'monitor-sources', sourceId, 'history-imports', id] as const,
   checks: (filter: ChecksFilter) => ['admin', 'checks', filter] as const,
   bundles: ['admin', 'check-bundles'] as const,
   bundleCandidates: (type: string) => ['admin', 'check-bundles', 'candidates', type] as const,
@@ -133,6 +136,25 @@ export const useSources = (enabled = true) =>
   useAdminQuery<AdminMonitorSource[]>(keys.sources, '/api/admin/monitor-sources', undefined, enabled);
 export const useSource = (id: string | undefined) =>
   useAdminQuery<AdminMonitorSource>(keys.source(id ?? ''), `/api/admin/monitor-sources/${id}`, undefined, Boolean(id));
+export const useHistoryImports = (sourceId: string | undefined) =>
+  useAdminQuery<AdminHistoryImport[]>(
+    keys.historyImports(sourceId ?? ''),
+    `/api/admin/monitor-sources/${sourceId}/history-imports`,
+    undefined,
+    Boolean(sourceId),
+  );
+/** One import job; polled while it is fetching or being written. */
+export const useHistoryImport = (sourceId: string, id: string | null) =>
+  useQuery({
+    queryKey: keys.historyImport(sourceId, id ?? ''),
+    queryFn: () => api.get<AdminHistoryImport>(`/api/admin/monitor-sources/${sourceId}/history-imports/${id}`),
+    retry: notRetryingClientErrors,
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'fetching' || status === 'applying' ? 1500 : false;
+    },
+  });
 export const useChecks = (filter: ChecksFilter, enabled = true) =>
   useAdminQuery<AdminMonitorCheck[]>(
     keys.checks(filter),
