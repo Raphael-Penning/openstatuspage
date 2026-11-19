@@ -84,5 +84,18 @@ describe('parseHistoryCsv', () => {
     expect(errors.map((e) => e.line)).toEqual([3, 4, 5, 6, 7, 8, 10, 9]);
     expect(errors.find((e) => e.line === 9)!.message).toContain('overlaps line 2');
     expect(errors.find((e) => e.line === 8)!.message).toContain('for service rows');
+    // Codes and parameters for translated messages in the UI.
+    expect(errors.map((e) => e.code)).toEqual([
+      'check_xor_service',
+      'timestamp_format',
+      'timestamp_format',
+      'start_not_before_end',
+      'check_state',
+      'service_status',
+      'field_count',
+      'overlap',
+    ]);
+    expect(errors.find((e) => e.line === 9)!.params).toEqual({ other: 2, kind: 'check' });
+    expect(errors.find((e) => e.line === 10)!.params).toEqual({ expected: 5, found: 2 });
   });
 });

@@ -10,6 +10,10 @@
  *   idempotent and can complete earlier imports); outside the range it stays.
  * - Services are rebuilt for their gaps by replaying all check history
  *   through the live rules (history-replay.ts). Manual-mode services are skipped.
+ * - Explicit service statuses from a CSV file are stored with source
+ *   'import_explicit'. Precedence: live > explicit (CSV) > replayed. Later
+ *   imports keep them; only a later CSV import with service rows for the same
+ *   service replaces them, and only where its rows lie.
  */
 import type {
   CheckState,
@@ -38,16 +42,23 @@ interface HistoryRow {
   id: string;
   start: number;
   end: number;
-  source: 'live' | 'import';
+  source: string;
   value: string;
 }
+
+/** Source of written rows: replayed/imported data, or explicit service statuses (CSV). */
+export type ImportSource = 'import' | 'import_explicit';
+
+/** A row to write; `source` defaults to 'import'. */
+export type PlannedRow<T> = Valued<T> & { source?: ImportSource };
 
 /** Rows of an imported entity that change: removed rows and their parts outside the range. */
 export interface Replacement<T> {
   deleteIds: string[];
-  /** Parts of deleted rows outside the range (kept). */
-  keep: Valued<T>[];
-  insert: Valued<T>[];
+  /** Parts of deleted rows that stay (outside the range, or outside new explicit rows). */
+  keep: PlannedRow<T>[];
+  /** New rows (inside gaps). */
+  insert: PlannedRow<T>[];
 }
 
 export interface ImportPlan {
@@ -56,7 +67,7 @@ export interface ImportPlan {
   preview: Omit<HistoryImportPreview, 'unmatched' | 'unmatchedCount' | 'warnings' | 'checksWithoutData'>;
 }
 
-function overlaps(row: { start: number; end: number }, range: Span): boolean {
+function overlaps(row: Span, range: Span): boolean {
   return row.start < range.end && row.end > range.start;
 }
 
@@ -276,12 +287,31 @@ export async function planImport(db: DB, rangeIso: { from: string; to: string },
 
   const serviceHistory = await loadServiceHistory(db, serviceIds, range, now);
   const replayServices: ReplayService[] = [];
-  const serviceGaps = new Map<string, Span[]>();
+  const explicitInput = new Map<string, Valued<ServiceStatus>[]>();
+  interface ServiceWork {
+    gaps: Span[];
+    /** New explicit (CSV) statuses inside the gaps. */
+    newExplicitSpans: Span[];
+    /** Earlier explicit rows replaced by new ones, and their parts that stay. */
+    replacedExplicit: HistoryRow[];
+    explicitKeep: PlannedRow<ServiceStatus>[];
+  }
+  const work = new Map<string, ServiceWork>();
   for (const s of services) {
     const rows = serviceHistory.get(s.id) ?? [];
-    const gaps = subtractSpans(range, rows.filter((r) => r.source === 'live'));
-    serviceGaps.set(s.id, gaps);
+    const live = rows.filter((r) => r.source === 'live');
+    const gaps = subtractSpans(range, live);
+    const newExplicit = clipToWindows(staged.services.get(s.id) ?? [], gaps);
+    const newExplicitSpans = unionSpans(newExplicit);
+    const oldExplicit = rows.filter((r) => r.source === 'import_explicit' && overlaps(r, range));
+    const replacedExplicit = oldExplicit.filter((r) => newExplicitSpans.some((sp) => overlaps(r, sp)));
+    const explicitKeep = replacedExplicit.flatMap((r) =>
+      subtractSpans(r, newExplicitSpans).map((sp) => ({ ...sp, value: r.value as ServiceStatus, source: 'import_explicit' as const })),
+    );
+    const protectedExplicit = [...oldExplicit.filter((r) => !replacedExplicit.includes(r)), ...explicitKeep];
+    work.set(s.id, { gaps, newExplicitSpans, replacedExplicit, explicitKeep });
     if (s.status_mode === 'manual') continue;
+    if (newExplicit.length > 0) explicitInput.set(s.id, newExplicit);
     replayServices.push({
       id: s.id,
       aggregation: s.aggregation,
@@ -293,7 +323,8 @@ export async function planImport(db: DB, rangeIso: { from: string; to: string },
           criticalStatus: l.critical_status,
           unknownStatus: l.unknown_status,
         })),
-      windows: gaps,
+      // Earlier explicit statuses are kept like recorded history.
+      windows: subtractSpans(range, [...live, ...protectedExplicit]),
     });
   }
 
@@ -311,14 +342,14 @@ export async function planImport(db: DB, rangeIso: { from: string; to: string },
       // A completed maintenance without an end has no known window.
       .filter((m) => m.actual_end !== null || m.status === 'in_progress')
       .map((m) => ({ serviceId: m.service_id, start: ms(m.actual_start!), end: m.actual_end ? ms(m.actual_end) : null })),
-    explicit: staged.services,
+    explicit: explicitInput,
   });
 
   const servicePlans = new Map<string, Replacement<ServiceStatus>>();
   const servicePreviews: HistoryImportServicePreview[] = [];
   for (const s of services) {
     const rows = serviceHistory.get(s.id) ?? [];
-    const gaps = serviceGaps.get(s.id) ?? [];
+    const w = work.get(s.id)!;
     const toSegment = (r: { start: number; end: number; value: string }) => ({
       status: r.value as ServiceStatus,
       started_at: iso(r.start),
@@ -330,7 +361,7 @@ export async function planImport(db: DB, rangeIso: { from: string; to: string },
         serviceId: s.id,
         name: s.name,
         skipped: 'manual',
-        gapMs: totalLength(gaps),
+        gapMs: totalLength(w.gaps),
         filledMs: 0,
         downMs: 0,
         uptime: uptimeBefore,
@@ -341,23 +372,25 @@ export async function planImport(db: DB, rangeIso: { from: string; to: string },
       continue;
     }
     const segments = replayed.get(s.id) ?? [];
+    // Segments inside new explicit rows are stored as explicit.
+    const insert: PlannedRow<ServiceStatus>[] = [
+      ...clipToWindows(segments, subtractSpans(range, w.newExplicitSpans)),
+      ...clipToWindows(segments, w.newExplicitSpans).map((x) => ({ ...x, source: 'import_explicit' as const })),
+    ].sort((a, b) => a.start - b.start);
     const replaced = rows.filter((r) => r.source === 'import' && overlaps(r, range));
     const plan: Replacement<ServiceStatus> = {
-      deleteIds: replaced.map((r) => r.id),
-      keep: outsideParts<ServiceStatus>(replaced, range),
-      insert: segments,
+      deleteIds: [...replaced, ...w.replacedExplicit].map((r) => r.id),
+      keep: [...outsideParts<ServiceStatus>(replaced, range), ...w.explicitKeep],
+      insert,
     };
     servicePlans.set(s.id, plan);
-    const after = [
-      ...rows.filter((r) => r.source === 'live' || !overlaps(r, range)),
-      ...plan.keep,
-      ...segments,
-    ].map(toSegment);
+    const deleted = new Set(plan.deleteIds);
+    const after = [...rows.filter((r) => !deleted.has(r.id)), ...plan.keep, ...segments].map(toSegment);
     servicePreviews.push({
       serviceId: s.id,
       name: s.name,
       skipped: segments.length === 0 ? 'no_data' : null,
-      gapMs: totalLength(gaps),
+      gapMs: totalLength(w.gaps),
       filledMs: totalLength(segments),
       downMs: totalLength(segments.filter((x) => DOWN.has(x.value))),
       uptime: averageUptime(after, new Date(range.start), new Date(range.end)),

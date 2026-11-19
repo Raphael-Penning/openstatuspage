@@ -729,6 +729,39 @@ export interface HistoryImportServicePreview {
   segments: HistoryImportSegment[];
 }
 
+/** Non-fatal note of a fetch; `message` is the English fallback for unknown codes. */
+export interface HistoryImportWarning {
+  /**
+   * kuma_retention {earliest} | kuma_duplicate_name {name} |
+   * kuma_monitor_failed {name, reason} | oitc_utc
+   */
+  code: string;
+  params: Record<string, string | number>;
+  message: string;
+}
+
+/**
+ * Why a job failed or was cancelled by the server:
+ * source (the monitoring system or the file; see `error`), timeout, shutdown,
+ * interrupted, expired, apply_failed (see `error`).
+ */
+export type HistoryImportErrorCode = 'source' | 'timeout' | 'shutdown' | 'interrupted' | 'expired' | 'apply_failed';
+
+/** A problem in an uploaded CSV file (400 response `issues`). */
+export interface HistoryCsvIssue {
+  line: number;
+  /**
+   * unterminated_quote | empty | missing_columns {columns} | no_rows | too_many_rows {max} |
+   * field_count {expected, found} | check_xor_service | id_too_long | timestamp_format |
+   * invalid_date | start_not_before_end | check_state {allowed} | service_status {allowed} |
+   * overlap {other, kind}
+   */
+  code: string;
+  params: Record<string, string | number>;
+  /** English fallback. */
+  message: string;
+}
+
 export interface HistoryImportPreview {
   from: string;
   to: string;
@@ -739,7 +772,7 @@ export interface HistoryImportPreview {
   unmatchedCount: number;
   /** Local checks that were requested but returned no history. */
   checksWithoutData: number;
-  warnings: string[];
+  warnings: HistoryImportWarning[];
 }
 
 export interface HistoryImportResult {
@@ -759,7 +792,9 @@ export interface AdminHistoryImport {
   progress: HistoryImportProgress | null;
   preview: HistoryImportPreview | null;
   result: HistoryImportResult | null;
+  /** English message (detail for "source" and "apply_failed"). */
   error: string | null;
+  errorCode: HistoryImportErrorCode | null;
   createdBy: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;

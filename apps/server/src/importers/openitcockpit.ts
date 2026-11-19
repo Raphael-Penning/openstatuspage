@@ -16,7 +16,7 @@
  * event comes from the last event in the 30 days before the range, or from the
  * current status when its last hard state change lies before the range.
  */
-import type { CheckState, OpenItCockpitConfig as OpenItCockpitConfigSchema } from '@openstatuspage/shared';
+import type { CheckState, HistoryImportWarning, OpenItCockpitConfig as OpenItCockpitConfigSchema } from '@openstatuspage/shared';
 import type { z } from 'zod';
 import { AdapterError, joinUrl, requestJson } from '../adapters/http.js';
 import { extractEntries, hasNextPage, mapOitcHost, mapOitcService } from '../adapters/openitcockpit.js';
@@ -212,7 +212,7 @@ export const openItCockpitImporter: HistoryImporter<OpenItCockpitConfig> = {
     if (wantsHosts) await loadIndex(config, ctx, 'host', objects);
 
     const checks = new Map<string, Valued<CheckState>[]>();
-    const warnings: string[] = [];
+    const warnings: HistoryImportWarning[] = [];
     let done = 0;
     for (const target of targets) {
       await ctx.progress('fetching', done++, targets.length);
@@ -222,7 +222,8 @@ export const openItCockpitImporter: HistoryImporter<OpenItCockpitConfig> = {
       let initial = await loadStateBefore(config, ctx, obj, range.from);
       // No event in the lookback window: the current state holds since its last change.
       if (initial === null && obj.state && obj.lastChange !== null && obj.lastChange <= range.from) initial = obj.state;
-      if (initial !== null) events.push({ at: range.from, value: initial });
+      // A real event at range.from wins over the derived start state (later events win on ties).
+      if (initial !== null && !events.some((e) => e.at === range.from)) events.unshift({ at: range.from, value: initial });
       if (events.length === 0 && obj.state && obj.lastChange !== null && obj.lastChange < range.to) {
         events.push({ at: Math.max(obj.lastChange, range.from), value: obj.state });
       }
@@ -231,7 +232,11 @@ export const openItCockpitImporter: HistoryImporter<OpenItCockpitConfig> = {
     }
     await ctx.progress('fetching', done, targets.length);
     if (checks.size > 0) {
-      warnings.push('openITCockpit times without a time zone were read as UTC (set the API user\'s time zone to UTC).');
+      warnings.push({
+        code: 'oitc_utc',
+        params: {},
+        message: "openITCockpit times without a time zone were read as UTC (set the API user's time zone to UTC).",
+      });
     }
     return { checks, warnings };
   },

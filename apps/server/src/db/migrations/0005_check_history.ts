@@ -7,8 +7,9 @@ import type { Kysely } from 'kysely';
  * - monitor_check_history: state intervals per check. Recorded live from now on
  *   (every state change closes the open row and opens a new one) and filled by
  *   history imports (source = 'import') for periods without live data.
- * - service_status_history.source: 'live' (status engine) or 'import' (rebuilt
- *   from imported check history). Imports only ever replace 'import' segments.
+ * - service_status_history.source: 'live' (status engine), 'import' (rebuilt
+ *   from imported check history) or 'import_explicit' (service status from a
+ *   CSV import). Imports never replace 'live' segments.
  * - history_imports / history_import_intervals: import jobs and the data they
  *   fetched, kept until the job is applied or discarded.
  *
@@ -56,6 +57,8 @@ export async function up(db: Kysely<any>): Promise<void> {
     // JSON: HistoryImportResult
     .addColumn('result', 'text')
     .addColumn('error', 'text')
+    // HistoryImportErrorCode (translated in the UI); `error` holds the English detail.
+    .addColumn('error_code', 'text')
     .addColumn('created_by', 'text', (c) => c.references('users.id').onDelete('set null'))
     .addColumn('created_at', 'text', (c) => c.notNull())
     .addColumn('updated_at', 'text', (c) => c.notNull())
@@ -106,6 +109,6 @@ export async function down(db: Kysely<any>): Promise<void> {
   await db.schema.dropTable('history_import_intervals').ifExists().execute();
   await db.schema.dropTable('history_imports').ifExists().execute();
   await db.schema.dropTable('monitor_check_history').ifExists().execute();
-  await db.deleteFrom('service_status_history').where('source', '=', 'import').execute();
+  await db.deleteFrom('service_status_history').where('source', '<>', 'live').execute();
   await db.schema.alterTable('service_status_history').dropColumn('source').execute();
 }

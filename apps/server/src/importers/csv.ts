@@ -25,10 +25,20 @@ import {
 } from '@openstatuspage/shared';
 import { mergeAdjacent, type Valued } from '../lib/intervals.js';
 
+/** A problem of the file; `code` and `params` are translated in the UI, `message` is the English fallback. */
 export interface CsvError {
   line: number;
+  code: string;
+  params: Record<string, string | number>;
   message: string;
 }
+
+const issue = (line: number, code: string, message: string, params: Record<string, string | number> = {}): CsvError => ({
+  line,
+  code,
+  params,
+  message,
+});
 
 export interface ParsedHistoryCsv {
   checks: Map<string, Valued<CheckState>[]>;
@@ -92,7 +102,7 @@ export function parseCsvRecords(text: string, separator: string): { line: number
     } else field += c;
     i++;
   }
-  if (quoted) throw new CsvImportError([{ line: recordLine, message: 'unterminated quoted field' }]);
+  if (quoted) throw new CsvImportError([issue(recordLine, 'unterminated_quote', 'unterminated quoted field')]);
   if (field !== '' || fields.length > 0) pushRecord();
   return records;
 }
@@ -103,7 +113,7 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
   const separator = (firstLine.match(/;/g)?.length ?? 0) > (firstLine.match(/,/g)?.length ?? 0) ? ';' : ',';
   const records = parseCsvRecords(text, separator);
   const header = records.shift();
-  if (!header) throw new CsvImportError([{ line: 1, message: 'the file is empty' }]);
+  if (!header) throw new CsvImportError([issue(1, 'empty', 'the file is empty')]);
 
   const columns = header.fields.map((h) => h.trim().toLowerCase());
   const index = (...names: string[]) => columns.findIndex((c) => names.includes(c));
@@ -119,15 +129,15 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
   if (col.start < 0) missing.push('"start"');
   if (col.end < 0) missing.push('"end"');
   if (col.state < 0) missing.push('"state"');
-  if (missing.length > 0) throw new CsvImportError([{ line: header.line, message: `missing column ${missing.join(', ')}` }]);
-  if (records.length === 0) throw new CsvImportError([{ line: header.line, message: 'no data rows' }]);
+  if (missing.length > 0) throw new CsvImportError([issue(header.line, 'missing_columns', `missing column ${missing.join(', ')}`, { columns: missing.join(', ') })]);
+  if (records.length === 0) throw new CsvImportError([issue(header.line, 'no_rows', 'no data rows')]);
   if (records.length > HISTORY_CSV_MAX_ROWS) {
-    throw new CsvImportError([{ line: header.line, message: `more than ${HISTORY_CSV_MAX_ROWS} data rows` }]);
+    throw new CsvImportError([issue(header.line, 'too_many_rows', `more than ${HISTORY_CSV_MAX_ROWS} data rows`, { max: HISTORY_CSV_MAX_ROWS })]);
   }
 
   const errors: CsvError[] = [];
-  const fail = (line: number, message: string) => {
-    if (errors.length < MAX_ERRORS) errors.push({ line, message });
+  const fail = (line: number, code: string, message: string, params: Record<string, string | number> = {}) => {
+    if (errors.length < MAX_ERRORS) errors.push(issue(line, code, message, params));
   };
   const checkRows = new Map<string, (Valued<CheckState> & { line: number })[]>();
   const serviceRows = new Map<string, (Valued<ServiceStatus> & { line: number })[]>();
@@ -135,7 +145,10 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
 
   for (const { line, fields } of records) {
     if (fields.length !== header.fields.length) {
-      fail(line, `expected ${header.fields.length} fields, found ${fields.length}`);
+      fail(line, 'field_count', `expected ${header.fields.length} fields, found ${fields.length}`, {
+        expected: header.fields.length,
+        found: fields.length,
+      });
       continue;
     }
     const check = get(fields, col.check);
@@ -144,30 +157,30 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
     const endText = get(fields, col.end);
     const state = get(fields, col.state).toLowerCase();
     if ((check === '') === (service === '')) {
-      fail(line, 'set exactly one of "check" and "service"');
+      fail(line, 'check_xor_service', 'set exactly one of "check" and "service"');
       continue;
     }
     if (check.length > 500 || service.length > 80) {
-      fail(line, 'identifier too long');
+      fail(line, 'id_too_long', 'identifier too long');
       continue;
     }
     if (!ISO_WITH_ZONE.test(startText) || !ISO_WITH_ZONE.test(endText)) {
-      fail(line, 'start and end must be ISO-8601 timestamps with time zone, e.g. 2026-01-01T00:00:00Z');
+      fail(line, 'timestamp_format', 'start and end must be ISO-8601 timestamps with time zone, e.g. 2026-01-01T00:00:00Z');
       continue;
     }
     const start = Date.parse(startText);
     const end = Date.parse(endText);
     if (!Number.isFinite(start) || !Number.isFinite(end)) {
-      fail(line, 'invalid date');
+      fail(line, 'invalid_date', 'invalid date');
       continue;
     }
     if (start >= end) {
-      fail(line, 'start must be before end');
+      fail(line, 'start_not_before_end', 'start must be before end');
       continue;
     }
     if (check) {
       if (!(CHECK_STATES as readonly string[]).includes(state)) {
-        fail(line, `state must be one of ${CHECK_STATES.join(', ')} for check rows`);
+        fail(line, 'check_state', `state must be one of ${CHECK_STATES.join(', ')} for check rows`, { allowed: CHECK_STATES.join(', ') });
         continue;
       }
       const list = checkRows.get(check) ?? [];
@@ -175,7 +188,9 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
       checkRows.set(check, list);
     } else {
       if (!(SERVICE_STATUSES as readonly string[]).includes(state)) {
-        fail(line, `state must be one of ${SERVICE_STATUSES.join(', ')} for service rows`);
+        fail(line, 'service_status', `state must be one of ${SERVICE_STATUSES.join(', ')} for service rows`, {
+          allowed: SERVICE_STATUSES.join(', '),
+        });
         continue;
       }
       const list = serviceRows.get(service) ?? [];
@@ -189,7 +204,7 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
     for (const [id, list] of rows) {
       list.sort((a, b) => a.start - b.start);
       for (let i = 1; i < list.length; i++) {
-        if (list[i]!.start < list[i - 1]!.end) fail(list[i]!.line, `overlaps line ${list[i - 1]!.line} of the same ${label}`);
+        if (list[i]!.start < list[i - 1]!.end) fail(list[i]!.line, 'overlap', `overlaps line ${list[i - 1]!.line} of the same ${label}`, { other: list[i - 1]!.line, kind: label });
       }
       out.set(
         id,

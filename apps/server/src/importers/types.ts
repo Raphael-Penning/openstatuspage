@@ -6,7 +6,13 @@
  * same ids the live adapters use). Importers never write to the database; the
  * HistoryImportService stages, previews and applies their results.
  */
-import type { CheckState, HistoryImportCredentials, MonitorSourceType, ServiceStatus } from '@openstatuspage/shared';
+import type {
+  CheckState,
+  HistoryImportCredentials,
+  HistoryImportWarning,
+  MonitorSourceType,
+  ServiceStatus,
+} from '@openstatuspage/shared';
 import type { FetchFn } from '../adapters/http.js';
 import type { Valued } from '../lib/intervals.js';
 
@@ -37,7 +43,7 @@ export interface ImportedHistory {
   /** Explicit service statuses per service slug (CSV only). */
   services?: Map<string, Valued<ServiceStatus>[]>;
   /** Non-fatal notes for the preview (e.g. retention). */
-  warnings: string[];
+  warnings: HistoryImportWarning[];
 }
 
 export interface HistoryImporter<Config = Record<string, unknown>> {

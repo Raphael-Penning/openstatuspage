@@ -139,11 +139,15 @@ export interface ServiceStatusHistoryTable {
   started_at: string;
   /** null = current segment. */
   ended_at: string | null;
-  /** 'live' (status engine) or 'import' (rebuilt from imported check history). */
-  source: Generated<HistorySource>;
+  /**
+   * 'live' (status engine), 'import' (rebuilt from imported check history) or
+   * 'import_explicit' (service status from a CSV import).
+   */
+  source: Generated<ServiceHistorySource>;
 }
 
 export type HistorySource = 'live' | 'import';
+export type ServiceHistorySource = HistorySource | 'import_explicit';
 
 /** State intervals per check: recorded live and filled by history imports. */
 export interface MonitorCheckHistoryTable {
@@ -225,6 +229,8 @@ export interface HistoryImportsTable {
   /** JSON (HistoryImportResult). */
   result: string | null;
   error: string | null;
+  /** HistoryImportErrorCode. */
+  error_code: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

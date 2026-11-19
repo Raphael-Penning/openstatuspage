@@ -5,14 +5,17 @@
  *   fetch    runs the importer of the source type (or parses the CSV), stages
  *            the intervals of matching checks, computes the preview → "ready"
  *   apply    plans again against the current data and writes it in one
- *            transaction → "completed"
+ *            transaction → "completed". Applies are serialised globally (an
+ *            advisory lock on PostgreSQL, the write lock on SQLite), so jobs of
+ *            different sources feeding the same service never interleave.
  *   cancel   "fetching" (aborts) or "ready" (discards) → "cancelled"
  *
  * Only one job per source can be active (fetching, ready, applying). One-off
  * credentials are stored encrypted on the job and cleared when fetching ends.
  * Jobs run in the process that received the request; a periodic task fails
- * jobs that stopped making progress (e.g. after a restart) and discards
- * previews nobody applied within a day.
+ * jobs that stopped making progress (e.g. after a restart); previews nobody
+ * applied within a day are discarded by that task and, lazily, whenever jobs
+ * are read or started (so they also expire without a worker process).
  */
 import {
   BUNDLE_SOURCE_TYPE,
@@ -20,17 +23,20 @@ import {
   type CheckState,
   type HistoryImportCreateInput,
   type HistoryImportCredentials,
+  type HistoryImportErrorCode,
   type HistoryImportPreview,
   type HistoryImportProgress,
   type HistoryImportResult,
+  type HistoryImportWarning,
   type ServiceStatus,
 } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
+import { sql, type Kysely } from 'kysely';
 import { createAdapterFetch, type AdapterFetchOptions, type FetchFn } from '../adapters/http.js';
 import { getAdapter } from '../adapters/index.js';
 import { redactSecrets } from '../adapters/runner.js';
 import type { DB } from '../db/index.js';
-import type { HistoryImport, MonitorSource } from '../db/types.js';
+import type { Database, HistoryImport, MonitorSource } from '../db/types.js';
 import type { SecretBox } from '../lib/crypto.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
@@ -42,6 +48,9 @@ import type { ImportedHistory, ImportTarget } from '../importers/types.js';
 import type { Worker } from '../worker.js';
 import { audit } from './audit.js';
 import { planImport, type ImportPlan, type StagedData } from './history-import-plan.js';
+
+/** Key of the PostgreSQL advisory lock that serialises applying imports. */
+const APPLY_LOCK_KEY = 4_711_005;
 
 /** Requests of importers may take long (large heartbeat lists, long polling). */
 export const IMPORT_REQUEST_TIMEOUT_MS = 120_000;
@@ -71,7 +80,7 @@ interface FetchSummary {
   unmatched: string[];
   unmatchedCount: number;
   checksWithoutData: number;
-  warnings: string[];
+  warnings: HistoryImportWarning[];
 }
 
 function json<T>(value: string | null): T | null {
@@ -98,17 +107,20 @@ export class HistoryImportService {
     private readonly secrets: SecretBox,
     private readonly worker: Worker,
     private readonly log: FastifyBaseLogger,
+    private readonly dialect: 'sqlite' | 'postgres' = 'sqlite',
   ) {}
 
   // --- Queries ------------------------------------------------------------------
 
   async list(sourceId: string, limit = 20): Promise<AdminHistoryImport[]> {
+    await this.expirePreviews();
     const rows = await this.baseQuery().where('history_imports.source_id', '=', sourceId).orderBy('history_imports.created_at', 'desc').limit(limit).execute();
     // The list is for overviews: previews can be large and are loaded per job.
     return rows.map((r) => ({ ...this.toAdmin(r), preview: null }));
   }
 
   async get(sourceId: string, id: string): Promise<AdminHistoryImport> {
+    await this.expirePreviews();
     const row = await this.baseQuery()
       .where('history_imports.source_id', '=', sourceId)
       .where('history_imports.id', '=', id)
@@ -147,6 +159,7 @@ export class HistoryImportService {
         : null,
       result: json<HistoryImportResult>(r.result),
       error: r.error,
+      errorCode: (r.error_code as HistoryImportErrorCode | null) ?? null,
       createdBy: r.created_by && r.creator_name ? { id: r.created_by, name: r.creator_name } : null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
@@ -182,6 +195,7 @@ export class HistoryImportService {
       this.assertCredentials(source.type, config, credentials);
     }
 
+    await this.expirePreviews();
     const active = await this.db
       .selectFrom('history_imports')
       .select('id')
@@ -207,6 +221,7 @@ export class HistoryImportService {
         preview: null,
         result: null,
         error: null,
+        error_code: null,
         created_by: actor.userId,
         created_at: ts,
         updated_at: ts,
@@ -324,13 +339,14 @@ export class HistoryImportService {
     } catch (err) {
       await this.discardStaging(id);
       if (this.shuttingDown) {
-        await this.finish(id, 'failed', 'The import was interrupted by a server shutdown; nothing was written.', ['fetching']);
+        await this.finish(id, 'failed', 'shutdown', 'The import was interrupted by a server shutdown; nothing was written.', ['fetching']);
         return;
       }
       if (err instanceof CancelledError || cancel.aborted) {
-        await this.finish(id, 'cancelled', null, ['fetching']);
+        await this.finish(id, 'cancelled', null, null, ['fetching']);
         return;
       }
+      const timedOut = err instanceof Error && err.name === 'TimeoutError';
       const raw = err instanceof Error ? (err.name === 'TimeoutError' ? 'The import timed out.' : err.message) : String(err);
       const secretKeys = [...(getAdapter(source.type)?.secretKeys ?? []), 'password', 'databaseUrl'];
       let credentials: Record<string, unknown> = {};
@@ -346,7 +362,7 @@ export class HistoryImportService {
         [...secretKeys, 'urlPassword'],
       ).slice(0, 1000);
       this.log.warn({ importId: id, sourceId: source.id, error: message }, 'history import failed');
-      await this.finish(id, 'failed', message, ['fetching']);
+      await this.finish(id, 'failed', timedOut ? 'timeout' : 'source', message, ['fetching']);
     } finally {
       await this.db.updateTable('history_imports').set({ credentials_encrypted: null }).where('id', '=', id).execute();
     }
@@ -469,6 +485,7 @@ export class HistoryImportService {
   // --- Apply --------------------------------------------------------------------
 
   async apply(sourceId: string, id: string, actor: Actor): Promise<AdminHistoryImport> {
+    await this.expirePreviews();
     const result = await this.db
       .updateTable('history_imports')
       .set({
@@ -500,20 +517,30 @@ export class HistoryImportService {
     try {
       const job = await this.db.selectFrom('history_imports').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
       const staged = await this.loadStaged(id);
-      const plan = await planImport(this.db, { from: job.range_from, to: job.range_to }, staged);
-      const result = await this.write(plan);
+      // Plan and write in one transaction, one import at a time: a plan made
+      // outside could be stale once another import (e.g. of another source
+      // feeding the same service) has written.
+      const result = await this.db.transaction().execute(async (trx) => {
+        await this.lockApply(trx, id);
+        const plan = await planImport(trx, { from: job.range_from, to: job.range_to }, staged);
+        const written = await this.write(trx, plan);
+        const done = await trx
+          .updateTable('history_imports')
+          .set({
+            status: 'completed',
+            result: JSON.stringify(written),
+            progress: JSON.stringify({ phase: 'completed', done: 1, total: 1 } satisfies HistoryImportProgress),
+            updated_at: nowIso(),
+            finished_at: nowIso(),
+          })
+          .where('id', '=', id)
+          .where('status', '=', 'applying')
+          .executeTakeFirst();
+        // Failed meanwhile (e.g. by the cleanup of another process): roll back.
+        if (Number(done.numUpdatedRows) === 0) throw new CancelledError();
+        return written;
+      });
       await this.discardStaging(id);
-      await this.db
-        .updateTable('history_imports')
-        .set({
-          status: 'completed',
-          result: JSON.stringify(result),
-          progress: JSON.stringify({ phase: 'completed', done: 1, total: 1 } satisfies HistoryImportProgress),
-          updated_at: nowIso(),
-          finished_at: nowIso(),
-        })
-        .where('id', '=', id)
-        .execute();
       await audit(this.db, {
         userId: job.created_by,
         action: 'history_import.complete',
@@ -522,53 +549,68 @@ export class HistoryImportService {
         details: { importId: id, ...result },
       });
     } catch (err) {
+      await this.discardStaging(id);
+      if (err instanceof CancelledError) return;
       const message = err instanceof Error ? err.message.slice(0, 1000) : String(err);
       this.log.error({ err, importId: id }, 'applying history import failed');
-      await this.discardStaging(id);
-      await this.finish(id, 'failed', `Applying failed, nothing was written: ${message}`, ['applying']);
+      await this.finish(id, 'failed', 'apply_failed', `Applying failed, nothing was written: ${message}`, ['applying']);
     }
   }
 
-  /** Writes a plan in one transaction. */
-  private async write(plan: ImportPlan): Promise<HistoryImportResult> {
+  /**
+   * Serialises applying imports across jobs and processes. On PostgreSQL a
+   * transaction-scoped advisory lock; on SQLite the first statement is a write,
+   * which takes the database write lock for the rest of the transaction.
+   */
+  private async lockApply(trx: Kysely<Database>, id: string): Promise<void> {
+    if (this.dialect === 'postgres') await sql`select pg_advisory_xact_lock(${APPLY_LOCK_KEY})`.execute(trx);
+    const touched = await trx
+      .updateTable('history_imports')
+      .set({ updated_at: nowIso() })
+      .where('id', '=', id)
+      .where('status', '=', 'applying')
+      .executeTakeFirst();
+    if (Number(touched.numUpdatedRows) === 0) throw new CancelledError();
+  }
+
+  /** Writes a plan (inside the caller's transaction). */
+  private async write(trx: Kysely<Database>, plan: ImportPlan): Promise<HistoryImportResult> {
     const result: HistoryImportResult = { checkIntervals: 0, serviceSegments: 0, services: 0 };
-    await this.db.transaction().execute(async (trx) => {
-      for (const [checkId, p] of plan.checks) {
-        for (let i = 0; i < p.deleteIds.length; i += 500) {
-          await trx.deleteFrom('monitor_check_history').where('id', 'in', p.deleteIds.slice(i, i + 500)).execute();
-        }
-        const rows = [...p.keep, ...p.insert].map((x) => ({
-          id: newId(),
-          check_id: checkId,
-          state: x.value,
-          started_at: iso(x.start),
-          ended_at: iso(x.end),
-          source: 'import' as const,
-        }));
-        for (let i = 0; i < rows.length; i += 200) {
-          await trx.insertInto('monitor_check_history').values(rows.slice(i, i + 200)).execute();
-        }
-        result.checkIntervals += p.insert.length;
+    for (const [checkId, p] of plan.checks) {
+      for (let i = 0; i < p.deleteIds.length; i += 500) {
+        await trx.deleteFrom('monitor_check_history').where('id', 'in', p.deleteIds.slice(i, i + 500)).execute();
       }
-      for (const [serviceId, p] of plan.services) {
-        for (let i = 0; i < p.deleteIds.length; i += 500) {
-          await trx.deleteFrom('service_status_history').where('id', 'in', p.deleteIds.slice(i, i + 500)).execute();
-        }
-        const rows = [...p.keep, ...p.insert].map((x) => ({
-          id: newId(),
-          service_id: serviceId,
-          status: x.value,
-          started_at: iso(x.start),
-          ended_at: iso(x.end),
-          source: 'import' as const,
-        }));
-        for (let i = 0; i < rows.length; i += 200) {
-          await trx.insertInto('service_status_history').values(rows.slice(i, i + 200)).execute();
-        }
-        result.serviceSegments += p.insert.length;
-        if (p.insert.length > 0 || p.deleteIds.length > 0) result.services++;
+      const rows = [...p.keep, ...p.insert].map((x) => ({
+        id: newId(),
+        check_id: checkId,
+        state: x.value,
+        started_at: iso(x.start),
+        ended_at: iso(x.end),
+        source: 'import' as const,
+      }));
+      for (let i = 0; i < rows.length; i += 200) {
+        await trx.insertInto('monitor_check_history').values(rows.slice(i, i + 200)).execute();
       }
-    });
+      result.checkIntervals += p.insert.length;
+    }
+    for (const [serviceId, p] of plan.services) {
+      for (let i = 0; i < p.deleteIds.length; i += 500) {
+        await trx.deleteFrom('service_status_history').where('id', 'in', p.deleteIds.slice(i, i + 500)).execute();
+      }
+      const rows = [...p.keep, ...p.insert].map((x) => ({
+        id: newId(),
+        service_id: serviceId,
+        status: x.value,
+        started_at: iso(x.start),
+        ended_at: iso(x.end),
+        source: x.source ?? ('import' as const),
+      }));
+      for (let i = 0; i < rows.length; i += 200) {
+        await trx.insertInto('service_status_history').values(rows.slice(i, i + 200)).execute();
+      }
+      result.serviceSegments += p.insert.length;
+      if (p.insert.length > 0 || p.deleteIds.length > 0) result.services++;
+    }
     return result;
   }
 
@@ -584,7 +626,7 @@ export class HistoryImportService {
     const job = await this.get(sourceId, id);
     if (job.status === 'applying') throw conflict('The import is being written and can no longer be cancelled.');
     if (job.status !== 'fetching' && job.status !== 'ready') throw conflict('The import has already finished.');
-    const changed = await this.finish(id, 'cancelled', null, ['fetching', 'ready']);
+    const changed = await this.finish(id, 'cancelled', null, null, ['fetching', 'ready']);
     if (!changed) throw conflict('The import has already finished.');
     this.running.get(id)?.abort();
     await this.discardStaging(id);
@@ -601,12 +643,13 @@ export class HistoryImportService {
   private async finish(
     id: string,
     status: 'cancelled' | 'failed',
+    errorCode: HistoryImportErrorCode | null,
     error: string | null,
     from: ('fetching' | 'ready' | 'applying')[],
   ): Promise<boolean> {
     const result = await this.db
       .updateTable('history_imports')
-      .set({ status, error, credentials_encrypted: null, updated_at: nowIso(), finished_at: nowIso() })
+      .set({ status, error, error_code: errorCode, credentials_encrypted: null, updated_at: nowIso(), finished_at: nowIso() })
       .where('id', '=', id)
       .where('status', 'in', from)
       .executeTakeFirst();
@@ -617,25 +660,36 @@ export class HistoryImportService {
     await this.db.deleteFrom('history_import_intervals').where('import_id', '=', id).execute();
   }
 
+  /** Discards previews nobody applied in time (cheap; runs in every process). */
+  async expirePreviews(now = Date.now()): Promise<void> {
+    const rows = await this.db
+      .selectFrom('history_imports')
+      .select('id')
+      .where('status', '=', 'ready')
+      .where('updated_at', '<', iso(now - IMPORT_PREVIEW_TTL_MS))
+      .execute();
+    for (const r of rows) {
+      if (await this.finish(r.id, 'cancelled', 'expired', 'The preview expired without being applied.', ['ready'])) {
+        await this.discardStaging(r.id);
+      }
+    }
+  }
+
   /** Fails jobs without progress, expires old previews and drops their staged data. */
   async cleanup(now = Date.now()): Promise<void> {
+    await this.expirePreviews(now);
     const stale = iso(now - IMPORT_STALE_MS);
-    const expired = iso(now - IMPORT_PREVIEW_TTL_MS);
     const rows = await this.db
       .selectFrom('history_imports')
       .select(['id', 'status', 'updated_at'])
-      .where((eb) =>
-        eb.or([
-          eb.and([eb('status', 'in', ['fetching', 'applying']), eb('updated_at', '<', stale)]),
-          eb.and([eb('status', '=', 'ready'), eb('updated_at', '<', expired)]),
-        ]),
-      )
+      .where('status', 'in', ['fetching', 'applying'])
+      .where('updated_at', '<', stale)
       .execute();
     for (const r of rows) {
       if (this.running.has(r.id)) continue;
-      if (r.status === 'ready') await this.finish(r.id, 'cancelled', 'The preview expired without being applied.', ['ready']);
-      else await this.finish(r.id, 'failed', 'The import was interrupted (e.g. by a restart); nothing was written.', [r.status as 'fetching' | 'applying']);
-      await this.discardStaging(r.id);
+      const status = r.status as 'fetching' | 'applying';
+      const message = 'The import was interrupted (e.g. by a restart); nothing was written.';
+      if (await this.finish(r.id, 'failed', 'interrupted', message, [status])) await this.discardStaging(r.id);
     }
   }
 }

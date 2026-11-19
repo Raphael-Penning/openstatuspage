@@ -5,7 +5,7 @@ import { newId } from '../src/lib/ids.js';
 import { nowIso } from '../src/lib/time.js';
 import type { HistoryImporter } from '../src/importers/types.js';
 import { BUNDLE_SOURCE_ID } from '../src/services/bundles.js';
-import { IMPORT_STALE_MS } from '../src/services/history-import.js';
+import { IMPORT_PREVIEW_TTL_MS, IMPORT_STALE_MS } from '../src/services/history-import.js';
 import { adminClient, client, createTestApp, createUser, login, seedChecks, type Client, type TestApp } from './helpers.js';
 import { fakeKuma } from './importers/fake-kuma.js';
 
@@ -246,7 +246,93 @@ describe('history import (CSV)', () => {
     expect(byId.get(bundleService)).toMatchObject({ filledMs: 2 * DAY, downMs: 2 * DAY, segmentCount: 1 });
     await apply(sourceId, job.id);
     expect((await segments(manual)).every((s) => s.source === 'live')).toBe(true);
-    expect((await segments(checkout))[0]).toMatchObject({ status: 'maintenance', source: 'import' });
+    expect((await segments(checkout))[0]).toMatchObject({ status: 'maintenance', source: 'import_explicit' });
+  });
+
+  it('keeps explicit service statuses of an earlier CSV import when later imports replay the range', async () => {
+    const { sourceId, checkIds } = await twoChecks();
+    const service = await addService('Checkout', [checkIds['web01!http']!]);
+    const range = { from: at(-3 * DAY), to: at(-1 * DAY) };
+    const run = async (body: Record<string, unknown>) => apply(sourceId, (await settle(sourceId, (await start(sourceId, body)).id)).id);
+
+    // 1. Explicit service status for the first day.
+    await run({ ...range, csv: csv([['checkout', -3 * DAY, -2 * DAY, 'maintenance']], 'service') });
+    // 2. Check history for the whole range: the replay fills only the rest.
+    const second = await run({ ...range, csv: csv([['web01!http', -3 * DAY, -1 * DAY, 'critical']]) });
+    expect(second.status).toBe('completed');
+    const imported = async () =>
+      (await segments(service)).filter((s) => s.source !== 'live').map((s) => [s.status, s.source, s.started_at, s.ended_at]);
+    expect(await imported()).toEqual([
+      ['maintenance', 'import_explicit', at(-3 * DAY), at(-2 * DAY)],
+      ['major_outage', 'import', at(-2 * DAY), at(-1 * DAY)],
+    ]);
+    // Re-running the check import changes nothing.
+    await run({ ...range, csv: csv([['web01!http', -3 * DAY, -1 * DAY, 'critical']]) });
+    expect(await imported()).toEqual([
+      ['maintenance', 'import_explicit', at(-3 * DAY), at(-2 * DAY)],
+      ['major_outage', 'import', at(-2 * DAY), at(-1 * DAY)],
+    ]);
+
+    // 3. A later CSV with service rows replaces explicit statuses only where its rows lie.
+    await run({ ...range, csv: csv([['checkout', -2.5 * DAY, -2 * DAY, 'operational']], 'service') });
+    expect(await imported()).toEqual([
+      ['maintenance', 'import_explicit', at(-3 * DAY), at(-2.5 * DAY)],
+      ['operational', 'import_explicit', at(-2.5 * DAY), at(-2 * DAY)],
+      ['major_outage', 'import', at(-2 * DAY), at(-1 * DAY)],
+    ]);
+  });
+
+  it('serialises applying imports of different sources that feed the same service', async () => {
+    const a = await seedChecks(t, [{ externalId: 'node-a!http', name: 'HTTP', host: 'node-a', state: 'ok' }]);
+    const b = await seedChecks(t, [{ externalId: 'node-b!http', name: 'HTTP', host: 'node-b', state: 'ok' }]);
+    const service = await addService('Website', [a.checkIds['node-a!http']!, b.checkIds['node-b!http']!]);
+    const range = { from: at(-3 * DAY), to: at(-1 * DAY) };
+    const jobA = await start(a.sourceId, {
+      ...range,
+      csv: csv([
+        ['node-a!http', -3 * DAY, -2 * DAY, 'critical'],
+        ['node-a!http', -2 * DAY, -1 * DAY, 'ok'],
+      ]),
+    });
+    const jobB = await start(b.sourceId, {
+      ...range,
+      csv: csv([
+        ['node-b!http', -3 * DAY, -2 * DAY, 'ok'],
+        ['node-b!http', -2 * DAY, -1 * DAY, 'warning'],
+      ]),
+    });
+    expect((await settle(a.sourceId, jobA.id)).status).toBe('ready');
+    expect((await settle(b.sourceId, jobB.id)).status).toBe('ready');
+
+    // Both are confirmed at the same time.
+    const actor = { userId: null, apiToken: null };
+    await Promise.all([
+      t.app.ctx.historyImports.apply(a.sourceId, jobA.id, actor),
+      t.app.ctx.historyImports.apply(b.sourceId, jobB.id, actor),
+    ]);
+    expect((await settle(a.sourceId, jobA.id)).status).toBe('completed');
+    expect((await settle(b.sourceId, jobB.id)).status).toBe('completed');
+
+    const rows = (await segments(service)).map((s) => ({ ...s, start: Date.parse(s.started_at), end: s.ended_at ? Date.parse(s.ended_at) : Infinity }));
+    for (let i = 1; i < rows.length; i++) expect(rows[i]!.start).toBeGreaterThanOrEqual(rows[i - 1]!.end);
+    // The second apply saw the check history of the first: worst of both checks.
+    expect(rows.filter((r) => r.source === 'import').map((r) => [r.status, r.started_at, r.ended_at])).toEqual([
+      ['major_outage', at(-3 * DAY), at(-2 * DAY)],
+      ['degraded', at(-2 * DAY), at(-1 * DAY)],
+    ]);
+  });
+
+  it('expires previews that were not applied, also without the worker task', async () => {
+    const { sourceId } = await twoChecks();
+    const job = await start(sourceId, { from: at(-2 * DAY), to: at(-DAY), csv: csv([['web01!http', -2 * DAY, -DAY, 'ok']]) });
+    expect((await settle(sourceId, job.id)).status).toBe('ready');
+    const old = new Date(now - IMPORT_PREVIEW_TTL_MS - 60_000).toISOString();
+    await t.db.updateTable('history_imports').set({ updated_at: old }).where('id', '=', job.id).execute();
+
+    const list = await admin.get(`/api/admin/monitor-sources/${sourceId}/history-imports`);
+    expect(list.json<AdminHistoryImport[]>()[0]).toMatchObject({ status: 'cancelled', errorCode: 'expired' });
+    expect(await t.db.selectFrom('history_import_intervals').selectAll().execute()).toHaveLength(0);
+    expect((await admin.post(`/api/admin/monitor-sources/${sourceId}/history-imports/${job.id}/apply`)).statusCode).toBe(409);
   });
 
   it('validates input, roles and conflicts', async () => {
@@ -395,6 +481,7 @@ describe('history import (sources)', () => {
     const failed = await settle(sourceId, (await start(sourceId, { from: at(-2 * DAY), to: at(-DAY) })).id);
     expect(failed.status).toBe('failed');
     expect(failed.error).toBe('login failed for ***');
+    expect(failed.errorCode).toBe('source');
 
     let started!: () => void;
     const running = new Promise<void>((resolve) => (started = resolve));
@@ -474,6 +561,7 @@ describe('history import (sources)', () => {
         preview: null,
         result: null,
         error: null,
+        error_code: null,
         created_by: null,
         created_at: old,
         updated_at: old,

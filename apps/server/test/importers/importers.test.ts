@@ -96,7 +96,7 @@ describe('Uptime Kuma importer', () => {
       [new Date(from + 2 * H + 5 * 60_000).toISOString(), new Date(from + 3 * H).toISOString(), 'ok'],
     ]);
     expect(result.checks.has('API')).toBe(false);
-    expect(result.warnings.some((w) => w.includes('"Twin"'))).toBe(true);
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'kuma_duplicate_name', params: { name: 'Twin' } }));
     // Whole hours from the start of the range until now, plus one (getMonitorBeats counts back from now).
     const beatCalls = kuma.received.filter((r) => r.event === 'getMonitorBeats');
     expect(beatCalls.map((r) => r.args[0])).toEqual([1, 2]);
@@ -105,6 +105,36 @@ describe('Uptime Kuma importer', () => {
     expect(progress.at(-1)).toEqual(['fetching', 4, 4]);
     // The session was closed.
     expect(kuma.requests.at(-1)!.method).toBe('POST');
+  });
+
+  it('skips a monitor whose answer is too large and reconnects for the others', async () => {
+    const kuma = fakeKuma({
+      totp: '123456',
+      monitors: [
+        { id: 1, name: 'Busy' },
+        { id: 2, name: 'Website' },
+      ],
+      beats: { 2: [[fmt(from + H), 1]] },
+      oversized: [1],
+    });
+    const result = await uptimeKumaImporter.fetch(
+      config,
+      { username: 'reader', password: 'kuma-pass', totp: '123456' },
+      [
+        { checkId: 'c1', externalId: 'Busy' },
+        { checkId: 'c2', externalId: 'Website' },
+      ],
+      { from, to: now },
+      ctx(kuma.fetch).ctx,
+    );
+    expect(result.checks.has('Busy')).toBe(false);
+    expect(result.checks.get('Website')).toHaveLength(1);
+    expect(result.warnings).toEqual([
+      expect.objectContaining({ code: 'kuma_monitor_failed', params: { name: 'Busy', reason: expect.stringMatching(/exceeds 50 MiB/) } }),
+    ]);
+    // The second session logged in with the token of the first (no new 2FA code needed).
+    expect(kuma.sessions()).toBe(2);
+    expect(kuma.received.map((r) => r.event)).toEqual(['login', 'getMonitorBeats', 'loginByToken', 'getMonitorBeats']);
   });
 
   it('uses the stored history login and supports a 2FA code', async () => {
@@ -308,5 +338,43 @@ describe('openITCockpit importer', () => {
     expect(history.headers.get('authorization')).toBe('X-OITC-API oitc-key');
     // Hosts are only listed when a host check was requested.
     expect(calls.some((c) => c.url.includes('hosts/index.json'))).toBe(false);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'oitc_utc' })]);
+  });
+
+  it('lets a real event at the start of the range win over the derived start state', async () => {
+    const from = t('2026-01-01T00:00:00Z');
+    const to = t('2026-01-01T06:00:00Z');
+    const { fetch } = mockFetch(({ url }) => {
+      const u = new URL(url);
+      if (u.pathname === '/services/index.json') {
+        return jsonResponse({
+          all_services: [
+            {
+              Service: { id: 11, uuid: 'svc-uuid-1', servicename: 'HTTP' },
+              Host: { id: 1, uuid: 'host-uuid-1', hostname: 'web01' },
+              Servicestatus: { currentState: 0, lastHardStateChange: '2026-01-01 00:00:00' },
+            },
+          ],
+          paging: { page: 1, pageCount: 1 },
+        });
+      }
+      if (u.pathname === '/statehistories/service/11.json') {
+        if (u.searchParams.get('direction') === 'desc') {
+          return jsonResponse({ all_statehistories: [{ StatehistoryService: { state: 2, state_time: '2025-12-31 22:00:00' } }] });
+        }
+        return jsonResponse({
+          all_statehistories: [{ StatehistoryService: { state: 0, state_time: '2026-01-01 00:00:00', is_hardstate: true } }],
+        });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    const result = await openItCockpitImporter.fetch(
+      config,
+      {},
+      [{ checkId: 'a', externalId: 'host-uuid-1!svc-uuid-1' }],
+      { from, to },
+      ctx(fetch).ctx,
+    );
+    expect(iso(result.checks.get('host-uuid-1!svc-uuid-1'))).toEqual([['2026-01-01T00:00:00.000Z', '2026-01-01T06:00:00.000Z', 'ok']]);
   });
 });

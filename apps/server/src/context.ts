@@ -53,7 +53,7 @@ export function createContext(
     engine,
     ingest: new IngestService(db, engine, bundles),
     bundles,
-    historyImports: new HistoryImportService(db, secrets, worker, log),
+    historyImports: new HistoryImportService(db, secrets, worker, log, config.database.dialect),
     worker,
     mailer,
     notifications: new NotificationService(db, config, mailer, log, worker),

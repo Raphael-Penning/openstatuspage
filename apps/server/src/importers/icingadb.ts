@@ -11,7 +11,7 @@
  * External ids match the live adapter: `host!service` for services, `host` for hosts.
  * Hard states only (soft states are retries), like the live adapter.
  */
-import type { CheckState, Icinga2Config as Icinga2ConfigSchema } from '@openstatuspage/shared';
+import type { CheckState, HistoryImportWarning, Icinga2Config as Icinga2ConfigSchema } from '@openstatuspage/shared';
 import type { z } from 'zod';
 import { AdapterError } from '../adapters/http.js';
 import { hostState, serviceState } from '../adapters/states.js';
@@ -156,7 +156,7 @@ export function createIcingaDbImporter(connect: SqlConnector = connectIcingaDb):
       } catch (err) {
         throw new AdapterError(`${SYSTEM}: connection failed: ${err instanceof Error ? err.message : String(err)}`);
       }
-      const warnings: string[] = [];
+      const warnings: HistoryImportWarning[] = [];
       try {
         const windows = Math.max(1, Math.ceil((range.to - range.from) / ICINGADB_WINDOW_MS));
         // Total = windows + 2 (state before the range, current state).
