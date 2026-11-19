@@ -613,6 +613,22 @@ describe('subscription functions', () => {
   it('validate their input', async () => {
     expect(await errorOf(() => subscribe('not-an-email'))).toBe('22023 Invalid email');
     expect(await errorOf(() => subscribe('x'.repeat(250) + '@example.com'))).toBe('22023 Invalid email');
+    // One value is one recipient: no lists, display names or quoted parts.
+    for (const email of [
+      'victim@example.com,a',
+      'victim@example.com, other@example.com',
+      'victim@example.com;a',
+      '"victim"@example.com',
+      'Victim <victim@example.com>',
+      'victim@example.com>',
+      'vic(tim)@example.com',
+      'vic\\tim@example.com',
+      'victim@[192.0.2.1]',
+      'victim@example',
+      '.victim@example.com',
+    ]) {
+      expect(await errorOf(() => subscribe(email)), email).toBe('22023 Invalid email');
+    }
     expect(await errorOf(() => subscribe('jane@example.com', { locale: 'fr' }))).toBe('22023 Invalid locale');
     expect(await errorOf(() => subscribe('jane@example.com', { services: [] }))).toBe('22023 Select at least one service');
     expect(await errorOf(() => subscribe('jane@example.com', { services: [ids.hiddenService] }))).toBe('22023 Unknown service');

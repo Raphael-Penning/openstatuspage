@@ -293,6 +293,13 @@ const PRIVATE_TABLES = [
   'email_outbox',
 ];
 
+/**
+ * Addresses the subscribe function accepts: the pattern of the application's z.email()
+ * (lower case, the function lowercases first). An allow list: no comma, semicolon,
+ * angle bracket, quote, parenthesis or backslash, so one value is one recipient.
+ */
+const EMAIL_PATTERN = "^(?:[a-z0-9_'+-]+[.])*[a-z0-9_'+-]*[a-z0-9_+-]@(?:[a-z0-9][a-z0-9-]*[.])+[a-z]{2,}$";
+
 const SUBSCRIPTION_COLUMNS =
   'id text, email text, locale text, all_services integer, confirmed boolean, service_ids text[]';
 
@@ -428,7 +435,7 @@ function statements(b: string, schemaName: string, invokerViews: boolean): State
       IF p_id IS NULL OR p_id !~ '^[A-Za-z0-9_-]{1,64}$' THEN
         RAISE EXCEPTION 'Invalid id' USING ERRCODE = '22023';
       END IF;
-      IF v_email IS NULL OR length(v_email) > 254 OR v_email !~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$' THEN
+      IF v_email IS NULL OR length(v_email) > 254 OR v_email !~ ${literal(EMAIL_PATTERN)} THEN
         RAISE EXCEPTION 'Invalid email' USING ERRCODE = '22023';
       END IF;
       v_ids := ${b}.osp_check_subscription_input(p_locale, p_all_services, p_service_ids);
