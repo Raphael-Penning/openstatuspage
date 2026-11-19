@@ -93,3 +93,17 @@ breaking changes.
   bundle recomputes are serialised with advisory locks, and only one history
   import per source can be active, also across admin instances. Rate limits stay
   per instance. See [docs/architecture.md](docs/architecture.md#several-instances).
+- `pnpm measure:memory` (`scripts/measure-memory.mjs`) measures the memory of every
+  `APP_ROLE` under light load. The results are in
+  [docs/architecture.md](docs/architecture.md#memory).
+
+### Changed
+
+- **Less memory per instance**: about 80–100 MB instead of 100–130 MB with the
+  Docker image. The server build bundles and minifies its dependencies, every role
+  loads only its own routes, and nodemailer, openid-client, argon2 and the history
+  importers load on first use. The image sets `NODE_OPTIONS`
+  (`--max-semi-space-size=1 --max-old-space-size=96`), `MALLOC_ARENA_MAX=2` and
+  `UV_THREADPOOL_SIZE=2`; raise `--max-old-space-size` for large history imports.
+  Its health check no longer starts a second node process. The Kubernetes example
+  requests 128 MiB (limit 256 MiB).

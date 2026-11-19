@@ -22,6 +22,11 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
 | `WEB_DIST_DIR` | – | Directory with the built web client. By default the server looks for `apps/web/dist`. |
 
+The Docker image also sets `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=96`,
+`MALLOC_ARENA_MAX=2` and `UV_THREADPOOL_SIZE=2`, which keep an instance below about
+100 MB. Override `NODE_OPTIONS` to give a large history import more heap; see
+[architecture.md](architecture.md#memory).
+
 ## Security
 
 | Variable | Default | Description |
