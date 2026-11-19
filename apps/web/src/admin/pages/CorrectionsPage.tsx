@@ -16,6 +16,7 @@ import { Badge, Button, Card, EmptyState, IconButton, PageHeader, Pagination, Qu
 import { dateInputToIso, isoToLocalInput, localInputToIso } from '../lib/datetime';
 import { useFormat, useOptions } from '../lib/format';
 import { useAdminMutation, useCorrections, useServices } from '../lib/queries';
+import { CORRECTION_DOCUMENT } from '../lib/documents';
 import { useForm } from '../lib/useForm';
 
 const PAGE_SIZE = 20;
@@ -229,7 +230,9 @@ export function CorrectionDialog({ value, onClose }: { value: AdminCorrection | 
   const v = form.values;
   const save = useAdminMutation(
     (body: CorrectionInput) =>
-      existing ? api.patch<AdminCorrection>(`/api/admin/corrections/${existing.id}`, body) : api.post<AdminCorrection>('/api/admin/corrections', body),
+      existing
+        ? api.patch<AdminCorrection>(`/api/admin/corrections/${existing.id}`, body, { ...CORRECTION_DOCUMENT, id: existing.id })
+        : api.post<AdminCorrection>('/api/admin/corrections', body, CORRECTION_DOCUMENT),
     { success: existing ? t('corrections.saved') : t('corrections.created'), onSuccess: onClose, onError: form.applyServerError },
   );
 

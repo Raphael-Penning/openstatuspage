@@ -82,7 +82,7 @@ describe('check bundles', () => {
     // The bundle is a check of the virtual source and can be linked to a service.
     const check = await bundleCheck(bundle);
     expect(check).toMatchObject({ source_id: BUNDLE_SOURCE_ID, name: 'Website', state: 'ok' });
-    const svc = (await admin.post('/api/admin/services', { name: 'Website', checks: [{ checkId: bundle.checkId }] })).json();
+    const svc = data<{ id: string }>(await admin.post('/api/admin/services', { name: 'Website', checks: [{ checkId: bundle.checkId }] }));
     expect(await serviceStatus(svc.id)).toBe('operational');
 
     // 2 of 4 votes down (the heavy node): exactly half, no majority.
@@ -269,7 +269,7 @@ describe('check bundles', () => {
   it('deletes bundles with their check and service links, and audits every change', async () => {
     const a = await kumaNode('Kuma FRA', 'critical');
     const bundle = (await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: a.checkId }] })).json<AdminCheckBundle>();
-    const svc = (await admin.post('/api/admin/services', { name: 'Web', checks: [{ checkId: bundle.checkId }] })).json();
+    const svc = data<{ id: string }>(await admin.post('/api/admin/services', { name: 'Web', checks: [{ checkId: bundle.checkId }] }));
     expect(await serviceStatus(svc.id)).toBe('major_outage');
     await admin.put(`/api/admin/check-bundles/${bundle.id}`, { name: 'Web', members: [{ checkId: a.checkId, votes: 2 }] });
 

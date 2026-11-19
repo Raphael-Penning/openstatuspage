@@ -7,8 +7,9 @@ the JSON:API document types and helpers in
 [`packages/shared/src/jsonapi.ts`](../packages/shared/src/jsonapi.ts).
 Request attributes are validated with the zod schemas named below.
 
-> The public API (`/api/public/*`) is converted. Sections below that still show
-> plain bodies are being converted to the same conventions.
+> The public API (`/api/public/*`) and the admin catalog (services, groups,
+> locations, incidents, maintenance, corrections) are converted. Sections below
+> that still show plain bodies are being converted to the same conventions.
 
 ## Conventions
 
@@ -346,33 +347,34 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | --- | --- | --- | --- | --- |
 | GET | `/api/admin/overview` | – | `overviews/current`: attribute `counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }`, relationships `services` (`services`, non-operational first) and `recentAudit` (`audit-entries`), both included; source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries | editor |
 | GET/PATCH | `/api/admin/settings` | `settings` document (`SettingsInput`, partial: omitted attributes keep their value) | `settings/site` (`PublicPageSettings`) | GET editor, PATCH admin |
-| GET | `/api/admin/locations` | – | `AdminLocation[]` | editor |
-| POST | `/api/admin/locations` | `LocationInput` | `AdminLocation` (201) | admin |
-| GET/PUT/DELETE | `/api/admin/locations/:id` | `LocationInput` | `AdminLocation` | GET editor, else admin |
-| POST | `/api/admin/locations/reorder` | `ReorderInput` | 204 | admin |
-| GET | `/api/admin/service-groups` | – | `AdminServiceGroup[]` | editor |
-| POST | `/api/admin/service-groups` | `ServiceGroupInput` | `AdminServiceGroup` (201) | admin |
-| GET/PUT/DELETE | `/api/admin/service-groups/:id` | `ServiceGroupInput` | `AdminServiceGroup` | GET editor, else admin |
-| POST | `/api/admin/service-groups/reorder` | `ReorderInput` | 204 | admin |
-| GET | `/api/admin/services` | – | `AdminService[]` | editor |
-| POST | `/api/admin/services` | `ServiceInput` | `AdminService` (201) | admin |
-| GET/PUT/DELETE | `/api/admin/services/:id` | `ServiceInput` | `AdminService` | GET editor, else admin |
-| POST | `/api/admin/services/reorder` | `ReorderInput` (within one group) | 204 | admin |
-| GET | `/api/admin/services/:id/preview` | – | `{ monitorStatus, status }` computed with the stored config (for the service builder) | editor |
-| POST | `/api/admin/services/preview` | `ServiceInput` | `{ monitorStatus: ServiceStatus }` computed for an unsaved config | admin |
-| GET | `/api/admin/incidents` | query `status=active\|resolved\|all`, `page`, `pageSize` | `Paginated<AdminIncident>` | editor |
-| POST | `/api/admin/incidents` | `IncidentCreateInput` | `AdminIncident` (201) | editor |
-| GET/PATCH/DELETE | `/api/admin/incidents/:id` | `IncidentPatchInput` | `AdminIncident` | editor |
-| POST | `/api/admin/incidents/:id/updates` | `IncidentUpdateInput` | `AdminIncident` | editor |
-| PATCH/DELETE | `/api/admin/incidents/:id/updates/:updateId` | `IncidentUpdateEditInput` | `AdminIncident` | editor |
-| GET | `/api/admin/maintenances` | query `status=upcoming\|active\|past\|all`, `page`, `pageSize` | `Paginated<AdminMaintenance>` | editor |
-| POST | `/api/admin/maintenances` | `MaintenanceCreateInput` | `AdminMaintenance` (201) | editor |
-| GET/PATCH/DELETE | `/api/admin/maintenances/:id` | `MaintenancePatchInput` | `AdminMaintenance` | editor |
-| POST | `/api/admin/maintenances/:id/updates` | `MaintenanceUpdateInput` | `AdminMaintenance` | editor |
-| GET | `/api/admin/corrections` | query `CorrectionListQuery` (`serviceId`, `from`, `to` = overlapping the range, `page`, `pageSize`) | `Paginated<AdminCorrection>` (newest start first) | editor |
-| POST | `/api/admin/corrections` | `CorrectionInput` | `AdminCorrection` (201) | editor |
-| GET/PATCH/DELETE | `/api/admin/corrections/:id` | `CorrectionPatchInput` | `AdminCorrection` | editor |
-| GET | `/api/admin/services/:id/history` | query `ServiceHistoryQuery` (`from`, `to`, at most 366 days) | `AdminServiceHistory` (measured and corrected segments and uptime) | editor |
+| GET | `/api/admin/locations` | – | `locations[]` (`AdminLocation`, relationship `services`) in display order | editor |
+| POST | `/api/admin/locations` | `locations`: `LocationInput` | `locations` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/locations/:id` | `locations`: partial `LocationInput` | `locations`; DELETE 204 | GET editor, else admin |
+| POST | `/api/admin/locations/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
+| GET | `/api/admin/service-groups` | – | `service-groups[]` (`AdminServiceGroup`) | editor |
+| POST | `/api/admin/service-groups` | `service-groups`: `ServiceGroupInput` | `service-groups` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/service-groups/:id` | `service-groups`: partial `ServiceGroupInput` | `service-groups`; DELETE 204 | GET editor, else admin |
+| POST | `/api/admin/service-groups/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
+| GET | `/api/admin/services` | – | `services[]` (`AdminService`; relationships `group`, `locations`; `checks` with the linked check stay attributes) | editor |
+| POST | `/api/admin/services` | `services`: `ServiceInput` (relationships `group`, `locations`) | `services` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/services/:id` | `services`: partial `ServiceInput` | `services`; DELETE 204 | GET editor, else admin |
+| POST | `/api/admin/services/reorder` | attribute `ids` (`ReorderInput`, within one group) | 204 | admin |
+| GET | `/api/admin/services/:id/preview` | – | meta document `{ monitorStatus, status }` computed with the stored config (for the service builder) | editor |
+| POST | `/api/admin/services/preview` | `ServiceInput` (any type) | meta document `{ monitorStatus }` computed for an unsaved config | admin |
+| GET | `/api/admin/incidents` | `filter[status]=active\|resolved\|all`, `page[number]`, `page[size]` | paginated `incidents[]` (`AdminIncident`, newest first; relationships `locations`, `updates`) | editor |
+| POST | `/api/admin/incidents` | `incidents`: `IncidentCreateInput` (relationship `locations`) | `incidents` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/incidents/:id` | `incidents`: `IncidentPatchInput` | `incidents`; DELETE 204 | editor |
+| POST | `/api/admin/incidents/:incidentId/updates` | `incident-updates`: `IncidentUpdateInput` | `incident-updates` (201, relationship `incident`, the incident included) | editor |
+| GET/PATCH/DELETE | `/api/admin/incidents/:incidentId/updates/:id` | `incident-updates`: `IncidentUpdateEditInput` | `incident-updates` with the incident included; DELETE 204 | editor |
+| GET | `/api/admin/maintenances` | `filter[status]=upcoming\|active\|past\|all`, `page[number]`, `page[size]` | paginated `maintenances[]` (`AdminMaintenance`; relationships `services`, `locations`, `updates`) | editor |
+| POST | `/api/admin/maintenances` | `maintenances`: `MaintenanceCreateInput` (relationships `services`, `locations`) | `maintenances` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/maintenances/:id` | `maintenances`: `MaintenancePatchInput` | `maintenances`; DELETE 204 | editor |
+| POST | `/api/admin/maintenances/:maintenanceId/updates` | `maintenance-updates`: `MaintenanceUpdateInput` | `maintenance-updates` (201, relationship `maintenance`, the maintenance included) | editor |
+| GET | `/api/admin/maintenances/:maintenanceId/updates/:id` | – | `maintenance-updates` with the maintenance included | editor |
+| GET | `/api/admin/corrections` | `filter[service]`, `filter[from]`, `filter[to]` (overlapping the range), `page[number]`, `page[size]` | paginated `corrections[]` (`AdminCorrection`, newest start first; relationship `services`) | editor |
+| POST | `/api/admin/corrections` | `corrections`: `CorrectionInput` (relationship `services`) | `corrections` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/corrections/:id` | `corrections`: `CorrectionPatchInput` | `corrections`; DELETE 204 | editor |
+| GET | `/api/admin/services/:id/history` | `filter[from]`, `filter[to]` (required, at most 366 days, `ServiceHistoryQuery`) | `service-histories` (id = service id; `AdminServiceHistory`: measured and corrected segments and uptime; relationships `service`, `corrections`) | editor |
 | GET | `/api/admin/monitor-sources` | – | `AdminMonitorSource[]` | admin |
 | POST | `/api/admin/monitor-sources` | `MonitorSourceInput` | `AdminMonitorSource & { ingestToken: string }` (201, token shown once) | admin |
 | GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` (`historyUsername` for `historyPassword`) are unchanged, otherwise 400; `icingaDbUrl` is kept regardless) | `AdminMonitorSource` | admin |
@@ -406,6 +408,75 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 API tokens are revoked when their creator is deleted; admin tokens are revoked when
 their creator loses the admin role.
 
+### Catalog resources
+
+Services, service groups, locations, incidents, maintenance and corrections follow
+the conventions above. Specifics:
+
+- `PATCH` is partial everywhere: omitted attributes and relationships keep their
+  values (for services, groups and locations the stored object is merged with the
+  request before `ServiceInput`/`ServiceGroupInput`/`LocationInput` validate it).
+  Relationships replace the whole linkage (`"locations": { "data": [] }` unlinks
+  all locations). Foreign keys sent as attributes (`groupId`, `locationIds`,
+  `serviceIds`) are accepted as well.
+- Included by default (`include` to change it): `updates` of incidents and
+  maintenance; `services` of corrections, as sparse `services` resources with only
+  their `name`. The service history always includes its corrections and their services.
+- Updates are sub-resources: `POST .../incidents/:incidentId/updates` creates an
+  `incident-updates` resource and answers `201` with a `Location` header; the
+  incident (with its new status, without its updates) is included. The same holds
+  for `maintenance-updates`.
+
+```http
+POST /api/admin/incidents/7d0c…/updates
+Content-Type: application/vnd.api+json
+
+{ "data": { "type": "incident-updates", "attributes": { "status": "resolved", "message": "Fixed.", "notify": true } } }
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "incident-updates",
+    "id": "e81b…",
+    "attributes": { "status": "resolved", "message": "Fixed.", "createdAt": "2026-11-19T09:00:00.000Z" },
+    "relationships": { "incident": { "data": { "type": "incidents", "id": "7d0c…" } } },
+    "links": { "self": "/api/admin/incidents/7d0c…/updates/e81b…" }
+  },
+  "included": [
+    {
+      "type": "incidents",
+      "id": "7d0c…",
+      "attributes": { "title": "Database outage", "status": "resolved", "resolvedAt": "2026-11-19T09:00:00.000Z", "…": "…" },
+      "relationships": { "locations": { "data": [] }, "updates": { "data": [{ "type": "incident-updates", "id": "e81b…" }, { "type": "incident-updates", "id": "a41f…" }] } },
+      "links": { "self": "/api/admin/incidents/7d0c…" }
+    }
+  ],
+  "links": { "self": "/api/admin/incidents/7d0c…/updates" }
+}
+```
+
+Example (`GET /api/admin/corrections?filter[service]=1b6f…&page[size]=20`):
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": [
+    {
+      "type": "corrections",
+      "id": "c3a9…",
+      "attributes": { "startsAt": "…", "endsAt": "…", "status": "operational", "reason": "…", "showPublic": false, "publicNote": null, "createdBy": "…", "createdByName": "admin", "createdAt": "…", "updatedAt": "…" },
+      "relationships": { "services": { "data": [{ "type": "services", "id": "1b6f…" }] } },
+      "links": { "self": "/api/admin/corrections/c3a9…" }
+    }
+  ],
+  "included": [{ "type": "services", "id": "1b6f…", "attributes": { "name": "Public API" } }],
+  "meta": { "total": 1, "page": { "number": 1, "size": 20 } },
+  "links": { "self": "…", "first": "…", "prev": null, "next": null, "last": "…" }
+}
+```
+
 ### Side effects the server must apply
 
 - Creating/updating/resolving incidents, changing their affected services, starting/
@@ -419,9 +490,10 @@ their creator loses the admin role.
 
 ### Behaviour details
 
-- `POST .../incidents/:id/updates` and `POST .../maintenances/:id/updates` return `200`
-  with the full object; `DELETE .../incidents/:id/updates/:updateId` returns `204`
-  (an incident keeps at least one update, deleting the last one is `409`).
+- `POST .../incidents/:incidentId/updates` and `POST .../maintenances/:maintenanceId/updates`
+  return `201` with the new update (see [Catalog resources](#catalog-resources));
+  `DELETE .../incidents/:incidentId/updates/:id` returns `204` (an incident keeps at
+  least one update, deleting the last one is `409`).
 - `PATCH /api/admin/incidents/:id` accepts `resolvedAt` only for resolved incidents
   (to correct the time); resolving and re-opening is done by posting an update.
 - Creating a maintenance adds a first `scheduled` update with an empty message
@@ -440,7 +512,8 @@ their creator loses the admin role.
   then not be in the future) in line with it.
 - `PUT` bodies are complete objects (schema defaults apply to omitted fields);
   an omitted `slug` keeps the current slug. An explicit slug that is taken is `409`.
-- `PATCH /api/admin/users/:id` with `password: null` removes the local password
+  explicit slug that is taken is `409`.
+- `PUT /api/admin/users/:id` with `password: null` removes the local password
   (not allowed for yourself). Changing a password signs that user out everywhere.
 - Mutations through API tokens are audited with `userId = null` and
   `details.apiToken = <token name>`; logins are audited as `auth.login`.

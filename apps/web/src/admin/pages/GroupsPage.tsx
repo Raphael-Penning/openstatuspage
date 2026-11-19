@@ -8,6 +8,7 @@ import { CheckboxField, FormErrorSummary, TextAreaField, TextField } from '../co
 import { Badge, Button, Card, EmptyState, IconButton, PageHeader, QueryState, Table, td, th, tr, VisibilityBadge } from '../components/ui';
 import { bySortOrder, moveId, nextSortOrder } from '../lib/ordering';
 import { useAdminMutation, useGroups, useServices } from '../lib/queries';
+import { GROUP_DOCUMENT } from '../lib/documents';
 import { useForm } from '../lib/useForm';
 import { useIsAdmin } from '../session';
 
@@ -133,7 +134,9 @@ function GroupDialog({ group, sortOrder, onClose }: { group?: AdminServiceGroup;
   const v = form.values;
   const save = useAdminMutation(
     (body: ServiceGroupInput) =>
-      group ? api.put(`/api/admin/service-groups/${group.id}`, body) : api.post('/api/admin/service-groups', body),
+      group
+        ? api.patch(`/api/admin/service-groups/${group.id}`, body, { ...GROUP_DOCUMENT, id: group.id })
+        : api.post('/api/admin/service-groups', body, GROUP_DOCUMENT),
     { success: group ? t('groups.saved') : t('groups.created'), onSuccess: onClose, onError: form.applyServerError },
   );
 

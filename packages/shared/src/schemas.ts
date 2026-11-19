@@ -447,6 +447,12 @@ export interface AdminIncident extends PublicIncident {
   createdBy: string | null;
 }
 
+/** An `incident-updates` resource as answered by the admin API, with its incident (without the updates). */
+export interface AdminIncidentUpdate extends IncidentUpdateEntry {
+  incidentId: string;
+  incident?: Omit<AdminIncident, 'updates'>;
+}
+
 // ---------------------------------------------------------------------------
 // Maintenance
 // ---------------------------------------------------------------------------
@@ -539,6 +545,12 @@ export interface AdminMaintenance extends PublicMaintenance {
   updatedAt: string;
 }
 
+/** A `maintenance-updates` resource as answered by the admin API, with its maintenance (without the updates). */
+export interface AdminMaintenanceUpdate extends MaintenanceUpdateEntry {
+  maintenanceId: string;
+  maintenance?: Omit<AdminMaintenance, 'updates'>;
+}
+
 // ---------------------------------------------------------------------------
 // History corrections (status overrides for a past time range)
 // ---------------------------------------------------------------------------
@@ -584,15 +596,13 @@ export const CorrectionPatchInput = z
   .refine(notTooLong, { message: `at most ${CORRECTION_MAX_DAYS} days`, path: ['endsAt'] });
 export type CorrectionPatchInput = z.infer<typeof CorrectionPatchInput>;
 
-export const CorrectionListQuery = z.object({
-  serviceId: zId.optional(),
+/** `filter[...]` parameters of GET /api/admin/corrections. */
+export const CorrectionListFilter = {
+  service: zId.optional(),
   /** Only corrections overlapping [from, to). */
   from: zTimestamp.optional(),
   to: zTimestamp.optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
-});
-export type CorrectionListQuery = z.infer<typeof CorrectionListQuery>;
+};
 
 export interface AdminCorrection {
   id: string;
@@ -609,6 +619,7 @@ export interface AdminCorrection {
   updatedAt: string;
 }
 
+/** `filter[from]` and `filter[to]` of GET /api/admin/services/:id/history. */
 export const ServiceHistoryQuery = z
   .object({ from: zTimestamp, to: zTimestamp })
   .refine((v) => new Date(v.to) > new Date(v.from), { message: 'to must be after from', path: ['to'] })

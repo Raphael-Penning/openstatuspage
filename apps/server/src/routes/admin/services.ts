@@ -4,7 +4,10 @@ import type { DB } from '../../db/index.js';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { newId } from '../../lib/ids.js';
 import { IdParams, parse, unique } from '../../lib/http.js';
+import { collection, created, document, metaDocument, noContent, selfLink } from '../../lib/jsonapi.js';
 import { nowIso } from '../../lib/time.js';
+import { useJsonApi } from '../../plugins/jsonapi.js';
+import { adminServiceResource, CATALOG_TYPES } from '../../serializers/catalog.js';
 import { loadAdminServices } from '../../services/admin-catalog.js';
 import { resolveSlug } from '../../services/slugs.js';
 import { aggregateMonitorStatus, type CheckLinkState } from '../../services/status-rules.js';
@@ -94,13 +97,26 @@ async function previewMonitorStatus(db: DB, input: ServiceInput): Promise<Servic
   return aggregateMonitorStatus(input.aggregation, links);
 }
 
-/** /api/admin/services */
+const asObject = (body: unknown): Record<string, unknown> =>
+  typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+
+/** /api/admin/services (JSON:API) */
 export async function registerServiceRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(async (scope) => {
+    useJsonApi(scope);
+    await registerRoutes(scope);
+  });
+}
+
+async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine } = app.ctx;
+  const serviceType = { config: { jsonapi: { type: CATALOG_TYPES.service } } };
+  const serviceDocument = async (req: { url: string }, id: string) =>
+    document(adminServiceResource(await getService(db, id)), { links: { self: req.url } });
 
-  app.get('/api/admin/services', editor, async () => loadAdminServices(db));
+  app.get('/api/admin/services', editor, async (req) => collection(req, (await loadAdminServices(db)).map(adminServiceResource)));
 
-  app.post('/api/admin/services', admin, async (req, reply) => {
+  app.post('/api/admin/services', { ...admin, ...serviceType }, async (req, reply) => {
     const input = parse(ServiceInput, req.body);
     await validateReferences(db, input);
     const id = newId();
@@ -128,7 +144,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
       checks: input.checks.length,
       locations: input.locationIds.length,
     });
-    return reply.status(201).send(await getService(db, id));
+    return created(reply, await serviceDocument(req, id), `/api/admin/services/${id}`);
   });
 
   app.post('/api/admin/services/reorder', admin, async (req, reply) => {
@@ -138,15 +154,15 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
     if (groups.length > 1) throw badRequest('All services must belong to the same group');
     await applyOrder(db, 'services', list);
     await auditRequest(db, req, 'service.reorder', 'service', null, { ids: list });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
   app.post('/api/admin/services/preview', admin, async (req) => {
     const input = parse(ServiceInput, req.body);
-    return { monitorStatus: await previewMonitorStatus(db, input) };
+    return metaDocument({ monitorStatus: await previewMonitorStatus(db, input) });
   });
 
-  app.get('/api/admin/services/:id', editor, async (req) => getService(db, parse(IdParams, req.params).id));
+  app.get('/api/admin/services/:id', editor, async (req) => serviceDocument(req, parse(IdParams, req.params).id));
 
   app.get('/api/admin/services/:id/preview', editor, async (req) => {
     const svc = await getService(db, parse(IdParams, req.params).id);
@@ -159,14 +175,14 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
         unknownStatus: c.unknownStatus,
       })),
     });
-    return { monitorStatus, status: svc.status };
+    return metaDocument({ monitorStatus, status: svc.status }, { self: selfLink(req) });
   });
 
-  app.put('/api/admin/services/:id', admin, async (req) => {
+  // Partial update: missing attributes and relationships keep their current values.
+  app.patch('/api/admin/services/:id', { ...admin, ...serviceType }, async (req) => {
     const { id } = parse(IdParams, req.params);
-    const input = parse(ServiceInput, req.body);
-    const current = await db.selectFrom('services').select(['slug']).where('id', '=', id).executeTakeFirst();
-    if (!current) throw notFound('Service');
+    const current = await getService(db, id);
+    const input = parse(ServiceInput, { ...current, ...asObject(req.body) });
     await validateReferences(db, input);
     const slug = await resolveSlug(db, 'services', {
       slug: input.slug,
@@ -189,7 +205,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
       ...(input.statusMode === 'manual' ? { manualStatus: input.manualStatus } : {}),
       checks: input.checks.length,
     });
-    return getService(db, id);
+    return serviceDocument(req, id);
   });
 
   app.delete('/api/admin/services/:id', admin, async (req, reply) => {
@@ -222,6 +238,6 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
       name: svc.name,
       ...(deletedCorrections.length > 0 ? { deletedCorrections } : {}),
     });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 }

@@ -2,6 +2,9 @@ import { SECRET_MASK } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adminClient, createTestApp, data, errors, page, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+
 let t: TestApp;
 let admin: Client;
 beforeEach(async () => {
@@ -23,33 +26,48 @@ describe('locations', () => {
       longitude: 8.7,
     });
     expect(a.statusCode).toBe(201);
-    expect(a.json()).toMatchObject({ slug: 'frankfurt', status: 'operational', serviceIds: [], isPublic: true });
+    expect(a.headers['content-type']).toBe('application/vnd.api+json');
+    const locA = data<Any>(a);
+    expect(a.headers.location).toBe(`/api/admin/locations/${locA.id}`);
+    expect(a.json().data).toMatchObject({ type: 'locations', relationships: { services: { data: [] } } });
+    expect(locA).toMatchObject({ slug: 'frankfurt', status: 'operational', serviceIds: [], isPublic: true });
 
     const b = await admin.post('/api/admin/locations', { name: 'Frankfurt', region: 'europe' });
-    expect(b.json().slug).toBe('frankfurt-2');
+    const locB = data<Any>(b);
+    expect(locB.slug).toBe('frankfurt-2');
 
     const dup = await admin.post('/api/admin/locations', { name: 'X', slug: 'frankfurt', region: 'europe' });
     expect(dup.statusCode).toBe(409);
 
     const invalid = await admin.post('/api/admin/locations', { name: 'X', region: 'mars' });
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json().error).toBe('validation_error');
+    expect(errors(invalid)[0]).toMatchObject({ status: '400', source: { pointer: '/data/attributes/region' } });
 
-    const updated = await admin.put(`/api/admin/locations/${a.json().id}`, {
+    // PATCH is partial: missing attributes keep their values.
+    const updated = await admin.patch(`/api/admin/locations/${locA.id}`, {
       name: 'Frankfurt am Main',
-      region: 'europe',
       statusOverride: 'maintenance',
     });
     expect(updated.statusCode).toBe(200);
     // Slug is kept when not provided.
-    expect(updated.json()).toMatchObject({ slug: 'frankfurt', name: 'Frankfurt am Main', status: 'maintenance' });
+    expect(data(updated)).toMatchObject({ slug: 'frankfurt', name: 'Frankfurt am Main', status: 'maintenance', code: 'FRA-1', latitude: 50.1 });
+    expect((await admin.put(`/api/admin/locations/${locA.id}`, { name: 'X', region: 'europe' })).statusCode).toBe(404);
+    const mismatch = await admin.patch(`/api/admin/locations/${locA.id}`, {
+      data: { type: 'locations', id: locB.id, attributes: { name: 'X' } },
+    });
+    expect(mismatch.statusCode).toBe(409);
+    const wrongType = await admin.patch(`/api/admin/locations/${locA.id}`, { data: { type: 'services', attributes: { name: 'X' } } });
+    expect(errors(wrongType)[0]).toMatchObject({ status: '409', code: 'type_mismatch' });
 
-    expect((await admin.post('/api/admin/locations/reorder', { ids: [b.json().id, a.json().id] })).statusCode).toBe(204);
+    expect((await admin.post('/api/admin/locations/reorder', { ids: [locB.id, locA.id] })).statusCode).toBe(204);
     const list = await admin.get('/api/admin/locations');
-    expect(list.json().map((l: { id: string }) => l.id)).toEqual([b.json().id, a.json().id]);
+    expect(list.json().meta).toEqual({ total: 2 });
+    expect(data<{ id: string }[]>(list).map((l) => l.id)).toEqual([locB.id, locA.id]);
 
-    expect((await admin.delete(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(204);
-    expect((await admin.get(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(404);
+    expect((await admin.delete(`/api/admin/locations/${locA.id}`)).statusCode).toBe(204);
+    const gone = await admin.get(`/api/admin/locations/${locA.id}`);
+    expect(gone.statusCode).toBe(404);
+    expect(errors(gone)[0]).toMatchObject({ status: '404', code: 'not_found' });
 
     const audit = await admin.get('/api/admin/audit-log?filter[entityType]=location');
     // Entries within the same millisecond have no defined order, so compare sorted.
@@ -65,16 +83,17 @@ describe('locations', () => {
 
 describe('service groups', () => {
   it('deleting a group keeps its services (group_id becomes null)', async () => {
-    const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json();
+    const group = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Platform' }));
     expect(group).toMatchObject({ slug: 'platform', isPublic: true, collapsedByDefault: false });
-    const svc = (await admin.post('/api/admin/services', { name: 'API', groupId: group.id })).json();
+    const svc = data<Any>(await admin.post('/api/admin/services', { name: 'API', groupId: group.id }));
     expect(svc.groupId).toBe(group.id);
 
-    const renamed = await admin.put(`/api/admin/service-groups/${group.id}`, { name: 'Core', collapsedByDefault: true });
-    expect(renamed.json()).toMatchObject({ name: 'Core', slug: 'platform', collapsedByDefault: true });
+    const renamed = await admin.patch(`/api/admin/service-groups/${group.id}`, { name: 'Core', collapsedByDefault: true });
+    expect(data(renamed)).toMatchObject({ name: 'Core', slug: 'platform', collapsedByDefault: true, isPublic: true });
+    expect(data<Any[]>(await admin.get('/api/admin/service-groups')).map((g) => g.name)).toEqual(['Core']);
 
     expect((await admin.delete(`/api/admin/service-groups/${group.id}`)).statusCode).toBe(204);
-    const after = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    const after = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(after.groupId).toBeNull();
   });
 });
@@ -85,7 +104,7 @@ describe('services', () => {
       { externalId: 'web1!https', name: 'HTTPS', host: 'web1.internal.example.com', state: 'ok' },
       { externalId: 'web2!https', name: 'HTTPS', host: 'web2.internal.example.com', state: 'ok' },
     ]);
-    const loc = (await admin.post('/api/admin/locations', { name: 'Amsterdam', region: 'europe' })).json();
+    const loc = data<Any>(await admin.post('/api/admin/locations', { name: 'Amsterdam', region: 'europe' }));
 
     const created = await admin.post('/api/admin/services', {
       name: 'Web App',
@@ -96,7 +115,12 @@ describe('services', () => {
       checks: [{ checkId: checkIds['web1!https'] }, { checkId: checkIds['web2!https'], criticalStatus: 'major_outage' }],
     });
     expect(created.statusCode).toBe(201);
-    const svc = created.json();
+    const svc = data<Any>(created);
+    expect(created.headers.location).toBe(`/api/admin/services/${svc.id}`);
+    expect(created.json().data.relationships).toEqual({
+      group: { data: null },
+      locations: { data: [{ type: 'locations', id: loc.id }] },
+    });
     expect(svc).toMatchObject({ slug: 'web-app', status: 'operational', monitorStatus: 'operational', locationIds: [loc.id] });
     expect(svc.checks).toHaveLength(2);
     expect(svc.checks[0]).toMatchObject({ warningStatus: 'degraded', criticalStatus: 'major_outage', unknownStatus: null });
@@ -104,11 +128,11 @@ describe('services', () => {
 
     // One of two redundant checks fails → quorum caps at partial outage.
     await setCheckState(t, sourceId, { externalId: 'web1!https', name: 'HTTPS', host: 'web1.internal.example.com' }, 'critical');
-    let current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    let current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current.status).toBe('partial_outage');
 
     const preview = await admin.get(`/api/admin/services/${svc.id}/preview`);
-    expect(preview.json()).toEqual({ monitorStatus: 'partial_outage', status: 'partial_outage' });
+    expect(preview.json().meta).toEqual({ monitorStatus: 'partial_outage', status: 'partial_outage' });
 
     // Preview of an unsaved config with "worst" aggregation.
     const unsaved = await admin.post('/api/admin/services/preview', {
@@ -116,17 +140,23 @@ describe('services', () => {
       aggregation: 'worst',
       checks: [{ checkId: checkIds['web1!https'] }],
     });
-    expect(unsaved.json()).toEqual({ monitorStatus: 'major_outage' });
+    expect(unsaved.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { monitorStatus: 'major_outage' } });
 
-    // Switching to manual mode overrides the checks.
-    const manual = await admin.put(`/api/admin/services/${svc.id}`, {
-      name: 'Web App',
-      statusMode: 'manual',
-      manualStatus: 'degraded',
-      checks: [{ checkId: checkIds['web1!https'] }],
+    // Switching to manual mode overrides the checks (PATCH: only the given members change).
+    const manual = await admin.patch(`/api/admin/services/${svc.id}`, {
+      data: {
+        type: 'services',
+        id: svc.id,
+        attributes: { statusMode: 'manual', manualStatus: 'degraded', checks: [{ checkId: checkIds['web1!https'] }] },
+        relationships: { locations: { data: [] } },
+      },
     });
     expect(manual.statusCode).toBe(200);
-    expect(manual.json()).toMatchObject({ status: 'degraded', monitorStatus: 'major_outage', locationIds: [] });
+    expect(data(manual)).toMatchObject({ name: 'Web App', kind: 'site', status: 'degraded', monitorStatus: 'major_outage', locationIds: [] });
+    const badRel = await admin.patch(`/api/admin/services/${svc.id}`, {
+      data: { type: 'services', id: svc.id, relationships: { group: { data: { type: 'service-groups', id: 'missing' } } } },
+    });
+    expect(badRel.statusCode).toBe(400);
 
     // Checks: filters and deletion.
     const unlinked = await admin.get('/api/admin/checks?unlinked=true');
@@ -136,11 +166,11 @@ describe('services', () => {
     const critical = await admin.get(`/api/admin/checks?state=critical&sourceId=${sourceId}`);
     expect(critical.json()).toHaveLength(1);
 
-    await admin.put(`/api/admin/services/${svc.id}`, { name: 'Web App', checks: [{ checkId: checkIds['web1!https'] }] });
-    current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    await admin.patch(`/api/admin/services/${svc.id}`, { statusMode: 'auto' });
+    current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current.status).toBe('major_outage');
     expect((await admin.delete(`/api/admin/checks/${checkIds['web1!https']}`)).statusCode).toBe(204);
-    current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
+    current = data<Any>(await admin.get(`/api/admin/services/${svc.id}`));
     expect(current).toMatchObject({ status: 'operational', checks: [] });
   });
 
@@ -150,14 +180,14 @@ describe('services', () => {
     const badGroup = await admin.post('/api/admin/services', { name: 'X', groupId: 'missing' });
     expect(badGroup.statusCode).toBe(400);
 
-    const g1 = (await admin.post('/api/admin/service-groups', { name: 'One' })).json();
-    const g2 = (await admin.post('/api/admin/service-groups', { name: 'Two' })).json();
-    const a = (await admin.post('/api/admin/services', { name: 'A', groupId: g1.id })).json();
-    const b = (await admin.post('/api/admin/services', { name: 'B', groupId: g1.id })).json();
-    const c = (await admin.post('/api/admin/services', { name: 'C', groupId: g2.id })).json();
+    const g1 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'One' }));
+    const g2 = data<Any>(await admin.post('/api/admin/service-groups', { name: 'Two' }));
+    const a = data<Any>(await admin.post('/api/admin/services', { name: 'A', groupId: g1.id }));
+    const b = data<Any>(await admin.post('/api/admin/services', { name: 'B', groupId: g1.id }));
+    const c = data<Any>(await admin.post('/api/admin/services', { name: 'C', groupId: g2.id }));
     expect((await admin.post('/api/admin/services/reorder', { ids: [a.id, c.id] })).statusCode).toBe(400);
     expect((await admin.post('/api/admin/services/reorder', { ids: [b.id, a.id] })).statusCode).toBe(204);
-    const list = (await admin.get('/api/admin/services')).json() as { id: string }[];
+    const list = data<{ id: string }[]>(await admin.get('/api/admin/services'));
     expect(list.map((s) => s.id)).toEqual([b.id, a.id, c.id]);
 
     expect((await admin.delete(`/api/admin/services/${a.id}`)).statusCode).toBe(204);
@@ -276,16 +306,16 @@ describe('monitoring sources', () => {
     const created = (await admin.post('/api/admin/monitor-sources', { name: 'Hook', type: 'webhook', config: {} })).json();
     await t.app.ctx.ingest.ingest(created.id, [{ externalId: 'x', name: 'X', host: 'h', state: 'critical' }], { full: false });
     const check = (await admin.get(`/api/admin/checks?sourceId=${created.id}`)).json()[0];
-    const svc = (await admin.post('/api/admin/services', { name: 'S', checks: [{ checkId: check.id }] })).json();
+    const svc = data<Any>(await admin.post('/api/admin/services', { name: 'S', checks: [{ checkId: check.id }] }));
     expect(svc.status).toBe('major_outage');
 
     await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: false });
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('operational');
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`)).status).toBe('operational');
 
     await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: true });
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('major_outage');
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`)).status).toBe('major_outage');
 
     await admin.delete(`/api/admin/monitor-sources/${created.id}`);
-    expect((await admin.get(`/api/admin/services/${svc.id}`)).json()).toMatchObject({ status: 'operational', checks: [] });
+    expect(data<Any>(await admin.get(`/api/admin/services/${svc.id}`))).toMatchObject({ status: 'operational', checks: [] });
   });
 });

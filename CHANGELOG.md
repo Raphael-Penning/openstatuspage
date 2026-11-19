@@ -31,4 +31,11 @@ breaking changes.
     one-click unsubscribe answers `204`.
   - Admin lists: `/api/admin/audit-log` takes `filter[entityType]`,
     `/api/admin/subscribers` takes `filter[q]` and `filter[status]`.
+  - Admin catalog (services, service groups, locations, incidents, maintenance,
+    corrections): `PUT` became a partial `PATCH`; foreign keys are relationships
+    (`group`, `locations`, `services`); posting an incident or maintenance update
+    creates an `incident-updates` / `maintenance-updates` resource (`201`) and its
+    routes are `/incidents/:incidentId/updates/:id`; corrections are filtered with
+    `filter[service]`, `filter[from]`, `filter[to]` and the service history with
+    `filter[from]`, `filter[to]`.
   - Unchanged: `/api/public/status.json`, `/api/health` and the RSS/Atom feeds.

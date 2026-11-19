@@ -14,11 +14,15 @@ import {
   createUser,
   data,
   errors,
+  doc,
   login,
   page,
   type Client,
   type TestApp,
 } from './helpers.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
 
 const HOUR = 3600_000;
 
@@ -33,9 +37,9 @@ beforeEach(async () => {
   mailer = new MemoryMailer();
   t = await createTestApp({}, { mailer });
   admin = await adminClient(t);
-  api = (await admin.post('/api/admin/services', { name: 'Public API' })).json().id;
-  web = (await admin.post('/api/admin/services', { name: 'Web App' })).json().id;
-  hidden = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().id;
+  api = (await admin.post('/api/admin/services', { name: 'Public API' })).json().data.id;
+  web = (await admin.post('/api/admin/services', { name: 'Web App' })).json().data.id;
+  hidden = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().data.id;
   await settings({});
 });
 afterEach(async () => {
@@ -126,7 +130,7 @@ describe('incident notifications', () => {
     expect(mail.subject).toBe('[Example Status] Incident: Elevated error rates');
     expect(mail.text).toContain('Public API');
     expect(mail.text).toContain('We are investigating.');
-    expect(mail.text).toContain(`${BASE_URL}/incidents/${created.json().id}`);
+    expect(mail.text).toContain(`${BASE_URL}/incidents/${created.json().data.id}`);
     for (const body of [mail.text, mail.html]) {
       expect(body).not.toContain('Hidden backend');
       expect(body).toContain('/subscription/manage?id=');
@@ -147,11 +151,11 @@ describe('incident notifications', () => {
     expect(`${mail.text}${mail.html}`).not.toContain('__OSP_');
 
     // Update moves to another service.
-    await admin.post(`/api/admin/incidents/${created.json().id}/updates`, {
+    await admin.post(`/api/admin/incidents/${created.json().data.id}/updates`, doc('incident-updates', {
       status: 'identified',
       message: 'Root cause found.',
       affectedServices: [{ serviceId: web, status: 'degraded' }],
-    });
+    }));
     const updates = await deliver();
     expect(recipients(updates)).toEqual(['all@example.com', 'web@example.com']);
     expect(updates[0]!.subject).toBe('[Example Status] Elevated error rates: Identified');
@@ -171,18 +175,18 @@ describe('incident notifications', () => {
   it('never notifies about private incidents or with notify=false', async () => {
     await seedSubscribers();
     const priv = await admin.post('/api/admin/incidents', { title: 'Private', message: 'x', isPublic: false });
-    await admin.post(`/api/admin/incidents/${priv.json().id}/updates`, { status: 'resolved', message: 'done' });
+    await admin.post(`/api/admin/incidents/${priv.json().data.id}/updates`, doc('incident-updates', { status: 'resolved', message: 'done' }));
     const quiet = await admin.post('/api/admin/incidents', { title: 'Quiet', message: 'x', notify: false });
-    await admin.post(`/api/admin/incidents/${quiet.json().id}/updates`, {
+    await admin.post(`/api/admin/incidents/${quiet.json().data.id}/updates`, doc('incident-updates', {
       status: 'resolved',
       message: 'done',
       notify: false,
-    });
+    }));
     expect(await deliver()).toHaveLength(0);
     expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
 
     // A notifying update of the quiet incident does send.
-    await admin.post(`/api/admin/incidents/${quiet.json().id}/updates`, { status: 'monitoring', message: 'again' });
+    await admin.post(`/api/admin/incidents/${quiet.json().data.id}/updates`, doc('incident-updates', { status: 'monitoring', message: 'again' }));
     expect(recipients(await deliver())).toEqual(['all@example.com']);
   });
 
@@ -219,8 +223,8 @@ describe('maintenance notifications', () => {
       ...window(48),
     });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({ notify: true, reminderSentAt: null });
-    const id = created.json().id;
+    expect(data<Any>(created)).toMatchObject({ notify: true, reminderSentAt: null });
+    const id = data<Any>(created).id;
 
     const announced = await deliver();
     expect(recipients(announced)).toEqual(['all@example.com', 'web@example.com']);
@@ -243,15 +247,15 @@ describe('maintenance notifications', () => {
 
     // Stored flag off: no announcement, no automatic notifications.
     const quiet = await admin.post('/api/admin/maintenances', { title: 'Quiet', notify: false, ...window(48) });
-    expect(quiet.json().notify).toBe(false);
+    expect(data<Any>(quiet).notify).toBe(false);
     await runMaintenanceTransitions(db, engine, new Date(Date.now() + 49 * HOUR).toISOString(), notifications);
     expect(await deliver()).toHaveLength(0);
     // A manual update with notify (form checkbox) still sends.
-    await admin.post(`/api/admin/maintenances/${quiet.json().id}/updates`, { status: 'in_progress', message: 'Still busy.' });
+    await admin.post(`/api/admin/maintenances/${data<Any>(quiet).id}/updates`, doc('maintenance-updates', { status: 'in_progress', message: 'Still busy.' }));
     expect((await deliver())[0]!.text).toContain('Still busy.');
     // PATCH notify updates the stored flag.
-    const patched = await admin.patch(`/api/admin/maintenances/${quiet.json().id}`, { notify: true });
-    expect(patched.json().notify).toBe(true);
+    const patched = await admin.patch(`/api/admin/maintenances/${data<Any>(quiet).id}`, { notify: true });
+    expect(data<Any>(patched).notify).toBe(true);
     await runMaintenanceTransitions(db, engine, new Date(Date.now() + 51 * HOUR).toISOString(), notifications);
     expect((await deliver())[0]!.subject).toContain('Quiet: Completed');
   });
@@ -271,7 +275,7 @@ describe('maintenance notifications', () => {
     await addSubscriber('all@example.com');
     await addSubscriber('web@example.com', { services: [web] });
     const created = await admin.post('/api/admin/maintenances', { title: 'Overlap', serviceIds: [web], ...window(1) });
-    const id = created.json().id;
+    const id = data<Any>(created).id;
     await deliver();
     const { db, engine, notifications } = t.app.ctx;
     const updates = (status: 'in_progress' | 'completed') =>
@@ -318,7 +322,7 @@ describe('maintenance notifications', () => {
     const rows = await db
       .selectFrom('maintenance_updates')
       .select('status')
-      .where('maintenance_id', '=', created.json().id)
+      .where('maintenance_id', '=', data<Any>(created).id)
       .where('created_by', 'is', null)
       .execute();
     expect(rows.map((r) => r.status).sort()).toEqual(['completed', 'in_progress']);
@@ -330,7 +334,7 @@ describe('maintenance notifications', () => {
   it('never notifies about private maintenance', async () => {
     await addSubscriber('all@example.com');
     const m = await admin.post('/api/admin/maintenances', { title: 'Private', isPublic: false, ...window(1) });
-    await admin.post(`/api/admin/maintenances/${m.json().id}/updates`, { status: 'in_progress', message: 'x' });
+    await admin.post(`/api/admin/maintenances/${data<Any>(m).id}/updates`, doc('maintenance-updates', { status: 'in_progress', message: 'x' }));
     const { db, engine, notifications } = t.app.ctx;
     await runMaintenanceTransitions(db, engine, new Date(Date.now() + 5 * HOUR).toISOString(), notifications);
     expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
@@ -340,7 +344,7 @@ describe('maintenance notifications', () => {
     await addSubscriber('all@example.com');
     const { notifications } = t.app.ctx;
     const created = await admin.post('/api/admin/maintenances', { title: 'Upgrade', ...window(72) });
-    const id = created.json().id;
+    const id = data<Any>(created).id;
     const late = await admin.post('/api/admin/maintenances', { title: 'Short notice', ...window(12) });
     await deliver();
 
@@ -351,18 +355,18 @@ describe('maintenance notifications', () => {
     expect(reminder!.subject).toBe('[Example Status] Reminder: maintenance Upgrade');
     expect(reminder!.text).toContain('This maintenance starts on');
     expect(await notifications.sendDueReminders(now)).toBe(0);
-    expect((await admin.get(`/api/admin/maintenances/${id}`)).json().reminderSentAt).toEqual(expect.any(String));
-    expect((await admin.get(`/api/admin/maintenances/${late.json().id}`)).json().reminderSentAt).toBeNull();
+    expect(data<Any>(await admin.get(`/api/admin/maintenances/${id}`)).reminderSentAt).toEqual(expect.any(String));
+    expect(data<Any>(await admin.get(`/api/admin/maintenances/${data<Any>(late).id}`)).reminderSentAt).toBeNull();
 
     // Moving the window later resets the reminder.
     const moved = await admin.patch(`/api/admin/maintenances/${id}`, window(120));
-    expect(moved.json().reminderSentAt).toBeNull();
+    expect(data<Any>(moved).reminderSentAt).toBeNull();
     expect(await notifications.sendDueReminders(now)).toBe(0);
     expect(await notifications.sendDueReminders(new Date(Date.now() + 100 * HOUR))).toBe(1);
 
     // Moving earlier keeps it.
     const earlier = await admin.patch(`/api/admin/maintenances/${id}`, window(110));
-    expect(earlier.json().reminderSentAt).toEqual(expect.any(String));
+    expect(data<Any>(earlier).reminderSentAt).toEqual(expect.any(String));
   });
 
   it('does not remind when disabled or without notify flag', async () => {

@@ -4,6 +4,9 @@ import { notFound } from '../../lib/errors.js';
 import { newId } from '../../lib/ids.js';
 import { IdParams, parse } from '../../lib/http.js';
 import { nowIso } from '../../lib/time.js';
+import { collection, created, document, noContent, selfLink } from '../../lib/jsonapi.js';
+import { useJsonApi } from '../../plugins/jsonapi.js';
+import { adminGroupResource, adminLocationResource, CATALOG_TYPES } from '../../serializers/catalog.js';
 import { loadAdminLocations, toAdminGroup } from '../../services/admin-catalog.js';
 import { resolveSlug } from '../../services/slugs.js';
 import { admin, applyOrder, assertExist, auditRequest, editor } from './util.js';
@@ -30,15 +33,29 @@ function locationValues(input: LocationInput) {
   };
 }
 
-/** /api/admin/locations and /api/admin/service-groups */
+const asObject = (body: unknown): Record<string, unknown> =>
+  typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+
+/** /api/admin/locations and /api/admin/service-groups (JSON:API) */
 export async function registerLocationAndGroupRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(async (scope) => {
+    useJsonApi(scope);
+    await registerRoutes(scope);
+  });
+}
+
+async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db } = app.ctx;
+  const locationType = { config: { jsonapi: { type: CATALOG_TYPES.location } } };
+  const groupType = { config: { jsonapi: { type: CATALOG_TYPES.group } } };
 
   // --- Locations ---------------------------------------------------------------
 
-  app.get('/api/admin/locations', editor, async () => loadAdminLocations(db));
+  app.get('/api/admin/locations', editor, async (req) =>
+    collection(req, (await loadAdminLocations(db)).map(adminLocationResource)),
+  );
 
-  app.post('/api/admin/locations', admin, async (req, reply) => {
+  app.post('/api/admin/locations', { ...admin, ...locationType }, async (req, reply) => {
     const input = parse(LocationInput, req.body);
     const id = newId();
     const now = nowIso();
@@ -48,7 +65,8 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
       .values({ id, slug, ...locationValues(input), created_at: now, updated_at: now })
       .execute();
     await auditRequest(db, req, 'location.create', 'location', id, { name: input.name });
-    return reply.status(201).send(await getLocation(app, id));
+    const location = adminLocationResource(await getLocation(app, id));
+    return created(reply, document(location, { links: { self: selfLink(req) } }), `/api/admin/locations/${id}`);
   });
 
   // Registered before /:id so "reorder" is not taken as an id.
@@ -57,16 +75,18 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
     await assertExist(db, 'locations', ids, 'location');
     await applyOrder(db, 'locations', ids);
     await auditRequest(db, req, 'location.reorder', 'location', null, { ids });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
-  app.get('/api/admin/locations/:id', editor, async (req) => getLocation(app, parse(IdParams, req.params).id));
+  app.get('/api/admin/locations/:id', editor, async (req) =>
+    document(adminLocationResource(await getLocation(app, parse(IdParams, req.params).id)), { links: { self: selfLink(req) } }),
+  );
 
-  app.put('/api/admin/locations/:id', admin, async (req) => {
+  // Partial update: missing attributes keep their current values.
+  app.patch('/api/admin/locations/:id', { ...admin, ...locationType }, async (req) => {
     const { id } = parse(IdParams, req.params);
-    const input = parse(LocationInput, req.body);
-    const current = await db.selectFrom('locations').select(['slug']).where('id', '=', id).executeTakeFirst();
-    if (!current) throw notFound('Location');
+    const current = await getLocation(app, id);
+    const input = parse(LocationInput, { ...current, ...asObject(req.body) });
     const slug = await resolveSlug(db, 'locations', {
       slug: input.slug,
       name: input.name,
@@ -79,7 +99,7 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
       .where('id', '=', id)
       .execute();
     await auditRequest(db, req, 'location.update', 'location', id, { name: input.name });
-    return getLocation(app, id);
+    return document(adminLocationResource(await getLocation(app, id)), { links: { self: selfLink(req) } });
   });
 
   app.delete('/api/admin/locations/:id', admin, async (req, reply) => {
@@ -89,7 +109,7 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
     // Links to services, incidents and maintenance are removed by ON DELETE CASCADE.
     await db.deleteFrom('locations').where('id', '=', id).execute();
     await auditRequest(db, req, 'location.delete', 'location', id, { name: loc.name });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
   // --- Service groups ----------------------------------------------------------
@@ -100,12 +120,12 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
     return toAdminGroup(g);
   };
 
-  app.get('/api/admin/service-groups', editor, async () => {
+  app.get('/api/admin/service-groups', editor, async (req) => {
     const rows = await db.selectFrom('service_groups').selectAll().orderBy('sort_order').orderBy('name').execute();
-    return rows.map(toAdminGroup);
+    return collection(req, rows.map((r) => adminGroupResource(toAdminGroup(r))));
   });
 
-  app.post('/api/admin/service-groups', admin, async (req, reply) => {
+  app.post('/api/admin/service-groups', { ...admin, ...groupType }, async (req, reply) => {
     const input = parse(ServiceGroupInput, req.body);
     const id = newId();
     const now = nowIso();
@@ -125,7 +145,8 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
       })
       .execute();
     await auditRequest(db, req, 'service_group.create', 'service_group', id, { name: input.name });
-    return reply.status(201).send(await getGroup(id));
+    const group = adminGroupResource(await getGroup(id));
+    return created(reply, document(group, { links: { self: selfLink(req) } }), `/api/admin/service-groups/${id}`);
   });
 
   app.post('/api/admin/service-groups/reorder', admin, async (req, reply) => {
@@ -133,15 +154,18 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
     await assertExist(db, 'service_groups', ids, 'service group');
     await applyOrder(db, 'service_groups', ids);
     await auditRequest(db, req, 'service_group.reorder', 'service_group', null, { ids });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
-  app.get('/api/admin/service-groups/:id', editor, async (req) => getGroup(parse(IdParams, req.params).id));
+  app.get('/api/admin/service-groups/:id', editor, async (req) =>
+    document(adminGroupResource(await getGroup(parse(IdParams, req.params).id)), { links: { self: selfLink(req) } }),
+  );
 
-  app.put('/api/admin/service-groups/:id', admin, async (req) => {
+  // Partial update: missing attributes keep their current values.
+  app.patch('/api/admin/service-groups/:id', { ...admin, ...groupType }, async (req) => {
     const { id } = parse(IdParams, req.params);
-    const input = parse(ServiceGroupInput, req.body);
     const current = await getGroup(id);
+    const input = parse(ServiceGroupInput, { ...current, ...asObject(req.body) });
     const slug = await resolveSlug(db, 'service_groups', {
       slug: input.slug,
       name: input.name,
@@ -162,7 +186,7 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
       .where('id', '=', id)
       .execute();
     await auditRequest(db, req, 'service_group.update', 'service_group', id, { name: input.name });
-    return getGroup(id);
+    return document(adminGroupResource(await getGroup(id)), { links: { self: selfLink(req) } });
   });
 
   app.delete('/api/admin/service-groups/:id', admin, async (req, reply) => {
@@ -171,6 +195,6 @@ export async function registerLocationAndGroupRoutes(app: FastifyInstance): Prom
     // services.group_id is set to NULL by the foreign key (ON DELETE SET NULL).
     await db.deleteFrom('service_groups').where('id', '=', id).execute();
     await auditRequest(db, req, 'service_group.delete', 'service_group', id, { name: group.name });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 }

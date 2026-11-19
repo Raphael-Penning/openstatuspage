@@ -22,6 +22,7 @@ import { Button, Card, LinkButton, PageHeader } from '../../components/ui';
 import { localInputToIso, nowLocalInput } from '../../lib/datetime';
 import { useOptions } from '../../lib/format';
 import { useAdminMutation } from '../../lib/queries';
+import { INCIDENT_DOCUMENT } from '../../lib/documents';
 import { useForm } from '../../lib/useForm';
 
 interface Values {
@@ -53,11 +54,14 @@ export default function IncidentCreatePage() {
   }));
   const v = form.values;
 
-  const create = useAdminMutation((body: IncidentCreateInput) => api.post<AdminIncident>('/api/admin/incidents', body), {
-    success: t('incidents.created'),
-    onSuccess: (incident) => navigate(`/admin/incidents/${incident.id}`),
-    onError: form.applyServerError,
-  });
+  const create = useAdminMutation(
+    (body: IncidentCreateInput) => api.post<AdminIncident>('/api/admin/incidents', body, INCIDENT_DOCUMENT),
+    {
+      success: t('incidents.created'),
+      onSuccess: (incident) => navigate(`/admin/incidents/${incident.id}`),
+      onError: form.applyServerError,
+    },
+  );
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

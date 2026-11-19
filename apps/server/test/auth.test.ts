@@ -203,7 +203,7 @@ describe('authorization', () => {
   it('requires authentication for the admin API', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/admin/services' });
     expect(res.statusCode).toBe(401);
-    expect(errors(res)[0]?.code ?? res.json().error).toBe('unauthorized');
+    expect(res.json().errors[0]).toMatchObject({ status: '401', code: 'unauthorized' });
   });
 
   it('enforces roles (editor < admin)', async () => {
@@ -228,8 +228,8 @@ describe('authorization', () => {
     const without = await t.app.inject({
       method: 'POST',
       url: '/api/admin/service-groups',
-      headers: { cookie },
-      payload: { name: 'Platform' },
+      headers: { cookie, 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
     });
     expect(without.statusCode).toBe(403);
 
@@ -239,8 +239,8 @@ describe('authorization', () => {
     const withHeader = await t.app.inject({
       method: 'POST',
       url: '/api/admin/service-groups',
-      headers: { cookie, 'x-requested-with': 'openstatuspage' },
-      payload: { name: 'Platform' },
+      headers: { cookie, 'x-requested-with': 'openstatuspage', 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
     });
     expect(withHeader.statusCode).toBe(201);
 

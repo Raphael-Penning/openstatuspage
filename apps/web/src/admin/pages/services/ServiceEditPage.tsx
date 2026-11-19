@@ -23,6 +23,7 @@ import { useOptions } from '../../lib/format';
 import { keys, useAdminMutation, useGroups, useService, useServices, type PreviewResult } from '../../lib/queries';
 import { emptyServiceForm, serviceFormToPayload, serviceToForm, type ServiceFormValues } from '../../lib/service-form';
 import { useDebounced } from '../../lib/useDebounced';
+import { SERVICE_DOCUMENT } from '../../lib/documents';
 import { useForm } from '../../lib/useForm';
 import { useIsAdmin } from '../../session';
 
@@ -114,7 +115,9 @@ function ServiceBuilder({ service, siblings = [] }: { service?: AdminService; si
 
   const save = useAdminMutation(
     (body: ServiceInput) =>
-      service ? api.put<AdminService>(`/api/admin/services/${service.id}`, body) : api.post<AdminService>('/api/admin/services', body),
+      service
+        ? api.patch<AdminService>(`/api/admin/services/${service.id}`, body, { ...SERVICE_DOCUMENT, id: service.id })
+        : api.post<AdminService>('/api/admin/services', body, SERVICE_DOCUMENT),
     {
       success: service ? t('services.saved') : t('services.created'),
       onSuccess: (s) => {
@@ -352,7 +355,7 @@ function PreviewCard({ values, service }: { values: ServiceFormValues; service?:
   // Admins preview the unsaved configuration; editors see the stored configuration.
   const unsaved = useQuery({
     queryKey: [...keys.services, 'preview', debounced],
-    queryFn: () => api.post<PreviewResult>('/api/admin/services/preview', debounced),
+    queryFn: () => api.post<PreviewResult>('/api/admin/services/preview', debounced, SERVICE_DOCUMENT),
     enabled: isAdmin && parsed.success,
     placeholderData: (prev) => prev,
     staleTime: 10_000,

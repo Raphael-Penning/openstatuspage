@@ -1,7 +1,7 @@
 import { deserializeDocument, resourceType, type DataDocument } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newId } from '../src/lib/ids.js';
-import { adminClient, createTestApp, data, errors, page, seedChecks, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, doc, errors, page, seedChecks, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -54,11 +54,11 @@ beforeEach(async () => {
     .set({ output: 'CRITICAL - connection refused on 192.0.2.12' })
     .execute();
 
-  const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json().id;
-  const hiddenGroup = (await admin.post('/api/admin/service-groups', { name: 'Hidden group', isPublic: false })).json().id;
-  const fra = (await admin.post('/api/admin/locations', { name: 'Frankfurt', code: 'FRA-1', region: 'europe' })).json().id;
+  const group = (await admin.post('/api/admin/service-groups', { name: 'Platform' })).json().data.id;
+  const hiddenGroup = (await admin.post('/api/admin/service-groups', { name: 'Hidden group', isPublic: false })).json().data.id;
+  const fra = (await admin.post('/api/admin/locations', { name: 'Frankfurt', code: 'FRA-1', region: 'europe' })).json().data.id;
   const hiddenLocation = (await admin.post('/api/admin/locations', { name: 'Hidden location', region: 'europe', isPublic: false }))
-    .json().id;
+    .json().data.id;
 
   const api = (
     await admin.post('/api/admin/services', {
@@ -67,7 +67,7 @@ beforeEach(async () => {
       locationIds: [fra, hiddenLocation],
       checks: [{ checkId: checkIds['db!pg'] }],
     })
-  ).json().id;
+  ).json().data.id;
   const web = (
     await admin.post('/api/admin/services', {
       name: 'Website',
@@ -75,7 +75,7 @@ beforeEach(async () => {
       url: 'https://www.example.com',
       checks: [{ checkId: checkIds['disk!/var/lib/postgresql'] }],
     })
-  ).json().id;
+  ).json().data.id;
   const hidden = (
     await admin.post('/api/admin/services', {
       name: 'Hidden backend',
@@ -83,8 +83,8 @@ beforeEach(async () => {
       locationIds: [fra],
       checks: [{ checkId: checkIds['db!pg'] }],
     })
-  ).json().id;
-  const inHiddenGroup = (await admin.post('/api/admin/services', { name: 'Billing', groupId: hiddenGroup })).json().id;
+  ).json().data.id;
+  const inHiddenGroup = (await admin.post('/api/admin/services', { name: 'Billing', groupId: hiddenGroup })).json().data.id;
 
   const incident = (
     await admin.post('/api/admin/incidents', {
@@ -96,10 +96,10 @@ beforeEach(async () => {
       ],
       locationIds: [fra, hiddenLocation],
     })
-  ).json().id;
+  ).json().data.id;
   const privateIncident = (
     await admin.post('/api/admin/incidents', { title: 'Private incident', message: 'internal', isPublic: false })
-  ).json().id;
+  ).json().data.id;
   const maintenance = (
     await admin.post('/api/admin/maintenances', {
       title: 'Network upgrade',
@@ -107,7 +107,7 @@ beforeEach(async () => {
       scheduledEnd: new Date(Date.now() + 90000_000).toISOString(),
       serviceIds: [web, hidden],
     })
-  ).json().id;
+  ).json().data.id;
 
   ids = {
     group,
@@ -269,13 +269,13 @@ describe('public locations', () => {
     expect((res.meta?.counts as Any).major_outage).toBe(1);
 
     // Resolve the incident; the api's check is still critical, so move it to manual operational.
-    await admin.post(`/api/admin/incidents/${ids.incident}/updates`, { status: 'resolved', message: 'ok' });
-    await admin.put(`/api/admin/services/${ids.api}`, { name: 'Public API', statusMode: 'manual', locationIds: [ids.fra] });
+    await admin.post(`/api/admin/incidents/${ids.incident}/updates`, doc('incident-updates', { status: 'resolved', message: 'ok' }));
+    await admin.patch(`/api/admin/services/${ids.api}`, { statusMode: 'manual', checks: [] });
     const after = await getData('/api/public/locations');
     // The hidden service is still in major outage, but the public location stays operational.
     expect(after[0].status).toBe('operational');
 
-    await admin.put(`/api/admin/locations/${ids.fra}`, { name: 'Frankfurt', region: 'europe', statusOverride: 'degraded' });
+    await admin.patch(`/api/admin/locations/${ids.fra}`, { statusOverride: 'degraded' });
     expect((await getData('/api/public/locations'))[0].status).toBe('degraded');
   });
 });
@@ -289,8 +289,8 @@ describe('public history', () => {
         scheduledStart: '2026-01-10T10:00:00.000Z',
         scheduledEnd: '2026-01-10T12:00:00.000Z',
       })
-    ).json();
-    expect(past.status).toBe('completed');
+    ).json().data;
+    expect(past.attributes.status).toBe('completed');
     await admin.post('/api/admin/incidents', {
       title: 'January incident',
       message: 'x',
