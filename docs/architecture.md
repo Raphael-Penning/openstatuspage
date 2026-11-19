@@ -31,6 +31,9 @@ The core promise: **customers see services, never infrastructure.**
 ```
 monitoring system ──(poll / push)──► adapter ──► IngestService ──► monitor_checks
                                                                        │
+           check bundles: weighted vote of member checks ──► bundle check
+           (BundleService, rules in bundle-rules.ts)          (also a monitor_check)
+                                                                       │
              service_checks (link + mapping per check) ◄───────────────┘
                                 │
                                 ▼
@@ -49,6 +52,11 @@ monitoring system ──(poll / push)──► adapter ──► IngestService �
 Rules live in `apps/server/src/services/status-rules.ts` (pure, unit tested);
 `StatusEngine` loads data and persists results. Every code path that changes an
 input of a service must call `ctx.engine.recompute(serviceIds)`.
+
+History corrections (status overrides for a past range, retroactive maintenance)
+are a layer over `service_status_history`: they are applied when uptime is
+computed (`services/history-corrections.ts`), never written into the history.
+See [api.md](api.md#history-corrections).
 
 Uptime bars use UTC days. A day counts only the time that was observed
 (a service created today is judged by the time since its creation);
@@ -101,10 +109,43 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
 
 - maintenance transitions (auto start/complete) every 30 s, notifying subscribers
 - one poll task per enabled pull-capable monitoring source
+- `bundle-evaluation`: re-evaluates every check bundle each minute, so members
+  whose results become stale stop counting
 - session cleanup (hourly)
 - `email-delivery`: sends due outbox mails every 10 s
 - `maintenance-reminders`: queues reminders every minute
 - `notification-cleanup` (hourly): deletes unconfirmed subscriptions after 7 days and
   sent/failed mails after 30 days
+- `history-import-cleanup` (every 5 min): fails import jobs without progress for
+  15 minutes (e.g. after a restart) and discards previews older than 24 hours
+
+History import jobs themselves run as one-off jobs in the process that received
+the request (also with `WORKER_ENABLED=false`).
+
+## Check history and history import
+
+```
+ingest / bundle vote ──state change──► monitor_check_history (source = live)
+                                                  ▲
+importer (Kuma Socket.IO, Icinga DB SQL,          │ only into periods without live rows
+openITCockpit API, CSV) ──► history_import_intervals ──preview──► confirm ──┐
+                                                                            ▼
+      replay (history-replay.ts): check history → link mappings, aggregation,
+      bundle votes, maintenance, incidents → service_status_history (source = import),
+      only inside the service's gaps
+```
+
+- `monitor_check_history` keeps state intervals per check; the open row
+  (`ended_at = null`) is the current state.
+- Imports never touch `live` rows and replace earlier `import` rows inside their
+  range, so re-runs are idempotent. Service statuses from CSV files are stored
+  as `import_explicit` and kept by later imports (precedence live > explicit >
+  replayed).
+- Applying plans and writes in one transaction under a global lock
+  (`pg_advisory_xact_lock` on PostgreSQL, the write lock on SQLite), so imports
+  of different sources feeding the same service never interleave.
+- Code: `apps/server/src/importers/` (one importer per source type, CSV parser,
+  minimal Socket.IO client), `services/history-import*.ts` (jobs, planning),
+  `services/history-replay.ts` (pure, unit tested).
 
 Set `WORKER_ENABLED=false` on extra replicas so only one instance runs these tasks.

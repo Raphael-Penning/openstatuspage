@@ -4,6 +4,9 @@
  */
 import type {
   AdminApiToken,
+  AdminCheckBundle,
+  AdminCorrection,
+  AdminHistoryImport,
   AdminIncident,
   AdminLocation,
   AdminMaintenance,
@@ -11,11 +14,14 @@ import type {
   AdminMonitorSource,
   AdminService,
   AdminServiceGroup,
+  AdminServiceHistory,
   AdminSubscriber,
   AdminUser,
   AuditLogEntry,
   AuthConfig,
+  BundleCandidateSource,
   CheckState,
+  ConfigurableSourceType,
   NotificationStatus,
   Paginated,
   PublicPageSettings,
@@ -51,6 +57,14 @@ export interface ChecksFilter {
   unlinked?: boolean;
 }
 
+export interface CorrectionsFilter {
+  serviceId?: string;
+  /** ISO timestamps; only corrections overlapping [from, to). */
+  from?: string;
+  to?: string;
+  page: number;
+}
+
 export const keys = {
   session: ['auth', 'session'] as const,
   authConfig: ['auth', 'config'] as const,
@@ -66,13 +80,19 @@ export const keys = {
   maintenance: (id: string) => ['admin', 'maintenances', id] as const,
   sources: ['admin', 'monitor-sources'] as const,
   source: (id: string) => ['admin', 'monitor-sources', id] as const,
+  historyImports: (sourceId: string) => ['admin', 'monitor-sources', sourceId, 'history-imports'] as const,
+  historyImport: (sourceId: string, id: string) => ['admin', 'monitor-sources', sourceId, 'history-imports', id] as const,
   checks: (filter: ChecksFilter) => ['admin', 'checks', filter] as const,
+  bundles: ['admin', 'check-bundles'] as const,
+  bundleCandidates: (type: string) => ['admin', 'check-bundles', 'candidates', type] as const,
   settings: ['admin', 'settings'] as const,
   users: ['admin', 'users'] as const,
   tokens: ['admin', 'api-tokens'] as const,
   audit: (page: number, entityType: string) => ['admin', 'audit-log', page, entityType] as const,
   subscribers: (query: SubscriberListQuery) => ['admin', 'subscribers', query] as const,
   notificationStatus: ['admin', 'notifications', 'status'] as const,
+  corrections: (filter: CorrectionsFilter) => ['admin', 'corrections', 'list', filter] as const,
+  serviceHistory: (id: string, from: string, to: string) => ['admin', 'services', id, 'history', from, to] as const,
 };
 
 const notRetryingClientErrors = (failureCount: number, error: unknown) =>
@@ -128,6 +148,25 @@ export const useSources = (enabled = true) =>
   useAdminQuery<AdminMonitorSource[]>(keys.sources, '/api/admin/monitor-sources', undefined, enabled);
 export const useSource = (id: string | undefined) =>
   useAdminQuery<AdminMonitorSource>(keys.source(id ?? ''), `/api/admin/monitor-sources/${id}`, undefined, Boolean(id));
+export const useHistoryImports = (sourceId: string | undefined) =>
+  useAdminQuery<AdminHistoryImport[]>(
+    keys.historyImports(sourceId ?? ''),
+    `/api/admin/monitor-sources/${sourceId}/history-imports`,
+    undefined,
+    Boolean(sourceId),
+  );
+/** One import job; polled while it is fetching or being written. */
+export const useHistoryImport = (sourceId: string, id: string | null) =>
+  useQuery({
+    queryKey: keys.historyImport(sourceId, id ?? ''),
+    queryFn: () => api.get<AdminHistoryImport>(`/api/admin/monitor-sources/${sourceId}/history-imports/${id}`),
+    retry: notRetryingClientErrors,
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'fetching' || status === 'applying' ? 1500 : false;
+    },
+  });
 export const useChecks = (filter: ChecksFilter, enabled = true) =>
   useAdminQuery<AdminMonitorCheck[]>(
     keys.checks(filter),
@@ -135,6 +174,18 @@ export const useChecks = (filter: ChecksFilter, enabled = true) =>
     { sourceId: filter.sourceId, q: filter.q, state: filter.state, unlinked: filter.unlinked ? 'true' : undefined },
     enabled,
   );
+/** Bundles with their live vote; refreshed regularly so the breakdown stays current. */
+export const useBundles = () =>
+  useQuery({
+    queryKey: keys.bundles,
+    queryFn: () => api.get<AdminCheckBundle[]>('/api/admin/check-bundles'),
+    retry: notRetryingClientErrors,
+    refetchInterval: 30_000,
+  });
+export const useBundleCandidates = (type: ConfigurableSourceType | '') =>
+  useAdminQuery<BundleCandidateSource[]>(keys.bundleCandidates(type), '/api/admin/check-bundles/candidates', {
+    type: type || undefined,
+  });
 export const useSettings = () => useAdminQuery<PublicPageSettings>(keys.settings, '/api/admin/settings');
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
@@ -144,6 +195,16 @@ export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
     pageSize,
     entityType: entityType || undefined,
   });
+
+export const useCorrections = (filter: CorrectionsFilter, pageSize = 20) =>
+  useQuery({
+    queryKey: keys.corrections(filter),
+    queryFn: () => api.get<Paginated<AdminCorrection>>('/api/admin/corrections', { ...filter, pageSize }),
+    retry: notRetryingClientErrors,
+    placeholderData: keepPreviousData,
+  });
+export const useServiceHistory = (id: string, from: string, to: string, enabled = true) =>
+  useAdminQuery<AdminServiceHistory>(keys.serviceHistory(id, from, to), `/api/admin/services/${id}/history`, { from, to }, enabled);
 
 export const useSubscribers = (query: SubscriberListQuery) =>
   useQuery({

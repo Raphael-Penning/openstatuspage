@@ -6,11 +6,13 @@
 export const AUDIT_ENTITY_TYPES = [
   'incident',
   'maintenance',
+  'correction',
   'service',
   'service_group',
   'location',
   'monitor_source',
   'check',
+  'check_bundle',
   'settings',
   'user',
   'api_token',

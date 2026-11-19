@@ -110,7 +110,9 @@
     "maintenance": "Laufende und geplante Wartungen",
     "incidents": "Vorfälle der letzten 90 Tage",
     "fullHistory": "Gesamter Verlauf",
-    "noIncidents": "Keine Vorfälle in den letzten 90 Tagen."
+    "noIncidents": "Keine Vorfälle in den letzten 90 Tagen.",
+    "corrections": "Nachträglich korrigiert",
+    "correctionsIntro": "Die Daten dieser Tage wurden nachträglich korrigiert, zum Beispiel nach einem Fehlalarm des Monitorings. Die Uptime oben enthält die Korrektur bereits."
   },
   "uptime": {
     "roleDescription": "Verfügbarkeitsleiste",
@@ -120,7 +122,11 @@
     "noDowntime": "Keine Ausfallzeit erfasst.",
     "daysAgo_one": "vor {{count}} Tag",
     "daysAgo_other": "vor {{count}} Tagen",
-    "today": "Heute"
+    "today": "Heute",
+    "corrected": "Nachträglich korrigiert",
+    "correctedLegend": "Markierte Tage wurden nachträglich korrigiert",
+    "correctedCount_one": "{{count}} Tag wurde nachträglich korrigiert.",
+    "correctedCount_other": "{{count}} Tage wurden nachträglich korrigiert."
   },
   "locations": {
     "title": "Standorte",

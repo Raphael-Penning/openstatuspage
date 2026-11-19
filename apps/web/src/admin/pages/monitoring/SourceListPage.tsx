@@ -1,5 +1,5 @@
 import type { AdminMonitorSource } from '@openstatuspage/shared';
-import { KeyRound, ListChecks, Plus, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
+import { Combine, KeyRound, ListChecks, Plus, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { api } from '../../../lib/api';
@@ -8,7 +8,7 @@ import { IngestTokenDialog } from '../../components/IngestTokenDialog';
 import { SourcePollStatus } from '../../components/SourcePollStatus';
 import { Badge, Card, EmptyState, IconButton, LinkButton, PageHeader, QueryState, Table, td, th, tr } from '../../components/ui';
 import { useAdminMutation, useSources } from '../../lib/queries';
-import { isPullType } from '../../lib/source-form';
+import { isBundleSource, isPullType } from '../../lib/source-form';
 import { useSourceActions } from '../../lib/useSourceActions';
 
 export default function SourceListPage() {
@@ -30,6 +30,9 @@ export default function SourceListPage() {
           <>
             <LinkButton to="/admin/monitoring/checks" icon={ListChecks}>
               {t('nav.checks')}
+            </LinkButton>
+            <LinkButton to="/admin/monitoring/bundles" icon={Combine}>
+              {t('nav.bundles')}
             </LinkButton>
             <LinkButton to="/admin/monitoring/new" variant="primary" icon={Plus}>
               {t('sources.new')}
@@ -56,7 +59,10 @@ export default function SourceListPage() {
                   {list.map((s) => (
                     <tr key={s.id} className={tr}>
                       <td className={td}>
-                        <Link to={`/admin/monitoring/${s.id}`} className="font-medium hover:text-accent">
+                        <Link
+                          to={isBundleSource(s) ? '/admin/monitoring/bundles' : `/admin/monitoring/${s.id}`}
+                          className="font-medium hover:text-accent"
+                        >
                           {s.name}
                         </Link>
                         <div className="mt-1 flex flex-wrap gap-1">
@@ -65,7 +71,7 @@ export default function SourceListPage() {
                         </div>
                       </td>
                       <td className={td}>
-                        <SourcePollStatus source={s} />
+                        {isBundleSource(s) ? <span className="text-sm text-muted">{t('bundles.computed')}</span> : <SourcePollStatus source={s} />}
                       </td>
                       <td className={`${td} tabular-nums`}>
                         <Link to={`/admin/monitoring/checks?sourceId=${s.id}`} className="hover:text-accent">
@@ -89,6 +95,8 @@ export default function SourceListPage() {
                             />
                           </>
                         )}
+                        {!isBundleSource(s) && (
+                          <>
                         <IconButton
                           icon={KeyRound}
                           label={t('sources.rotateToken')}
@@ -115,6 +123,8 @@ export default function SourceListPage() {
                             })
                           }
                         />
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}

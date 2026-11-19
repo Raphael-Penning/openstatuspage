@@ -78,6 +78,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
   app.decorate('ctx', ctx);
   app.addHook('onClose', async () => {
     // Let work that runs after a response (e.g. subscribing) finish before the database goes away.
+    // Running history imports would keep the process busy for minutes.
+    ctx.historyImports.abortAll();
     await ctx.worker.idle();
     ctx.mailer.close();
   });

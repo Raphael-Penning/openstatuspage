@@ -62,7 +62,18 @@ export type StatusMode = (typeof STATUS_MODES)[number];
 export const SERVICE_KINDS = ['service', 'site'] as const;
 export type ServiceKind = (typeof SERVICE_KINDS)[number];
 
-export const MONITOR_SOURCE_TYPES = ['icinga2', 'uptimekuma', 'openitcockpit', 'webhook'] as const;
+/** Source types an administrator can create and configure. */
+export const CONFIGURABLE_SOURCE_TYPES = ['icinga2', 'uptimekuma', 'openitcockpit', 'webhook'] as const;
+export type ConfigurableSourceType = (typeof CONFIGURABLE_SOURCE_TYPES)[number];
+
+/**
+ * Built-in virtual source holding one check per check bundle (weighted voting
+ * over checks of other sources). Created automatically, never polled, no ingest.
+ */
+export const BUNDLE_SOURCE_TYPE = 'bundle' as const;
+
+/** Every stored source type: the configurable ones plus the virtual bundle source. */
+export const MONITOR_SOURCE_TYPES = [...CONFIGURABLE_SOURCE_TYPES, BUNDLE_SOURCE_TYPE] as const;
 export type MonitorSourceType = (typeof MONITOR_SOURCE_TYPES)[number];
 
 export const USER_ROLES = ['admin', 'editor'] as const;

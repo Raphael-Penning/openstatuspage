@@ -13,6 +13,9 @@
  *   Escape hides it (WCAG 1.4.13). Tapping a day shows it on touch screens.
  * - Keyboard navigation announces the selected day through a polite live
  *   region; pointer movement does not, so screen readers are not flooded.
+ *
+ * Days corrected afterwards carry a small marker below the segment and say so
+ * (with the public notes) in the tooltip.
  */
 import type { DailyUptime } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
@@ -56,6 +59,7 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
   const wrapperRef = useRef<HTMLDivElement>(null);
   const avg = percent !== undefined && shown.length === uptime.length ? percent : averageUptime(shown);
   const avgText = avg === null ? t('uptime.noData') : t('uptime.percent', { value: formatPercent(avg, f.locale) });
+  const correctedCount = shown.filter((d) => d.corrected).length;
 
   const hide = useCallback(() => {
     setActive(null);
@@ -76,6 +80,7 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
       if (day.uptime !== null) parts.push(t('uptime.percent', { value: formatPercent(day.uptime, f.locale) }));
       for (const m of statusMinutes(day)) parts.push(`${t(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`);
     }
+    if (day.corrected) parts.push(t('uptime.corrected'), ...(day.correctionNotes ?? []));
     return parts.join(', ');
   }
 
@@ -119,7 +124,10 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
         tabIndex={0}
         role="group"
         aria-roledescription={t('uptime.roleDescription')}
-        aria-label={t('uptime.ariaLabel', { name: label, days: shown.length, uptime: avgText })}
+        aria-label={
+          t('uptime.ariaLabel', { name: label, days: shown.length, uptime: avgText }) +
+          (correctedCount > 0 ? ` ${t('uptime.correctedCount', { count: correctedCount })}` : '')
+        }
         aria-describedby={visible ? tooltipId : undefined}
         onKeyDown={onKeyDown}
         onFocus={() => setActive((a) => a ?? shown.length - 1)}
@@ -141,12 +149,14 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
           <div
             key={d.date}
             className={clsx(
-              'min-w-0 flex-1 rounded-[2px] motion-safe:transition-opacity',
+              'relative min-w-0 flex-1 rounded-[2px] motion-safe:transition-opacity',
               d.status ? STATUS_BG[d.status] : undefined,
               PATTERN_CLASS[dayPattern(d.status)],
               visible && active !== i && 'opacity-60',
             )}
-          />
+          >
+            {d.corrected && <span aria-hidden className="absolute inset-x-0 -bottom-1.5 h-[3px] rounded-full bg-fg" />}
+          </div>
         ))}
       </div>
 
@@ -174,13 +184,19 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
         {announcement}
       </p>
 
-      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted" aria-hidden>
+      <div className={clsx('flex items-center justify-between gap-2 text-xs text-muted', correctedCount > 0 ? 'mt-3' : 'mt-1.5')} aria-hidden>
         <span>{t('uptime.daysAgo', { count: shown.length })}</span>
         <span className="h-px flex-1 bg-border" />
         <span className="font-medium text-fg">{avgText}</span>
         <span className="h-px flex-1 bg-border" />
         <span>{t('uptime.today')}</span>
       </div>
+      {correctedCount > 0 && (
+        <p className="mt-1 flex items-center gap-1.5 text-xs text-muted" aria-hidden>
+          <span className="inline-block h-[3px] w-3 rounded-full bg-fg" />
+          {t('uptime.correctedLegend')}
+        </p>
+      )}
     </div>
   );
 }
@@ -215,6 +231,16 @@ function DayDetails({ day }: { day: DailyUptime }) {
             <p className="mt-1 text-muted">{t('uptime.noDowntime')}</p>
           )}
         </>
+      )}
+      {day.corrected && (
+        <div className="mt-1.5 border-t border-border pt-1.5">
+          <p className="font-medium">{t('uptime.corrected')}</p>
+          {day.correctionNotes?.map((note) => (
+            <p key={note} className="text-muted">
+              {note}
+            </p>
+          ))}
+        </div>
       )}
     </div>
   );

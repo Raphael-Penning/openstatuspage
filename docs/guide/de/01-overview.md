@@ -92,7 +92,9 @@ Wie mehrere Checks zusammengefasst werden, stellst du pro Service ein:
 
 Die Verfügbarkeitsbalken auf der öffentlichen Seite werden pro UTC-Tag aus der
 Statushistorie berechnet. *Eingeschränkte Leistung* und *Wartung* zählen als
-verfügbar.
+verfügbar. [Korrekturen](06-daily-work.md#den-verlauf-korrigieren) (eine
+vergessene Wartung, ein Fehlalarm) werden über die aufgezeichnete Historie
+gelegt; die aufgezeichneten Daten selbst werden nie verändert.
 
 Wie du Services aus Checks zusammensetzt, steht unter
 [Monitoring anbinden](05-monitoring.md).

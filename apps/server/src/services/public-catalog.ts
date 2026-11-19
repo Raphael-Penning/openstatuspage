@@ -17,9 +17,9 @@ import {
 } from '@openstatuspage/shared';
 import type { DB } from '../db/index.js';
 import type { Service } from '../db/types.js';
-import { averageUptime, computeDailyUptime, startOfUtcDay, type StatusSegment } from './uptime.js';
-
-const DAY_MS = 86400_000;
+import { loadCorrectionLayers } from './corrections.js';
+import { applyCorrections, markCorrectedDays, rangeStart } from './history-corrections.js';
+import { averageUptime, computeDailyUptime, type StatusSegment } from './uptime.js';
 
 export function emptyCounts(): Record<ServiceStatus, number> {
   return Object.fromEntries(SERVICE_STATUSES.map((s) => [s, 0])) as Record<ServiceStatus, number>;
@@ -47,17 +47,23 @@ export interface UptimeOptions {
   now: Date;
 }
 
-/** Loads status history segments of the given services overlapping [from, now] in one query. */
-async function loadSegments(db: DB, serviceIds: string[], from: Date): Promise<Map<string, StatusSegment[]>> {
+/** Loads status history segments of the given services overlapping [from, to] in one query. */
+export async function loadSegments(
+  db: DB,
+  serviceIds: string[],
+  from: Date,
+  to?: Date,
+): Promise<Map<string, StatusSegment[]>> {
   const result = new Map<string, StatusSegment[]>();
   if (serviceIds.length === 0) return result;
   const fromIso = from.toISOString();
-  const rows = await db
+  let query = db
     .selectFrom('service_status_history')
     .select(['service_id', 'status', 'started_at', 'ended_at'])
     .where('service_id', 'in', serviceIds)
-    .where((eb) => eb.or([eb('ended_at', 'is', null), eb('ended_at', '>=', fromIso)]))
-    .execute();
+    .where((eb) => eb.or([eb('ended_at', 'is', null), eb('ended_at', '>=', fromIso)]));
+  if (to) query = query.where('started_at', '<', to.toISOString());
+  const rows = await query.orderBy('started_at').execute();
   for (const r of rows) {
     const list = result.get(r.service_id) ?? [];
     list.push({ status: r.status, started_at: r.started_at, ended_at: r.ended_at });
@@ -66,19 +72,32 @@ async function loadSegments(db: DB, serviceIds: string[], from: Date): Promise<M
   return result;
 }
 
-/** Computes daily uptime buckets and average uptime for each service. */
+/**
+ * Computes daily uptime buckets and average uptime for each service from the
+ * corrected history (measured data with corrections and retroactive maintenance
+ * applied). Days with a public correction carry the `corrected` marker.
+ */
 export async function loadUptime(
   db: DB,
   serviceIds: string[],
   days: number,
   now: Date,
 ): Promise<Map<string, { uptime: DailyUptime[]; percent: number | null }>> {
-  const from = new Date(startOfUtcDay(now).getTime() - (days - 1) * DAY_MS);
-  const segments = await loadSegments(db, serviceIds, from);
+  const from = rangeStart(days, now);
+  const [segments, corrections] = await Promise.all([
+    loadSegments(db, serviceIds, from),
+    loadCorrectionLayers(db, serviceIds, from.toISOString(), now.toISOString()),
+  ]);
   const result = new Map<string, { uptime: DailyUptime[]; percent: number | null }>();
   for (const id of serviceIds) {
-    const segs = segments.get(id) ?? [];
-    result.set(id, { uptime: computeDailyUptime(segs, days, now), percent: averageUptime(segs, from, now) });
+    const c = corrections.get(id);
+    const corrected = c ? applyCorrections(segments.get(id) ?? [], c.layers, now) : null;
+    const segs = corrected ?? segments.get(id) ?? [];
+    const daily = computeDailyUptime(segs, days, now);
+    result.set(id, {
+      uptime: c && corrected ? markCorrectedDays(daily, corrected, c.publicNotes, now) : daily,
+      percent: averageUptime(segs, from, now),
+    });
   }
   return result;
 }

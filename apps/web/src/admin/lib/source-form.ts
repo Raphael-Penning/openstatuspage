@@ -3,11 +3,17 @@
  * returns SECRET_MASK and the form keeps that value until the user types a
  * new secret.
  */
-import { SECRET_MASK, type AdminMonitorSource, type MonitorSourceType } from '@openstatuspage/shared';
+import {
+  BUNDLE_SOURCE_TYPE,
+  SECRET_MASK,
+  type AdminMonitorSource,
+  type ConfigurableSourceType,
+  type MonitorSourceType,
+} from '@openstatuspage/shared';
 
 export interface SourceFormValues {
   name: string;
-  type: MonitorSourceType;
+  type: ConfigurableSourceType;
   enabled: boolean;
   pollIntervalSeconds: string;
   baseUrl: string;
@@ -15,6 +21,11 @@ export interface SourceFormValues {
   /** '' = keep stored secret (when `storedSecrets` is true) */
   password: string;
   apiKey: string;
+  /** Icinga DB connection string for history imports ('' = keep stored / none). */
+  icingaDbUrl: string;
+  /** Uptime Kuma login for history imports. */
+  historyUsername: string;
+  historyPassword: string;
   filter: string;
   includeHosts: boolean;
   verifyTls: boolean;
@@ -22,6 +33,8 @@ export interface SourceFormValues {
 
 export const PULL_TYPES: MonitorSourceType[] = ['icinga2', 'uptimekuma', 'openitcockpit'];
 export const isPullType = (type: MonitorSourceType) => PULL_TYPES.includes(type);
+/** The built-in source holding the check bundles: managed by the server, not editable. */
+export const isBundleSource = (s: Pick<AdminMonitorSource, 'type'>) => s.type === BUNDLE_SOURCE_TYPE;
 
 export const emptySourceForm = (): SourceFormValues => ({
   name: '',
@@ -32,6 +45,9 @@ export const emptySourceForm = (): SourceFormValues => ({
   username: '',
   password: '',
   apiKey: '',
+  icingaDbUrl: '',
+  historyUsername: '',
+  historyPassword: '',
   filter: '',
   includeHosts: true,
   verifyTls: true,
@@ -45,13 +61,17 @@ export function sourceToForm(s: AdminMonitorSource): SourceFormValues {
   const c = s.config;
   return {
     name: s.name,
-    type: s.type,
+    // The bundle source is never edited in this form.
+    type: s.type === BUNDLE_SOURCE_TYPE ? 'webhook' : s.type,
     enabled: s.enabled,
     pollIntervalSeconds: String(s.pollIntervalSeconds),
     baseUrl: str(c.baseUrl),
     username: str(c.username),
     password: str(c.password) === SECRET_MASK ? '' : str(c.password),
     apiKey: str(c.apiKey) === SECRET_MASK ? '' : str(c.apiKey),
+    icingaDbUrl: str(c.icingaDbUrl) === SECRET_MASK ? '' : str(c.icingaDbUrl),
+    historyUsername: str(c.historyUsername),
+    historyPassword: str(c.historyPassword) === SECRET_MASK ? '' : str(c.historyPassword),
     filter: str(c.filter),
     includeHosts: bool(c.includeHosts, true),
     verifyTls: bool(c.verifyTls, true),
@@ -59,14 +79,21 @@ export function sourceToForm(s: AdminMonitorSource): SourceFormValues {
 }
 
 /** Whether the stored source has a secret for `key` that is kept when the input stays empty. */
-export function hasStoredSecret(source: AdminMonitorSource | undefined, key: 'password' | 'apiKey', type: MonitorSourceType): boolean {
+export type SecretKey = 'password' | 'apiKey' | 'icingaDbUrl' | 'historyPassword';
+/** Secrets that are optional: empty without a stored value sends null. */
+const OPTIONAL_SECRETS: readonly SecretKey[] = ['icingaDbUrl', 'historyPassword'];
+
+export function hasStoredSecret(source: AdminMonitorSource | undefined, key: SecretKey, type: ConfigurableSourceType): boolean {
   return Boolean(source && source.type === type && source.config[key] === SECRET_MASK);
 }
 
 /** MonitorSourceInput payload. Empty secret inputs send SECRET_MASK when a stored secret exists. */
 export function sourceFormToPayload(v: SourceFormValues, source?: AdminMonitorSource) {
-  const secret = (key: 'password' | 'apiKey') =>
-    v[key] === '' && hasStoredSecret(source, key, v.type) ? SECRET_MASK : v[key];
+  const secret = (key: SecretKey) => {
+    if (v[key] !== '') return key === 'icingaDbUrl' ? v[key].trim() : v[key];
+    if (hasStoredSecret(source, key, v.type)) return SECRET_MASK;
+    return OPTIONAL_SECRETS.includes(key) ? null : '';
+  };
   const interval = Number(v.pollIntervalSeconds);
   const common = {
     name: v.name.trim(),
@@ -86,10 +113,21 @@ export function sourceFormToPayload(v: SourceFormValues, source?: AdminMonitorSo
           filter: v.filter.trim() || null,
           includeHosts: v.includeHosts,
           verifyTls: v.verifyTls,
+          icingaDbUrl: secret('icingaDbUrl'),
         },
       };
     case 'uptimekuma':
-      return { ...common, type: v.type, config: { baseUrl, apiKey: secret('apiKey'), verifyTls: v.verifyTls } };
+      return {
+        ...common,
+        type: v.type,
+        config: {
+          baseUrl,
+          apiKey: secret('apiKey'),
+          verifyTls: v.verifyTls,
+          historyUsername: v.historyUsername.trim() || null,
+          historyPassword: secret('historyPassword'),
+        },
+      };
     case 'openitcockpit':
       return {
         ...common,

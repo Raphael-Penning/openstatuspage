@@ -11,6 +11,7 @@ import { newId, newToken } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { StatusEngine } from '../services/status-engine.js';
 import { saveSettings, DEFAULT_SETTINGS } from '../services/settings.js';
+import { recordCheckState } from '../services/check-history.js';
 
 // Demo data is meant for development; a real SECRET_KEY is still used when set.
 process.env.NODE_ENV ??= 'development';
@@ -184,6 +185,7 @@ for (const c of checks) {
       updated_at: ts,
     })
     .execute();
+  await recordCheckState(db, id, c.state, ts);
   for (const [service, critical] of c.services) {
     await db
       .insertInto('service_checks')
@@ -206,6 +208,8 @@ const history: [string, ServiceStatus, number, number][] = [
   ['CDN', 'partial_outage', 41, 2],
   ['Authentication', 'major_outage', 15, 0.75],
   ['Documentation', 'maintenance', 30, 4],
+  // False alarm, corrected below (see "History correction").
+  ['Documentation', 'major_outage', 20, 0.25],
 ];
 for (const name of Object.keys(serviceIds)) {
   const sid = serviceIds[name]!;
@@ -279,6 +283,7 @@ async function maintenance(title: string, start: Date, hours: number, services: 
       is_public: 1,
       notify_subscribers: 1,
       reminder_sent_at: null,
+      retroactive: 0,
       created_by: null,
       created_at: ts,
       updated_at: ts,
@@ -291,6 +296,28 @@ async function maintenance(title: string, start: Date, hours: number, services: 
 }
 await maintenance('Database upgrade', daysAgo(-3), 2, ['Web Application', 'Public API'], 'scheduled');
 await maintenance('Documentation platform migration', daysAgo(30), 4, ['Documentation'], 'completed');
+
+// History correction --------------------------------------------------------
+// A false alarm of the monitoring, corrected afterwards and marked on the public page.
+{
+  const id = newId();
+  await db
+    .insertInto('status_corrections')
+    .values({
+      id,
+      starts_at: iso(daysAgo(20)),
+      ends_at: iso(daysAgo(20, -0.25)),
+      status: 'operational',
+      reason: 'Demo: the monitoring host lost its network connection, the service itself was fine.',
+      show_public: 1,
+      public_note: 'False alarm of the monitoring system.',
+      created_by: null,
+      created_at: ts,
+      updated_at: ts,
+    })
+    .execute();
+  await db.insertInto('status_correction_services').values({ correction_id: id, service_id: serviceIds['Documentation']! }).execute();
+}
 
 await new StatusEngine(db).recomputeAll();
 await db.destroy();

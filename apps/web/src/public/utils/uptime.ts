@@ -97,3 +97,8 @@ export function dayPattern(status: ServiceStatus | null): 'solid' | 'striped' | 
   if (status === null) return 'outline';
   return status === 'operational' ? 'solid' : 'striped';
 }
+
+/** Buckets whose data was corrected afterwards (public corrections), newest first. */
+export function correctedDays(days: readonly DailyUptime[]): DailyUptime[] {
+  return days.filter((d) => d.corrected === true).reverse();
+}

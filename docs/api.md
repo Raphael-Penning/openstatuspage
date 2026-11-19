@@ -32,6 +32,14 @@ Responses may be cached (`Cache-Control: public, max-age=30`).
 | GET | `/api/public/status.json` | Compact machine-readable status: `{ overall, updatedAt, services: [{ id, name, group, status }], activeIncidents: [{ id, title, status, impact }], activeMaintenances: [{ id, title, scheduledEnd }] }` |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 
+Uptime (`uptime`, `uptimePercent`) is computed from the **corrected** history
+(see [History corrections](#history-corrections)). A `DailyUptime` entry of a day
+in which a correction marked public is in effect carries `corrected: true` and
+`correctionNotes: string[]` (the public notes, possibly empty). The marker is
+derived from the corrected history: where a newer correction replaces a public
+one, that part no longer marks the day. The internal
+reason of a correction is never returned by public endpoints.
+
 Upcoming maintenance = `status = scheduled` and `scheduled_end > now`.
 Active maintenance = `status = in_progress`.
 Active incidents = `status != resolved`.
@@ -103,16 +111,16 @@ Expired sessions are deleted lazily and by a periodic cleanup task.
 ## Admin API (`/api/admin`)
 
 Authentication: session cookie **or** `Authorization: Bearer <api token>`.
-Roles: `editor` may manage incidents, maintenance and read everything;
+Roles: `editor` may manage incidents, maintenance, history corrections and read everything;
 `admin` may additionally manage services, groups, locations, monitoring sources,
-settings, users and API tokens. Every mutating call writes an audit log entry.
+check bundles, settings, users and API tokens. Every mutating call writes an audit log entry.
 
 Cookie-authenticated mutating requests must send the header `X-Requested-With: openstatuspage`
 (simple CSRF protection; the web client always sends it). Bearer-token requests are exempt.
 
 | Method | Path | Body | Response | Role |
 | --- | --- | --- | --- | --- |
-| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }`; editors only get `incident` and `maintenance` audit entries | editor |
+| GET | `/api/admin/overview` | – | `{ counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }, services: AdminService[] (non-operational first), recentAudit: AuditLogEntry[] }`; source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries | editor |
 | GET/PUT | `/api/admin/settings` | `SettingsInput` | `PublicPageSettings` | GET editor, PUT admin |
 | GET | `/api/admin/locations` | – | `AdminLocation[]` | editor |
 | POST | `/api/admin/locations` | `LocationInput` | `AdminLocation` (201) | admin |
@@ -137,14 +145,27 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/maintenances` | `MaintenanceCreateInput` | `AdminMaintenance` (201) | editor |
 | GET/PATCH/DELETE | `/api/admin/maintenances/:id` | `MaintenancePatchInput` | `AdminMaintenance` | editor |
 | POST | `/api/admin/maintenances/:id/updates` | `MaintenanceUpdateInput` | `AdminMaintenance` | editor |
+| GET | `/api/admin/corrections` | query `CorrectionListQuery` (`serviceId`, `from`, `to` = overlapping the range, `page`, `pageSize`) | `Paginated<AdminCorrection>` (newest start first) | editor |
+| POST | `/api/admin/corrections` | `CorrectionInput` | `AdminCorrection` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/corrections/:id` | `CorrectionPatchInput` | `AdminCorrection` | editor |
+| GET | `/api/admin/services/:id/history` | query `ServiceHistoryQuery` (`from`, `to`, at most 366 days) | `AdminServiceHistory` (measured and corrected segments and uptime) | editor |
 | GET | `/api/admin/monitor-sources` | – | `AdminMonitorSource[]` | admin |
 | POST | `/api/admin/monitor-sources` | `MonitorSourceInput` | `AdminMonitorSource & { ingestToken: string }` (201, token shown once) | admin |
-| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` are unchanged, otherwise 400) | `AdminMonitorSource` | admin |
+| GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` (`historyUsername` for `historyPassword`) are unchanged, otherwise 400; `icingaDbUrl` is kept regardless) | `AdminMonitorSource` | admin |
 | POST | `/api/admin/monitor-sources/:id/test` | – | `MonitorSourceTestResult` | admin |
 | POST | `/api/admin/monitor-sources/:id/poll` | – | `MonitorSourceTestResult` (polls now and stores the results) | admin |
 | POST | `/api/admin/monitor-sources/:id/rotate-token` | – | `{ ingestToken: string }` | admin |
-| GET | `/api/admin/checks` | query `sourceId`, `q` (search name/host/external id), `state`, `unlinked=true` | `AdminMonitorCheck[]` | editor |
-| DELETE | `/api/admin/checks/:id` | – | 204 | admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports` | – | `AdminHistoryImport[]` (latest 20, newest first) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports` | `HistoryImportCreateInput` (body up to ~10 MB for CSV) | `AdminHistoryImport` (202, status `fetching`) | admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports/:importId` | – | `AdminHistoryImport` with `progress`, `preview` (status `ready`) or `result` | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/apply` | – | `AdminHistoryImport` (202, status `applying`; 409 unless `ready`) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/cancel` | – | `AdminHistoryImport` (aborts `fetching`, discards `ready`; 409 otherwise) | admin |
+| GET | `/api/admin/checks` | query `sourceId`, `q` (search name/host/external id), `state`, `unlinked=true` | `AdminMonitorCheck[]` (`sourceType` is `bundle` for bundle checks) | editor |
+| DELETE | `/api/admin/checks/:id` | – | 204 (409 for the check of a bundle: delete the bundle) | admin |
+| GET | `/api/admin/check-bundles` | – | `AdminCheckBundle[]` with the live vote and per-member breakdown | admin |
+| GET | `/api/admin/check-bundles/candidates` | query `type` (configurable source type) | `BundleCandidateSource[]`: checks that can become members, grouped by source | admin |
+| POST | `/api/admin/check-bundles` | `CheckBundleInput` | `AdminCheckBundle` (201) | admin |
+| GET/PUT/DELETE | `/api/admin/check-bundles/:id` | `CheckBundleInput` (members are replaced) | `AdminCheckBundle`; DELETE 204 removes the bundle check and its service links | admin |
 | GET | `/api/admin/users` | – | `AdminUser[]` | admin |
 | POST | `/api/admin/users` | `UserCreateInput` | `AdminUser` (201) | admin |
 | GET/PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
@@ -182,6 +203,17 @@ their creator loses the admin role.
 - Creating a maintenance adds a first `scheduled` update with an empty message
   (clients render a localized default text). Windows that are already due are
   started/completed right away instead of on the next worker tick.
+- Retroactive maintenance (`AdminMaintenance.retroactive`): a window whose end is
+  not after the creation time is created directly as `completed` with
+  `actualStart`/`actualEnd` = the window and `in_progress`/`completed` updates at
+  those times; **no** email is queued (no announcement, reminder or transition).
+  A window with `autoStart` that started at least 5 minutes before the creation
+  time and has not ended is created as `in_progress` (`actualStart` = scheduled
+  start, one `in_progress` update at that time); only that "in progress" email is
+  queued (if `notify` and public), no announcement. Windows starting later or
+  without `autoStart` behave as before. Changing the window of a retroactive
+  maintenance keeps `actualStart` (and, when completed, `actualEnd`, which must
+  then not be in the future) in line with it.
 - `PUT` bodies are complete objects (schema defaults apply to omitted fields);
   an omitted `slug` keeps the current slug. An explicit slug that is taken is `409`.
 - `PUT /api/admin/users/:id` with `password: null` removes the local password
@@ -192,6 +224,39 @@ their creator loses the admin role.
 - `/api/public/history?locationId=` matches items linked to the location directly
   or affecting a service running there. Filters referencing non-public entities
   return an empty page.
+- Check bundles: each bundle owns a check of the built-in source of type `bundle`
+  (`AdminCheckBundle.checkId`) that is linked to services like any check. That
+  source answers `409` to `PUT` and `rotate-token`, `400` to `test`/`poll`, `409`
+  to ingest and to `DELETE` while bundles exist. Members must be existing checks
+  that are not bundle checks (`400`). Voting rules: [adapters/README.md](adapters/README.md#check-bundles).
+  Audit actions `check_bundle.create|update|delete`.
+- History import ([adapters/README.md](adapters/README.md#history-import)):
+  `HistoryImportCreateInput` = `{ from, to, onlyLinkedChecks = true, credentials?, csv? }`
+  with `to` capped at now and a range of at most 731 days. `credentials`
+  (`username`, `password`, `totp` for Uptime Kuma, `databaseUrl` for Icinga DB)
+  are used for this import only: stored encrypted on the job until fetching
+  ends, never returned; without them the values stored in the source config
+  (`historyUsername`/`historyPassword`, `icingaDbUrl`, both secrets masked like
+  `password`) are used, otherwise `400`. `csv` imports the file instead of
+  calling the source (required for `webhook` sources); an invalid file is `400`
+  with `issues: [{ line, code, params, message }]` (`code` and `params` for
+  translated messages, `message` in English; codes in `HistoryCsvIssue`). One active job (`fetching`, `ready`,
+  `applying`) per source, otherwise `409`; the `bundle` source answers `409`.
+  Jobs run in the background (poll `GET …/:importId`); jobs without progress for
+  15 minutes are marked `failed` and previews expire after 24 hours (checked
+  whenever jobs are read or started, so also without a worker process).
+  Applying is serialised across all sources (PostgreSQL advisory lock, SQLite
+  write lock): the plan is made and written in one transaction. Preview
+  `warnings` are `{ code, params, message }` (`HistoryImportWarning`); a failed
+  or expired job has `errorCode` (`source`, `timeout`, `shutdown`, `interrupted`,
+  `expired`, `apply_failed`) and an English `error`, redacted of secrets. Audit actions
+  `history_import.start|apply|complete|cancel` (entity `monitor_source`, details
+  without credentials or CSV content).
+- `monitor_check_history` rows carry `source = live | import`,
+  `service_status_history` rows `live | import | import_explicit` (service
+  statuses from a CSV file). Imports only write into periods without `live`
+  rows; they replace earlier `import` rows in their range, and
+  `import_explicit` rows only where a new CSV file has service rows.
 - Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
 - `notify` (default `true`) in `IncidentCreateInput`, `IncidentUpdateInput`,
   `MaintenanceCreateInput` and `MaintenanceUpdateInput` queues subscriber emails for
@@ -201,6 +266,46 @@ their creator loses the admin role.
   `AdminMaintenance.reminderSentAt` is the time the reminder was queued; it is reset
   when `scheduledStart` moves later. Notification errors never fail the request.
 
+### History corrections
+
+The measured `service_status_history` is never changed. Whenever uptime or
+history is computed (public uptime bars and percentages, the admin history
+comparison), corrections are applied on top
+(`apps/server/src/services/history-corrections.ts`, pure and unit tested):
+
+1. measured segments,
+2. retroactive maintenance windows (`retroactive = 1`, status `in_progress` or
+   `completed`): `maintenance` from `actualStart` to `actualEnd` (or now while
+   running), for its services; only **public** maintenances (`is_public = 1`),
+   like the live status engine (use a status correction with status
+   `maintenance` for an internal window),
+3. status corrections: their `status` for `[startsAt, endsAt)`. Where corrections
+   overlap, the one **created last** wins (creation times are strictly increasing).
+
+Everything is clipped at now; corrections may also cover time without measured
+data. Corrections never change the current status of a service and send no
+email.
+
+- `CorrectionInput`: `serviceIds` (≥ 1), `startsAt`, `endsAt` (after `startsAt`,
+  at most 366 days later, not in the future: up to 5 minutes ahead is clamped to
+  now, more is `400`), `status` (any `ServiceStatus`), `reason` (required,
+  internal), `showPublic` (default `false`), `publicNote` (optional, ≤ 500).
+- `PATCH` accepts any subset; the merged range is validated again. `serviceIds`
+  replaces the services.
+- Validation errors (`400`): `startsAt must be in the past`, `endsAt must be
+  after startsAt` (also when clamping the end to now leaves an empty range),
+  span longer than 366 days; the same for `POST` and `PATCH`.
+- Audit: `correction.create` (services, range, status, reason, public flag and
+  note), `correction.update` (`fields` plus `before` and `after` with all of
+  these), `correction.delete` (services, range, status and reason).
+- Deleting a service removes it from its corrections; corrections left without
+  any service are deleted with it (their ids are recorded in the
+  `service.delete` audit entry).
+- Retroactive maintenance (`retroactive = true`) that is still running and
+  whose `scheduledEnd` is moved into the past by `PATCH` is completed at once,
+  with `actualEnd = scheduledEnd` and a `completed` update at that time, and
+  without email.
+
 ## Ingest API (`/api/ingest`)
 
 Monitoring systems push check results. Authentication: `Authorization: Bearer <ingest token>`
@@ -209,7 +314,7 @@ value is redacted in the request log).
 Responses: `{ ok: true, created, updated, removed, stateChanges }`.
 `full: true` (remove checks missing from the payload) is accepted only for sources of type
 `webhook` (`400` otherwise); a full push that would remove more than half of the checks linked
-to services is rejected with `409` and stores nothing (see docs/adapters/README.md).
+to services or used as bundle members is rejected with `409` and stores nothing (see docs/adapters/README.md).
 
 | Method | Path | Body |
 | --- | --- | --- |

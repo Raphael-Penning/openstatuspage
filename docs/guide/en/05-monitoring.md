@@ -80,8 +80,9 @@ Add `"full": true` when the payload is the complete list of checks: checks
 missing from it are removed, together with their service links. This works
 only for **Webhook** sources (other types get their list from polling, and
 the server answers `400`). As a safety net, a full push that would remove more than half
-of the checks linked to services is rejected with `409` and changes nothing;
-unlink those checks first if the removal is intended.
+of the checks linked to services or used in check bundles is rejected with
+`409` and changes nothing; unlink those checks (or take them out of the
+bundle) first if the removal is intended.
 
 ## Composing services from checks
 
@@ -115,6 +116,109 @@ A public service is built from any number of internal checks:
 Customers only ever see the resulting status. Incidents and maintenance are
 managed separately and override the check-based status (see
 [Overview](01-overview.md#how-a-service-gets-its-status)).
+
+## Check bundles: several nodes vote
+
+If you monitor the same target from several places, for example with two or
+three Uptime Kuma instances in different data centres, a single node should not
+be able to put your status page into an outage: maybe only its own network is
+broken. A **check bundle** combines one check per node into one check that is
+decided by a **majority vote**.
+
+**When to use a bundle:** the checks measure the *same* thing from *different*
+places. For different components (web server, database, …) keep linking the
+checks to the service directly and use the aggregation (worst check / quorum).
+
+**Create a bundle:**
+
+1. Add every monitoring node as its own source (e.g. *Kuma Frankfurt*,
+   *Kuma Amsterdam*, *Kuma New York*).
+2. **Monitoring → Bundles → New bundle**: enter a name, then pick for each node
+   the check that watches the target and click **Add**. The list shows Uptime
+   Kuma sources; choose another source type in the filter if needed.
+3. Set the **votes** of each member (whole number, at least 1). Give a node more
+   votes if you trust it more, e.g. because it runs in a better connected
+   location.
+4. Save, then link the bundle in the service like any other check
+   (**Link checks**, search for the bundle name). Do not link the individual
+   node checks as well, or a single node can still change the service.
+
+**How the vote works:** only nodes that currently **report** count. A node does
+not report when its source is disabled, its last poll failed, its check is
+*unknown*, or it has gone silent: for polled sources neither a successful
+poll nor a new result within 3 poll intervals (at least 5 minutes), for pure
+webhook sources no result for one hour by default. A successful poll is
+enough, so an Icinga check that last ran 6 minutes ago still counts while
+Icinga answers. Of the votes of the reporting nodes:
+
+- more than half say *down* → the bundle is **critical**;
+- otherwise more than half say *down* or *pending/warning* → **warning**;
+- otherwise → **OK**;
+- no node reports → **unknown** (ignored by the default mapping).
+
+Exactly half is **not** a majority. Examples with three nodes, Frankfurt
+2 votes, Amsterdam and New York 1 vote each (4 votes):
+
+| Frankfurt | Amsterdam | New York | Bundle |
+| --- | --- | --- | --- |
+| down | up | up | OK (2 of 4, exactly half) |
+| down | down | up | critical (3 of 4) |
+| up | down | down | OK (2 of 4) |
+| down | not reporting | up | critical (2 of 3 reporting votes) |
+| down | pending | up | warning (3 of 4 down or pending) |
+
+The **Bundles** page shows every bundle with its current result and, per node,
+the votes, the state and whether (and why not) it counts. It refreshes on its
+own. All of this is internal; customers only see the resulting service status.
+
+## Importing history
+
+The status page records history from the moment a check is connected. The
+uptime bars of a new installation therefore start empty. To fill the time
+before, import the history your monitoring systems already keep:
+
+| System | Read from | What you need |
+| --- | --- | --- |
+| Uptime Kuma | heartbeats (same API as its web UI) | an Uptime Kuma login, plus the 2FA code if enabled |
+| Icinga 2 | the Icinga DB database (MySQL/MariaDB or PostgreSQL) | a read-only database user |
+| openITCockpit | the state history API | nothing extra (the API key of the source); set the API user's time zone to UTC |
+| any source | a CSV file you upload | the file |
+
+1. Open the source under **Monitoring** and click **Import history** in the
+   **History import** box.
+2. Choose the time range and, for Uptime Kuma and Icinga 2, enter the
+   credentials. They are only used for this import and are not stored. If you
+   import regularly, you can store them encrypted in the source instead
+   (section **History import** of the source form).
+3. Click **Load preview**. The server reads the history in the background; you
+   can close the dialog and come back later.
+4. Check the preview: per service you see how much time had no data, how much
+   gets filled, the downtime and the uptime in the range before and after.
+   Click **Import** to write it or **Discard** to drop it.
+
+What you can rely on:
+
+- **Only gaps are filled.** History the status page recorded itself is never
+  changed. Typically only the time before go-live is filled.
+- **Same rules as live.** The imported check states go through your current
+  service links, mappings, aggregation and check bundles, and maintenance
+  windows and incidents of that time count as well. Services with a manual
+  status are left alone.
+- **Repeating is safe.** Running the same import again changes nothing; a later
+  import of the same period replaces the earlier imported data (for example
+  after you imported a second source that feeds the same services). Imports
+  are written one after the other, even when you confirm several at once.
+- **Service statuses from a CSV file stay.** If you set a service's status
+  directly in a CSV file (column `service`), later imports keep it. Only
+  another CSV file with rows for that service changes it, and only for the
+  times in its rows.
+- **Uptime Kuma:** a monitor with very many heartbeats (more than about
+  200 000 from the start of the range until today) is skipped and named in
+  the preview. Choose a later start for it.
+- Every import is recorded in the audit log.
+
+For the CSV format and the details per system, see the
+[adapter documentation](../../adapters/README.md#history-import).
 
 ## Tips
 

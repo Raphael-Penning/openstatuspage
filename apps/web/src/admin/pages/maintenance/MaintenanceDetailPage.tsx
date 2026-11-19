@@ -69,6 +69,7 @@ function MaintenanceDetail({ maintenance: m }: { maintenance: AdminMaintenance }
           <span className="flex flex-wrap items-center gap-1.5">
             <MaintenanceStatusBadge status={m.status} />
             <VisibilityBadge isPublic={m.isPublic} />
+            {m.retroactive && <Badge tone="info">{t('maintenance.retroactive')}</Badge>}
             {m.autoStart && <Badge>{t('maintenance.fields.autoStart')}</Badge>}
             {m.autoComplete && <Badge>{t('maintenance.fields.autoComplete')}</Badge>}
             {!m.notify && (

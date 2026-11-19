@@ -18,7 +18,9 @@ import type { MonitorSource, ServiceGroup } from '../db/types.js';
 import type { SecretBox } from '../lib/crypto.js';
 
 /** Config keys holding credentials. They are masked in responses and never logged. */
-export const SECRET_FIELDS = ['password', 'apiKey'] as const;
+export const SECRET_FIELDS = ['password', 'apiKey', 'historyPassword', 'icingaDbUrl'] as const;
+/** Secrets that carry their own target (a connection string) and may be kept when the base URL changes. */
+export const SELF_CONTAINED_SECRETS: readonly string[] = ['icingaDbUrl'];
 
 export function toAdminGroup(g: ServiceGroup): AdminServiceGroup {
   return {
@@ -53,6 +55,7 @@ export async function loadAdminChecks(db: DB, filter: CheckFilter = {}): Promise
       'monitor_checks.id',
       'monitor_checks.source_id',
       'monitor_sources.name as source_name',
+      'monitor_sources.type as source_type',
       'monitor_checks.external_id',
       'monitor_checks.name',
       'monitor_checks.host',
@@ -93,6 +96,7 @@ export async function loadAdminChecks(db: DB, filter: CheckFilter = {}): Promise
     id: r.id,
     sourceId: r.source_id,
     sourceName: r.source_name,
+    sourceType: r.source_type,
     externalId: r.external_id,
     name: r.name,
     host: r.host,

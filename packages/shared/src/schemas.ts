@@ -281,6 +281,13 @@ export interface DailyUptime {
   uptime: number | null;
   /** Minutes per non-operational status that day. */
   minutes: Partial<Record<ServiceStatus, number>>;
+  /**
+   * Present (true) when a correction marked as public changed this day's data
+   * afterwards. Values above already include all corrections.
+   */
+  corrected?: true;
+  /** Public notes of those corrections (may be empty). */
+  correctionNotes?: string[];
 }
 
 export interface PublicService {
@@ -522,13 +529,133 @@ export interface AdminMaintenance extends PublicMaintenance {
   notify: boolean;
   /** When the reminder email was queued, null if not (yet). */
   reminderSentAt: string | null;
+  /**
+   * The window had already started when it was entered. It counts as
+   * "maintenance" in the corrected history; no announcement or reminder is sent,
+   * and a window that had already ended is created as completed without any email.
+   */
+  retroactive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
+// History corrections (status overrides for a past time range)
+// ---------------------------------------------------------------------------
+
+/** Longest time range of one correction and of the admin history comparison. */
+export const CORRECTION_MAX_DAYS = 366;
+const DAY_MS = 86_400_000;
+
+const correctionFields = {
+  serviceIds: z.array(zId).min(1).max(500),
+  startsAt: zTimestamp,
+  /** Exclusive. Must not be in the future: corrections only change the past. */
+  endsAt: zTimestamp,
+  /** Status the services had in [startsAt, endsAt), e.g. operational for a false alarm. */
+  status: zServiceStatus,
+  /** Internal reason (required). Never shown publicly. */
+  reason: z.string().trim().min(1).max(2000),
+  /** Mark the affected days as "corrected afterwards" on the public page. */
+  showPublic: z.boolean(),
+  /** Optional text shown with the public marker. */
+  publicNote: z.string().trim().max(500).nullish(),
+};
+
+function validRange(v: { startsAt?: string; endsAt?: string }): boolean {
+  if (!v.startsAt || !v.endsAt) return true;
+  return new Date(v.endsAt) > new Date(v.startsAt);
+}
+function notTooLong(v: { startsAt?: string; endsAt?: string }): boolean {
+  if (!v.startsAt || !v.endsAt) return true;
+  return new Date(v.endsAt).getTime() - new Date(v.startsAt).getTime() <= CORRECTION_MAX_DAYS * DAY_MS;
+}
+
+export const CorrectionInput = z
+  .object({ ...correctionFields, showPublic: correctionFields.showPublic.default(false) })
+  .refine(validRange, { message: 'endsAt must be after startsAt', path: ['endsAt'] })
+  .refine(notTooLong, { message: `at most ${CORRECTION_MAX_DAYS} days`, path: ['endsAt'] });
+export type CorrectionInput = z.infer<typeof CorrectionInput>;
+
+export const CorrectionPatchInput = z
+  .object(correctionFields)
+  .partial()
+  .refine(validRange, { message: 'endsAt must be after startsAt', path: ['endsAt'] })
+  .refine(notTooLong, { message: `at most ${CORRECTION_MAX_DAYS} days`, path: ['endsAt'] });
+export type CorrectionPatchInput = z.infer<typeof CorrectionPatchInput>;
+
+export const CorrectionListQuery = z.object({
+  serviceId: zId.optional(),
+  /** Only corrections overlapping [from, to). */
+  from: zTimestamp.optional(),
+  to: zTimestamp.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type CorrectionListQuery = z.infer<typeof CorrectionListQuery>;
+
+export interface AdminCorrection {
+  id: string;
+  services: { id: string; name: string }[];
+  startsAt: string;
+  endsAt: string;
+  status: ServiceStatus;
+  reason: string;
+  showPublic: boolean;
+  publicNote: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ServiceHistoryQuery = z
+  .object({ from: zTimestamp, to: zTimestamp })
+  .refine((v) => new Date(v.to) > new Date(v.from), { message: 'to must be after from', path: ['to'] })
+  .refine((v) => new Date(v.to).getTime() - new Date(v.from).getTime() <= CORRECTION_MAX_DAYS * DAY_MS, {
+    message: `at most ${CORRECTION_MAX_DAYS} days`,
+    path: ['to'],
+  });
+export type ServiceHistoryQuery = z.infer<typeof ServiceHistoryQuery>;
+
+/** Where a history segment comes from. */
+export type HistorySegmentSource = 'measured' | 'maintenance' | 'correction';
+
+export interface HistorySegment {
+  status: ServiceStatus;
+  startedAt: string;
+  /** null = still open (only for the measured current segment). */
+  endedAt: string | null;
+  source: HistorySegmentSource;
+  /** Maintenance or correction id for corrected segments. */
+  sourceId: string | null;
+}
+
+/** Measured vs corrected status history of one service in [from, to) (admin only). */
+export interface AdminServiceHistory {
+  from: string;
+  to: string;
+  measured: HistorySegment[];
+  corrected: HistorySegment[];
+  measuredUptime: number | null;
+  correctedUptime: number | null;
+  /** Corrections overlapping the range. */
+  corrections: AdminCorrection[];
+  /** Retroactive maintenance windows overlapping the range. */
+  maintenances: { id: string; title: string; start: string; end: string }[];
+}
+
+// ---------------------------------------------------------------------------
 // Monitoring sources & checks (internal only)
 // ---------------------------------------------------------------------------
+
+/** Connection string of a MySQL/MariaDB or PostgreSQL database. */
+export const zDatabaseUrl = z
+  .string()
+  .max(2000)
+  .refine((v) => /^(mysql|mariadb|postgres|postgresql):\/\/[^\s]+$/i.test(v) || v === SECRET_MASK, {
+    message: 'must be a mysql://, mariadb:// or postgres:// URL',
+  });
 
 const zHttpBase = z.object({
   baseUrl: zHttpUrl,
@@ -543,11 +670,20 @@ export const Icinga2Config = zHttpBase.extend({
   filter: z.string().max(2000).nullish(),
   /** Import host checks in addition to service checks. */
   includeHosts: z.boolean().default(true),
+  /**
+   * Icinga DB database for history imports (secret), e.g.
+   * `mysql://reader:secret@db.example.com:3306/icingadb` or `postgres://...`.
+   */
+  icingaDbUrl: zDatabaseUrl.nullish(),
 });
 
 export const UptimeKumaConfig = zHttpBase.extend({
   /** API key from Uptime Kuma (Settings → API Keys), used for the /metrics endpoint. */
   apiKey: z.string().min(1).max(500),
+  /** Uptime Kuma login for history imports (the API key cannot read heartbeats). */
+  historyUsername: z.string().max(200).nullish(),
+  /** Secret. */
+  historyPassword: z.string().max(500).nullish(),
 });
 
 export const OpenItCockpitConfig = zHttpBase.extend({
@@ -558,6 +694,7 @@ export const OpenItCockpitConfig = zHttpBase.extend({
 
 export const WebhookConfig = z.object({});
 
+/** Create/update a monitoring source. Only configurable types (not the virtual "bundle" source). */
 export const MonitorSourceInput = z.discriminatedUnion('type', [
   z.object({ type: z.literal('icinga2'), config: Icinga2Config }),
   z.object({ type: z.literal('uptimekuma'), config: UptimeKumaConfig }),
@@ -595,6 +732,8 @@ export interface AdminMonitorCheck {
   id: string;
   sourceId: string;
   sourceName: string;
+  /** Type of the source; "bundle" for the checks of check bundles. */
+  sourceType: MonitorSourceType;
   externalId: string;
   name: string;
   host: string | null;
@@ -611,6 +750,278 @@ export interface MonitorSourceTestResult {
   ok: boolean;
   message: string;
   checkCount?: number;
+}
+
+// ---------------------------------------------------------------------------
+// History import (internal only)
+// ---------------------------------------------------------------------------
+
+/** Longest time range of one history import. */
+export const HISTORY_IMPORT_MAX_DAYS = 731;
+/** Upper bound for an uploaded CSV file (characters). */
+export const HISTORY_CSV_MAX_CHARS = 5 * 1024 * 1024;
+/** Upper bound for the data rows of a CSV import. */
+export const HISTORY_CSV_MAX_ROWS = 100_000;
+
+export const HISTORY_IMPORT_STATUSES = ['fetching', 'ready', 'applying', 'completed', 'failed', 'cancelled'] as const;
+export type HistoryImportStatus = (typeof HISTORY_IMPORT_STATUSES)[number];
+
+/** One-off credentials for an import; never stored beyond the fetch and never returned. */
+export const HistoryImportCredentials = z.object({
+  /** Uptime Kuma login. */
+  username: z.string().min(1).max(200).optional(),
+  password: z.string().min(1).max(500).optional(),
+  /** Uptime Kuma 2FA code (6 digits) when the account uses two-factor authentication. */
+  totp: z
+    .string()
+    .regex(/^\d{6}$/, 'must be a 6-digit code')
+    .optional(),
+  /** Icinga DB connection string. */
+  databaseUrl: zDatabaseUrl.optional(),
+});
+export type HistoryImportCredentials = z.infer<typeof HistoryImportCredentials>;
+
+/** POST /api/admin/monitor-sources/:id/history-imports */
+export const HistoryImportCreateInput = z
+  .object({
+    from: zTimestamp,
+    to: zTimestamp,
+    /** Only checks that feed a service or a check bundle (fewer requests). */
+    onlyLinkedChecks: z.boolean().default(true),
+    credentials: HistoryImportCredentials.optional(),
+    /** CSV content (source type "webhook" or any source when given). */
+    csv: z.string().min(1).max(HISTORY_CSV_MAX_CHARS).optional(),
+  })
+  .refine((v) => Date.parse(v.from) < Date.parse(v.to), { message: '"from" must be before "to"', path: ['to'] })
+  .refine((v) => Date.parse(v.to) - Date.parse(v.from) <= HISTORY_IMPORT_MAX_DAYS * 86_400_000, {
+    message: `the range must not exceed ${HISTORY_IMPORT_MAX_DAYS} days`,
+    path: ['from'],
+  });
+export type HistoryImportCreateInput = z.infer<typeof HistoryImportCreateInput>;
+
+export interface HistoryImportProgress {
+  /** connecting | fetching | planning | writing */
+  phase: string;
+  done: number;
+  total: number;
+}
+
+export interface HistoryImportCheckPreview {
+  checkId: string;
+  name: string;
+  host: string | null;
+  externalId: string;
+  /** Intervals that would be written (inside periods without check history). */
+  intervals: number;
+  /** Time covered by those intervals in ms. */
+  coveredMs: number;
+  /** First and last imported instant, null when nothing is written. */
+  firstAt: string | null;
+  lastAt: string | null;
+  /** Time per state in ms (written intervals only). */
+  stateMs: Partial<Record<CheckState, number>>;
+}
+
+export interface HistoryImportSegment {
+  status: ServiceStatus;
+  startedAt: string;
+  endedAt: string;
+}
+
+export interface HistoryImportServicePreview {
+  serviceId: string;
+  name: string;
+  /** "manual": status mode is manual, nothing is rebuilt. "no_data": no usable check history in the gaps. */
+  skipped: 'manual' | 'no_data' | null;
+  /** Time in the range without recorded (live) history, in ms. */
+  gapMs: number;
+  /** Time that gets a status from the import, in ms. */
+  filledMs: number;
+  /** Time counted as down (partial or major outage) in the filled periods, in ms. */
+  downMs: number;
+  /** Uptime over the whole range after the import (recorded + imported), null without data. */
+  uptime: number | null;
+  /** Uptime over the range before the import, null without data. */
+  uptimeBefore: number | null;
+  segmentCount: number;
+  /** The first segments (up to 100) for display. */
+  segments: HistoryImportSegment[];
+}
+
+/** Non-fatal note of a fetch; `message` is the English fallback for unknown codes. */
+export interface HistoryImportWarning {
+  /**
+   * kuma_retention {earliest} | kuma_duplicate_name {name} |
+   * kuma_monitor_failed {name, reason} | oitc_utc
+   */
+  code: string;
+  params: Record<string, string | number>;
+  message: string;
+}
+
+/**
+ * Why a job failed or was cancelled by the server:
+ * source (the monitoring system or the file; see `error`), timeout, shutdown,
+ * interrupted, expired, apply_failed (see `error`).
+ */
+export type HistoryImportErrorCode = 'source' | 'timeout' | 'shutdown' | 'interrupted' | 'expired' | 'apply_failed';
+
+/** A problem in an uploaded CSV file (400 response `issues`). */
+export interface HistoryCsvIssue {
+  line: number;
+  /**
+   * unterminated_quote | empty | missing_columns {columns} | no_rows | too_many_rows {max} |
+   * field_count {expected, found} | check_xor_service | id_too_long | timestamp_format |
+   * invalid_date | start_not_before_end | check_state {allowed} | service_status {allowed} |
+   * overlap {other, kind}
+   */
+  code: string;
+  params: Record<string, string | number>;
+  /** English fallback. */
+  message: string;
+}
+
+export interface HistoryImportPreview {
+  from: string;
+  to: string;
+  checks: HistoryImportCheckPreview[];
+  services: HistoryImportServicePreview[];
+  /** External ids returned by the source that match no check of this source (first 50). */
+  unmatched: string[];
+  unmatchedCount: number;
+  /** Local checks that were requested but returned no history. */
+  checksWithoutData: number;
+  warnings: HistoryImportWarning[];
+}
+
+export interface HistoryImportResult {
+  checkIntervals: number;
+  serviceSegments: number;
+  services: number;
+}
+
+/** GET /api/admin/monitor-sources/:id/history-imports[/:importId] */
+export interface AdminHistoryImport {
+  id: string;
+  sourceId: string;
+  status: HistoryImportStatus;
+  from: string;
+  to: string;
+  onlyLinkedChecks: boolean;
+  progress: HistoryImportProgress | null;
+  preview: HistoryImportPreview | null;
+  result: HistoryImportResult | null;
+  /** English message (detail for "source" and "apply_failed"). */
+  error: string | null;
+  errorCode: HistoryImportErrorCode | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Check bundles: weighted voting over checks of several sources (internal only)
+// ---------------------------------------------------------------------------
+
+/** Upper bound for the votes of one bundle member. */
+export const MAX_BUNDLE_MEMBER_VOTES = 1000;
+/** Upper bound for the members of one bundle. */
+export const MAX_BUNDLE_MEMBERS = 100;
+
+export const CheckBundleMemberInput = z.object({
+  checkId: zId,
+  /** Weight of this member in the vote (integer >= 1). */
+  votes: z.number().int().min(1).max(MAX_BUNDLE_MEMBER_VOTES).default(1),
+});
+export type CheckBundleMemberInput = z.infer<typeof CheckBundleMemberInput>;
+
+export const CheckBundleInput = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().max(1000).nullish(),
+  members: z
+    .array(CheckBundleMemberInput)
+    .max(MAX_BUNDLE_MEMBERS)
+    .default([])
+    .refine((list) => new Set(list.map((m) => m.checkId)).size === list.length, {
+      message: 'each check may only be added once',
+    }),
+});
+export type CheckBundleInput = z.infer<typeof CheckBundleInput>;
+
+/**
+ * Why a member counts (`reporting`) or does not count in the vote.
+ * - source_disabled: its monitoring source is disabled
+ * - poll_failed: the last poll of its (pull) source failed
+ * - state_unknown: the check reports "unknown"
+ * - never_checked: no result received yet
+ * - stale: the last result is too old (see docs/adapters/README.md)
+ */
+export const BUNDLE_MEMBER_REASONS = [
+  'reporting',
+  'source_disabled',
+  'poll_failed',
+  'state_unknown',
+  'never_checked',
+  'stale',
+] as const;
+export type BundleMemberReason = (typeof BUNDLE_MEMBER_REASONS)[number];
+
+/** Result of the weighted vote of a bundle. */
+export interface BundleVoteSummary {
+  /** ok | warning | critical, or unknown when no member reports. */
+  state: CheckState;
+  /** Votes of all members. */
+  totalVotes: number;
+  /** Votes of the members that report; the base for the majority. */
+  reportingVotes: number;
+  criticalVotes: number;
+  warningVotes: number;
+  okVotes: number;
+}
+
+export interface AdminCheckBundleMember {
+  checkId: string;
+  votes: number;
+  checkName: string;
+  host: string | null;
+  sourceId: string;
+  sourceName: string;
+  sourceType: MonitorSourceType;
+  state: CheckState;
+  lastCheckAt: string | null;
+  reporting: boolean;
+  reason: BundleMemberReason;
+}
+
+export interface AdminCheckBundle {
+  id: string;
+  name: string;
+  description: string | null;
+  /** The bundle's own check (source type "bundle"); link it to services like any check. */
+  checkId: string;
+  /** Live result, evaluated when the response was built. */
+  vote: BundleVoteSummary;
+  members: AdminCheckBundleMember[];
+  /** Number of services the bundle check feeds into. */
+  serviceCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Checks that can become bundle members, grouped by source. */
+export interface BundleCandidateSource {
+  id: string;
+  name: string;
+  type: MonitorSourceType;
+  enabled: boolean;
+  checks: {
+    id: string;
+    name: string;
+    host: string | null;
+    state: CheckState;
+    lastCheckAt: string | null;
+  }[];
 }
 
 /**

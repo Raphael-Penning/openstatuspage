@@ -78,6 +78,12 @@ const EnvSchema = z.object({
   WEB_DIST_DIR: z.string().optional(),
   /** Disable the background poller/scheduler (e.g. for additional read-only replicas). */
   WORKER_ENABLED: bool.default(true),
+  /**
+   * Check bundles: how long a result of a push-only source (type webhook) counts
+   * in a bundle vote before the member is treated as not reporting. Pull sources
+   * use 3 poll intervals (at least 5 minutes) instead.
+   */
+  BUNDLE_PUSH_STALE_SECONDS: z.coerce.number().int().min(60).max(7 * 24 * 3600).default(3600),
 
   /**
    * How notification mails are delivered: `smtp`, `log` (written to the server log,

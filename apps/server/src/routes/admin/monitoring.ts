@@ -2,13 +2,20 @@
  * Monitoring sources (CRUD, token rotation) and checks.
  * Test / poll endpoints and ingest live in src/adapters (owned by the adapters).
  */
-import { MonitorSourceInput, SECRET_MASK, zCheckState, zId, type AdminMonitorSource } from '@openstatuspage/shared';
+import {
+  BUNDLE_SOURCE_TYPE,
+  MonitorSourceInput,
+  SECRET_MASK,
+  zCheckState,
+  zId,
+  type AdminMonitorSource,
+} from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { syncPollers } from '../../adapters/poller.js';
 import type { DB } from '../../db/index.js';
 import { sha256 } from '../../lib/crypto.js';
-import { badRequest, notFound } from '../../lib/errors.js';
+import { badRequest, conflict, notFound } from '../../lib/errors.js';
 import { newId, newToken } from '../../lib/ids.js';
 import { IdParams, parse, zQueryBool } from '../../lib/http.js';
 import { nowIso } from '../../lib/time.js';
@@ -17,6 +24,7 @@ import {
   loadAdminChecks,
   loadAdminSources,
   SECRET_FIELDS,
+  SELF_CONTAINED_SECRETS,
 } from '../../services/admin-catalog.js';
 import { admin, auditRequest, editor } from './util.js';
 
@@ -26,6 +34,8 @@ const ChecksQuery = z.object({
   state: zCheckState.optional(),
   unlinked: zQueryBool.optional(),
 });
+
+const MANAGED_SOURCE = 'The check bundle source is managed automatically; edit the bundles instead.';
 
 async function servicesOfSource(db: DB, sourceId: string): Promise<string[]> {
   const rows = await db
@@ -90,17 +100,22 @@ export async function registerMonitoringRoutes(app: FastifyInstance): Promise<vo
     const input = parse(MonitorSourceInput, req.body);
     const current = await db.selectFrom('monitor_sources').selectAll().where('id', '=', id).executeTakeFirst();
     if (!current) throw notFound('Monitoring source');
+    if (current.type === BUNDLE_SOURCE_TYPE) throw conflict(MANAGED_SOURCE);
 
     // SECRET_MASK means "keep the stored value". Only allowed when the type, URL and
     // username are unchanged, so stored credentials can never be redirected to another host.
     const stored = current.type === input.type ? decryptSourceConfig(secrets, current) : {};
     const sourceConfig = { ...(input.config as Record<string, unknown>) };
-    const sameTarget = ['baseUrl', 'username'].every((k) => (sourceConfig[k] ?? null) === (stored[k] ?? null));
+    // The history login of Uptime Kuma belongs to its own user name.
+    const sameTarget = (key: string) =>
+      ['baseUrl', key === 'historyPassword' ? 'historyUsername' : 'username'].every(
+        (k) => (sourceConfig[k] ?? null) === (stored[k] ?? null),
+      );
     for (const key of SECRET_FIELDS) {
       if (sourceConfig[key] !== SECRET_MASK) continue;
       const previous = stored[key];
       if (typeof previous !== 'string' || previous === '') throw badRequest(`config.${key} must be provided`);
-      if (!sameTarget) throw badRequest(`config.${key} must be entered again when the URL or username changes`);
+      if (!SELF_CONTAINED_SECRETS.includes(key) && !sameTarget(key)) throw badRequest(`config.${key} must be entered again when the URL or username changes`);
       sourceConfig[key] = previous;
     }
 
@@ -118,6 +133,8 @@ export async function registerMonitoringRoutes(app: FastifyInstance): Promise<vo
       .execute();
     // Enabling/disabling a source changes which checks count.
     if ((current.enabled === 1) !== input.enabled) await engine.recompute(await servicesOfSource(db, id));
+    // Enabled state and poll interval decide whether its checks count in bundle votes.
+    await ctx.bundles.recomputeForSource(id);
     await auditRequest(db, req, 'monitor_source.update', 'monitor_source', id, {
       name: input.name,
       type: input.type,
@@ -131,10 +148,16 @@ export async function registerMonitoringRoutes(app: FastifyInstance): Promise<vo
     const { id } = parse(IdParams, req.params);
     const current = await db.selectFrom('monitor_sources').select(['name', 'type']).where('id', '=', id).executeTakeFirst();
     if (!current) throw notFound('Monitoring source');
+    if (current.type === BUNDLE_SOURCE_TYPE) {
+      const bundle = await db.selectFrom('check_bundles').select('id').limit(1).executeTakeFirst();
+      if (bundle) throw conflict('The check bundle source cannot be deleted while check bundles exist.');
+    }
     const affected = await servicesOfSource(db, id);
-    // Checks and their service links cascade.
+    const affectedBundles = await ctx.bundles.bundlesOfSource(id);
+    // Checks, their service links and bundle memberships cascade.
     await db.deleteFrom('monitor_sources').where('id', '=', id).execute();
     await engine.recompute(affected);
+    await ctx.bundles.recompute(affectedBundles);
     await auditRequest(db, req, 'monitor_source.delete', 'monitor_source', id, { name: current.name, type: current.type });
     await syncPollers(ctx);
     return reply.status(204).send();
@@ -142,11 +165,15 @@ export async function registerMonitoringRoutes(app: FastifyInstance): Promise<vo
 
   app.post('/api/admin/monitor-sources/:id/rotate-token', admin, async (req) => {
     const { id } = parse(IdParams, req.params);
+    const source = await db.selectFrom('monitor_sources').select('type').where('id', '=', id).executeTakeFirst();
+    if (source?.type === BUNDLE_SOURCE_TYPE) throw conflict(MANAGED_SOURCE);
     const token = newToken();
     const result = await db
       .updateTable('monitor_sources')
       .set({ ingest_token_hash: sha256(token), updated_at: nowIso() })
       .where('id', '=', id)
+      // The bundle source accepts no ingest: it never gets a usable token.
+      .where('type', '!=', BUNDLE_SOURCE_TYPE)
       .executeTakeFirst();
     if (Number(result.numUpdatedRows) === 0) throw notFound('Monitoring source');
     await auditRequest(db, req, 'monitor_source.rotate_token', 'monitor_source', id);
@@ -173,9 +200,13 @@ export async function registerMonitoringRoutes(app: FastifyInstance): Promise<vo
       .where('id', '=', id)
       .executeTakeFirst();
     if (!check) throw notFound('Check');
+    const bundle = await db.selectFrom('check_bundles').select('id').where('check_id', '=', id).executeTakeFirst();
+    if (bundle) throw conflict('This is the check of a bundle; delete the bundle instead.');
     const links = await db.selectFrom('service_checks').select('service_id').where('check_id', '=', id).execute();
+    const affectedBundles = await ctx.bundles.bundlesOfChecks([id]);
     await db.deleteFrom('monitor_checks').where('id', '=', id).execute();
     await engine.recompute(links.map((l) => l.service_id));
+    await ctx.bundles.recompute(affectedBundles);
     await auditRequest(db, req, 'check.delete', 'check', id, { sourceId: check.source_id });
     return reply.status(204).send();
   });

@@ -139,6 +139,25 @@ export interface ServiceStatusHistoryTable {
   started_at: string;
   /** null = current segment. */
   ended_at: string | null;
+  /**
+   * 'live' (status engine), 'import' (rebuilt from imported check history) or
+   * 'import_explicit' (service status from a CSV import).
+   */
+  source: Generated<ServiceHistorySource>;
+}
+
+export type HistorySource = 'live' | 'import';
+export type ServiceHistorySource = HistorySource | 'import_explicit';
+
+/** State intervals per check: recorded live and filled by history imports. */
+export interface MonitorCheckHistoryTable {
+  id: string;
+  check_id: string;
+  state: CheckState;
+  started_at: string;
+  /** null = current state. */
+  ended_at: string | null;
+  source: HistorySource;
 }
 
 export interface MonitorSourcesTable {
@@ -171,6 +190,63 @@ export interface MonitorChecksTable {
   last_state_change_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CheckBundlesTable {
+  id: string;
+  name: string;
+  description: string | null;
+  /** The bundle's own check (source of type "bundle"). */
+  check_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CheckBundleMembersTable {
+  bundle_id: string;
+  check_id: string;
+  /** Weight in the vote, >= 1. */
+  votes: number;
+}
+
+export type HistoryImportStatus = 'fetching' | 'ready' | 'applying' | 'completed' | 'failed' | 'cancelled';
+
+export interface HistoryImportsTable {
+  id: string;
+  source_id: string;
+  status: HistoryImportStatus;
+  range_from: string;
+  range_to: string;
+  only_linked: Bool;
+  /** JSON. */
+  progress: string | null;
+  /** Encrypted one-off credentials, cleared when fetching ends. */
+  credentials_encrypted: string | null;
+  /** JSON. */
+  fetch_summary: string | null;
+  /** JSON (HistoryImportPreview). */
+  preview: string | null;
+  /** JSON (HistoryImportResult). */
+  result: string | null;
+  error: string | null;
+  /** HistoryImportErrorCode. */
+  error_code: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+}
+
+/** Data fetched by an import job, staged until it is applied or discarded. */
+export interface HistoryImportIntervalsTable {
+  id: string;
+  import_id: string;
+  check_id: string | null;
+  service_id: string | null;
+  /** CheckState for check rows, ServiceStatus for service rows. */
+  state: string;
+  started_at: string;
+  ended_at: string;
 }
 
 export interface IncidentsTable {
@@ -223,6 +299,11 @@ export interface MaintenancesTable {
   notify_subscribers: Bool;
   /** When the reminder mail was queued; reset when the window moves later. */
   reminder_sent_at: string | null;
+  /**
+   * 1 when the window had already started when it was entered. It then counts
+   * as "maintenance" in the corrected history (see services/history-corrections.ts).
+   */
+  retroactive: Bool;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -302,6 +383,25 @@ export interface EmailOutboxTable {
   sent_at: string | null;
 }
 
+export interface StatusCorrectionsTable {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  status: ServiceStatus;
+  /** Internal, never public. */
+  reason: string;
+  show_public: Bool;
+  public_note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StatusCorrectionServicesTable {
+  correction_id: string;
+  service_id: string;
+}
+
 export interface Database {
   settings: SettingsTable;
   users: UsersTable;
@@ -315,6 +415,11 @@ export interface Database {
   service_status_history: ServiceStatusHistoryTable;
   monitor_sources: MonitorSourcesTable;
   monitor_checks: MonitorChecksTable;
+  check_bundles: CheckBundlesTable;
+  check_bundle_members: CheckBundleMembersTable;
+  monitor_check_history: MonitorCheckHistoryTable;
+  history_imports: HistoryImportsTable;
+  history_import_intervals: HistoryImportIntervalsTable;
   incidents: IncidentsTable;
   incident_updates: IncidentUpdatesTable;
   incident_services: IncidentServicesTable;
@@ -327,6 +432,8 @@ export interface Database {
   subscribers: SubscribersTable;
   subscriber_services: SubscriberServicesTable;
   email_outbox: EmailOutboxTable;
+  status_corrections: StatusCorrectionsTable;
+  status_correction_services: StatusCorrectionServicesTable;
 }
 
 export type User = Selectable<UsersTable>;
@@ -335,6 +442,8 @@ export type Location = Selectable<LocationsTable>;
 export type ServiceGroup = Selectable<ServiceGroupsTable>;
 export type MonitorSource = Selectable<MonitorSourcesTable>;
 export type MonitorCheck = Selectable<MonitorChecksTable>;
+export type CheckBundle = Selectable<CheckBundlesTable>;
+export type HistoryImport = Selectable<HistoryImportsTable>;
 export type Incident = Selectable<IncidentsTable>;
 export type Maintenance = Selectable<MaintenancesTable>;
 export type Subscriber = Selectable<SubscribersTable>;
