@@ -60,12 +60,14 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 4
+          # About 80-100 MB in steady use with the image's NODE_OPTIONS; short peaks
+          # (a password check, the first poll) add 10-20 MB (docs/architecture.md#memory).
           resources:
             requests:
               cpu: 100m
-              memory: 192Mi
+              memory: 128Mi
             limits:
-              memory: 512Mi
+              memory: 256Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
