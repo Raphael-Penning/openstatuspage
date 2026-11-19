@@ -340,7 +340,8 @@ docker compose -f compose.split.yaml up -d public
   [Running several instances](09-operations.md#running-several-instances).
 
 The Kubernetes example for the split deployment is in
-[`deploy/kubernetes/split/`](../../../deploy/kubernetes/split/).
+[`deploy/kubernetes/split/`](../../../deploy/kubernetes/split/kustomization.yaml)
+(apply it with `kubectl apply -k deploy/kubernetes/split`).
 
 ## Single container with SQLite
 
