@@ -6,6 +6,10 @@
  * - log:  writes every mail to the server log instead of sending it (development).
  * - none: no transport; sending fails. Subscriptions are not offered.
  *
+ * With APP_ROLE=public the configured kind is kept (subscriptions are offered when
+ * it is not `none`), but the instance never sends: mails go to the outbox and a
+ * worker instance delivers them (OutboxOnlyMailer).
+ *
  * Tests use MemoryMailer.
  */
 import type { MailTransportKind } from '@openstatuspage/shared';
@@ -107,6 +111,23 @@ export class SmtpMailer implements Mailer {
   }
 }
 
+/**
+ * Mailer of a public instance: reports the configured transport so the instance
+ * knows whether subscriptions are offered, but never opens a connection. Every
+ * mail is queued in the outbox and delivered by a worker instance.
+ */
+export class OutboxOnlyMailer implements Mailer {
+  constructor(
+    readonly transport: MailTransportKind,
+    readonly from: string | null,
+  ) {}
+
+  async send(): Promise<void> {
+    throw new Error('This instance (APP_ROLE=public) does not send mail; a worker instance delivers the outbox');
+  }
+  close(): void {}
+}
+
 /** Collects mails in memory. For tests; `fail` makes the next sends throw. */
 export class MemoryMailer implements Mailer {
   readonly sent: MailMessage[] = [];
@@ -131,6 +152,7 @@ export class MemoryMailer implements Mailer {
 }
 
 export function createMailer(config: Config, log: FastifyBaseLogger): Mailer {
+  if (config.APP_ROLE === 'public') return new OutboxOnlyMailer(config.MAIL_TRANSPORT, config.SMTP_FROM ?? null);
   switch (config.MAIL_TRANSPORT) {
     case 'smtp':
       return new SmtpMailer(config.SMTP_FROM!, {

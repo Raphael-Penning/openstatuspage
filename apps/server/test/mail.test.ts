@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FastifyBaseLogger } from 'fastify';
 import { loadConfig } from '../src/config.js';
-import { createMailer } from '../src/mail/mailer.js';
+import { createMailer, OutboxOnlyMailer } from '../src/mail/mailer.js';
 import {
   confirmationMail,
   escapeHtml,
@@ -190,5 +190,19 @@ describe('createMailer', () => {
     await logMailer.send({ to: 'a@example.com', subject: 'Hello', text: 'Body text', html: '<p>Body</p>' });
     expect(logged).toHaveLength(1);
     expect(JSON.stringify(logged[0])).toContain('Body text');
+  });
+
+  it('never sends from a public instance, but keeps the configured kind', async () => {
+    const env = {
+      ...base,
+      APP_ROLE: 'public',
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_FROM: 'Example Status <status@example.com>',
+    };
+    const mailer = createMailer(loadConfig(env, { allowSqliteForAnyRole: true }), log);
+    expect(mailer).toBeInstanceOf(OutboxOnlyMailer);
+    expect(mailer).toMatchObject({ transport: 'smtp', from: 'Example Status <status@example.com>' });
+    await expect(mailer.send({ to: 'a@example.com', subject: 's', text: 't', html: 'h' })).rejects.toThrow(/APP_ROLE=public/);
   });
 });
