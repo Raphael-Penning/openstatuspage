@@ -104,6 +104,7 @@ export function useAuthConfig() {
   return useQuery({ queryKey: keys.authConfig, queryFn: () => api.get<AuthConfig>('/api/auth/config'), staleTime: 5 * 60_000 });
 }
 
+/** The session resource `sessions/current`; its user comes from `included`. */
 export function useSessionQuery() {
   return useQuery({
     queryKey: keys.session,
