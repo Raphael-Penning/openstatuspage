@@ -258,8 +258,11 @@ POST /api/ingest/<source-id>/openitcockpit   openITCockpit notification command
 - `Content-Type: application/json` (JSON sent as `text/plain` is accepted, too).
 - Native endpoints accept payloads for sources of the same type or of type
   `webhook`; the generic endpoint works for every source type.
-- Responses: `200 {"ok":true,"created":0,"updated":1,"removed":0,"stateChanges":1}`,
-  `400` invalid payload (or `full` on a source that is not of type `webhook`),
+- Responses are JSON:API documents (`application/vnd.api+json`; the request
+  bodies stay the native payloads): `200` with
+  `{"jsonapi":{"version":"1.1"},"meta":{"created":0,"updated":1,"removed":0,"stateChanges":1}}`,
+  errors as `{"errors":[{"status","code","detail","source"}]}`; `400` invalid
+  payload (or `full` on a source that is not of type `webhook`),
   `401` missing or wrong token, `404` unknown source, `409` source disabled,
   the check bundle source (bundle states are computed) or full sync rejected
   (see below), `429` more than 120 requests per minute for

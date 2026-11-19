@@ -22,4 +22,12 @@ breaking changes.
   - Public API: `/api/public/history` filters are `filter[type]`, `filter[service]`,
     `filter[location]` and `filter[month]`; history entries are `incidents` and
     `maintenances` resources instead of `{ type, date, incident | maintenance }`.
+  - Monitoring: sources are `monitor-sources` resources whose kind is the attribute
+    `sourceType` (formerly `type`, which JSON:API reserves), also in
+    `MonitorSourceInput`; `PUT` on sources and check bundles became a partial `PATCH`;
+    `/api/admin/checks` filters are `filter[source]`, `filter[q]`, `filter[state]` and
+    `filter[unlinked]`, bundle candidates use `filter[sourceType]`; rotate-token, test and
+    poll answer meta documents.
+  - Ingest responses are meta documents (`meta: { created, updated, removed,
+    stateChanges }`) instead of `{ ok: true, ... }`.
   - Unchanged: `/api/public/status.json`, `/api/health` and the RSS/Atom feeds.
