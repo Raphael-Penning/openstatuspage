@@ -126,7 +126,9 @@ Ruf die Ingest-URL von Hand mit `curl` auf und sieh dir die Antwort an: `401`
 falsches Token (erneuert?), `404` falsche Quellen-ID, `409` Quelle
 deaktiviert oder vollständiger Abgleich abgelehnt, weil er die meisten
 verknüpften Checks entfernen würde, `413` Anfrage zu groß für den Reverse
-Proxy, `429` mehr als 120 Anfragen pro Minute. Starte die
+Proxy, `429` mehr als 120 Anfragen pro Minute. Den Grund findest du in
+`errors[0].detail` der Antwort (`source.pointer` nennt das Feld einer
+ungültigen Nutzlast, z. B. `/checks/0/state`). Starte die
 Benachrichtigungsskripte mit `OSP_DRY_RUN=1`, um die gesendeten Daten zu
 sehen.
 

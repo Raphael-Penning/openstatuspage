@@ -74,6 +74,13 @@ curl -fsS https://status.example.com/api/ingest/<source-id> \
   -d '{"checks":[{"id":"backup-nightly","name":"Nächtliches Backup","state":"ok"}]}'
 ```
 
+Du sendest einfaches JSON, kein JSON:API-Dokument. Die Antwort ist ein
+JSON:API-Dokument, das die Änderungen zählt:
+
+```json
+{"jsonapi":{"version":"1.1"},"meta":{"created":1,"updated":0,"removed":0,"stateChanges":0}}
+```
+
 Zustände sind `ok`, `warning`, `critical`, `unknown` oder `0`–`3`. Nutze
 lieber den `Authorization`-Header als den Query-Parameter `?token=`:
 Query-Strings landen gern in Proxy-Logs. Das vollständige Format beschreibt
