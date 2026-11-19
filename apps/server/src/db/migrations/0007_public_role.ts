@@ -7,9 +7,13 @@ import { PostgresAdapter, sql, type Kysely } from 'kysely';
  * - Schema `osp_public` with views named like the tables the public code reads.
  *   They expose only public rows and only public columns. The public role connects
  *   with search_path=osp_public, so the unchanged queries of the public code read
- *   the views. The views are `security_invoker` (PostgreSQL 15+): they run with the
- *   privileges of the public role, which therefore holds SELECT on exactly the
- *   public columns of these tables (and nothing on any other table).
+ *   the views. Most views are `security_invoker` (PostgreSQL 15+): they run with
+ *   the privileges of the public role, which therefore holds SELECT on exactly the
+ *   public columns of these tables (and nothing on any other table). A view that
+ *   blanks a column (a hidden group id, an unpublished note) runs with the owner's
+ *   rights instead (`ownerRights`, as a security_barrier view): the public role
+ *   gets no privilege on that base column, so reading the table directly cannot
+ *   skip the blanking.
  * - Row level security on every table: a permissive `osp_access` policy keeps
  *   every other role as it was (table owners bypass RLS anyway), a restrictive
  *   `osp_public_role` policy limits registered public roles to public rows and
@@ -42,6 +46,12 @@ interface PublicTable {
   filter: ((b: string) => string) | null;
   /** Kysely's own tables get no RLS. */
   rls?: boolean;
+  /**
+   * The view transforms a column (CASE ... END) that the public role must not read
+   * unchanged. Such a column is not in `grant`, and the view runs with the owner's
+   * rights (security_barrier), so it can read it. The rows are filtered by the view.
+   */
+  ownerRights?: boolean;
 }
 
 /** `EXISTS` a public row of `table` with id = `column` (an unqualified column of the outer table). */
@@ -80,7 +90,8 @@ const PUBLIC_TABLES: PublicTable[] = [
       'created_at',
       'updated_at',
     ],
-    // Not: status_mode, manual_status, aggregation, monitor_status (how the status is made).
+    // Not: status_mode, manual_status, aggregation, monitor_status (how the status is made),
+    // group_id (only through the view, which blanks hidden groups).
     grant: [
       'id',
       'slug',
@@ -88,7 +99,6 @@ const PUBLIC_TABLES: PublicTable[] = [
       'description',
       'kind',
       'url',
-      'group_id',
       'sort_order',
       'is_public',
       'current_status',
@@ -97,6 +107,7 @@ const PUBLIC_TABLES: PublicTable[] = [
       'updated_at',
     ],
     filter: () => 'is_public = 1',
+    ownerRights: true,
   },
   {
     table: 'locations',
@@ -238,10 +249,12 @@ const PUBLIC_TABLES: PublicTable[] = [
       'created_at',
       'updated_at',
     ],
-    grant: ['id', 'starts_at', 'ends_at', 'status', 'show_public', 'public_note', 'created_at', 'updated_at'],
+    // Not public_note: only through the view, which blanks unpublished notes.
+    grant: ['id', 'starts_at', 'ends_at', 'status', 'show_public', 'created_at', 'updated_at'],
     filter: (b) =>
       `id IN (SELECT cs.correction_id FROM ${b}.status_correction_services cs ` +
       `JOIN ${b}.services s ON s.id = cs.service_id WHERE s.is_public = 1)`,
+    ownerRights: true,
   },
   {
     table: 'status_correction_services',
@@ -304,10 +317,10 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
   for (const t of PUBLIC_TABLES) {
     const columns = t.columns.map((c) => c.replaceAll('%b', b)).join(', ');
     const where = t.filter ? ` WHERE ${t.filter(b)}` : '';
-    out.push(
-      `CREATE VIEW ${s}.${t.table}${invokerViews ? ' WITH (security_invoker = true)' : ''} AS ` +
-        `SELECT ${columns} FROM ${b}.${t.table}${where}`,
-    );
+    // security_barrier: conditions of the caller (e.g. a cast that fails with the value
+    // in its error message) only see the rows that passed the view's filter.
+    const options = invokerViews && !t.ownerRights ? 'security_invoker = true' : 'security_barrier = true';
+    out.push(`CREATE VIEW ${s}.${t.table} WITH (${options}) AS SELECT ${columns} FROM ${b}.${t.table}${where}`);
     if (t.rls === false) continue;
     out.push(`ALTER TABLE ${b}.${t.table} ENABLE ROW LEVEL SECURITY`);
     out.push(`CREATE POLICY osp_access ON ${b}.${t.table} USING (true) WITH CHECK (true)`);

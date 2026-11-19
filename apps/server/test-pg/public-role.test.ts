@@ -468,6 +468,27 @@ describe('tables', () => {
     expect(await attempt('select notify_subscribers from public.maintenances')).toBe('42501');
   });
 
+  it('do not reveal the columns their views blank', async () => {
+    // The views blank the ids of hidden groups and unpublished notes; the base columns stay closed.
+    expect(await attempt('select public_note from public.status_corrections')).toBe('42501');
+    expect(await attempt('select id, public_note, show_public from public.status_corrections')).toBe('42501');
+    expect(await attempt('select group_id from public.services')).toBe('42501');
+    expect(await attempt(`select id from public.services where group_id = '${ids.hiddenGroup}'`)).toBe('42501');
+    // Conditions of the caller only see rows that passed the view's filter.
+    const leak = async (query: string) => {
+      try {
+        await sql.raw(query).execute(pub);
+        return '';
+      } catch (err) {
+        return (err as Error).message;
+      }
+    };
+    expect(await leak(`select id from osp_public.services where name::int = 1`)).not.toContain('Hidden backend');
+    for (const note of ['Hidden note', 'Not meant to be shown']) {
+      expect(await leak(`select id from osp_public.status_corrections where public_note::int = 1`)).not.toContain(note);
+    }
+  });
+
   it('limit the public role to public rows by row level security (defense in depth)', async () => {
     expect((await rows('select id from public.services order by id')).map((r) => r.id)).toEqual([
       ids.service,

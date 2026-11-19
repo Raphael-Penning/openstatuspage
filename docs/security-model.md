@@ -91,14 +91,22 @@ stop a leak on its own; together they are defense in depth:
 1. **Privileges.** `osp_grant_public_role(role)` first revokes everything from
    the role on the table schema, then grants `USAGE` on `osp_public`, `SELECT` on
    its views, `EXECUTE` on its functions, and column-level `SELECT` on exactly the
-   public columns of the tables behind the views (the views are
-   `security_invoker`, so they run with the rights of the public role). Admin and
+   public columns of the tables behind the views (most views are
+   `security_invoker`, so they run with the rights of the public role). A column
+   that a view blanks (the group id of a service in a hidden group, the note of a
+   correction that is not shown) is never granted: the views of `services` and
+   `status_corrections` run with the owner's rights instead, as
+   `security_barrier` views, so reading the base table directly cannot skip the
+   blanking. Admin and
    worker instances call it on every start (and `pnpm db:migrate` does), so the
    grants follow every migration. It refuses a role that is the connecting role,
    a superuser, has `BYPASSRLS` or is a member of the owner.
 2. **Views.** The views select only public rows (`is_public = 1`, links whose
    both ends are public, the `page` settings row) and only public columns; hidden
-   group ids and unpublished notes are blanked.
+   group ids and unpublished notes are blanked. Conditions of the caller (for
+   example a cast whose error message would quote a value) are only evaluated on
+   rows that passed the view's filter (`security_barrier`, or the RLS policies
+   behind a `security_invoker` view).
 3. **Row level security.** Every table has RLS enabled with a permissive
    `osp_access` policy (all other roles keep full access; the table owner
    bypasses RLS anyway) and a restrictive `osp_public_role` policy: for a role
@@ -121,8 +129,10 @@ the public role, to bound what a compromised public instance can make the
 database do.
 
 PostgreSQL 15 or newer is recommended: older servers do not support
-`security_invoker` views. There the views run with the owner's rights; layers 1,
-2 and 4 still apply, but RLS does not apply through the views.
+`security_invoker` views. There all views run with the owner's rights (as
+`security_barrier` views); layers 1, 2 and 4 still apply, but RLS does not apply
+through the views. The views of `services` and `status_corrections` work this
+way on every version.
 
 ## Setting it up
 
