@@ -28,7 +28,7 @@ The complete reference with every option lives in
 | `LOCAL_LOGIN_ENABLED` | `true` | `false` allows single sign-on only. |
 | `OIDC_*` | – | Single sign-on, see [Users and access](08-users-and-access.md#single-sign-on-oidc). |
 | `APP_ROLE` | `all` | `all`, or with PostgreSQL `public`, `admin` or `worker` to run the status page and the management side as separate instances. See [Split deployment](../../configuration.md#split-deployment). |
-| `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; `false` on additional `all` replicas. |
+| `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; on PostgreSQL several instances may run them (coordinated through the database). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | Email delivery, see [Email subscriptions](07-email-subscriptions.md#mail-server). |
 
 Rules that apply to all variables:
