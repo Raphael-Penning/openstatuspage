@@ -13,6 +13,7 @@ Du hast diese Möglichkeiten:
 | Variante | Datenbank | Geeignet für |
 | --- | --- | --- |
 | [Docker Compose](#docker-compose) | PostgreSQL-17-Container | die meisten Produktivumgebungen |
+| [Geteilte Installation](#geteilte-installation) | PostgreSQL-17-Container | öffentliche Seite und Admin-Bereich auf getrennten Domains, Worker in eigenem Container |
 | [Einzelner Container mit SQLite](#einzelner-container-mit-sqlite) | SQLite-Datei in einem Volume | kleine Setups mit einer Instanz |
 | [Kubernetes](#kubernetes) | externes PostgreSQL (oder SQLite auf einem Volume) | Cluster mit Ingress-Controller |
 | [Image selbst bauen](#image-selbst-bauen) | wie bei Compose | eigene Änderungen, andere Plattformen |
@@ -225,6 +226,134 @@ strengsten pinnst du mit dem Digest des Images statt eines Tags
 (`ghcr.io/raphael-penning/openstatuspage@sha256:...`, angezeigt von
 `docker buildx imagetools inspect`). Wie Images und Releases entstehen,
 beschreibt [`docs/releasing.md`](../../releasing.md).
+
+## Geteilte Installation
+
+Bei der geteilten Installation laufen die öffentliche Statusseite und der
+Admin-Bereich als zwei Instanzen auf zwei Domains, dazu ein Hintergrund-Worker,
+alle auf einer gemeinsamen PostgreSQL-Datenbank. Der Sinn ist die Eingrenzung:
+Die öffentliche Instanz erreicht weder den Admin-Bereich noch die
+Monitoring-Systeme oder die Admin-Tabellen. Eine Schwachstelle in der
+öffentlichen Anwendung oder eine gestohlene Admin-Sitzung kann so keine Daten
+über die öffentliche Instanz nach außen leiten.
+
+| Container | `APP_ROLE` | Bedient | Datenbankrolle | Port auf dem Host |
+| --- | --- | --- | --- | --- |
+| `public` | `public` | Statusseite, öffentliche API, Feeds, Abonnements, `/api/health` | `osp_public` (kein Tabellenzugriff) | `PUBLIC_HOST_PORT`, Standard 3000 |
+| `admin` | `admin` | Verwaltungsoberfläche und API, Login, OIDC, Ingest, öffentliche Seite zur Vorschau | Eigentümerrolle (`POSTGRES_USER`) | `ADMIN_HOST_PORT`, Standard 3001 |
+| `worker` | `worker` | Polling, Mails, Wartungen, Bundles, Importe, Aufräumen; nur `/api/health` | Eigentümerrolle | keiner |
+| `db` | – | PostgreSQL 17, nicht veröffentlicht | – | keiner |
+
+Der Container `public` hat keine `env_file`-Angabe und bekommt nur seine eigenen
+Einstellungen: kein Admin-Passwort, keine OIDC- oder SMTP-Geheimnisse und keinen
+Weg zu den Monitoring-Systemen (die fragt der Worker ab). Er führt nie
+Migrationen aus und wartet, bis die Admin-Instanz das Schema auf den aktuellen
+Stand gebracht hat. Die Datenbankrolle `osp_public` sieht nur die öffentlichen
+Views und ruft nur die Abonnement-Funktionen auf, siehe
+[Sicherheitsmodell](../../security-model.md).
+
+### Einrichtung
+
+Du brauchst dasselbe wie für [Docker Compose](#docker-compose), dazu einen Klon
+des Repositorys, weil die Datei das Init-Skript aus `deploy/postgres/` nutzt:
+
+```bash
+git clone https://github.com/Raphael-Penning/openstatuspage.git
+cd openstatuspage/deploy/compose
+cp .env.example .env
+chmod 600 .env
+printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_PUBLIC_PASSWORD=%s\n' \
+  "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" >> .env
+# .env bearbeiten, siehe unten
+docker compose -f compose.split.yaml up -d
+```
+
+Trage in `.env` die Variablen des Abschnitts *Split deployment* ein und entferne
+das Kommentarzeichen davor:
+
+- `PUBLIC_BASE_URL`, die öffentliche Domain, zum Beispiel `https://status.example.com`.
+- `ADMIN_BASE_URL`, die Admin-Domain, zum Beispiel `https://status.admin.example.com`.
+- `ADMIN_EMAIL` und `ADMIN_PASSWORD` für den ersten Administrator (wie unter
+  [Minimale Konfiguration](#minimale-konfiguration)).
+- `TRUST_PROXY`, die Anzahl der Proxys vor jeder Instanz (1 bei einem Proxy).
+- `PUBLIC_BIND` und `ADMIN_BIND` behältst du auf `127.0.0.1`, wenn dein Reverse
+  Proxy auf demselben Host läuft.
+
+Verwende in `POSTGRES_PASSWORD` und `POSTGRES_PUBLIC_PASSWORD` nur Buchstaben und
+Ziffern: Beide stehen in einer Verbindungs-URL. `BASE_URL` in `.env` nutzt diese
+Datei nicht; die Compose-Datei setzt die Basis-URL jedes Containers selbst.
+`SECRET_KEY` muss in allen Containern gleich sein; die öffentliche Instanz
+braucht ihn, um Abonnement-Links zu prüfen.
+
+Das Init-Skript legt die Rolle `osp_public` mit `POSTGRES_PUBLIC_PASSWORD` an,
+wenn das Datenvolumen zum ersten Mal erstellt wird. Ist dieser Schritt
+fehlgeschlagen, ist die Datenbank bereits initialisiert, und das Skript läuft
+nicht erneut: Stoppe den Stack, entferne das Volume `openstatuspage-split_pg`
+(dabei gehen die Daten verloren) und starte neu.
+
+### Reverse Proxys
+
+Jede Instanz veröffentlicht einfaches HTTP auf einem eigenen Host-Port. Stelle
+davor je einen Proxy-Host:
+
+| Domain | Zeigt auf | Hinweise |
+| --- | --- | --- |
+| `status.example.com` | `127.0.0.1:3000` | die öffentliche Seite; für alle offen |
+| `status.admin.example.com` | `127.0.0.1:3001` | der Admin-Bereich; schränke ihn ein, zum Beispiel per IP-Adresse, VPN oder Zugangsproxy |
+
+Die Proxy-Einstellungen stehen unter [Reverse Proxy](03-reverse-proxy.md). Veröffentliche
+die Admin-Domain nicht ohne Einschränkung im Internet: Dafür gibt es zwei
+getrennte Instanzen.
+
+### Installation prüfen
+
+```bash
+docker compose -f compose.split.yaml ps
+curl -fsS http://127.0.0.1:3000/api/health   # öffentlich
+curl -fsS http://127.0.0.1:3001/api/health   # Admin
+docker compose -f compose.split.yaml logs --tail 50 worker
+```
+
+Melde dich danach unter `https://status.admin.example.com` an und prüfe, dass
+die Statusseite unter `https://status.example.com` lädt. Das Log des Workers
+zeigt die Polling- und Mail-Aufgaben; es sollte keine Fehler enthalten.
+
+### Updates und Passwörter
+
+Fixiere `OSP_VERSION` auf ein Release, wie unter [Image-Tags](#image-tags)
+beschrieben, und mache vorher ein Backup ([Betrieb](09-operations.md)). Führe
+dann `docker compose -f compose.split.yaml pull` und
+`docker compose -f compose.split.yaml up -d` aus. Die Admin-Instanz migriert das
+Schema; die öffentliche Instanz wartet darauf (`SCHEMA_WAIT_SECONDS`).
+
+Um `POSTGRES_PUBLIC_PASSWORD` später zu ändern, passe es in `.env` an (nur
+Buchstaben und Ziffern) und führe dann aus:
+
+```bash
+docker compose -f compose.split.yaml up -d db
+docker compose -f compose.split.yaml exec db /docker-entrypoint-initdb.d/10-roles.sh
+docker compose -f compose.split.yaml up -d public
+```
+
+### Was die geteilte Installation nicht abdeckt
+
+- **Die Eigentümerrolle ist Superuser.** Das offizielle PostgreSQL-Image macht
+  `POSTGRES_USER` zum Superuser, und Admin und Worker verbinden sich damit. Ein
+  kompromittierter Admin- oder Worker-Container hat deshalb vollen Zugriff auf
+  die Datenbank. Die Trennung schützt die öffentliche Seite: Nur die Rolle
+  `osp_public` ist dem Internet zugewandt. Für eine strengere Einrichtung lege
+  mit `deploy/postgres/roles.sql` (`app_password`) eine Anwendungsrolle ohne
+  Superuser-Rechte an und setze `DATABASE_URL` von Admin und Worker auf sie.
+- **Ein gemeinsamer `SECRET_KEY`.** Alle drei Container haben ihn. Halte die
+  `.env`-Datei privat und sichere sie, siehe [Betrieb](09-operations.md#secret_key).
+- **Nur PostgreSQL.** SQLite ist eine Datenbank für eine einzelne Instanz und
+  unterstützt nur die Rolle `all`.
+- **Ein Host.** Die Compose-Datei ist ein Beispiel für eine Maschine. Für mehrere
+  Hosts oder mehr Replikate siehe [Kubernetes](#kubernetes) und
+  [Mehrere Instanzen betreiben](09-operations.md#mehrere-instanzen-betreiben).
+
+Das Kubernetes-Beispiel für die geteilte Installation liegt in
+[`deploy/kubernetes/split/`](../../../deploy/kubernetes/split/).
 
 ## Einzelner Container mit SQLite
 
