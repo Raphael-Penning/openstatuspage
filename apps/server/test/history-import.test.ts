@@ -414,6 +414,47 @@ describe('history import (sources)', () => {
     expect((await settle(sourceId, job.id)).status).toBe('cancelled');
   });
 
+  it('redacts the password of a connection string from errors', async () => {
+    const id = newId();
+    const ts = nowIso();
+    await t.db
+      .insertInto('monitor_sources')
+      .values({
+        id,
+        name: 'Icinga',
+        type: 'icinga2',
+        enabled: 1,
+        config_encrypted: t.app.ctx.secrets.encryptJson({ baseUrl: 'https://icinga.example.com:5665', username: 'osp', password: 'api-secret' }),
+        poll_interval_seconds: 60,
+        ingest_token_hash: sha256(newId()),
+        last_poll_at: null,
+        last_poll_ok: null,
+        last_error: null,
+        created_at: ts,
+        updated_at: ts,
+      })
+      .execute();
+    t.app.ctx.historyImports.importers = {
+      icinga2: {
+        type: 'icinga2',
+        async fetch() {
+          throw new Error("Access denied for user 'reader' using password 'db-p@ss'");
+        },
+      },
+    };
+    const job = await start(id, {
+      from: at(-2 * DAY),
+      to: at(-DAY),
+      onlyLinkedChecks: false,
+      credentials: { databaseUrl: 'mysql://reader:db-p%40ss@db.example.com/icingadb' },
+    });
+    const failed = await settle(id, job.id);
+    expect(failed.status).toBe('failed');
+    expect(failed.error).toBe("Access denied for user 'reader' using password '***'");
+    const list = await admin.get(`/api/admin/monitor-sources/${id}/history-imports`);
+    expect(list.json<AdminHistoryImport[]>()[0]!.preview).toBeNull();
+  });
+
   it('fails jobs that stopped making progress', async () => {
     const { sourceId } = await twoChecks();
     const id = newId();

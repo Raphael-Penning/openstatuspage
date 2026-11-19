@@ -91,6 +91,7 @@ export class HistoryImportService {
   fetchFactory: (options: AdapterFetchOptions) => FetchFn = createAdapterFetch;
 
   private readonly running = new Map<string, AbortController>();
+  private shuttingDown = false;
 
   constructor(
     private readonly db: DB,
@@ -103,7 +104,8 @@ export class HistoryImportService {
 
   async list(sourceId: string, limit = 20): Promise<AdminHistoryImport[]> {
     const rows = await this.baseQuery().where('history_imports.source_id', '=', sourceId).orderBy('history_imports.created_at', 'desc').limit(limit).execute();
-    return rows.map((r) => this.toAdmin(r));
+    // The list is for overviews: previews can be large and are loaded per job.
+    return rows.map((r) => ({ ...this.toAdmin(r), preview: null }));
   }
 
   async get(sourceId: string, id: string): Promise<AdminHistoryImport> {
@@ -321,6 +323,10 @@ export class HistoryImportService {
       if (Number(done.numUpdatedRows) === 0) throw new CancelledError();
     } catch (err) {
       await this.discardStaging(id);
+      if (this.shuttingDown) {
+        await this.finish(id, 'failed', 'The import was interrupted by a server shutdown; nothing was written.', ['fetching']);
+        return;
+      }
       if (err instanceof CancelledError || cancel.aborted) {
         await this.finish(id, 'cancelled', null, ['fetching']);
         return;
@@ -334,7 +340,11 @@ export class HistoryImportService {
       } catch {
         // ignore
       }
-      const message = redactSecrets(redactSecrets(raw, config, secretKeys), credentials, secretKeys).slice(0, 1000);
+      const message = redactSecrets(
+        redactSecrets(raw, withUrlPasswords(config), [...secretKeys, 'urlPassword']),
+        withUrlPasswords(credentials),
+        [...secretKeys, 'urlPassword'],
+      ).slice(0, 1000);
       this.log.warn({ importId: id, sourceId: source.id, error: message }, 'history import failed');
       await this.finish(id, 'failed', message, ['fetching']);
     } finally {
@@ -564,6 +574,12 @@ export class HistoryImportService {
 
   // --- Cancel / cleanup -----------------------------------------------------------
 
+  /** Aborts running fetches (server shutdown); they end as failed. */
+  abortAll(): void {
+    this.shuttingDown = true;
+    for (const controller of this.running.values()) controller.abort();
+  }
+
   async cancel(sourceId: string, id: string, actor: Actor): Promise<AdminHistoryImport> {
     const job = await this.get(sourceId, id);
     if (job.status === 'applying') throw conflict('The import is being written and can no longer be cancelled.');
@@ -622,6 +638,21 @@ export class HistoryImportService {
       await this.discardStaging(r.id);
     }
   }
+}
+
+/** Adds the password of a connection string (`icingaDbUrl` / `databaseUrl`) as `urlPassword` for redaction. */
+function withUrlPasswords(values: Record<string, unknown>): Record<string, unknown> {
+  for (const key of ['icingaDbUrl', 'databaseUrl']) {
+    const value = values[key];
+    if (typeof value !== 'string') continue;
+    try {
+      const password = decodeURIComponent(new URL(value).password);
+      if (password) return { ...values, urlPassword: password };
+    } catch {
+      // not a URL
+    }
+  }
+  return values;
 }
 
 function cleanCredentials(c: HistoryImportCredentials | undefined): HistoryImportCredentials {
