@@ -3,19 +3,22 @@
  * CSV file) → background fetch with progress → preview → confirm → result.
  * Opening it while an import of the source is active resumes that import.
  */
-import type { AdminHistoryImport, AdminMonitorSource, HistoryImportServicePreview } from '@openstatuspage/shared';
+import type { AdminHistoryImport, AdminMonitorSource, HistoryCsvIssue, HistoryImportServicePreview } from '@openstatuspage/shared';
 import { History } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, ApiError } from '../../lib/api';
 import {
   API_IMPORT_TYPES,
+  csvIssueText,
   emptyImportForm,
   importFormToPayload,
   isRunning,
+  jobErrorText,
   progressPercent,
   readCsvFile,
   durationParts,
+  warningText,
   type HistoryImportFormValues,
   type ImportMethod,
 } from '../lib/history-import';
@@ -30,11 +33,6 @@ interface Props {
   /** Job to show right away (an active import of the source). */
   initialJobId: string | null;
   onClose: () => void;
-}
-
-interface CsvIssue {
-  line: number;
-  message: string;
 }
 
 export function HistoryImportDialog({ source, initialJobId, onClose }: Props) {
@@ -76,7 +74,7 @@ function ImportForm({
   const formId = useId();
   const [v, setV] = useState<HistoryImportFormValues>(() => emptyImportForm(source.type));
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [csvIssues, setCsvIssues] = useState<CsvIssue[]>([]);
+  const [csvIssues, setCsvIssues] = useState<HistoryCsvIssue[]>([]);
   const set = <K extends keyof HistoryImportFormValues>(key: K, value: HistoryImportFormValues[K]) => {
     setV((prev) => ({ ...prev, [key]: value }));
     setErrors((e) => {
@@ -95,7 +93,7 @@ function ImportForm({
       onError: (error) => {
         if (error instanceof ApiError && error.status === 400 && Array.isArray(error.body?.issues)) {
           const issues = error.body.issues as unknown[];
-          const lines = issues.filter((i): i is CsvIssue => typeof (i as CsvIssue)?.line === 'number');
+          const lines = issues.filter((i): i is HistoryCsvIssue => typeof (i as HistoryCsvIssue)?.line === 'number');
           if (lines.length > 0) {
             setCsvIssues(lines);
             return true;
@@ -259,7 +257,7 @@ function ImportForm({
             <p className="font-medium">{t('historyImport.csvInvalid')}</p>
             <ul className="mt-1 list-disc pl-5 text-muted">
               {csvIssues.map((i) => (
-                <li key={`${i.line}-${i.message}`}>{t('historyImport.csvIssue', { line: i.line, message: i.message })}</li>
+                <li key={`${i.line}-${i.message}`}>{t('historyImport.csvIssue', { line: i.line, message: csvIssueText(t, i) })}</li>
               ))}
             </ul>
           </div>
@@ -408,7 +406,7 @@ function Preview({ job }: { job: AdminHistoryImport }) {
       {p.warnings.length > 0 && (
         <ul className="list-disc rounded-lg border border-status-degraded/40 py-2 pr-3 pl-7">
           {p.warnings.map((w) => (
-            <li key={w}>{w}</li>
+            <li key={`${w.code}-${w.message}`}>{warningText(t, w, fmt.dateTime)}</li>
           ))}
         </ul>
       )}
@@ -533,6 +531,7 @@ function Segments({ service }: { service: HistoryImportServicePreview }) {
 
 function Outcome({ job }: { job: AdminHistoryImport }) {
   const { t } = useTranslation('admin');
+  const error = jobErrorText(t, job);
   if (job.status === 'completed' && job.result) {
     return (
       <p role="status" className="text-sm">
@@ -548,13 +547,13 @@ function Outcome({ job }: { job: AdminHistoryImport }) {
     return (
       <div role="alert" className="flex flex-col gap-1 text-sm">
         <p className="font-medium">{t('historyImport.failed')}</p>
-        {job.error && <p className="text-muted break-words">{job.error}</p>}
+        {error && <p className="text-muted break-words">{error}</p>}
       </div>
     );
   }
   return (
     <p role="status" className="text-sm">
-      {job.error ?? t('historyImport.cancelled')}
+      {error ?? t('historyImport.cancelled')}
     </p>
   );
 }

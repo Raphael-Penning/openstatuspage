@@ -4,7 +4,9 @@
 import {
   HISTORY_CSV_MAX_CHARS,
   type AdminHistoryImport,
+  type HistoryCsvIssue,
   type HistoryImportStatus,
+  type HistoryImportWarning,
   type MonitorSourceType,
 } from '@openstatuspage/shared';
 import { localInputToIso, nowLocalInput } from './datetime';
@@ -93,4 +95,33 @@ export function progressPercent(job: Pick<AdminHistoryImport, 'progress'>): numb
   const p = job.progress;
   if (!p || p.total <= 0) return null;
   return Math.min(100, Math.round((p.done / p.total) * 100));
+}
+
+// ---------------------------------------------------------------------------
+// Server messages: the server sends codes with parameters and an English
+// fallback; known codes are translated, unknown ones show the fallback.
+// ---------------------------------------------------------------------------
+
+/** Minimal translate function (i18next `t` of the admin namespace). */
+export type Translate = (key: string, options: Record<string, unknown>) => string;
+
+/** A preview warning in the UI language. `fmtDate` formats ISO timestamps in parameters. */
+export function warningText(t: Translate, w: HistoryImportWarning, fmtDate: (iso: string) => string = (x) => x): string {
+  const params: Record<string, unknown> = { ...w.params };
+  if (typeof params.earliest === 'string') params.earliest = fmtDate(params.earliest);
+  return t(`historyImport.warning.${w.code}`, { ...params, defaultValue: w.message });
+}
+
+/** A CSV issue (without the line number) in the UI language. */
+export function csvIssueText(t: Translate, issue: Pick<HistoryCsvIssue, 'code' | 'params' | 'message'>): string {
+  if (!issue.code) return issue.message;
+  const key = issue.code === 'overlap' ? `overlap_${String(issue.params?.kind ?? 'check')}` : issue.code;
+  return t(`historyImport.csvIssues.${key}`, { ...(issue.params ?? {}), defaultValue: issue.message });
+}
+
+/** Why a job failed or was cancelled by the server; null when a user cancelled it. */
+export function jobErrorText(t: Translate, job: Pick<AdminHistoryImport, 'error' | 'errorCode'>): string | null {
+  if (!job.errorCode) return job.error;
+  const message = (job.error ?? '').replace(/^Applying failed, nothing was written: /, '');
+  return t(`historyImport.error.${job.errorCode}`, { message, defaultValue: job.error ?? '' });
 }

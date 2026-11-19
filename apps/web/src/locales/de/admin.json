@@ -895,6 +895,23 @@
     "csvTooLarge": "Die Datei ist größer als 5 MB.",
     "csvInvalid": "Die CSV-Datei enthält Fehler:",
     "csvIssue": "Zeile {{line}}: {{message}}",
+    "csvIssues": {
+      "unterminated_quote": "ein Feld in Anführungszeichen wird nicht geschlossen",
+      "empty": "die Datei ist leer",
+      "missing_columns": "Spalte {{columns}} fehlt",
+      "no_rows": "keine Datenzeilen",
+      "too_many_rows": "mehr als {{max}} Datenzeilen",
+      "field_count": "{{expected}} Felder erwartet, {{found}} gefunden",
+      "check_xor_service": "gib genau eines von „check“ und „service“ an",
+      "id_too_long": "Kennung zu lang",
+      "timestamp_format": "start und end müssen ISO-8601-Zeitpunkte mit Zeitzone sein, z. B. 2026-01-01T00:00:00Z",
+      "invalid_date": "ungültiges Datum",
+      "start_not_before_end": "start muss vor end liegen",
+      "check_state": "state muss für Check-Zeilen einer von {{allowed}} sein",
+      "service_status": "state muss für Service-Zeilen einer von {{allowed}} sein",
+      "overlap_check": "überschneidet sich mit Zeile {{other}} desselben Checks",
+      "overlap_service": "überschneidet sich mit Zeile {{other}} desselben Services"
+    },
     "onlyLinked": "Nur Checks, die von Services oder Bündeln genutzt werden",
     "onlyLinkedHelp": "Weniger Anfragen; andere Checks bekommen keine Historie.",
     "gapsOnly": "Es werden nur Zeiträume ohne aufgezeichnete Historie gefüllt. Aufgezeichnete Historie bleibt immer unverändert; frühere Importe desselben Zeitraums werden ersetzt.",
@@ -965,6 +982,20 @@
       "completed": "Abgeschlossen",
       "failed": "Fehlgeschlagen",
       "cancelled": "Abgebrochen"
+    },
+    "warning": {
+      "kuma_retention": "Uptime Kuma hat Heartbeats erst ab {{earliest}} geliefert. Ältere Daten wurden durch die Aufbewahrungsdauer gelöscht („Keep monitor history data“, Standard 180 Tage).",
+      "kuma_duplicate_name": "Mehrere Uptime-Kuma-Monitore heißen „{{name}}“; übersprungen.",
+      "kuma_monitor_failed": "Die Heartbeats von „{{name}}“ konnten nicht gelesen werden und wurden übersprungen (z. B. zu viele für eine Antwort: wähle einen kürzeren Zeitraum oder verringere die Aufbewahrungsdauer in Uptime Kuma). Details: {{reason}}",
+      "oitc_utc": "Zeiten ohne Zeitzone aus openITCockpit wurden als UTC gelesen (stelle die Zeitzone des API-Benutzers auf UTC)."
+    },
+    "error": {
+      "source": "Das Monitoring-System oder die Datei hat einen Fehler gemeldet: {{message}}",
+      "timeout": "Der Import hat zu lange gedauert und wurde abgebrochen. Wähle einen kürzeren Zeitraum.",
+      "shutdown": "Der Import wurde durch das Herunterfahren des Servers unterbrochen.",
+      "interrupted": "Der Import wurde unterbrochen (z. B. durch einen Neustart).",
+      "expired": "Die Vorschau ist abgelaufen, ohne importiert zu werden.",
+      "apply_failed": "Das Schreiben der Historie ist fehlgeschlagen: {{message}}"
     }
   }
 }

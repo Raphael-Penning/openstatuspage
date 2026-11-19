@@ -895,6 +895,23 @@
     "csvTooLarge": "The file is larger than 5 MB.",
     "csvInvalid": "The CSV file has errors:",
     "csvIssue": "Line {{line}}: {{message}}",
+    "csvIssues": {
+      "unterminated_quote": "a quoted field is not closed",
+      "empty": "the file is empty",
+      "missing_columns": "missing column {{columns}}",
+      "no_rows": "no data rows",
+      "too_many_rows": "more than {{max}} data rows",
+      "field_count": "expected {{expected}} fields, found {{found}}",
+      "check_xor_service": "set exactly one of \"check\" and \"service\"",
+      "id_too_long": "identifier too long",
+      "timestamp_format": "start and end must be ISO 8601 timestamps with time zone, e.g. 2026-01-01T00:00:00Z",
+      "invalid_date": "invalid date",
+      "start_not_before_end": "start must be before end",
+      "check_state": "state must be one of {{allowed}} for check rows",
+      "service_status": "state must be one of {{allowed}} for service rows",
+      "overlap_check": "overlaps line {{other}} of the same check",
+      "overlap_service": "overlaps line {{other}} of the same service"
+    },
     "onlyLinked": "Only checks used by services or bundles",
     "onlyLinkedHelp": "Fewer requests; other checks get no history.",
     "gapsOnly": "Only periods without recorded history are filled. Recorded history is never changed; earlier imports of the same period are replaced.",
@@ -965,6 +982,20 @@
       "completed": "Completed",
       "failed": "Failed",
       "cancelled": "Cancelled"
+    },
+    "warning": {
+      "kuma_retention": "Uptime Kuma returned heartbeats from {{earliest}} on only. Older data was removed by its retention (\"Keep monitor history data\", default 180 days).",
+      "kuma_duplicate_name": "Several Uptime Kuma monitors are named \"{{name}}\"; skipped.",
+      "kuma_monitor_failed": "The heartbeats of \"{{name}}\" could not be read and were skipped (e.g. too many for one response: choose a shorter range or reduce the retention in Uptime Kuma). Details: {{reason}}",
+      "oitc_utc": "openITCockpit times without a time zone were read as UTC (set the API user's time zone to UTC)."
+    },
+    "error": {
+      "source": "The monitoring system or the file reported an error: {{message}}",
+      "timeout": "The import took too long and was stopped. Choose a shorter range.",
+      "shutdown": "The import was interrupted by a server shutdown.",
+      "interrupted": "The import was interrupted (e.g. by a restart).",
+      "expired": "The preview expired without being imported.",
+      "apply_failed": "Writing the history failed: {{message}}"
     }
   }
 }
