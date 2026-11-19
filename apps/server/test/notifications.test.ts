@@ -1,3 +1,4 @@
+import type { AdminSubscriber, NotificationStatus } from '@openstatuspage/shared';
 import { sql } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId } from '../src/lib/ids.js';
@@ -12,7 +13,9 @@ import {
   createTestApp,
   createUser,
   data,
+  errors,
   login,
+  page,
   type Client,
   type TestApp,
 } from './helpers.js';
@@ -399,15 +402,15 @@ describe('outbox delivery', () => {
     expect(await notifications.deliverDue(new Date(now))).toEqual({ sent: 0, retried: 0, failed: 1 });
     expect(await row()).toMatchObject({ status: 'failed', attempts: MAX_ATTEMPTS, last_error: '550 simulated delivery failure' });
 
-    const status = (await admin.get('/api/admin/notifications/status')).json();
+    const status = data<NotificationStatus>(await admin.get('/api/admin/notifications/status'));
     expect(status.queue).toEqual({ pending: 0, failed: 1 });
     expect(status.lastError).toMatchObject({ message: '550 simulated delivery failure' });
 
     const retry = await admin.post('/api/admin/notifications/retry-failed');
-    expect(retry.json()).toEqual({ requeued: 1 });
+    expect(retry.json()).toEqual({ jsonapi: { version: '1.1' }, meta: { requeued: 1 } });
     expect(await deliver()).toHaveLength(1);
     expect(await row()).toMatchObject({ status: 'sent', last_error: null });
-    const after = (await admin.get('/api/admin/notifications/status')).json();
+    const after = data<NotificationStatus>(await admin.get('/api/admin/notifications/status'));
     expect(after.queue).toEqual({ pending: 0, failed: 0 });
     expect(after.lastSentAt).toEqual(expect.any(String));
   });
@@ -458,8 +461,8 @@ describe('outbox delivery', () => {
     expect(row.last_error).toBe('550 5.1.1 <j***@example.com>: Recipient address rejected');
     expect(JSON.stringify(warn.mock.calls)).not.toContain('jane.doe@example.com');
     expect(JSON.stringify(warn.mock.calls)).toContain('j***@example.com');
-    const status = (await admin.get('/api/admin/notifications/status')).json();
-    expect(status.lastError.message).not.toContain('jane.doe');
+    const status = data<NotificationStatus>(await admin.get('/api/admin/notifications/status'));
+    expect(status.lastError!.message).not.toContain('jane.doe');
   });
 
   it('drops a queued mail whose subscriber is gone at delivery time', async () => {
@@ -565,18 +568,26 @@ describe('admin endpoints', () => {
     await addSubscriber('john_doe@example.com', { confirmed: false });
     await addSubscriber('johnxdoe@example.com');
 
-    const list = (await admin.get('/api/admin/subscribers')).json();
+    const res = await admin.get('/api/admin/subscribers');
+    expect(res.json()).toMatchObject({ meta: { total: 3, page: { number: 1, size: 50 } }, data: expect.any(Array) });
+    expect(res.json().data[0]).toMatchObject({ type: 'subscribers', relationships: { services: { data: expect.any(Array) } } });
+    const list = page<AdminSubscriber>(res);
     expect(list.total).toBe(3);
-    const jane = list.items.find((s: { email: string }) => s.email === 'jane@example.com');
+    const jane = list.items.find((s) => s.email === 'jane@example.com')!;
     expect(jane).toMatchObject({ allServices: false, confirmed: true, confirmedAt: expect.any(String) });
-    expect(jane.services.map((s: { name: string }) => s.name).sort()).toEqual(['Hidden backend', 'Public API']);
+    expect(jane.services.map((s) => s.name).sort()).toEqual(['Hidden backend', 'Public API']);
 
-    expect((await admin.get('/api/admin/subscribers?status=pending')).json().total).toBe(1);
-    expect((await admin.get('/api/admin/subscribers?status=confirmed')).json().total).toBe(2);
+    expect(page(await admin.get('/api/admin/subscribers?filter[status]=pending')).total).toBe(1);
+    expect(page(await admin.get('/api/admin/subscribers?filter[status]=confirmed')).total).toBe(2);
     // LIKE wildcards are escaped: "_" only matches itself.
-    const search = (await admin.get('/api/admin/subscribers?q=JOHN_')).json();
-    expect(search.items.map((s: { email: string }) => s.email)).toEqual(['john_doe@example.com']);
-    expect((await admin.get('/api/admin/subscribers?pageSize=1&page=2')).json().items).toHaveLength(1);
+    const search = page<AdminSubscriber>(await admin.get('/api/admin/subscribers?filter[q]=JOHN_'));
+    expect(search.items.map((s) => s.email)).toEqual(['john_doe@example.com']);
+    const second = await admin.get('/api/admin/subscribers?page[size]=1&page[number]=2');
+    expect(page(second).items).toHaveLength(1);
+    expect(second.json().links).toMatchObject({ prev: expect.stringContaining('page[number]=1'), next: expect.stringContaining('page[number]=3') });
+    const badFilter = await admin.get('/api/admin/subscribers?filter[status]=gone');
+    expect(badFilter.statusCode).toBe(400);
+    expect(errors(badFilter)[0]).toMatchObject({ source: { parameter: 'filter[status]' } });
 
     await createUser(t.db, { email: 'editor@example.com', role: 'editor' });
     const editor = client(t.app, { cookie: await login(t.app, 'editor@example.com') });
@@ -598,7 +609,9 @@ describe('admin endpoints', () => {
   it('reports status and sends test mails immediately', async () => {
     await addSubscriber('a@example.com');
     await addSubscriber('b@example.com', { confirmed: false });
-    const status = (await admin.get('/api/admin/notifications/status')).json();
+    const statusRes = await admin.get('/api/admin/notifications/status');
+    expect(statusRes.json().data).toMatchObject({ type: 'notification-statuses', id: 'current' });
+    const { id: _id, ...status } = data<NotificationStatus & { id: string }>(statusRes);
     expect(status).toEqual({
       transport: 'smtp',
       configured: true,
@@ -611,14 +624,14 @@ describe('admin endpoints', () => {
     });
 
     const ok = await admin.post('/api/admin/notifications/test', { to: 'ops@example.com' });
-    expect(ok.json()).toEqual({ ok: true, message: 'Test email sent' });
+    expect(ok.json().meta).toEqual({ ok: true, message: 'Test email sent' });
     expect(mailer.sent.at(-1)).toMatchObject({ to: 'ops@example.com', subject: '[Example Status] Test email' });
     expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
 
     mailer.failNext = 1;
     const failed = await admin.post('/api/admin/notifications/test', { to: 'ops@example.com' });
     expect(failed.statusCode).toBe(200);
-    expect(failed.json()).toEqual({ ok: false, message: '550 simulated delivery failure' });
+    expect(failed.json().meta).toEqual({ ok: false, message: '550 simulated delivery failure' });
     expect((await admin.post('/api/admin/notifications/test', { to: 'nope' })).statusCode).toBe(400);
     const audits = await t.db.selectFrom('audit_log').select('details').where('action', '=', 'notifications.test').execute();
     expect(audits).toHaveLength(2);
@@ -628,7 +641,7 @@ describe('admin endpoints', () => {
     try {
       const a = await adminClient(none);
       expect((await a.post('/api/admin/notifications/test', { to: 'ops@example.com' })).statusCode).toBe(409);
-      expect((await a.get('/api/admin/notifications/status')).json()).toMatchObject({
+      expect(data(await a.get('/api/admin/notifications/status'))).toMatchObject({
         transport: 'none',
         configured: false,
         from: null,
