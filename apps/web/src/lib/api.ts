@@ -148,7 +148,6 @@ export const api = {
   getPage: async <T>(path: string, params: ListParams = {}, options?: RequestOptions): Promise<Paginated<T>> =>
     deserializePage<T>(asDataDocument(path, (await send('GET', path, undefined, toQueryParams(params), options)).data)),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('POST', path, body, undefined, options),
-  put: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('PUT', path, body, undefined, options),
   patch: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('PATCH', path, body, undefined, options),
   delete: <T = void>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, undefined, options),
 };

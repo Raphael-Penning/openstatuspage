@@ -141,8 +141,8 @@ export function errors(res: LightMyRequestResponse): ErrorObject[] {
 
 /**
  * HTTP client authenticated by cookie (with CSRF header) or by bearer token.
- * Object payloads are sent as JSON:API request documents (see asDocument);
- * routes that are not converted yet receive the flattened attributes.
+ * Object payloads are sent as JSON:API request documents (see asDocument).
+ * `put` only exists to check that former PUT routes are gone (404).
  */
 export function client(app: FastifyInstance, auth: { cookie?: string; token?: string }): Client {
   const headers: Record<string, string> = {};
