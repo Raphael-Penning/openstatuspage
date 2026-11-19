@@ -9,7 +9,7 @@
  * the same 404, and subscribing always answers 202, so addresses cannot be
  * enumerated.
  */
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import type {
   PublicSubscription,
   SubscribeInput,
@@ -69,6 +69,60 @@ export function subscriberTokens(config: Config, sub: Pick<Subscriber, 'id' | 't
     confirm: subscriptionToken(config.SECRET_KEY, 'confirm', sub.id, sub.token_salt),
     manage: subscriptionToken(config.SECRET_KEY, 'manage', sub.id, sub.token_salt),
   };
+}
+
+/** SHA-256 (hex) of a token, as stored in confirm_token_hash / manage_token_hash. */
+export function tokenHash(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/** Fingerprint of SECRET_KEY stored next to the token hashes (one-way, reveals nothing about the key). */
+export function tokenKeyFingerprint(secret: string): string {
+  return createHmac('sha256', secret).update('subscription-token-key').digest('base64url').slice(0, 16);
+}
+
+export interface SubscriptionTokenHashes {
+  confirm_token_hash: string;
+  manage_token_hash: string;
+  token_key: string;
+}
+
+/**
+ * Hashes of a subscriber's tokens. They let the database verify a token without
+ * SECRET_KEY (the functions of the restricted public role do, see 0007_public_role).
+ */
+export function subscriptionTokenHashes(
+  secret: string,
+  sub: Pick<Subscriber, 'id' | 'token_salt'>,
+): SubscriptionTokenHashes {
+  return {
+    confirm_token_hash: tokenHash(subscriptionToken(secret, 'confirm', sub.id, sub.token_salt)),
+    manage_token_hash: tokenHash(subscriptionToken(secret, 'manage', sub.id, sub.token_salt)),
+    token_key: tokenKeyFingerprint(secret),
+  };
+}
+
+/**
+ * Stores the token hashes of subscribers that have none yet or whose hashes were
+ * derived from another SECRET_KEY (rows from before 0006, a changed key). Runs on
+ * the start of every instance that migrates; returns the number of updated rows.
+ */
+export async function syncSubscriptionTokenHashes(db: DB, secret: string, batch = 500): Promise<number> {
+  const key = tokenKeyFingerprint(secret);
+  let updated = 0;
+  for (;;) {
+    const rows = await db
+      .selectFrom('subscribers')
+      .select(['id', 'token_salt'])
+      .where((eb) => eb.or([eb('token_key', 'is', null), eb('token_key', '!=', key)]))
+      .limit(batch)
+      .execute();
+    for (const row of rows) {
+      await db.updateTable('subscribers').set(subscriptionTokenHashes(secret, row)).where('id', '=', row.id).execute();
+    }
+    updated += rows.length;
+    if (rows.length < batch) return updated;
+  }
 }
 
 /** Replaces the token placeholders in a mail body or header value with real tokens. */
@@ -231,16 +285,19 @@ export async function subscribe(ctx: AppContext, input: SubscribeInput, now = ne
 
   const existing = await db.selectFrom('subscribers').selectAll().where('email', '=', email).executeTakeFirst();
   if (!existing) {
+    const id = newId();
+    const tokenSalt = randomBytes(16).toString('base64url');
     const sub: Subscriber = {
-      id: newId(),
+      id,
       email,
       locale: input.locale,
       all_services: input.allServices ? 1 : 0,
-      token_salt: randomBytes(16).toString('base64url'),
+      token_salt: tokenSalt,
       confirmed_at: null,
       confirmation_sent_at: null,
       created_at: nowIso,
       updated_at: nowIso,
+      ...subscriptionTokenHashes(ctx.config.SECRET_KEY, { id, token_salt: tokenSalt }),
     };
     try {
       await db.transaction().execute(async (trx) => {

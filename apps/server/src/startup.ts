@@ -12,6 +12,7 @@ import { registerHistoryImportTasks } from './services/history-import.js';
 import { runMaintenanceTransitions } from './services/maintenance-scheduler.js';
 import { registerNotificationTasks } from './services/notifications.js';
 import { registerSessionCleanup } from './services/sessions.js';
+import { syncSubscriptionTokenHashes } from './services/subscriptions.js';
 
 /** Re-reads the monitoring sources so a worker picks up changes made on an admin instance. */
 export const POLLER_SYNC_TASK = 'poller-sync';
@@ -25,12 +26,17 @@ const POLLER_SYNC_INTERVAL_MS = 30_000;
  */
 export async function prepareDatabase(
   db: DB,
-  config: Pick<Config, 'APP_ROLE' | 'SCHEMA_WAIT_SECONDS'>,
+  config: Pick<Config, 'APP_ROLE' | 'SCHEMA_WAIT_SECONDS'> & Partial<Pick<Config, 'SECRET_KEY'>>,
   log: { info(obj: object, msg: string): void },
   options: { intervalMs?: number } = {},
 ): Promise<void> {
   if (roleFeatures(config.APP_ROLE).runsMigrations) {
     await migrateToLatest(db);
+    if (config.SECRET_KEY) {
+      // Token hashes for the database-side checks of the public role (rows from before 0006, a changed key).
+      const updated = await syncSubscriptionTokenHashes(db, config.SECRET_KEY);
+      if (updated > 0) log.info({ subscribers: updated }, 'subscription token hashes updated');
+    }
     return;
   }
   let logged = false;
