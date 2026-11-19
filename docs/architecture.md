@@ -229,3 +229,82 @@ Instances that migrate run `osp_grant_public_role()` on start
 (`db/public-role.ts`). Mails queued by those functions carry no content; the
 worker renders them (`NotificationService`). See
 [security-model.md](security-model.md).
+
+## Memory
+
+Target: less than 100 MB resident memory (RSS) per instance. Measured with
+`scripts/measure-memory.mjs` (`pnpm measure:memory`) on Node 22 (v22.23.5,
+linux/arm64, the production image) against PostgreSQL 17 with the demo seed. The
+script starts the production build once per role, one instance at a time, and
+puts light load on it: a login and the main admin lists (admin, all), 400 public
+requests with 8 in parallel plus three subscriptions (public, admin, all), and a
+monitoring source polled every 10 s from a local fake Uptime Kuma for 40 s
+(worker, all). "After load" is read after 15 s without requests.
+
+| Role | After start | Peak under load | After load | Kernel peak (VmHWM) |
+| --- | --- | --- | --- | --- |
+| public | 84 MB | 94 MB | 83 MB | 94 MB |
+| admin | 90 MB | 102 MB | 90 MB | 111 MB |
+| worker | 80 MB | 84 MB | 84 MB | 92 MB |
+| all | 85 MB | 106 MB | 95 MB | 110 MB |
+| all (SQLite) | 95 MB | 101 MB | 101 MB | 116 MB |
+
+The same build and load before the changes below: public 98 / 118 / 105 MB,
+admin 113 / 133 / 120 MB, worker 105 / 112 / 100 MB and all 108 / 129 / 117 MB
+(after start / peak / after load).
+
+About half of the RSS (45–50 MB) are file-backed pages of the `node` binary
+itself (V8, OpenSSL, ICU). They are shared by all node processes on a host and
+the kernel can drop them under memory pressure; a bare `node -e` already has
+about 40 MB. The anonymous part, the instance's own memory, is 32–46 MB. Two
+short peaks remain above the steady state: a password check (Argon2id with the
+OWASP parameters needs 19 MiB while it runs) and the first outbound request of
+a process (Node compiles the WebAssembly HTTP parser of `fetch`).
+
+What keeps it small:
+
+- **One bundle per role.** The server build (`apps/server/tsup.config.ts`)
+  bundles and minifies the dependencies (ASCII only: V8 stores a source with one
+  non-ASCII character as UTF-16), because V8 keeps the source of every loaded
+  module in memory. Native modules, `pino-pretty` and `mysql2` stay external.
+- **Lazy loading.** Route modules are imported per role (`routes/index.ts`); a
+  worker loads neither the public nor the admin routes, a public instance loads
+  no admin, auth or ingest code. Cookies and static files are registered only where
+  the role needs them. nodemailer (first mail), openid-client (first OIDC login),
+  argon2 (first password check), the history importers with their Socket.IO
+  client (first import job) and mysql2 (Icinga DB import) are loaded on first use.
+- **No ICU on hot paths.** Feeds and mails format dates without `Intl`
+  (`formatUtcDateTime` in `lib/time.ts`), the public history sorts without
+  `localeCompare`.
+- **Bounded caches.** There is no response or query cache. The rate limiter
+  keeps at most 1000 clients per route (`RATE_LIMIT_KEYS`), the per-source
+  limiter of the ingest endpoints 10 000 keys. The web asset policy keeps only
+  the file names of the public entry, never file contents.
+- **Runtime flags** in the image (`docker/Dockerfile`):
+
+  | Setting | Value | Why |
+  | --- | --- | --- |
+  | `NODE_OPTIONS` | `--max-semi-space-size=1 --max-old-space-size=96` | A 1 MB young generation (Node's default grows to 16 MB per semi-space) saves about 10 MB at little GC cost for short requests. The old generation cap turns a leak into a restart instead of swapping. |
+  | `MALLOC_ARENA_MAX` | `2` | glibc creates a malloc arena per thread; two arenas save several MB of fragmented native memory. |
+  | `UV_THREADPOOL_SIZE` | `2` | Every libuv thread that ran an Argon2 hash keeps 2–3 MB; two threads are plenty for file reads, DNS and password checks of a status page. |
+
+  The health check of the image uses bash instead of a second node process
+  (about 40 MB every 30 s inside the container's memory limit).
+
+Raise the cap for a large history import on an admin instance, e.g.
+`NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=256`. Without the
+image, set the same variables yourself to get the numbers above; without them
+every role needs about 10 MB more.
+
+To measure your own build: start a throwaway PostgreSQL, create the roles
+(`deploy/postgres/roles.sql`), `pnpm -r build`, then
+
+```sh
+DATABASE_URL=postgres://owner:...@127.0.0.1:5432/osp_memory \
+PUBLIC_DATABASE_URL=postgres://osp_public:...@127.0.0.1:5432/osp_memory \
+MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 \
+pnpm measure:memory --node-args="--max-semi-space-size=1 --max-old-space-size=96"
+```
+
+on an empty database. Use Linux (or the image) for comparable numbers: macOS
+reports a larger RSS for the same process and has no `RssAnon`/`VmHWM`.
