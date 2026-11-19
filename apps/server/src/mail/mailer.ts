@@ -2,7 +2,8 @@
  * Mail transports. Selected by MAIL_TRANSPORT (see config.ts):
  *
  * - smtp: delivers via nodemailer. STARTTLS is used when the server offers it,
- *   SMTP_SECURE=true switches to implicit TLS (port 465).
+ *   SMTP_SECURE=true switches to implicit TLS (port 465). nodemailer is loaded
+ *   with the first mail, so instances that never send do not keep it in memory.
  * - log:  writes every mail to the server log instead of sending it (development).
  * - none: no transport; sending fails. Subscriptions are not offered.
  *
@@ -14,7 +15,7 @@
  */
 import type { MailTransportKind } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import nodemailer, { type Transporter } from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import type { Config } from '../config.js';
 
 export interface MailMessage {
@@ -66,37 +67,47 @@ export class LogMailer implements Mailer {
   close(): void {}
 }
 
+export interface SmtpOptions {
+  host: string;
+  port: number;
+  secure: boolean;
+  user?: string;
+  password?: string;
+  rejectUnauthorized: boolean;
+}
+
 export class SmtpMailer implements Mailer {
   readonly transport = 'smtp' as const;
-  private readonly transporter: Transporter;
+  private transporter: Promise<Transporter> | null = null;
 
   constructor(
     readonly from: string,
-    options: {
-      host: string;
-      port: number;
-      secure: boolean;
-      user?: string;
-      password?: string;
-      rejectUnauthorized: boolean;
-    },
-  ) {
-    this.transporter = nodemailer.createTransport({
-      host: options.host,
-      port: options.port,
-      secure: options.secure,
-      auth: options.user ? { user: options.user, pass: options.password ?? '' } : undefined,
-      tls: { rejectUnauthorized: options.rejectUnauthorized },
-      pool: true,
-      maxConnections: 2,
-      connectionTimeout: 15_000,
-      greetingTimeout: 15_000,
-      socketTimeout: 30_000,
-    });
+    private readonly options: SmtpOptions,
+  ) {}
+
+  /** Loads nodemailer and opens the connection pool on first use. */
+  private connect(): Promise<Transporter> {
+    const { options } = this;
+    this.transporter ??= import('nodemailer').then(({ default: nodemailer }) =>
+      nodemailer.createTransport({
+        host: options.host,
+        port: options.port,
+        secure: options.secure,
+        auth: options.user ? { user: options.user, pass: options.password ?? '' } : undefined,
+        tls: { rejectUnauthorized: options.rejectUnauthorized },
+        pool: true,
+        maxConnections: 2,
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+        socketTimeout: 30_000,
+      }),
+    );
+    return this.transporter;
   }
 
   async send(message: MailMessage): Promise<void> {
-    await this.transporter.sendMail({
+    const transporter = await this.connect();
+    await transporter.sendMail({
       from: this.from,
       to: message.to,
       subject: message.subject,
@@ -107,7 +118,7 @@ export class SmtpMailer implements Mailer {
   }
 
   close(): void {
-    this.transporter.close();
+    void this.transporter?.then((t) => t.close());
   }
 }
 
