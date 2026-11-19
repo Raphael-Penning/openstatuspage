@@ -1,0 +1,102 @@
+# The public instance (APP_ROLE=public): status page, public API, feeds,
+# subscriptions and health. It holds only the database URL of the restricted
+# role osp_public and no admin or monitoring settings. Put the public domain
+# (BASE_URL below) behind its own Ingress.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openstatuspage-public
+  labels:
+    app.kubernetes.io/component: public
+spec:
+  # Stateless: scale out freely. Every replica reads the same database.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: public
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: public
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" user of the image
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openstatuspage
+          image: ghcr.io/raphael-penning/openstatuspage # tag set in kustomization.yaml
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: APP_ROLE
+              value: public
+            - name: WORKER_ENABLED
+              value: "false"
+            - name: BASE_URL
+              value: https://status.example.com
+            # One proxy hop: the ingress controller. See ../deployment.yaml.
+            - name: TRUST_PROXY
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: openstatuspage-public # SECRET_KEY, DATABASE_URL (osp_public), mail queue settings
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            # The public instance waits up to SCHEMA_WAIT_SECONDS (120 s) for the
+            # admin instance to migrate the schema before it starts serving.
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openstatuspage-public
+  labels:
+    app.kubernetes.io/component: public
+spec:
+  selector:
+    app.kubernetes.io/component: public
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
