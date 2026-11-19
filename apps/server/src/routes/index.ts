@@ -1,12 +1,6 @@
-import rateLimit from '@fastify/rate-limit';
 import type { FastifyInstance } from 'fastify';
-import { registerAdapterRoutes } from '../adapters/routes.js';
 import { registerAuth } from '../plugins/auth.js';
 import { roleFeatures } from '../role.js';
-import { registerAdminRoutes } from './admin/index.js';
-import { registerAuthRoutes } from './auth.js';
-import { registerPublicRoutes } from './public.js';
-import { registerSubscriptionRoutes } from './subscriptions.js';
 
 /**
  * Registers all API route modules. Every module is a Fastify plugin and
@@ -22,14 +16,19 @@ import { registerSubscriptionRoutes } from './subscriptions.js';
  *
  * Which modules exist depends on APP_ROLE (see role.ts): `public` has no
  * auth/admin/ingest routes at all (404), `worker` only has /api/health.
+ * The modules are imported per role, so an instance never loads (or keeps in
+ * memory) the code of routes it does not serve.
  */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { config } = app.ctx;
   const features = roleFeatures(config.APP_ROLE);
 
-  // Not global: routes opt in with `config: { rateLimit: { max, timeWindow } }`.
-  // Registered once here so every route module (incl. adapters) can use it.
-  await app.register(rateLimit, { global: false });
+  if (features.publicApi || features.adminApi) {
+    // Not global: routes opt in with `config: { rateLimit: { max, timeWindow } }`.
+    // Registered once here so every route module (incl. adapters) can use it.
+    const { default: rateLimit } = await import('@fastify/rate-limit');
+    await app.register(rateLimit, { global: false });
+  }
   // Sessions and API tokens are only resolved where the admin API exists.
   await registerAuth(app, { enabled: features.adminApi });
 
@@ -39,11 +38,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   if (features.publicApi) {
+    const [{ registerPublicRoutes }, { registerSubscriptionRoutes }] = await Promise.all([
+      import('./public.js'),
+      import('./subscriptions.js'),
+    ]);
     await registerPublicRoutes(app);
     await registerSubscriptionRoutes(app);
   }
 
   if (features.adminApi) {
+    const [{ registerAuthRoutes }, { registerAdminRoutes }, { registerAdapterRoutes }] = await Promise.all([
+      import('./auth.js'),
+      import('./admin/index.js'),
+      import('../adapters/routes.js'),
+    ]);
     await registerAuthRoutes(app);
     await registerAdminRoutes(app);
     // Owned by the monitoring adapters (src/adapters): ingest and the admin test/poll actions.
