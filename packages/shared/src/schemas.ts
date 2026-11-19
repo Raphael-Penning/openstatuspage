@@ -545,6 +545,12 @@ export interface AdminMaintenance extends PublicMaintenance {
   updatedAt: string;
 }
 
+/** A `maintenance-updates` resource as answered by the admin API, with its maintenance (without the updates). */
+export interface AdminMaintenanceUpdate extends MaintenanceUpdateEntry {
+  maintenanceId: string;
+  maintenance?: Omit<AdminMaintenance, 'updates'>;
+}
+
 // ---------------------------------------------------------------------------
 // History corrections (status overrides for a past time range)
 // ---------------------------------------------------------------------------

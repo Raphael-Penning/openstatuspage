@@ -18,3 +18,8 @@ export const LOCATION_DOCUMENT: DocumentOptions = { type: 'locations' };
 /** Affected services carry an impact per service and stay attributes. */
 export const INCIDENT_DOCUMENT: DocumentOptions = { type: 'incidents', relationships: { locationIds: 'locations' } };
 export const INCIDENT_UPDATE_DOCUMENT: DocumentOptions = { type: 'incident-updates' };
+export const MAINTENANCE_DOCUMENT: DocumentOptions = {
+  type: 'maintenances',
+  relationships: { serviceIds: 'services', locationIds: 'locations' },
+};
+export const MAINTENANCE_UPDATE_DOCUMENT: DocumentOptions = { type: 'maintenance-updates' };

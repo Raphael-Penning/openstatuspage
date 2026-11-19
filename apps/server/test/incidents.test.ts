@@ -170,18 +170,33 @@ describe('maintenance lifecycle', () => {
       serviceIds: [serviceId],
     });
     expect(created.statusCode).toBe(201);
-    const m = created.json();
-    expect(m).toMatchObject({ status: 'scheduled', actualStart: null, autoStart: true, affectedServices: [{ id: serviceId }] });
+    const m = data<Any>(created);
+    expect(created.headers.location).toBe(`/api/admin/maintenances/${m.id}`);
+    expect(m).toMatchObject({
+      status: 'scheduled',
+      actualStart: null,
+      autoStart: true,
+      affectedServices: [{ id: serviceId }],
+      serviceIds: [serviceId],
+    });
+    expect(m.updates).toHaveLength(1);
     expect(await statusOf(serviceId)).toBe('operational');
-    expect((await admin.get('/api/admin/maintenances?status=upcoming')).json().total).toBe(1);
+    const upcoming = await admin.get('/api/admin/maintenances?filter[status]=upcoming&include=');
+    expect(page(upcoming).total).toBe(1);
+    expect(upcoming.json()).not.toHaveProperty('included');
 
-    const started = await admin.post(`/api/admin/maintenances/${m.id}/updates`, {
+    const started = await admin.post(`/api/admin/maintenances/${m.id}/updates`, doc('maintenance-updates', {
       status: 'in_progress',
       message: 'Started early.',
-    });
-    expect(started.json()).toMatchObject({ status: 'in_progress', actualStart: expect.any(String), actualEnd: null });
+    }));
+    expect(started.statusCode).toBe(201);
+    const startedUpdate = data<Any>(started);
+    expect(started.headers.location).toBe(`/api/admin/maintenances/${m.id}/updates/${startedUpdate.id}`);
+    expect(startedUpdate).toMatchObject({ status: 'in_progress', message: 'Started early.', maintenanceId: m.id });
+    expect(startedUpdate.maintenance).toMatchObject({ status: 'in_progress', actualStart: expect.any(String), actualEnd: null });
+    expect(data(await admin.get(started.headers.location as string))).toMatchObject({ id: startedUpdate.id });
     expect(await statusOf(serviceId)).toBe('maintenance');
-    expect((await admin.get('/api/admin/maintenances?status=active')).json().total).toBe(1);
+    expect(page(await admin.get('/api/admin/maintenances?filter[status]=active')).total).toBe(1);
 
     // An incident on top of maintenance still shows.
     await admin.post('/api/admin/incidents', {
@@ -194,11 +209,12 @@ describe('maintenance lifecycle', () => {
     await admin.post(`/api/admin/incidents/${incidents.items[0].id}/updates`, doc('incident-updates', { status: 'resolved', message: 'Ok.' }));
     expect(await statusOf(serviceId)).toBe('maintenance');
 
-    const done = await admin.post(`/api/admin/maintenances/${m.id}/updates`, { status: 'completed', message: 'Done.' });
-    expect(done.json()).toMatchObject({ status: 'completed', actualEnd: expect.any(String) });
-    expect(done.json().updates.map((u: { status: string }) => u.status)).toEqual(['completed', 'in_progress', 'scheduled']);
+    const done = await admin.post(`/api/admin/maintenances/${m.id}/updates`, doc('maintenance-updates', { status: 'completed', message: 'Done.' }));
+    expect(data<Any>(done).maintenance).toMatchObject({ status: 'completed', actualEnd: expect.any(String) });
+    const detail = data<Any>(await admin.get(`/api/admin/maintenances/${m.id}`));
+    expect(detail.updates.map((u: { status: string }) => u.status)).toEqual(['completed', 'in_progress', 'scheduled']);
     expect(await statusOf(serviceId)).toBe('operational');
-    expect((await admin.get('/api/admin/maintenances?status=past')).json().total).toBe(1);
+    expect(page(await admin.get('/api/admin/maintenances?filter[status]=past')).total).toBe(1);
   });
 
   it('starts due windows immediately and updates services on change', async () => {
@@ -208,19 +224,23 @@ describe('maintenance lifecycle', () => {
       scheduledEnd: new Date(Date.now() + 3600_000).toISOString(),
       serviceIds: [serviceId],
     });
-    expect(created.json().status).toBe('in_progress');
+    const m = data<Any>(created);
+    expect(m.status).toBe('in_progress');
     expect(await statusOf(serviceId)).toBe('maintenance');
 
-    const moved = await admin.patch(`/api/admin/maintenances/${created.json().id}`, { serviceIds: [otherServiceId] });
+    const moved = await admin.patch(`/api/admin/maintenances/${m.id}`, {
+      data: { type: 'maintenances', id: m.id, relationships: { services: { data: [{ type: 'services', id: otherServiceId }] } } },
+    });
     expect(moved.statusCode).toBe(200);
+    expect(data(moved)).toMatchObject({ serviceIds: [otherServiceId] });
     expect(await statusOf(serviceId)).toBe('operational');
     expect(await statusOf(otherServiceId)).toBe('maintenance');
 
-    expect((await admin.patch(`/api/admin/maintenances/${created.json().id}`, {
+    expect((await admin.patch(`/api/admin/maintenances/${m.id}`, {
       scheduledEnd: new Date(Date.now() - 3600_000).toISOString(),
     })).statusCode).toBe(400);
 
-    expect((await admin.delete(`/api/admin/maintenances/${created.json().id}`)).statusCode).toBe(204);
+    expect((await admin.delete(`/api/admin/maintenances/${m.id}`)).statusCode).toBe(204);
     expect(await statusOf(otherServiceId)).toBe('operational');
   });
 

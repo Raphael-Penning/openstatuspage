@@ -142,10 +142,11 @@ export const useIncidents = (status: string, page: number, pageSize = 20) =>
 export const useIncident = (id: string | undefined) =>
   useAdminQuery<AdminIncident>(keys.incident(id ?? ''), `/api/admin/incidents/${id}`, undefined, Boolean(id));
 export const useMaintenances = (status: string, page: number, pageSize = 20) =>
-  useAdminQuery<Paginated<AdminMaintenance>>(keys.maintenances(status, page), '/api/admin/maintenances', {
-    status,
-    page,
-    pageSize,
+  useQuery({
+    queryKey: keys.maintenances(status, page),
+    queryFn: () =>
+      api.getPage<AdminMaintenance>('/api/admin/maintenances', { page: { number: page, size: pageSize }, filter: { status } }),
+    retry: notRetryingClientErrors,
   });
 export const useMaintenance = (id: string | undefined) =>
   useAdminQuery<AdminMaintenance>(keys.maintenance(id ?? ''), `/api/admin/maintenances/${id}`, undefined, Boolean(id));

@@ -85,6 +85,7 @@ export function adminIncidentResource(incident: AdminIncident, included?: Includ
 export function maintenanceUpdateResource(maintenanceId: string, update: MaintenanceUpdateEntry): ResourceObject {
   return resource(CATALOG_TYPES.maintenanceUpdate, update.id, update, {
     relationships: { maintenance: toOne(CATALOG_TYPES.maintenance, maintenanceId) },
+    links: { self: `${BASE}/maintenances/${maintenanceId}/updates/${update.id}` },
   });
 }
 

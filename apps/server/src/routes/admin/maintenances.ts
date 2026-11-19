@@ -2,22 +2,31 @@ import {
   MaintenanceCreateInput,
   MaintenancePatchInput,
   MaintenanceUpdateInput,
+  zId,
   type AdminMaintenance,
 } from '@openstatuspage/shared';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { DB } from '../../db/index.js';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { newId } from '../../lib/ids.js';
-import { IdParams, offsetOf, PageQuery, paginated, parse, unique } from '../../lib/http.js';
+import { IdParams, parse, unique } from '../../lib/http.js';
+import { collection, created, document, Included, noContent, selfLink } from '../../lib/jsonapi.js';
+import { parseInclude, parseListQuery } from '../../lib/jsonapi-query.js';
 import { nowIso, toIso } from '../../lib/time.js';
 import { actorUserId } from '../../plugins/auth.js';
+import { useJsonApi } from '../../plugins/jsonapi.js';
+import { adminMaintenanceResource, CATALOG_TYPES, maintenanceUpdateResource } from '../../serializers/catalog.js';
 import { nextUpdateTimestamp } from '../../services/incidents.js';
 import { runMaintenanceTransitions } from '../../services/maintenance-scheduler.js';
 import { loadMaintenance, loadMaintenances, toAdminMaintenance } from '../../services/maintenances.js';
 import { assertExist, auditRequest, editor } from './util.js';
 
-const ListQuery = PageQuery.extend({ status: z.enum(['upcoming', 'active', 'past', 'all']).default('all') });
+const ListFilter = { status: z.enum(['upcoming', 'active', 'past', 'all']).default('all') };
+/** `include` paths of a maintenance document. */
+const INCLUDES = { allowed: ['updates'], default: ['updates'] };
+const MaintenanceParams = z.object({ maintenanceId: zId });
+const UpdateParams = z.object({ maintenanceId: zId, id: zId });
 
 async function getMaintenance(db: DB, id: string): Promise<AdminMaintenance> {
   const rec = await loadMaintenance(db, id);
@@ -77,20 +86,49 @@ export function classifyNewWindow(
   return 'upcoming';
 }
 
-/** /api/admin/maintenances (editor) */
+/** /api/admin/maintenances (editor, JSON:API) */
 export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(async (scope) => {
+    useJsonApi(scope);
+    await registerRoutes(scope);
+  });
+}
+
+async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine, notifications } = app.ctx;
+  const maintenanceType = { config: { jsonapi: { type: CATALOG_TYPES.maintenance } } };
+  const updateType = { config: { jsonapi: { type: CATALOG_TYPES.maintenanceUpdate } } };
+
+  /** Maintenance document; its updates are included unless `include` says otherwise. */
+  const maintenanceDocument = async (req: FastifyRequest, id: string) => {
+    const include = parseInclude((req.query ?? {}) as Record<string, unknown>, INCLUDES.allowed, INCLUDES.default);
+    const included = new Included();
+    const res = adminMaintenanceResource(await getMaintenance(db, id), include.has('updates') ? included : undefined);
+    return document(res, { included, links: { self: selfLink(req) } });
+  };
+
+  /** Document of one update with its maintenance included. */
+  const updateDocument = async (req: FastifyRequest, maintenanceId: string, updateId: string) => {
+    const maintenance = await getMaintenance(db, maintenanceId);
+    const update = maintenance.updates.find((u) => u.id === updateId);
+    if (!update) throw notFound('Maintenance update');
+    return document(maintenanceUpdateResource(maintenanceId, update), {
+      included: [adminMaintenanceResource(maintenance)],
+      links: { self: selfLink(req) },
+    });
+  };
 
   /** Applies due automatic transitions right away instead of waiting for the next worker tick. */
   const applyDueTransitions = () => runMaintenanceTransitions(db, engine, undefined, notifications);
 
   app.get('/api/admin/maintenances', editor, async (req) => {
-    const q = parse(ListQuery, req.query);
+    const q = parseListQuery(req.query, { filter: ListFilter, include: INCLUDES });
+    const status = q.filter.status;
     const now = nowIso();
     let base = db.selectFrom('maintenances');
-    if (q.status === 'upcoming') base = base.where('status', '=', 'scheduled').where('scheduled_end', '>', now);
-    if (q.status === 'active') base = base.where('status', '=', 'in_progress');
-    if (q.status === 'past') base = base.where('status', 'in', ['completed', 'cancelled']);
+    if (status === 'upcoming') base = base.where('status', '=', 'scheduled').where('scheduled_end', '>', now);
+    if (status === 'active') base = base.where('status', '=', 'in_progress');
+    if (status === 'past') base = base.where('status', 'in', ['completed', 'cancelled']);
     const [total, rows] = await Promise.all([
       base
         .select((eb) => eb.fn.countAll<number>().as('n'))
@@ -99,20 +137,24 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
       base
         .select('id')
         // Upcoming windows soonest first, everything else newest first.
-        .orderBy('scheduled_start', q.status === 'upcoming' ? 'asc' : 'desc')
+        .orderBy('scheduled_start', status === 'upcoming' ? 'asc' : 'desc')
         .orderBy('id')
-        .limit(q.pageSize)
-        .offset(offsetOf(q))
+        .limit(q.page.size)
+        .offset(q.page.offset)
         .execute(),
     ]);
     const records = await loadMaintenances(
       db,
       rows.map((r) => r.id),
     );
-    return paginated(records.map(toAdminMaintenance), total, q);
+    const included = new Included();
+    const resources = records.map((r) =>
+      adminMaintenanceResource(toAdminMaintenance(r), q.include.has('updates') ? included : undefined),
+    );
+    return collection(req, resources, { page: q.page, total, included });
   });
 
-  app.post('/api/admin/maintenances', editor, async (req, reply) => {
+  app.post('/api/admin/maintenances', { ...editor, ...maintenanceType }, async (req, reply) => {
     const input = parse(MaintenanceCreateInput, req.body);
     const serviceIds = await assertExist(db, 'services', input.serviceIds, 'service');
     await assertExist(db, 'locations', input.locationIds, 'location');
@@ -191,12 +233,12 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
       scheduledEnd: input.scheduledEnd,
       ...(retroactive ? { retroactive: true } : {}),
     });
-    return reply.status(201).send(await getMaintenance(db, id));
+    return created(reply, await maintenanceDocument(req, id), `/api/admin/maintenances/${id}`);
   });
 
-  app.get('/api/admin/maintenances/:id', editor, async (req) => getMaintenance(db, parse(IdParams, req.params).id));
+  app.get('/api/admin/maintenances/:id', editor, async (req) => maintenanceDocument(req, parse(IdParams, req.params).id));
 
-  app.patch('/api/admin/maintenances/:id', editor, async (req) => {
+  app.patch('/api/admin/maintenances/:id', { ...editor, ...maintenanceType }, async (req) => {
     const { id } = parse(IdParams, req.params);
     const input = parse(MaintenancePatchInput, req.body);
     const current = await db.selectFrom('maintenances').selectAll().where('id', '=', id).executeTakeFirst();
@@ -269,7 +311,7 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
       fields: Object.keys(input),
       ...(retroSync.status === 'completed' ? { completed: true, actualEnd: end } : {}),
     });
-    return getMaintenance(db, id);
+    return maintenanceDocument(req, id);
   });
 
   app.delete('/api/admin/maintenances/:id', editor, async (req, reply) => {
@@ -280,21 +322,23 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
     await db.deleteFrom('maintenances').where('id', '=', id).execute();
     await engine.recompute(before);
     await auditRequest(db, req, 'maintenance.delete', 'maintenance', id, { title: current.title });
-    return reply.status(204).send();
+    return noContent(reply);
   });
 
-  app.post('/api/admin/maintenances/:id/updates', editor, async (req) => {
-    const { id } = parse(IdParams, req.params);
+  // Posting an update creates a maintenance-updates resource and moves the maintenance to its status.
+  app.post('/api/admin/maintenances/:maintenanceId/updates', { ...editor, ...updateType }, async (req, reply) => {
+    const { maintenanceId: id } = parse(MaintenanceParams, req.params);
     const input = parse(MaintenanceUpdateInput, req.body);
     const current = await db.selectFrom('maintenances').selectAll().where('id', '=', id).executeTakeFirst();
     if (!current) throw notFound('Maintenance');
     const now = await nextUpdateTimestamp(db, 'maintenance_updates', id);
     const ended = input.status === 'completed' || input.status === 'cancelled';
+    const updateId = newId();
     await db.transaction().execute(async (trx) => {
       await trx
         .insertInto('maintenance_updates')
         .values({
-          id: newId(),
+          id: updateId,
           maintenance_id: id,
           status: input.status,
           message: input.message,
@@ -318,6 +362,12 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
     if (input.notify && current.is_public === 1) {
       await notifications.safely('maintenance.update', () => notifications.maintenanceEvent(id, 'update'));
     }
-    return getMaintenance(db, id);
+    const location = `/api/admin/maintenances/${id}/updates/${updateId}`;
+    return created(reply, await updateDocument(req, id, updateId), location);
+  });
+
+  app.get('/api/admin/maintenances/:maintenanceId/updates/:id', editor, async (req) => {
+    const { maintenanceId, id } = parse(UpdateParams, req.params);
+    return updateDocument(req, maintenanceId, id);
   });
 }

@@ -4,6 +4,9 @@ import { runMaintenanceTransitions } from '../src/services/maintenance-scheduler
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import { adminClient, client, createTestApp, createUser, data, login, page, type Client, type TestApp } from './helpers.js';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+
 /** Plain object of a public service response (uptime, status). */
 type PublicServiceBody = { status: string; uptimePercent: number | null; uptime: { status: string; minutes: Record<string, number>; corrected?: boolean }[] };
 
@@ -285,7 +288,7 @@ describe('retroactive maintenance', () => {
       scheduledEnd: iso(21 * HOUR),
     });
     expect(res.statusCode).toBe(201);
-    const m = res.json();
+    const m = data<Any>(res);
     expect(m).toMatchObject({
       status: 'completed',
       retroactive: true,
@@ -313,7 +316,7 @@ describe('retroactive maintenance', () => {
 
     // Moving the window keeps the actual times in line; deleting removes the correction.
     const moved = await admin.patch(`/api/admin/maintenances/${m.id}`, { scheduledStart: iso(26 * HOUR) });
-    expect(moved.json().actualStart).toBe(moved.json().scheduledStart);
+    expect(data<Any>(moved).actualStart).toBe(data<Any>(moved).scheduledStart);
     const future = await admin.patch(`/api/admin/maintenances/${m.id}`, { scheduledEnd: new Date(Date.now() + HOUR).toISOString() });
     expect(future.statusCode).toBe(400);
     await admin.delete(`/api/admin/maintenances/${m.id}`);
@@ -324,7 +327,7 @@ describe('retroactive maintenance', () => {
     await seedOutage(api);
     const before = await publicPercent(api);
     expect(before).toBeLessThan(100);
-    const m = (
+    const m = data<Any>(
       await admin.post('/api/admin/maintenances', {
         title: 'Internal window',
         isPublic: false,
@@ -332,7 +335,7 @@ describe('retroactive maintenance', () => {
         scheduledStart: iso(25 * HOUR),
         scheduledEnd: iso(21 * HOUR),
       })
-    ).json();
+    );
     expect(await publicPercent(api)).toBe(before);
     const history = await get('/api/public/history?filter[type]=maintenance');
     expect(history.statusCode).toBe(200);
@@ -348,7 +351,7 @@ describe('retroactive maintenance', () => {
       scheduledStart: iso(25 * HOUR),
       scheduledEnd: new Date(Date.now() + 2 * HOUR).toISOString(),
     });
-    const m = res.json();
+    const m = data<Any>(res);
     expect(m).toMatchObject({ status: 'in_progress', retroactive: true, actualStart: m.scheduledStart });
     expect(m.updates.map((u: { status: string }) => u.status)).toEqual(['in_progress']);
     const mails = await deliver();
@@ -361,22 +364,22 @@ describe('retroactive maintenance', () => {
   it('completes a running retroactive window silently when its end moves into the past', async () => {
     await subscribe();
     await seedOutage(api);
-    const m = (
+    const m = data<Any>(
       await admin.post('/api/admin/maintenances', {
         title: 'Ended earlier',
         serviceIds: [api],
         scheduledStart: iso(25 * HOUR),
         scheduledEnd: new Date(Date.now() + 2 * HOUR).toISOString(),
       })
-    ).json();
+    );
     await deliver();
     const end = iso(23 * HOUR);
     const res = await admin.patch(`/api/admin/maintenances/${m.id}`, { scheduledEnd: end });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ status: 'completed', actualEnd: res.json().scheduledEnd });
-    const updates = res.json().updates as { status: string; createdAt: string }[];
+    expect(data<Any>(res)).toMatchObject({ status: 'completed', actualEnd: data<Any>(res).scheduledEnd });
+    const updates = data<Any>(res).updates as { status: string; createdAt: string }[];
     expect(updates.map((u) => u.status).sort()).toEqual(['completed', 'in_progress']);
-    expect(updates.find((u) => u.status === 'completed')!.createdAt).toBe(res.json().scheduledEnd);
+    expect(updates.find((u) => u.status === 'completed')!.createdAt).toBe(data<Any>(res).scheduledEnd);
     await runMaintenanceTransitions(t.db, t.app.ctx.engine, undefined, t.app.ctx.notifications);
     expect(await deliver()).toHaveLength(0);
     // Only 25 h..23 h counts as maintenance: the outage up to 22 h ago still partly counts.
@@ -386,25 +389,25 @@ describe('retroactive maintenance', () => {
 
   it('keeps the existing behavior for upcoming windows and windows starting now', async () => {
     await subscribe();
-    const upcoming = (
+    const upcoming = data<Any>(
       await admin.post('/api/admin/maintenances', {
         title: 'Upcoming',
         serviceIds: [api],
         scheduledStart: new Date(Date.now() + 48 * HOUR).toISOString(),
         scheduledEnd: new Date(Date.now() + 50 * HOUR).toISOString(),
       })
-    ).json();
+    );
     expect(upcoming).toMatchObject({ status: 'scheduled', retroactive: false, actualStart: null });
     expect((await deliver())[0]!.subject).toContain('Scheduled maintenance: Upcoming');
 
-    const now = (
+    const now = data<Any>(
       await admin.post('/api/admin/maintenances', {
         title: 'Now',
         serviceIds: [web],
         scheduledStart: iso(60_000),
         scheduledEnd: new Date(Date.now() + HOUR).toISOString(),
       })
-    ).json();
+    );
     expect(now).toMatchObject({ retroactive: false, status: 'in_progress' });
     const mails = await deliver();
     expect(mails.map((x) => x.subject)).toEqual([
@@ -413,14 +416,14 @@ describe('retroactive maintenance', () => {
     ]);
 
     // Without auto start a past start stays scheduled (not retroactive).
-    const manual = (
+    const manual = data<Any>(
       await admin.post('/api/admin/maintenances', {
         title: 'Manual',
         autoStart: false,
         scheduledStart: iso(2 * HOUR),
         scheduledEnd: new Date(Date.now() + HOUR).toISOString(),
       })
-    ).json();
+    );
     expect(manual).toMatchObject({ status: 'scheduled', retroactive: false });
   });
 });

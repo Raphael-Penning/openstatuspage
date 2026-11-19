@@ -1,6 +1,7 @@
 import {
   MaintenanceUpdateInput,
   type AdminMaintenance,
+  type AdminMaintenanceUpdate,
   type MaintenanceStatus,
   type MaintenanceUpdateEntry,
 } from '@openstatuspage/shared';
@@ -18,6 +19,7 @@ import { Badge, Button, Card, LinkButton, PageHeader, QueryState, VisibilityBadg
 import { useFormat, useOptions } from '../../lib/format';
 import { postUpdateDefaults, transitionDefaults } from '../../lib/maintenance-updates';
 import { useAdminMutation, useLocations, useMaintenance } from '../../lib/queries';
+import { MAINTENANCE_UPDATE_DOCUMENT } from '../../lib/documents';
 import { useForm } from '../../lib/useForm';
 
 export default function MaintenanceDetailPage() {
@@ -190,13 +192,14 @@ function MaintenanceDetail({ maintenance: m }: { maintenance: AdminMaintenance }
 
 function usePostUpdate(
   maintenance: AdminMaintenance,
-  onDone: (stored: AdminMaintenance) => void,
+  onDone: (stored: Omit<AdminMaintenance, 'updates'>) => void,
   onError: (e: unknown) => boolean,
 ) {
   const { t } = useTranslation('admin');
   return useAdminMutation(
-    (body: MaintenanceUpdateInput) => api.post<AdminMaintenance>(`/api/admin/maintenances/${maintenance.id}/updates`, body),
-    { success: t('maintenance.updatePosted'), onSuccess: onDone, onError },
+    (body: MaintenanceUpdateInput) =>
+      api.post<AdminMaintenanceUpdate>(`/api/admin/maintenances/${maintenance.id}/updates`, body, MAINTENANCE_UPDATE_DOCUMENT),
+    { success: t('maintenance.updatePosted'), onSuccess: (posted) => onDone(posted.maintenance ?? maintenance), onError },
   );
 }
 

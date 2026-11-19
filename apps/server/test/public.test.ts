@@ -107,7 +107,7 @@ beforeEach(async () => {
       scheduledEnd: new Date(Date.now() + 90000_000).toISOString(),
       serviceIds: [web, hidden],
     })
-  ).json().id;
+  ).json().data.id;
 
   ids = {
     group,
@@ -289,8 +289,8 @@ describe('public history', () => {
         scheduledStart: '2026-01-10T10:00:00.000Z',
         scheduledEnd: '2026-01-10T12:00:00.000Z',
       })
-    ).json();
-    expect(past.status).toBe('completed');
+    ).json().data;
+    expect(past.attributes.status).toBe('completed');
     await admin.post('/api/admin/incidents', {
       title: 'January incident',
       message: 'x',
