@@ -294,11 +294,19 @@ const PRIVATE_TABLES = [
 const SUBSCRIPTION_COLUMNS =
   'id text, email text, locale text, all_services integer, confirmed boolean, service_ids text[]';
 
+interface Statements {
+  /** Objects in the base schema: registry, RLS policies, helpers, osp_grant_public_role. */
+  base: string[];
+  /** The schema osp_public with its views and functions (needs CREATE on the database). */
+  schema: string[];
+}
+
 /** Every statement of the migration, for base schema `b` (quoted). */
-function statements(b: string, schemaName: string, invokerViews: boolean): string[] {
+function statements(b: string, schemaName: string, invokerViews: boolean): Statements {
   const s = ident(SCHEMA);
   const pin = `SET search_path = ${b}, pg_temp`;
   const out: string[] = [];
+  const schema: string[] = [];
 
   // Registry of the public roles, read by the RLS policies.
   out.push(`CREATE TABLE ${b}.osp_public_roles (role_name text PRIMARY KEY)`);
@@ -310,8 +318,8 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
       SELECT EXISTS (SELECT 1 FROM ${b}.osp_public_roles r WHERE r.role_name IN (p_role, session_user))
     $$`);
 
-  out.push(`CREATE SCHEMA ${s}`);
-  out.push(`REVOKE ALL ON SCHEMA ${s} FROM PUBLIC`);
+  schema.push(`CREATE SCHEMA ${s}`);
+  schema.push(`REVOKE ALL ON SCHEMA ${s} FROM PUBLIC`);
 
   const restricted = `(SELECT ${b}.osp_is_public_role(current_user)) IS NOT TRUE`;
   for (const t of PUBLIC_TABLES) {
@@ -320,7 +328,7 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
     // security_barrier: conditions of the caller (e.g. a cast that fails with the value
     // in its error message) only see the rows that passed the view's filter.
     const options = invokerViews && !t.ownerRights ? 'security_invoker = true' : 'security_barrier = true';
-    out.push(`CREATE VIEW ${s}.${t.table} WITH (${options}) AS SELECT ${columns} FROM ${b}.${t.table}${where}`);
+    schema.push(`CREATE VIEW ${s}.${t.table} WITH (${options}) AS SELECT ${columns} FROM ${b}.${t.table}${where}`);
     if (t.rls === false) continue;
     out.push(`ALTER TABLE ${b}.${t.table} ENABLE ROW LEVEL SECURITY`);
     out.push(`CREATE POLICY osp_access ON ${b}.${t.table} USING (true) WITH CHECK (true)`);
@@ -391,12 +399,12 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
       UPDATE ${b}.subscribers SET confirmation_sent_at = p_now WHERE id = p_subscriber_id;
       INSERT INTO ${b}.email_outbox (id, subscriber_id, recipient, kind, subject, text_body, html_body, headers,
         status, attempts, next_attempt_at, last_error, last_attempt_at, created_at, sent_at)
-      VALUES (gen_random_uuid()::text, p_subscriber_id, p_recipient, p_kind, '', '', '',
+      VALUES (md5(random()::text || clock_timestamp()::text || p_subscriber_id), p_subscriber_id, p_recipient, p_kind, '', '', '',
         '{"Auto-Submitted":"auto-generated"}', 'pending', 0, p_now, NULL, NULL, p_now, NULL);
     $$`);
 
   // The functions of the public role. Same behaviour as services/subscriptions.ts.
-  out.push(`CREATE FUNCTION ${s}.subscribe(p_id text, p_email text, p_locale text, p_all_services boolean,
+  schema.push(`CREATE FUNCTION ${s}.subscribe(p_id text, p_email text, p_locale text, p_all_services boolean,
       p_service_ids text[], p_token_salt text, p_confirm_token_hash text, p_manage_token_hash text, p_token_key text)
     RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER ${pin} AS $$
     DECLARE
@@ -451,7 +459,7 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
       END IF;
     END
     $$`);
-  out.push(`CREATE FUNCTION ${s}.subscription_confirm(p_id text, p_token text)
+  schema.push(`CREATE FUNCTION ${s}.subscription_confirm(p_id text, p_token text)
     RETURNS TABLE (${SUBSCRIPTION_COLUMNS}, token_salt text)
     LANGUAGE plpgsql VOLATILE SECURITY DEFINER ${pin} AS $$
     DECLARE
@@ -470,12 +478,12 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
         FROM ${b}.osp_subscription_row(v_sub.id) r;
     END
     $$`);
-  out.push(`CREATE FUNCTION ${s}.subscription_get(p_id text, p_token text) RETURNS TABLE (${SUBSCRIPTION_COLUMNS})
+  schema.push(`CREATE FUNCTION ${s}.subscription_get(p_id text, p_token text) RETURNS TABLE (${SUBSCRIPTION_COLUMNS})
     LANGUAGE sql STABLE SECURITY DEFINER ${pin} AS $$
       SELECT r.* FROM ${b}.subscribers s CROSS JOIN LATERAL ${b}.osp_subscription_row(s.id) r
       WHERE s.id = p_id AND ${b}.osp_token_matches(s.manage_token_hash, p_token)
     $$`);
-  out.push(`CREATE FUNCTION ${s}.subscription_update(p_id text, p_token text, p_locale text, p_all_services boolean,
+  schema.push(`CREATE FUNCTION ${s}.subscription_update(p_id text, p_token text, p_locale text, p_all_services boolean,
       p_service_ids text[]) RETURNS TABLE (${SUBSCRIPTION_COLUMNS})
     LANGUAGE plpgsql VOLATILE SECURITY DEFINER ${pin} AS $$
     DECLARE
@@ -496,7 +504,7 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
       RETURN QUERY SELECT * FROM ${b}.osp_subscription_row(v_sub.id);
     END
     $$`);
-  out.push(`CREATE FUNCTION ${s}.subscription_delete(p_id text, p_token text) RETURNS boolean
+  schema.push(`CREATE FUNCTION ${s}.subscription_delete(p_id text, p_token text) RETURNS boolean
     LANGUAGE sql VOLATILE SECURITY DEFINER ${pin} AS $$
       WITH deleted AS (
         DELETE FROM ${b}.subscribers s WHERE s.id = p_id AND ${b}.osp_token_matches(s.manage_token_hash, p_token)
@@ -505,12 +513,12 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
       SELECT EXISTS (SELECT 1 FROM deleted)
     $$`);
   // Lets a public instance check on start that its login really is restricted.
-  out.push(`CREATE FUNCTION ${s}.connection_restricted() RETURNS boolean
+  schema.push(`CREATE FUNCTION ${s}.connection_restricted() RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER ${pin} AS $$
       SELECT ${b}.osp_is_public_role(session_user)
     $$`);
 
-  out.push(`REVOKE ALL ON ALL FUNCTIONS IN SCHEMA ${s} FROM PUBLIC`);
+  schema.push(`REVOKE ALL ON ALL FUNCTIONS IN SCHEMA ${s} FROM PUBLIC`);
   for (const helper of [
     'osp_iso(timestamptz)',
     'osp_token_matches(text, text)',
@@ -558,7 +566,7 @@ function statements(b: string, schemaName: string, invokerViews: boolean): strin
     END
     $$`);
   out.push(`REVOKE ALL ON FUNCTION ${b}.osp_grant_public_role(text) FROM PUBLIC`);
-  return out;
+  return { base: out, schema };
 }
 
 async function isPostgres(db: Kysely<any>): Promise<boolean> {
@@ -570,14 +578,54 @@ async function baseSchema(db: Kysely<any>): Promise<string> {
   return rows[0]!.schema;
 }
 
-export async function up(db: Kysely<any>): Promise<void> {
-  if (!(await isPostgres(db))) return;
-  const schemaName = await baseSchema(db);
-  const { rows } = await sql<{ version: number }>`select current_setting('server_version_num')::int as version`.execute(db);
+interface Server {
+  schemaName: string;
+  version: number;
+  /** The migrating role may create schemas in the database (needed for osp_public). */
+  canCreateSchema: boolean;
+}
+
+async function server(db: Kysely<any>): Promise<Server> {
+  const { rows } = await sql<{ schema: string; version: number; can_create: boolean }>`
+    select current_schema() as schema, current_setting('server_version_num')::int as version,
+      has_database_privilege(current_user, current_database(), 'CREATE') as can_create`.execute(db);
+  const row = rows[0]!;
+  return { schemaName: row.schema, version: row.version, canCreateSchema: row.can_create };
+}
+
+function statementsFor(info: Server): Statements {
   // security_invoker needs PostgreSQL 15. Older servers get views with the owner's rights: the
   // views still filter rows and columns, but the RLS policies do not apply through them.
-  const invokerViews = rows[0]!.version >= 150000;
-  for (const statement of statements(ident(schemaName), schemaName, invokerViews)) {
+  return statements(ident(info.schemaName), info.schemaName, info.version >= 150000);
+}
+
+/**
+ * Creates the schema osp_public (views and functions of the public role) when it
+ * does not exist yet. The migration skips it when the migrating role may not
+ * create schemas (CREATE on the database), which only APP_ROLE=public needs:
+ * migrating instances call this on every start (ensurePublicSchema), so it is
+ * created once the privilege is granted. Returns whether it was created.
+ *
+ * A later migration that changes osp_public must skip that change when the schema
+ * does not exist and add it to ensurePublicSchema after this one.
+ */
+export async function createPublicSchema(db: Kysely<any>): Promise<boolean> {
+  const info = await server(db);
+  if (!info.canCreateSchema) return false;
+  for (const statement of statementsFor(info).schema) {
+    await sql.raw(statement).execute(db);
+  }
+  return true;
+}
+
+export async function up(db: Kysely<any>): Promise<void> {
+  if (!(await isPostgres(db))) return;
+  const info = await server(db);
+  if (info.version < 110000) {
+    throw new Error(`PostgreSQL 11 or newer is required (this server is ${info.version}); 15 or newer is recommended`);
+  }
+  const { base, schema } = statementsFor(info);
+  for (const statement of info.canCreateSchema ? [...base, ...schema] : base) {
     await sql.raw(statement).execute(db);
   }
 }

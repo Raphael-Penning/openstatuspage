@@ -6,7 +6,7 @@ import { syncPollers } from './adapters/poller.js';
 import type { Config } from './config.js';
 import type { AppContext } from './context.js';
 import { migrateToLatest, waitForSchema, type DB } from './db/index.js';
-import { connectionRestricted, grantPublicRole } from './db/public-role.js';
+import { connectionRestricted, PUBLIC_SCHEMA, publicSchemaHint, setUpPublicRole } from './db/public-role.js';
 import { roleFeatures } from './role.js';
 import { registerBundleTasks } from './services/bundles.js';
 import { registerHistoryImportTasks } from './services/history-import.js';
@@ -53,13 +53,21 @@ export async function prepareDatabase(
     }
     if (postgres && config.DB_PUBLIC_ROLE) {
       const role = config.DB_PUBLIC_ROLE;
-      const granted = (await grantPublicRole(db, role)) === 'granted';
-      log.info(
-        { role, granted },
-        granted
-          ? 'public database role granted'
-          : 'public database role does not exist (only needed for APP_ROLE=public, see deploy/postgres/roles.sql)',
-      );
+      const result = await setUpPublicRole(db, role);
+      if (result.schema === 'created') log.info({ schema: PUBLIC_SCHEMA }, 'public schema created');
+      if (result.grant === 'no-schema') {
+        // Only APP_ROLE=public needs the schema: a warning when its role exists, otherwise a note.
+        const level = result.roleExists ? (log.warn ?? log.info) : log.info;
+        level.call(log, { role, schema: PUBLIC_SCHEMA }, publicSchemaHint());
+      } else {
+        const granted = result.grant === 'granted';
+        log.info(
+          { role, granted },
+          granted
+            ? 'public database role granted'
+            : 'public database role does not exist (only needed for APP_ROLE=public, see deploy/postgres/roles.sql)',
+        );
+      }
     }
     return;
   }

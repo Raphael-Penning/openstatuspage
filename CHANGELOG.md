@@ -84,6 +84,13 @@ breaking changes.
   instances grant the role on every start. Subscription tokens are additionally
   stored as SHA-256 hashes so the database can check them. See
   [docs/security-model.md](docs/security-model.md).
+  - Upgrading on PostgreSQL: migration `0007_public_role` needs PostgreSQL 11 or
+    newer (15 or newer recommended). The schema `osp_public` also needs `CREATE`
+    on the database for the migrating role. Without it the upgrade still
+    succeeds: the schema is left out and the log says how to add it. It is only
+    needed for `APP_ROLE=public`. After `GRANT CREATE ON DATABASE <database> TO <role>`
+    the next start of an admin, worker or all instance creates it. A failing
+    migration now logs its cause.
 - `WORKER_ENABLED` defaults to `false` for `APP_ROLE=admin`; contradicting settings
   stop the server on start.
 - **Several instances with background tasks** on PostgreSQL: every task (and the

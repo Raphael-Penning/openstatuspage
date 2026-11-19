@@ -128,7 +128,7 @@ stop a leak on its own; together they are defense in depth:
 the public role, to bound what a compromised public instance can make the
 database do.
 
-PostgreSQL 15 or newer is recommended: older servers do not support
+PostgreSQL 11 is the minimum and 15 or newer is recommended: older servers do not support
 `security_invoker` views. There all views run with the owner's rights (as
 `security_barrier` views); layers 1, 2 and 4 still apply, but RLS does not apply
 through the views. The views of `services` and `status_corrections` work this
@@ -151,7 +151,10 @@ way on every version.
 
 2. Admin and worker instances: `DATABASE_URL=postgres://osp_app:...@db/openstatuspage`
    and, if you changed it, `DB_PUBLIC_ROLE=<name>`. On start they migrate and log
-   `public database role granted`.
+   `public database role granted`. Their role needs `CREATE` on the database to
+   create the schema `osp_public` (`roles.sql` grants it to `osp_app`). If it is
+   missing, the migrations still succeed without that schema and the log says so.
+   Grant the privilege and restart: the schema is created on the next start.
 
 3. Public instance: `APP_ROLE=public` and
    `DATABASE_URL=postgres://osp_public:...@db/openstatuspage`. It waits for the

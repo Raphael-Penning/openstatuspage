@@ -122,7 +122,9 @@ export async function waitForSchema(db: DB, options: WaitForSchemaOptions): Prom
         : `the schema version could not be read (${error instanceof Error ? error.message : String(error)})`;
       throw new Error(
         `Database schema is not ready: ${reason}. This instance never runs migrations (APP_ROLE=public): ` +
-          'start an admin or worker instance (or run `db:migrate`) first, or raise SCHEMA_WAIT_SECONDS.',
+          'start an admin or worker instance (or run `db:migrate`) first, or raise SCHEMA_WAIT_SECONDS. ' +
+          'On PostgreSQL the version is read through the schema osp_public: if it does not exist, see the log ' +
+          'of the admin or worker instance.',
       );
     }
     options.onWait?.(status, error);
