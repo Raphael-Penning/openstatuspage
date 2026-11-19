@@ -1,74 +1,96 @@
 # HTTP API
 
-The API follows [JSON:API 1.1](https://jsonapi.org/format/1.1/) (since 0.2.0, a
-breaking change; there is no compatibility layer for the former plain JSON format).
-Attribute types live in [`packages/shared/src/schemas.ts`](../packages/shared/src/schemas.ts),
-the JSON:API document types and helpers in
-[`packages/shared/src/jsonapi.ts`](../packages/shared/src/jsonapi.ts).
-Request attributes are validated with the zod schemas named below.
+Since 0.2.0 the API follows [JSON:API 1.1](https://jsonapi.org/format/1.1/). This
+was a breaking change: there is no compatibility layer for the plain JSON format of
+0.1.x (see the [changelog](../CHANGELOG.md)).
 
-> The public API (`/api/public/*`) and the admin catalog (services, groups,
-> locations, incidents, maintenance, corrections) are converted. Sections below
-> that still show plain bodies are being converted to the same conventions.
+- Attribute types: [`packages/shared/src/schemas.ts`](../packages/shared/src/schemas.ts).
+  Request attributes are validated with the zod schemas named below.
+- JSON:API document types and helpers (request builder, deserializer, query
+  parameters): [`packages/shared/src/jsonapi.ts`](../packages/shared/src/jsonapi.ts).
+- The examples below were recorded from a running server and shortened: ids are cut
+  to `1b6f…`, secrets to `…`, collections show their first resource and long
+  arrays their first two entries.
+
+Contents: [Conventions](#conventions) · [Authentication](#authentication) ·
+[Endpoints outside JSON:API](#endpoints-outside-jsonapi) · [Public API](#public-api) ·
+[Email subscriptions](#email-subscriptions) · [Auth](#auth) · [Admin API](#admin-api) ·
+[Ingest API](#ingest-api)
 
 ## Conventions
 
 ### Media type and negotiation
 
-- Every JSON:API response is `Content-Type: application/vnd.api+json` and carries
-  `"jsonapi": { "version": "1.1" }`.
-- Requests with a body must send `Content-Type: application/vnd.api+json`. Any media
-  type parameter other than `profile` (including `ext`: no extensions are
-  implemented) is answered with `415 Unsupported Media Type`.
-- When every `application/vnd.api+json` entry in `Accept` carries such parameters, the
-  answer is `406 Not Acceptable`. `Accept: */*` or no `Accept` header is fine.
-- Exceptions (not JSON:API): `/api/health`, `/api/public/status.json`, the RSS/Atom
-  feeds, OIDC redirects and email confirmation links that redirect to HTML. Ingest
-  and webhook endpoints accept the native payloads of the monitoring systems; their
-  responses are JSON:API.
+- Every JSON:API response is `Content-Type: application/vnd.api+json` (without
+  parameters) and carries `"jsonapi": { "version": "1.1" }`.
+- Requests with a body must send `Content-Type: application/vnd.api+json`. Another
+  media type, or a media type parameter other than `profile` (including `ext`: no
+  extensions are implemented), is answered with `415 Unsupported Media Type`.
+- When every `application/vnd.api+json` entry in `Accept` carries such parameters,
+  the answer is `406 Not Acceptable`. `Accept: */*`, `application/json` or no
+  `Accept` header are fine.
+- Ingest endpoints accept the native payloads of the monitoring systems; their
+  responses are JSON:API. A few endpoints are not JSON:API at all, see
+  [Endpoints outside JSON:API](#endpoints-outside-jsonapi).
 
 ### Resource objects
 
 - `type` is the kebab-case plural (`services`, `service-groups`, `incidents`,
-  `incident-updates`, `maintenances`, `locations`, ...), `id` a string.
+  `incident-updates`, `maintenances`, `locations`, `monitor-sources`, ...), `id` a string.
 - `attributes` use the camelCase field names of the types in `schemas.ts`.
 - Foreign keys are `relationships` with resource identifier objects. A to-one
   relationship `group` corresponds to the field `groupId`, a to-many relationship
-  `services` to `serviceIds` (the shared deserializer flattens them that way).
+  `services` to `serviceIds` (`relationshipKey()` in `jsonapi.ts`; the shared
+  deserializer flattens them that way).
 - Complex value objects stay attributes (e.g. `uptime: DailyUptime[]`,
-  `affectedServices` with the impact per service).
-- Singletons have a stable id: `settings/site`, `summaries/current`, `sessions/current`,
-  `auth-configs/current`, `overviews/current`, `notification-statuses/current`.
+  `affectedServices` with the impact per service, the `checks` of a service, the
+  `members` and `vote` of a check bundle).
+- Singletons have a stable id: `settings/site`, `summaries/current`,
+  `sessions/current`, `auth-configs/current`, `overviews/current`,
+  `notification-statuses/current`.
 - Resources carry `links.self` where they can be fetched on their own; documents
   carry a top-level `links.self` (relative URLs).
 
 ### Compound documents
 
 Related resources needed by the UI are part of the response (`included`). The
-`include` query parameter selects them explicitly (comma-separated paths, empty
-value for none); unsupported paths are answered with `400` and
-`source.parameter = "include"`. Without `include`, the defaults listed per endpoint
-are included.
+`include` query parameter selects them explicitly (comma-separated paths, an empty
+value for none); unsupported paths are answered with `400` `unsupported_include`
+and `source.parameter = "include"`. Without `include`, the defaults listed per
+endpoint are included.
 
 ### Collections
 
-- Pagination: `page[number]` (1-based) and `page[size]` (default 20, max 100).
-  Paginated documents carry `meta.total`, `meta.page = { number, size }` and
-  `links.first/prev/next/last` (`prev`/`next` are `null` at the ends).
-- Filters: `filter[name]=value`. Unknown filters are answered with `400`.
-- Sorting: `sort=field,-other` where an endpoint lists sortable fields.
-- Collections without pagination still carry `meta.total`.
+- Pagination: `page[number]` (1-based) and `page[size]` (default 20 unless stated
+  otherwise, max 100). Paginated documents carry `meta.total`,
+  `meta.page = { number, size }` and `links.first/prev/next/last` (`prev`/`next`
+  are `null` at the ends).
+- Collections without pagination (they are short or pickers need all of them)
+  still carry `meta.total`.
+- Filters: `filter[name]=value`, as listed per endpoint. On endpoints that take
+  filters or pages, unknown filters and invalid values are answered with `400`
+  `invalid_parameter` and `source.parameter`, e.g. `filter[nope]`.
+- Sorting: every collection has a fixed order (stated per endpoint); no endpoint
+  takes a `sort` parameter yet (where list parameters are parsed, `sort` is `400`).
 
 ### Writing
 
-- Create: `POST` to the collection with `{ "data": { "type", "attributes", "relationships" } }`
-  answers `201 Created` with a `Location` header and the new resource.
-- Update: `PATCH` the resource (partial attributes). A `data.id` that differs from
-  the URL or another `data.type` than the endpoint expects is answered with `409`.
+- Create: `POST` to the collection with
+  `{ "data": { "type", "attributes", "relationships" } }`. The answer is
+  `201 Created` with a `Location` header and the new resource (`202 Accepted` for
+  jobs that continue in the background, such as history imports).
+- Update: `PATCH` the resource. Updates are partial: omitted attributes and
+  relationships keep their values; a relationship replaces the whole linkage
+  (`"locations": { "data": [] }` unlinks all locations). A `data.id` that differs
+  from the URL is answered with `409` `id_mismatch`, another `data.type` than the
+  endpoint expects with `409` `type_mismatch`. There are no `PUT` routes.
 - Delete: `204 No Content` without a body.
-- Actions (login, logout, rotate token, test, poll, apply import, resend, confirm)
-  are `POST` endpoints returning a resource document, a meta-only document
-  (`{ "jsonapi": ..., "meta": { ... } }`) or `204`.
+- Actions (logout, change password, reorder, preview, rotate token, test, poll,
+  apply/cancel import, confirm, test email, retry) are `POST` endpoints returning a
+  resource document, a meta-only document (`{ "jsonapi": …, "meta": { … } }`) or `204`.
+- A request document must have a `data` member (`400` `invalid_document`
+  otherwise). The server also accepts foreign keys sent as attributes
+  (`groupId`, `locationIds`, `serviceIds`).
 
 ```http
 POST /api/admin/services
@@ -88,7 +110,9 @@ Content-Type: application/vnd.api+json
 
 ### Errors
 
-Every error status (400, 401, 403, 404, 406, 409, 415, 429, 500) uses an error document:
+Every error status (400, 401, 403, 404, 406, 409, 413, 415, 429, 500) is answered
+with an error document, on every route (also on the
+[endpoints outside JSON:API](#endpoints-outside-jsonapi) and for unknown routes):
 
 ```json
 {
@@ -100,7 +124,7 @@ Every error status (400, 401, 403, 404, 406, 409, 415, 429, 500) uses an error d
       "title": "Invalid request",
       "detail": "Too small: expected string to have >=1 characters",
       "source": { "pointer": "/data/attributes/name" },
-      "meta": { "origin": "string", "minimum": 1 }
+      "meta": { "origin": "string", "minimum": 1, "inclusive": true }
     }
   ]
 }
@@ -109,18 +133,237 @@ Every error status (400, 401, 403, 404, 406, 409, 415, 429, 500) uses an error d
 - Validation errors produce one error per issue. `code` is the zod issue code,
   further issue details are in `meta`, `source.pointer` points into the request
   document (`/data/attributes/<field>`, or `/data/relationships/<name>` for fields
-  sent as relationships). Bad query parameters use `source.parameter`.
-- Other errors carry a stable snake_case `code` (`not_found`, `conflict`,
+  sent as relationships). Bad query parameters use `source.parameter`, bad headers
+  `source.header`.
+- Errors of native ingest bodies point into the body as sent (`/checks/0/state`).
+- Other errors carry a stable snake_case `code`: `not_found`, `conflict`,
   `unauthorized`, `forbidden`, `rate_limited`, `unsupported_media_type`,
-  `not_acceptable`, `invalid_document`, `type_mismatch`, `unsupported_include`, ...).
-- Other conventions: timestamps are ISO-8601 UTC strings; slugs are generated from the
-  name when not provided, duplicates get a numeric suffix.
+  `not_acceptable`, `invalid_document`, `type_mismatch`, `id_mismatch`,
+  `invalid_parameter`, `unsupported_include`, `invalid_credentials`,
+  `invalid_password`, `secret_required`, ... Errors without a field (e.g. a line of
+  an imported CSV file) keep their details in `meta`.
 
-## Public API (no authentication)
+Examples:
 
-Only public entities are returned (`is_public = 1`). **Nothing about monitoring
-sources or checks is ever exposed here**: no check names, hosts, outputs, IPs or counts.
-Responses may be cached (`Cache-Control: public, max-age=30`).
+<details>
+<summary>400: validation error</summary>
+
+```http
+POST /api/admin/services
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "services", "attributes": {"name": ""}}}
+```
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [
+    {
+      "status": "400", "code": "too_small", "title": "Invalid request",
+      "detail": "Too small: expected string to have >=1 characters",
+      "source": {"pointer": "/data/attributes/name"},
+      "meta": {"origin": "string", "minimum": 1, "inclusive": true}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>400: invalid query parameter</summary>
+
+```http
+GET /api/admin/incidents?filter[nope]=1
+```
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [
+    {
+      "status": "400", "code": "invalid_parameter", "title": "Bad Request",
+      "detail": "Unknown filter \"nope\"", "source": {"parameter": "filter[nope]"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>401: not signed in</summary>
+
+```http
+GET /api/admin/services
+```
+
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [
+    {
+      "status": "401", "code": "unauthorized", "title": "Unauthorized",
+      "detail": "Authentication required"
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>404: unknown resource</summary>
+
+```http
+GET /api/admin/services/does-not-exist
+```
+
+```http
+HTTP/1.1 404 Not Found
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [
+    {"status": "404", "code": "not_found", "title": "Not Found", "detail": "Service not found"}
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>409: <code>data.id</code> does not match the URL</summary>
+
+```http
+PATCH /api/admin/services/33ea…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "services", "attributes": {"name": "X"}, "id": "other"}}
+```
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [
+    {
+      "status": "409", "code": "id_mismatch", "title": "Conflict",
+      "detail": "data.id does not match the URL", "source": {"pointer": "/data/id"}
+    }
+  ]
+}
+```
+
+</details>
+
+
+### Other conventions
+
+Timestamps are ISO 8601 UTC strings. Slugs are generated from the name when not
+provided; duplicates get a numeric suffix, an explicit slug that is taken is `409`.
+
+## Authentication
+
+| Area | Credentials |
+| --- | --- |
+| `/api/public/*` | none (only public data) |
+| `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` (from the manage link) |
+| `/api/auth/*` | session cookie `osp_session` after login |
+| `/api/admin/*` | session cookie **or** `Authorization: Bearer <api token>` (`osp_…`) |
+| `/api/ingest/*` | `Authorization: Bearer <ingest token>` of the source, or `?token=` |
+
+- Roles: `editor` may manage incidents, maintenance and history corrections and
+  read the catalog; `admin` may additionally manage services, groups, locations,
+  monitoring sources, check bundles, settings, users, API tokens and subscribers.
+  Missing credentials are `401`, a missing role is `403`.
+- Cookie-authenticated mutating requests must send the header
+  `X-Requested-With: openstatuspage` (simple CSRF protection; the web client always
+  sends it). Bearer-token requests are exempt.
+- Every mutating admin call writes an audit log entry. Mutations through API tokens
+  are audited with `userId = null` and `details.apiToken = <token name>`.
+- Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP,
+  subscription token endpoints 30/min per IP, ingest 120/min per source.
+
+```sh
+curl -H "Authorization: Bearer $OSP_TOKEN" -H "Accept: application/vnd.api+json" \
+  "https://status.example.com/api/admin/incidents?filter[status]=active"
+```
+
+## Endpoints outside JSON:API
+
+These endpoints keep formats that other tools depend on. Their errors are JSON:API
+error documents like everywhere else.
+
+| Method | Path | Response |
+| --- | --- | --- |
+| GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes |
+| GET | `/api/public/status.json` | `application/json` in a stable format for third-party tools and widgets: `{ overall, updatedAt, services: [{ id, name, group, status }], activeIncidents: [{ id, title, status, impact }], activeMaintenances: [{ id, title, scheduledEnd }] }` |
+| GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
+| GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
+| GET | `/api/auth/oidc/callback` | `302` to `/admin` after login, or `/admin/login?error=<code>` |
+| GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | `303` to the manage page with the unsubscribe confirmation (never deletes) |
+
+Examples:
+
+<details>
+<summary><code>GET /api/health</code></summary>
+
+```http
+GET /api/health
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status": "ok"}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/status.json</code></summary>
+
+```http
+GET /api/public/status.json
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "overall": "major_outage", "updatedAt": "2026-11-19T21:25:02.850Z",
+  "services": [{"id": "33ea…", "name": "Public API", "group": "Platform", "status": "major_outage"}],
+  "activeIncidents": [
+    {"id": "6c02…", "title": "Database outage (EU)", "status": "identified", "impact": "major"}
+  ],
+  "activeMaintenances": []
+}
+```
+
+</details>
+
+
+## Public API
+
+No authentication. Only public entities are returned (`is_public = 1`). **Nothing
+about monitoring sources or checks is ever exposed here**: no check names, hosts,
+outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age=30`).
 
 | Method | Path | Primary data | Included by default |
 | --- | --- | --- | --- |
@@ -128,83 +371,402 @@ Responses may be cached (`Cache-Control: public, max-age=30`).
 | GET | `/api/public/settings` | `settings/site` (`PublicPageSettings`) | – |
 | GET | `/api/public/services` | `services[]` in display order (grouped services in group order, then ungrouped), `meta.counts: Record<ServiceStatus, number>` | the `service-groups` |
 | GET | `/api/public/services/:idOrSlug` | `services` incl. `uptime: DailyUptime[]`; relationships `incidents` (last 90 days and unresolved), `maintenances` (active and upcoming) | `include`: `incidents`, `incidents.updates`, `maintenances`, `maintenances.updates` (default: all) |
-| GET | `/api/public/locations` | `locations[]` (relationship `services`), `meta.counts`; 404 when `showLocations` is disabled | – |
+| GET | `/api/public/locations` | `locations[]` (relationship `services`), `meta.counts`; `404` when `showLocations` is disabled | – |
 | GET | `/api/public/incidents/:id` | `incidents` (relationships `locations`, `updates`) | `include`: `updates` (default) |
-| GET | `/api/public/maintenances/:id` | `maintenances` (relationships `locations`, `updates`) | `include`: `updates` (default) |
-| GET | `/api/public/history` | heterogeneous, paginated collection of `incidents` and `maintenances`, newest first (incidents by `startedAt`, maintenance by `scheduledStart`); includes active and resolved items, excludes maintenance scheduled in the future. Filters: `filter[type]` (`all`, `incident`, `maintenance`), `filter[service]`, `filter[location]` (public ids), `filter[month]` (`YYYY-MM`) | `include`: `updates` (default) |
-| GET | `/api/public/status.json` | **Not JSON:API** (stable format for third-party tools): `{ overall, updatedAt, services: [{ id, name, group, status }], activeIncidents: [{ id, title, status, impact }], activeMaintenances: [{ id, title, scheduledEnd }] }` | |
-| GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) | |
+| GET | `/api/public/maintenances/:id` | `maintenances` (relationships `services`, `locations`, `updates`) | `include`: `updates` (default) |
+| GET | `/api/public/history` | heterogeneous, paginated collection of `incidents` and `maintenances`, newest first (incidents by `startedAt`, maintenance by `scheduledStart`); active and resolved items, no maintenance scheduled in the future. Filters: `filter[type]` (`all`, `incident`, `maintenance`), `filter[service]`, `filter[location]` (public ids; a location matches items linked to it directly or affecting a service running there), `filter[month]` (`YYYY-MM`). Filters that reference non-public entities give an empty page. | `include`: `updates` (default) |
 
-Example (`GET /api/public/incidents/7d0c…`):
+- Uptime (`uptime`, `uptimePercent`) is computed from the **corrected** history
+  (see [History corrections](#history-corrections)). A `DailyUptime` entry of a day
+  in which a correction marked public is in effect carries `corrected: true` and
+  `correctionNotes: string[]` (the public notes, possibly empty). Where a newer
+  correction replaces a public one, that part no longer marks the day. The internal
+  reason of a correction is never returned by public endpoints.
+- Upcoming maintenance: `status = scheduled` and `scheduled_end > now`. Active
+  maintenance: `status = in_progress`. Active incidents: `status != resolved`.
+- The summary attribute `emailSubscriptions` is `true` when email subscriptions are
+  enabled in the settings and a mail transport is configured (the page then offers
+  the subscribe form).
 
-```json
+Examples:
+
+<details>
+<summary><code>GET /api/public/summary</code></summary>
+
+```http
+GET /api/public/summary
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
 {
-  "jsonapi": { "version": "1.1" },
+  "jsonapi": {"version": "1.1"},
   "data": {
-    "type": "incidents",
-    "id": "7d0c…",
+    "type": "summaries", "id": "current",
     "attributes": {
-      "title": "Database outage",
-      "status": "investigating",
-      "impact": "major",
-      "startedAt": "2026-11-19T08:00:00.000Z",
-      "resolvedAt": null,
-      "updatedAt": "2026-11-19T08:05:00.000Z",
-      "affectedServices": [{ "id": "1b6f…", "name": "Public API", "status": "major_outage" }]
+      "overall": "major_outage", "emailSubscriptions": true,
+      "generatedAt": "2026-11-19T21:25:02.844Z"
     },
     "relationships": {
-      "locations": { "data": [{ "type": "locations", "id": "9c2e…" }] },
-      "updates": { "data": [{ "type": "incident-updates", "id": "a41f…" }] }
-    },
-    "links": { "self": "/api/public/incidents/7d0c…" }
+      "page": {"data": {"type": "settings", "id": "site"}},
+      "groups": {"data": [{"type": "service-groups", "id": "f633…"}]},
+      "ungrouped": {"data": []},
+      "activeIncidents": {"data": [{"type": "incidents", "id": "6c02…"}]},
+      "recentIncidents": {"data": []}, "activeMaintenances": {"data": []},
+      "upcomingMaintenances": {"data": [{"type": "maintenances", "id": "f84a…"}]}
+    }
   },
+  "links": {"self": "/api/public/summary"},
   "included": [
     {
-      "type": "incident-updates",
-      "id": "a41f…",
-      "attributes": { "status": "investigating", "message": "We are investigating.", "createdAt": "2026-11-19T08:05:00.000Z" }
+      "type": "settings", "id": "site",
+      "attributes": {
+        "siteName": "Example Status", "description": "", "accentColor": "#7c6cf2",
+        "defaultLocale": "en", "defaultTheme": "system", "footerLinks": [], "showLocations": true,
+        "showUptime": true, "uptimeDays": 90, "recentIncidentDays": 7,
+        "emailSubscriptionsEnabled": true, "maintenanceReminderHours": 24
+      },
+      "links": {"self": "/api/public/settings"}
     }
-  ],
-  "links": { "self": "/api/public/incidents/7d0c…" }
+  ]
 }
 ```
 
-Example (`GET /api/public/history?filter[type]=incident&page[number]=2&page[size]=10`):
+</details>
 
-```json
+<details>
+<summary><code>GET /api/public/settings</code></summary>
+
+```http
+GET /api/public/settings
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
 {
-  "jsonapi": { "version": "1.1" },
-  "data": [{ "type": "incidents", "id": "…", "attributes": { "…": "…" }, "relationships": { "…": "…" } }],
-  "included": [{ "type": "incident-updates", "id": "…", "attributes": { "…": "…" } }],
-  "meta": { "total": 25, "page": { "number": 2, "size": 10 } },
-  "links": {
-    "self": "/api/public/history?filter[type]=incident&page[number]=2&page[size]=10",
-    "first": "/api/public/history?filter[type]=incident&page[number]=1&page[size]=10",
-    "prev": "/api/public/history?filter[type]=incident&page[number]=1&page[size]=10",
-    "next": "/api/public/history?filter[type]=incident&page[number]=3&page[size]=10",
-    "last": "/api/public/history?filter[type]=incident&page[number]=3&page[size]=10"
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "settings", "id": "site",
+    "attributes": {
+      "siteName": "Example Status", "description": "", "accentColor": "#7c6cf2",
+      "defaultLocale": "en", "defaultTheme": "system", "footerLinks": [], "showLocations": true,
+      "showUptime": true, "uptimeDays": 90, "recentIncidentDays": 7,
+      "emailSubscriptionsEnabled": true, "maintenanceReminderHours": 24
+    },
+    "links": {"self": "/api/public/settings"}
+  },
+  "links": {"self": "/api/public/settings"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/services</code></summary>
+
+```http
+GET /api/public/services
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "services", "id": "33ea…",
+      "attributes": {
+        "slug": "public-api", "name": "Public API", "description": "REST API", "kind": "service",
+        "url": null, "status": "major_outage", "uptimePercent": 99.97,
+        "uptime": [
+          {"date": "2026-08-22", "status": null, "uptime": null, "minutes": {}},
+          {"date": "2026-08-23", "status": null, "uptime": null, "minutes": {}},
+          "…"
+        ]
+      },
+      "relationships": {
+        "group": {"data": {"type": "service-groups", "id": "f633…"}},
+        "locations": {"data": [{"type": "locations", "id": "8361…"}]}
+      },
+      "links": {"self": "/api/public/services/public-api"}
+    }
+  ],
+  "links": {"self": "/api/public/services"},
+  "meta": {
+    "counts": {
+      "operational": 0, "maintenance": 0, "degraded": 0, "partial_outage": 0, "major_outage": 1
+    },
+    "total": 1
+  },
+  "included": [
+    {
+      "type": "service-groups", "id": "f633…",
+      "attributes": {
+        "slug": "platform", "name": "Platform", "description": "Core platform",
+        "collapsedByDefault": false, "status": "major_outage"
+      },
+      "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/services/:idOrSlug</code></summary>
+
+```http
+GET /api/public/services/public-api?include=incidents
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "services", "id": "33ea…",
+    "attributes": {
+      "slug": "public-api", "name": "Public API", "description": "REST API", "kind": "service",
+      "url": null, "status": "major_outage", "uptimePercent": 99.97,
+      "uptime": [
+        {"date": "2026-08-22", "status": null, "uptime": null, "minutes": {}},
+        {"date": "2026-08-23", "status": null, "uptime": null, "minutes": {}},
+        "…"
+      ]
+    },
+    "relationships": {
+      "group": {"data": {"type": "service-groups", "id": "f633…"}},
+      "locations": {"data": [{"type": "locations", "id": "8361…"}]},
+      "incidents": {"data": [{"type": "incidents", "id": "6c02…"}]},
+      "maintenances": {"data": [{"type": "maintenances", "id": "f84a…"}]}
+    },
+    "links": {"self": "/api/public/services/public-api"}
+  },
+  "links": {"self": "/api/public/services/public-api?include=incidents"},
+  "included": [
+    {
+      "type": "incidents", "id": "6c02…",
+      "attributes": {
+        "title": "Database outage (EU)", "status": "identified", "impact": "major",
+        "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+        "updatedAt": "2026-11-19T21:25:01.707Z",
+        "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}]
+      },
+      "relationships": {
+        "locations": {"data": []},
+        "updates": {
+          "data": [
+            {"type": "incident-updates", "id": "25c4…"},
+            {"type": "incident-updates", "id": "6d14…"}
+          ]
+        }
+      },
+      "links": {"self": "/api/public/incidents/6c02…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/locations</code></summary>
+
+```http
+GET /api/public/locations
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "locations", "id": "8361…",
+      "attributes": {
+        "slug": "frankfurt", "name": "Frankfurt", "code": "FRA", "city": null, "country": null,
+        "region": "europe", "latitude": null, "longitude": null, "description": null,
+        "status": "major_outage"
+      },
+      "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}}
+    }
+  ],
+  "links": {"self": "/api/public/locations"},
+  "meta": {
+    "counts": {
+      "operational": 0, "maintenance": 0, "degraded": 0, "partial_outage": 0, "major_outage": 1
+    },
+    "total": 1
   }
 }
 ```
 
-Uptime (`uptime`, `uptimePercent`) is computed from the **corrected** history
-(see [History corrections](#history-corrections)). A `DailyUptime` entry of a day
-in which a correction marked public is in effect carries `corrected: true` and
-`correctionNotes: string[]` (the public notes, possibly empty). The marker is
-derived from the corrected history: where a newer correction replaces a public
-one, that part no longer marks the day. The internal
-reason of a correction is never returned by public endpoints.
+</details>
 
-Upcoming maintenance = `status = scheduled` and `scheduled_end > now`.
-Active maintenance = `status = in_progress`.
-Active incidents = `status != resolved`.
+<details>
+<summary><code>GET /api/public/incidents/:id</code></summary>
 
-The summary attribute `emailSubscriptions` is `true` when email subscriptions are enabled in
-the settings and a mail transport is configured (the page then offers the subscribe form).
+```http
+GET /api/public/incidents/6c02…
+```
 
-## Email subscriptions (`/api/public/subscriptions`, no authentication)
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
 
-Double opt-in; see [notifications.md](notifications.md). Responses are sent with
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "incidents", "id": "6c02…",
+    "attributes": {
+      "title": "Database outage (EU)", "status": "identified", "impact": "major",
+      "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+      "updatedAt": "2026-11-19T21:25:01.707Z",
+      "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}]
+    },
+    "relationships": {
+      "locations": {"data": []},
+      "updates": {
+        "data": [
+          {"type": "incident-updates", "id": "25c4…"},
+          {"type": "incident-updates", "id": "6d14…"}
+        ]
+      }
+    },
+    "links": {"self": "/api/public/incidents/6c02…"}
+  },
+  "links": {"self": "/api/public/incidents/6c02…"},
+  "included": [
+    {
+      "type": "incident-updates", "id": "25c4…",
+      "attributes": {
+        "status": "identified", "message": "A failed disk in the primary.",
+        "createdAt": "2026-11-19T21:25:01.706Z"
+      }
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/maintenances/:id</code></summary>
+
+```http
+GET /api/public/maintenances/f84a…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "maintenances", "id": "f84a…",
+    "attributes": {
+      "title": "Database upgrade", "description": "PostgreSQL 17", "status": "scheduled",
+      "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
+      "actualStart": null, "actualEnd": null,
+      "affectedServices": [{"id": "33ea…", "name": "Public API"}]
+    },
+    "relationships": {
+      "locations": {"data": []},
+      "updates": {
+        "data": [
+          {"type": "maintenance-updates", "id": "8c90…"},
+          {"type": "maintenance-updates", "id": "cd48…"}
+        ]
+      }
+    },
+    "links": {"self": "/api/public/maintenances/f84a…"}
+  },
+  "links": {"self": "/api/public/maintenances/f84a…"},
+  "included": [
+    {
+      "type": "maintenance-updates", "id": "8c90…",
+      "attributes": {
+        "status": "scheduled", "message": "Moved by one hour.",
+        "createdAt": "2026-11-19T21:25:01.711Z"
+      }
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/history</code></summary>
+
+```http
+GET /api/public/history?filter[type]=incident&page[size]=10
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "incidents", "id": "6c02…",
+      "attributes": {
+        "title": "Database outage (EU)", "status": "identified", "impact": "major",
+        "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+        "updatedAt": "2026-11-19T21:25:01.707Z",
+        "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}]
+      },
+      "relationships": {
+        "locations": {"data": []},
+        "updates": {
+          "data": [
+            {"type": "incident-updates", "id": "25c4…"},
+            {"type": "incident-updates", "id": "6d14…"}
+          ]
+        }
+      },
+      "links": {"self": "/api/public/incidents/6c02…"}
+    }
+  ],
+  "links": {
+    "self": "/api/public/history?filter[type]=incident&page[number]=1&page[size]=10",
+    "first": "/api/public/history?filter[type]=incident&page[number]=1&page[size]=10", "prev": null,
+    "next": null, "last": "/api/public/history?filter[type]=incident&page[number]=1&page[size]=10"
+  },
+  "meta": {"total": 1, "page": {"number": 1, "size": 10}},
+  "included": [
+    {
+      "type": "incident-updates", "id": "25c4…",
+      "attributes": {
+        "status": "identified", "message": "A failed disk in the primary.",
+        "createdAt": "2026-11-19T21:25:01.706Z"
+      }
+    }
+  ]
+}
+```
+
+</details>
+
+
+## Email subscriptions
+
+`/api/public/subscriptions`, no authentication. Double opt-in; see
+[notifications.md](notifications.md). Responses are sent with
 `Cache-Control: no-store`. Unknown ids and wrong tokens get the same `404`.
 
 A subscription is a `subscriptions` resource (`PublicSubscription`): attributes
@@ -213,46 +775,12 @@ A subscription is a `subscriptions` resource (`PublicSubscription`): attributes
 
 | Method | Path | Body / auth | Response |
 | --- | --- | --- | --- |
-| POST | `/api/public/subscriptions` | `subscriptions` document (`SubscribeInput`, `serviceIds` as the `services` relationship) | `202` with the meta-only document `{ "meta": { "accepted": true } }` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated; also for a filled-in honeypot, see below). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public services. Rate limited (5/min per IP). |
-| POST | `/api/public/subscriptions/:id/confirm` | `subscriptions` document with the attribute `token` (`SubscriptionConfirmInput`, token from the confirmation link) | the subscription; only this response also has the attribute `manageToken`; idempotent |
-| GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` | the subscription |
-| PATCH | `/api/public/subscriptions/:id` | header as above, `subscriptions` document (`SubscriptionPreferencesInput`, partial) | the subscription |
+| POST | `/api/public/subscriptions` | `subscriptions` (`SubscribeInput`, relationship `services`) | `202` with `meta.accepted` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated; also for a filled-in honeypot). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public services. |
+| POST | `/api/public/subscriptions/:id/confirm` | `subscriptions` with the attribute `token` (`SubscriptionConfirmInput`, token from the confirmation link) | the subscription; only this response also has the attribute `manageToken`; idempotent |
+| GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token` | the subscription |
+| PATCH | `/api/public/subscriptions/:id` | header as above, `subscriptions` (`SubscriptionPreferencesInput`, partial) | the subscription |
 | DELETE | `/api/public/subscriptions/:id` | header as above | `204`, deletes the subscriber completely |
-| POST | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | empty or `List-Unsubscribe=One-Click` (form encoded, not JSON:API) | `204`, deletes the subscriber (RFC 8058 one-click, used by the `List-Unsubscribe` header) |
-| GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | – | not JSON:API: `303` to the manage page with the unsubscribe confirmation, `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>` (never deletes) |
-
-```http
-POST /api/public/subscriptions
-Content-Type: application/vnd.api+json
-
-{
-  "data": {
-    "type": "subscriptions",
-    "attributes": { "email": "jane@example.com", "locale": "en", "allServices": false },
-    "relationships": { "services": { "data": [{ "type": "services", "id": "3f0c…" }] } }
-  }
-}
-```
-
-```http
-POST /api/public/subscriptions/8d1e…/confirm
-Content-Type: application/vnd.api+json
-
-{ "data": { "type": "subscriptions", "attributes": { "token": "<confirmToken>" } } }
-```
-
-```json
-{
-  "jsonapi": { "version": "1.1" },
-  "data": {
-    "type": "subscriptions",
-    "id": "8d1e…",
-    "attributes": { "email": "jane@example.com", "locale": "en", "allServices": false, "confirmed": true, "manageToken": "<manageToken>" },
-    "relationships": { "services": { "data": [{ "type": "services", "id": "3f0c…" }] } },
-    "links": { "self": "/api/public/subscriptions/8d1e…" }
-  }
-}
-```
+| POST | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | empty or `List-Unsubscribe=One-Click` (form encoded, sent by mail clients) | `204`, deletes the subscriber (RFC 8058 one-click, used by the `List-Unsubscribe` header) |
 
 Behaviour of `POST /api/public/subscriptions`:
 
@@ -261,15 +789,14 @@ Behaviour of `POST /api/public/subscriptions`:
   choice can be changed on the manage page after confirming);
 - confirmed address: preferences unchanged, email with the manage link;
 - `website` (honeypot, any string up to 500 characters) not empty: answered exactly
-  like a successful subscribe (`202`, `meta.accepted`), but nothing is created and no
-  email is sent. Real visitors never see the field.
+  like a successful subscribe (`202`, `meta.accepted`), but nothing is created and
+  no email is sent. Real visitors never see the field.
 
 The input is validated (`400`) before answering; everything that depends on the
 address runs after the `202` has been sent, so the response time does not reveal
-whether an address is subscribed either. At most one confirmation/manage email
-per address every 10 minutes. The endpoints
-other than subscribe keep working when subscriptions are disabled later, so
-subscribers can always unsubscribe. Rate limit for the token endpoints: 30/min per IP.
+whether an address is subscribed either. At most one confirmation/manage email per
+address every 10 minutes. The endpoints other than subscribe keep working when
+subscriptions are disabled later, so subscribers can always unsubscribe.
 
 Links in emails (web client routes). The token is in the URL fragment, so it never
 reaches the server, proxies or access logs; the web client reads it from the
@@ -285,290 +812,1820 @@ Only the RFC 8058 `List-Unsubscribe` header keeps the token in the query string
 directly. The server log redacts the value of every `token` query parameter
 (`token=[REDACTED]`).
 
-## Auth (`/api/auth`)
+Examples:
 
-The signed-in session is the singleton `sessions/current` (attribute `oidcEnabled`,
-to-one relationship `user` to a `users` resource, which is always included). The
-OIDC routes are browser redirects, not JSON:API.
+<details>
+<summary><code>POST /api/public/subscriptions</code></summary>
+
+```http
+POST /api/public/subscriptions
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "subscriptions",
+    "attributes": {"email": "jane@example.com", "locale": "en", "allServices": false},
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}}
+  }
+}
+```
+
+```http
+HTTP/1.1 202 Accepted
+Content-Type: application/vnd.api+json
+
+{"jsonapi": {"version": "1.1"}, "meta": {"accepted": true}}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/public/subscriptions/:id/confirm</code></summary>
+
+```http
+POST /api/public/subscriptions/2d3c…/confirm
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "subscriptions", "attributes": {"token": "…"}}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "subscriptions", "id": "2d3c…",
+    "attributes": {
+      "email": "jane@example.com", "locale": "en", "allServices": false, "confirmed": true,
+      "manageToken": "…"
+    },
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}},
+    "links": {"self": "/api/public/subscriptions/2d3c…"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/subscriptions/:id</code></summary>
+
+```http
+GET /api/public/subscriptions/2d3c…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "subscriptions", "id": "2d3c…",
+    "attributes": {
+      "email": "jane@example.com", "locale": "en", "allServices": false, "confirmed": true
+    },
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}},
+    "links": {"self": "/api/public/subscriptions/2d3c…"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/public/subscriptions/:id</code></summary>
+
+```http
+PATCH /api/public/subscriptions/2d3c…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "subscriptions", "attributes": {"allServices": true}, "id": "2d3c…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "subscriptions", "id": "2d3c…",
+    "attributes": {
+      "email": "jane@example.com", "locale": "en", "allServices": true, "confirmed": true
+    },
+    "relationships": {"services": {"data": []}},
+    "links": {"self": "/api/public/subscriptions/2d3c…"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>DELETE /api/public/subscriptions/:id</code></summary>
+
+```http
+DELETE /api/public/subscriptions/2d3c…
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+</details>
+
+
+## Auth
+
+`/api/auth`. The signed-in session is the singleton `sessions/current` (attribute
+`oidcEnabled`, to-one relationship `user` to a `users` resource, which is always
+included). The OIDC routes are browser redirects (see
+[Endpoints outside JSON:API](#endpoints-outside-jsonapi) and [oidc.md](oidc.md)).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
 | GET | `/api/auth/config` | – | `auth-configs/current` (`AuthConfig`) |
-| POST | `/api/auth/login` | `sessions` document (`LoginInput`); another type is `409` | `200` with the session document, sets cookie `osp_session` (httpOnly, sameSite=lax, secure when BASE_URL is https). Wrong credentials: `401` `invalid_credentials`. Rate limited (10/min per IP). |
-| POST | `/api/auth/logout` | – | 204, clears cookie and deletes the session |
-| GET | `/api/auth/session` | – | the session document or 401 |
-| POST | `/api/auth/password` | `passwords` document (`ChangePasswordInput`) | 204; a wrong current password is `400` `invalid_password` |
-| GET | `/api/auth/oidc/login` | – | 302 to the IdP (PKCE + state + nonce stored in a signed short-lived cookie) |
-| GET | `/api/auth/oidc/callback` | – | 302 to `/admin` after login, or `/admin/login?error=<code>` |
+| POST | `/api/auth/login` | `sessions` (`LoginInput`); another type is `409` | `200` with the session document; sets the cookie `osp_session` (httpOnly, sameSite=lax, secure when `BASE_URL` is https). Wrong credentials: `401` `invalid_credentials`. |
+| POST | `/api/auth/logout` | – | `204`, clears the cookie and deletes the session |
+| GET | `/api/auth/session` | – | the session document or `401` |
+| POST | `/api/auth/password` | `passwords` (`ChangePasswordInput`) | `204`; a wrong current password is `400` `invalid_password` |
+
+Sessions: random 32-byte token in the cookie, its SHA-256 stored in `sessions.id`.
+Expired sessions are deleted lazily and by a periodic cleanup task.
+
+Examples:
+
+<details>
+<summary><code>POST /api/auth/login</code></summary>
 
 ```http
 POST /api/auth/login
 Content-Type: application/vnd.api+json
 
-{ "data": { "type": "sessions", "attributes": { "email": "admin@example.com", "password": "…" } } }
+{"data": {"type": "sessions", "attributes": {"email": "admin@example.com", "password": "…"}}}
 ```
-
-```json
-{
-  "jsonapi": { "version": "1.1" },
-  "data": {
-    "type": "sessions",
-    "id": "current",
-    "attributes": { "oidcEnabled": false },
-    "relationships": { "user": { "data": { "type": "users", "id": "5a7b…" } } },
-    "links": { "self": "/api/auth/session" }
-  },
-  "included": [
-    {
-      "type": "users",
-      "id": "5a7b…",
-      "attributes": { "email": "admin@example.com", "name": "Ada", "role": "admin", "hasPassword": true, "oidcLinked": false, "createdAt": "…", "lastLoginAt": "…" },
-      "links": { "self": "/api/admin/users/5a7b…" }
-    }
-  ],
-  "links": { "self": "/api/auth/session" }
-}
-```
-
-Sessions: random 32-byte token in the cookie, SHA-256 of it stored in `sessions.id`.
-Expired sessions are deleted lazily and by a periodic cleanup task.
-
-## Admin API (`/api/admin`)
-
-Authentication: session cookie **or** `Authorization: Bearer <api token>`.
-Roles: `editor` may manage incidents, maintenance, history corrections and read everything;
-`admin` may additionally manage services, groups, locations, monitoring sources,
-check bundles, settings, users and API tokens. Every mutating call writes an audit log entry.
-
-Cookie-authenticated mutating requests must send the header `X-Requested-With: openstatuspage`
-(simple CSRF protection; the web client always sends it). Bearer-token requests are exempt.
-
-| Method | Path | Body | Response | Role |
-| --- | --- | --- | --- | --- |
-| GET | `/api/admin/overview` | – | `overviews/current`: attribute `counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }`, relationships `services` (`services`, non-operational first) and `recentAudit` (`audit-entries`), both included; source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries | editor |
-| GET/PATCH | `/api/admin/settings` | `settings` document (`SettingsInput`, partial: omitted attributes keep their value) | `settings/site` (`PublicPageSettings`) | GET editor, PATCH admin |
-| GET | `/api/admin/locations` | – | `locations[]` (`AdminLocation`, relationship `services`) in display order | editor |
-| POST | `/api/admin/locations` | `locations`: `LocationInput` | `locations` (201) | admin |
-| GET/PATCH/DELETE | `/api/admin/locations/:id` | `locations`: partial `LocationInput` | `locations`; DELETE 204 | GET editor, else admin |
-| POST | `/api/admin/locations/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
-| GET | `/api/admin/service-groups` | – | `service-groups[]` (`AdminServiceGroup`) | editor |
-| POST | `/api/admin/service-groups` | `service-groups`: `ServiceGroupInput` | `service-groups` (201) | admin |
-| GET/PATCH/DELETE | `/api/admin/service-groups/:id` | `service-groups`: partial `ServiceGroupInput` | `service-groups`; DELETE 204 | GET editor, else admin |
-| POST | `/api/admin/service-groups/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
-| GET | `/api/admin/services` | – | `services[]` (`AdminService`; relationships `group`, `locations`; `checks` with the linked check stay attributes) | editor |
-| POST | `/api/admin/services` | `services`: `ServiceInput` (relationships `group`, `locations`) | `services` (201) | admin |
-| GET/PATCH/DELETE | `/api/admin/services/:id` | `services`: partial `ServiceInput` | `services`; DELETE 204 | GET editor, else admin |
-| POST | `/api/admin/services/reorder` | attribute `ids` (`ReorderInput`, within one group) | 204 | admin |
-| GET | `/api/admin/services/:id/preview` | – | meta document `{ monitorStatus, status }` computed with the stored config (for the service builder) | editor |
-| POST | `/api/admin/services/preview` | `ServiceInput` (any type) | meta document `{ monitorStatus }` computed for an unsaved config | admin |
-| GET | `/api/admin/incidents` | `filter[status]=active\|resolved\|all`, `page[number]`, `page[size]` | paginated `incidents[]` (`AdminIncident`, newest first; relationships `locations`, `updates`) | editor |
-| POST | `/api/admin/incidents` | `incidents`: `IncidentCreateInput` (relationship `locations`) | `incidents` (201) | editor |
-| GET/PATCH/DELETE | `/api/admin/incidents/:id` | `incidents`: `IncidentPatchInput` | `incidents`; DELETE 204 | editor |
-| POST | `/api/admin/incidents/:incidentId/updates` | `incident-updates`: `IncidentUpdateInput` | `incident-updates` (201, relationship `incident`, the incident included) | editor |
-| GET/PATCH/DELETE | `/api/admin/incidents/:incidentId/updates/:id` | `incident-updates`: `IncidentUpdateEditInput` | `incident-updates` with the incident included; DELETE 204 | editor |
-| GET | `/api/admin/maintenances` | `filter[status]=upcoming\|active\|past\|all`, `page[number]`, `page[size]` | paginated `maintenances[]` (`AdminMaintenance`; relationships `services`, `locations`, `updates`) | editor |
-| POST | `/api/admin/maintenances` | `maintenances`: `MaintenanceCreateInput` (relationships `services`, `locations`) | `maintenances` (201) | editor |
-| GET/PATCH/DELETE | `/api/admin/maintenances/:id` | `maintenances`: `MaintenancePatchInput` | `maintenances`; DELETE 204 | editor |
-| POST | `/api/admin/maintenances/:maintenanceId/updates` | `maintenance-updates`: `MaintenanceUpdateInput` | `maintenance-updates` (201, relationship `maintenance`, the maintenance included) | editor |
-| GET | `/api/admin/maintenances/:maintenanceId/updates/:id` | – | `maintenance-updates` with the maintenance included | editor |
-| GET | `/api/admin/corrections` | `filter[service]`, `filter[from]`, `filter[to]` (overlapping the range), `page[number]`, `page[size]` | paginated `corrections[]` (`AdminCorrection`, newest start first; relationship `services`) | editor |
-| POST | `/api/admin/corrections` | `corrections`: `CorrectionInput` (relationship `services`) | `corrections` (201) | editor |
-| GET/PATCH/DELETE | `/api/admin/corrections/:id` | `corrections`: `CorrectionPatchInput` | `corrections`; DELETE 204 | editor |
-| GET | `/api/admin/services/:id/history` | `filter[from]`, `filter[to]` (required, at most 366 days, `ServiceHistoryQuery`) | `service-histories` (id = service id; `AdminServiceHistory`: measured and corrected segments and uptime; relationships `service`, `corrections`) | editor |
-| GET | `/api/admin/monitor-sources` | – | collection of `monitor-sources` (`AdminMonitorSource`) | admin |
-| POST | `/api/admin/monitor-sources` | `monitor-sources`: `MonitorSourceInput` | `monitor-sources` (201) with the attribute `ingestToken` (shown once) | admin |
-| GET/PATCH/DELETE | `/api/admin/monitor-sources/:id` | `monitor-sources`: partial `MonitorSourceInput` (left-out attributes keep their values, the `config` is kept when left out and replaced as a whole otherwise; secrets equal to `SECRET_MASK` keep the stored value only while `sourceType`, `baseUrl` and `username` (`historyUsername` for `historyPassword`) are unchanged, otherwise 400 `secret_required`; `icingaDbUrl` is kept regardless) | `monitor-sources`; DELETE 204 | admin |
-| POST | `/api/admin/monitor-sources/:id/test` | – | meta `{ ok, message, checkCount? }` (`MonitorSourceTestResult`) | admin |
-| POST | `/api/admin/monitor-sources/:id/poll` | – | meta `{ ok, message, checkCount? }` (polls now and stores the results) | admin |
-| POST | `/api/admin/monitor-sources/:id/rotate-token` | – | meta `{ ingestToken }` | admin |
-| GET | `/api/admin/monitor-sources/:id/history-imports` | – | collection of `history-imports` (latest 20, newest first, `preview` is `null`) | admin |
-| POST | `/api/admin/monitor-sources/:id/history-imports` | `history-imports`: `HistoryImportCreateInput` (body up to ~10 MB for CSV) | `history-imports` (202 with `Location`, status `fetching`) | admin |
-| GET | `/api/admin/monitor-sources/:id/history-imports/:importId` | – | `history-imports` with `progress`, `preview` (status `ready`) or `result` | admin |
-| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/apply` | – | `history-imports` (202, status `applying`; 409 unless `ready`) | admin |
-| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/cancel` | – | `history-imports` (aborts `fetching`, discards `ready`; 409 otherwise) | admin |
-| GET | `/api/admin/checks` | `filter[source]`, `filter[q]` (search name/host/external id), `filter[state]`, `filter[unlinked]=true` | collection of `monitor-checks` (`AdminMonitorCheck`, not paginated; `sourceType` is `bundle` for bundle checks) | editor |
-| GET/DELETE | `/api/admin/checks/:id` | – | `monitor-checks`; DELETE 204 (409 for the check of a bundle: delete the bundle) | GET editor, DELETE admin |
-| GET | `/api/admin/check-bundles` | – | collection of `check-bundles` (`AdminCheckBundle`) with the live vote and per-member breakdown | admin |
-| GET | `/api/admin/check-bundles/candidates` | `filter[sourceType]` (configurable source type) | collection of `monitor-sources` (`BundleCandidateSource`) whose checks (`monitor-checks`, relationship `checks`) are included: the checks that can become members | admin |
-| POST | `/api/admin/check-bundles` | `check-bundles`: `CheckBundleInput` | `check-bundles` (201) | admin |
-| GET/PATCH/DELETE | `/api/admin/check-bundles/:id` | `check-bundles`: partial `CheckBundleInput` (`members` replaces the list) | `check-bundles`; DELETE 204 removes the bundle check and its service links | admin |
-| GET | `/api/admin/users` | – | collection of `users` (`AdminUser`), by name | admin |
-| POST | `/api/admin/users` | `users` document (`UserCreateInput`) | the user (201, `Location`) | admin |
-| GET/PATCH/DELETE | `/api/admin/users/:id` | `users` document (`UserUpdateInput`, partial) | the user; DELETE 204 (cannot delete or demote yourself / the last admin: 409) | admin |
-| GET | `/api/admin/api-tokens` | – | collection of `api-tokens` (`AdminApiToken`), newest first | admin |
-| POST | `/api/admin/api-tokens` | `api-tokens` document (`ApiTokenCreateInput`) | the token (201, `Location`); only this response has the attribute `token`; created with a token, the new token belongs to that token's owner | admin |
-| DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
-| GET | `/api/admin/subscribers` | `page[number]`, `page[size]` (default 50), `filter[q]` (email substring), `filter[status]=all\|confirmed\|pending` | paginated `subscribers` (`AdminSubscriber`, newest first); relationship `services` with the selected services included (`name` only) | admin |
-| DELETE | `/api/admin/subscribers/:id` | – | 204 (audit `subscriber.delete` with masked address) | admin |
-| GET | `/api/admin/notifications/status` | – | `notification-statuses/current` (`NotificationStatus`) | admin |
-| POST | `/api/admin/notifications/test` | `test-emails` document (`TestEmailInput`) | meta-only document `{ "meta": { "ok": boolean, "message": string } }`; sends immediately (not queued); 409 without transport | admin |
-| POST | `/api/admin/notifications/retry-failed` | – | meta-only document `{ "meta": { "requeued": number } }` | admin |
-| GET | `/api/admin/audit-log` | `page[number]`, `page[size]`, `filter[entityType]` | paginated `audit-entries` (`AuditLogEntry`, newest first); relationship `user` (the acting user, `null` for API tokens and deleted users; `userName` stays an attribute) | admin |
-
-API tokens are revoked when their creator is deleted; admin tokens are revoked when
-their creator loses the admin role.
-
-### Catalog resources
-
-Services, service groups, locations, incidents, maintenance and corrections follow
-the conventions above. Specifics:
-
-- `PATCH` is partial everywhere: omitted attributes and relationships keep their
-  values (for services, groups and locations the stored object is merged with the
-  request before `ServiceInput`/`ServiceGroupInput`/`LocationInput` validate it).
-  Relationships replace the whole linkage (`"locations": { "data": [] }` unlinks
-  all locations). Foreign keys sent as attributes (`groupId`, `locationIds`,
-  `serviceIds`) are accepted as well.
-- Included by default (`include` to change it): `updates` of incidents and
-  maintenance; `services` of corrections, as sparse `services` resources with only
-  their `name`. The service history always includes its corrections and their services.
-- Updates are sub-resources: `POST .../incidents/:incidentId/updates` creates an
-  `incident-updates` resource and answers `201` with a `Location` header; the
-  incident (with its new status, without its updates) is included. The same holds
-  for `maintenance-updates`.
 
 ```http
-POST /api/admin/incidents/7d0c…/updates
+HTTP/1.1 200 OK
 Content-Type: application/vnd.api+json
 
-{ "data": { "type": "incident-updates", "attributes": { "status": "resolved", "message": "Fixed.", "notify": true } } }
-```
-
-```json
 {
-  "jsonapi": { "version": "1.1" },
+  "jsonapi": {"version": "1.1"},
   "data": {
-    "type": "incident-updates",
-    "id": "e81b…",
-    "attributes": { "status": "resolved", "message": "Fixed.", "createdAt": "2026-11-19T09:00:00.000Z" },
-    "relationships": { "incident": { "data": { "type": "incidents", "id": "7d0c…" } } },
-    "links": { "self": "/api/admin/incidents/7d0c…/updates/e81b…" }
+    "type": "sessions", "id": "current", "attributes": {"oidcEnabled": false},
+    "relationships": {"user": {"data": {"type": "users", "id": "c941…"}}},
+    "links": {"self": "/api/auth/session"}
   },
+  "links": {"self": "/api/auth/session"},
   "included": [
     {
-      "type": "incidents",
-      "id": "7d0c…",
-      "attributes": { "title": "Database outage", "status": "resolved", "resolvedAt": "2026-11-19T09:00:00.000Z", "…": "…" },
-      "relationships": { "locations": { "data": [] }, "updates": { "data": [{ "type": "incident-updates", "id": "e81b…" }, { "type": "incident-updates", "id": "a41f…" }] } },
-      "links": { "self": "/api/admin/incidents/7d0c…" }
+      "type": "users", "id": "c941…",
+      "attributes": {
+        "email": "admin@example.com", "name": "Ada", "role": "admin", "hasPassword": true,
+        "oidcLinked": false, "createdAt": "2026-11-19T21:25:01.655Z",
+        "lastLoginAt": "2026-11-19T21:25:01.678Z"
+      },
+      "links": {"self": "/api/admin/users/c941…"}
     }
-  ],
-  "links": { "self": "/api/admin/incidents/7d0c…/updates" }
+  ]
 }
 ```
 
-Example (`GET /api/admin/corrections?filter[service]=1b6f…&page[size]=20`):
+</details>
 
-```json
+<details>
+<summary><code>GET /api/auth/config</code></summary>
+
+```http
+GET /api/auth/config
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
 {
-  "jsonapi": { "version": "1.1" },
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "auth-configs", "id": "current",
+    "attributes": {"oidcEnabled": false, "oidcLabel": "Single Sign-On", "localLoginEnabled": true},
+    "links": {"self": "/api/auth/config"}
+  },
+  "links": {"self": "/api/auth/config"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/auth/session</code></summary>
+
+```http
+GET /api/auth/session
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "sessions", "id": "current", "attributes": {"oidcEnabled": false},
+    "relationships": {"user": {"data": {"type": "users", "id": "c941…"}}},
+    "links": {"self": "/api/auth/session"}
+  },
+  "links": {"self": "/api/auth/session"},
+  "included": [
+    {
+      "type": "users", "id": "c941…",
+      "attributes": {
+        "email": "admin@example.com", "name": "Ada", "role": "admin", "hasPassword": true,
+        "oidcLinked": false, "createdAt": "2026-11-19T21:25:01.655Z",
+        "lastLoginAt": "2026-11-19T21:25:01.678Z"
+      },
+      "links": {"self": "/api/admin/users/c941…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/auth/password</code></summary>
+
+```http
+POST /api/auth/password
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "passwords",
+    "attributes": {"currentPassword": "wrong-password", "newPassword": "another-long-password"}
+  }
+}
+```
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [
+    {
+      "status": "400", "code": "invalid_password", "title": "Bad Request",
+      "detail": "Current password is incorrect"
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/auth/logout</code></summary>
+
+```http
+POST /api/auth/logout
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+</details>
+
+
+## Admin API
+
+`/api/admin`, see [Authentication](#authentication) for credentials and roles.
+
+### Overview, settings and audit log
+
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/overview` | – | `overviews/current`: attribute `counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }`, relationships `services` (non-operational first) and `recentAudit` (`audit-entries`), both included. Source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries. | editor |
+| GET | `/api/admin/settings` | – | `settings/site` (`PublicPageSettings`) | editor |
+| PATCH | `/api/admin/settings` | `settings` (`SettingsInput`, partial) | `settings/site` | admin |
+| GET | `/api/admin/audit-log` | `page[number]`, `page[size]`, `filter[entityType]` | paginated `audit-entries` (`AuditLogEntry`, newest first); relationship `user` (the acting user, `null` for API tokens and deleted users; `userName` stays an attribute) | admin |
+
+Examples:
+
+<details>
+<summary><code>GET /api/admin/overview</code></summary>
+
+```http
+GET /api/admin/overview
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "overviews", "id": "current",
+    "attributes": {
+      "counts": {
+        "services": 1, "incidentsActive": 1, "maintenancesActive": 0, "maintenancesUpcoming": 1,
+        "sources": 2, "sourcesFailing": 0, "checks": 2, "checksFailing": 1
+      }
+    },
+    "relationships": {
+      "services": {"data": [{"type": "services", "id": "33ea…"}]},
+      "recentAudit": {
+        "data": [{"type": "audit-entries", "id": "7bd4…"}, {"type": "audit-entries", "id": "654e…"}]
+      }
+    },
+    "links": {"self": "/api/admin/overview"}
+  },
+  "links": {"self": "/api/admin/overview"},
+  "included": [
+    {
+      "type": "services", "id": "33ea…",
+      "attributes": {
+        "slug": "public-api", "name": "Public API", "description": "REST API", "kind": "service",
+        "url": null, "sortOrder": 0, "isPublic": true, "statusMode": "auto",
+        "manualStatus": "operational", "aggregation": "worst", "status": "major_outage",
+        "monitorStatus": "operational", "statusChangedAt": "2026-11-19T21:25:01.702Z",
+        "checks": [
+          {
+            "checkId": "9deb…", "warningStatus": "degraded", "criticalStatus": "major_outage",
+            "unknownStatus": null,
+            "check": {
+              "id": "9deb…", "sourceId": "0bf2…", "sourceName": "Internal monitoring",
+              "sourceType": "webhook", "externalId": "web1!https", "name": "HTTPS", "host": "web1",
+              "state": "ok", "output": null, "lastCheckAt": "2026-11-19T21:25:01.696Z",
+              "lastStateChangeAt": "2026-11-19T21:25:01.696Z", "serviceCount": 1
+            }
+          }
+        ],
+        "createdAt": "2026-11-19T21:25:01.698Z", "updatedAt": "2026-11-19T21:25:01.700Z"
+      },
+      "relationships": {
+        "group": {"data": {"type": "service-groups", "id": "f633…"}},
+        "locations": {"data": [{"type": "locations", "id": "8361…"}]}
+      },
+      "links": {"self": "/api/admin/services/33ea…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/settings</code></summary>
+
+```http
+GET /api/admin/settings
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "settings", "id": "site",
+    "attributes": {
+      "siteName": "Status", "description": "", "accentColor": "#7c6cf2", "defaultLocale": "en",
+      "defaultTheme": "system", "footerLinks": [], "showLocations": true, "showUptime": true,
+      "uptimeDays": 90, "recentIncidentDays": 7, "emailSubscriptionsEnabled": false,
+      "maintenanceReminderHours": 24
+    },
+    "links": {"self": "/api/admin/settings"}
+  },
+  "links": {"self": "/api/admin/settings"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/settings</code></summary>
+
+```http
+PATCH /api/admin/settings
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "settings",
+    "attributes": {"siteName": "Example Status", "emailSubscriptionsEnabled": true},
+    "id": "site"
+  }
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "settings", "id": "site",
+    "attributes": {
+      "siteName": "Example Status", "description": "", "accentColor": "#7c6cf2",
+      "defaultLocale": "en", "defaultTheme": "system", "footerLinks": [], "showLocations": true,
+      "showUptime": true, "uptimeDays": 90, "recentIncidentDays": 7,
+      "emailSubscriptionsEnabled": true, "maintenanceReminderHours": 24
+    },
+    "links": {"self": "/api/admin/settings"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/audit-log</code></summary>
+
+```http
+GET /api/admin/audit-log?filter[entityType]=service&page[size]=2
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
   "data": [
     {
-      "type": "corrections",
-      "id": "c3a9…",
-      "attributes": { "startsAt": "…", "endsAt": "…", "status": "operational", "reason": "…", "showPublic": false, "publicNote": null, "createdBy": "…", "createdByName": "admin", "createdAt": "…", "updatedAt": "…" },
-      "relationships": { "services": { "data": [{ "type": "services", "id": "1b6f…" }] } },
-      "links": { "self": "/api/admin/corrections/c3a9…" }
+      "type": "audit-entries", "id": "536e…",
+      "attributes": {
+        "userName": "Ada", "action": "service.reorder", "entityType": "service", "entityId": null,
+        "details": {"ids": ["33ea…"]}, "createdAt": "2026-11-19T21:25:01.701Z"
+      },
+      "relationships": {"user": {"data": {"type": "users", "id": "c941…"}}}
     }
   ],
-  "included": [{ "type": "services", "id": "1b6f…", "attributes": { "name": "Public API" } }],
-  "meta": { "total": 1, "page": { "number": 1, "size": 20 } },
-  "links": { "self": "…", "first": "…", "prev": null, "next": null, "last": "…" }
+  "links": {
+    "self": "/api/admin/audit-log?filter[entityType]=service&page[number]=1&page[size]=2",
+    "first": "/api/admin/audit-log?filter[entityType]=service&page[number]=1&page[size]=2",
+    "prev": null,
+    "next": "/api/admin/audit-log?filter[entityType]=service&page[number]=2&page[size]=2",
+    "last": "/api/admin/audit-log?filter[entityType]=service&page[number]=2&page[size]=2"
+  },
+  "meta": {"total": 3, "page": {"number": 1, "size": 2}}
 }
 ```
 
-### Side effects the server must apply
+</details>
 
-- Creating/updating/resolving incidents, changing their affected services, starting/
-  completing/cancelling maintenance, editing services (mode, manual status, checks)
-  and deleting checks must call `ctx.engine.recompute(serviceIds)` for every
-  service that was affected **before and after** the change.
-- Posting an incident update with `status = resolved` sets `resolved_at`;
-  posting a non-resolved status on a resolved incident re-opens it (`resolved_at = null`).
-- Maintenance update `in_progress` sets `actual_start` (if empty), `completed`/`cancelled`
-  sets `actual_end`.
 
-### Behaviour details
+### Locations, service groups and services
 
-- `POST .../incidents/:incidentId/updates` and `POST .../maintenances/:maintenanceId/updates`
-  return `201` with the new update (see [Catalog resources](#catalog-resources));
-  `DELETE .../incidents/:incidentId/updates/:id` returns `204` (an incident keeps at
-  least one update, deleting the last one is `409`).
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/locations` | – | `locations[]` (`AdminLocation`, relationship `services`) in display order | editor |
+| POST | `/api/admin/locations` | `locations` (`LocationInput`) | `locations` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/locations/:id` | `locations` (partial `LocationInput`) | `locations`; DELETE 204 | GET editor, else admin |
+| POST | `/api/admin/locations/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
+| GET | `/api/admin/service-groups` | – | `service-groups[]` (`AdminServiceGroup`) in display order | editor |
+| POST | `/api/admin/service-groups` | `service-groups` (`ServiceGroupInput`) | `service-groups` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/service-groups/:id` | `service-groups` (partial `ServiceGroupInput`) | `service-groups`; DELETE 204 | GET editor, else admin |
+| POST | `/api/admin/service-groups/reorder` | attribute `ids` (`ReorderInput`) | 204 | admin |
+| GET | `/api/admin/services` | – | `services[]` (`AdminService`; relationships `group`, `locations`; the `checks` with their linked check stay attributes) in display order | editor |
+| POST | `/api/admin/services` | `services` (`ServiceInput`, relationships `group`, `locations`) | `services` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/services/:id` | `services` (partial `ServiceInput`) | `services`; DELETE 204 | GET editor, else admin |
+| POST | `/api/admin/services/reorder` | attribute `ids` (`ReorderInput`, within one group) | 204 | admin |
+| GET | `/api/admin/services/:id/preview` | – | meta `{ monitorStatus, status }` computed with the stored config (for the service builder) | editor |
+| POST | `/api/admin/services/preview` | `ServiceInput` (any type) | meta `{ monitorStatus }` computed for an unsaved config | admin |
+
+For `PATCH` on services, groups and locations the stored object is merged with the
+request before `ServiceInput`/`ServiceGroupInput`/`LocationInput` validate it; an
+omitted `slug` keeps the current slug. Reorder bodies are documents of any type
+whose attribute `ids` lists the new order.
+
+Examples:
+
+<details>
+<summary><code>POST /api/admin/locations</code></summary>
+
+```http
+POST /api/admin/locations
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "locations",
+    "attributes": {"name": "Frankfurt", "region": "europe", "code": "FRA"}
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/locations/8361…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "locations", "id": "8361…",
+    "attributes": {
+      "slug": "frankfurt", "name": "Frankfurt", "code": "FRA", "city": null, "country": null,
+      "region": "europe", "latitude": null, "longitude": null, "description": null,
+      "status": "operational", "sortOrder": 0, "isPublic": true, "statusOverride": null,
+      "createdAt": "2026-11-19T21:25:01.691Z", "updatedAt": "2026-11-19T21:25:01.691Z"
+    },
+    "relationships": {"services": {"data": []}}, "links": {"self": "/api/admin/locations/8361…"}
+  },
+  "links": {"self": "/api/admin/locations"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/locations</code></summary>
+
+```http
+GET /api/admin/locations
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "locations", "id": "8361…",
+      "attributes": {
+        "slug": "frankfurt", "name": "Frankfurt", "code": "FRA", "city": null, "country": null,
+        "region": "europe", "latitude": null, "longitude": null, "description": null,
+        "status": "operational", "sortOrder": 0, "isPublic": true, "statusOverride": null,
+        "createdAt": "2026-11-19T21:25:01.691Z", "updatedAt": "2026-11-19T21:25:01.691Z"
+      },
+      "relationships": {"services": {"data": []}}, "links": {"self": "/api/admin/locations/8361…"}
+    }
+  ],
+  "links": {"self": "/api/admin/locations"}, "meta": {"total": 1}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/locations/:id</code></summary>
+
+```http
+GET /api/admin/locations/8361…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "locations", "id": "8361…",
+    "attributes": {
+      "slug": "frankfurt", "name": "Frankfurt", "code": "FRA", "city": null, "country": null,
+      "region": "europe", "latitude": null, "longitude": null, "description": null,
+      "status": "operational", "sortOrder": 0, "isPublic": true, "statusOverride": null,
+      "createdAt": "2026-11-19T21:25:01.691Z", "updatedAt": "2026-11-19T21:25:01.691Z"
+    },
+    "relationships": {"services": {"data": []}}, "links": {"self": "/api/admin/locations/8361…"}
+  },
+  "links": {"self": "/api/admin/locations/8361…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/locations/:id</code></summary>
+
+```http
+PATCH /api/admin/locations/8361…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "locations", "attributes": {"status": "maintenance"}, "id": "8361…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "locations", "id": "8361…",
+    "attributes": {
+      "slug": "frankfurt", "name": "Frankfurt", "code": "FRA", "city": null, "country": null,
+      "region": "europe", "latitude": null, "longitude": null, "description": null,
+      "status": "operational", "sortOrder": 0, "isPublic": true, "statusOverride": null,
+      "createdAt": "2026-11-19T21:25:01.691Z", "updatedAt": "2026-11-19T21:25:01.693Z"
+    },
+    "relationships": {"services": {"data": []}}, "links": {"self": "/api/admin/locations/8361…"}
+  },
+  "links": {"self": "/api/admin/locations/8361…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/locations/reorder</code></summary>
+
+```http
+POST /api/admin/locations/reorder
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "reorder", "attributes": {"ids": ["8361…"]}}}
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/service-groups</code></summary>
+
+```http
+POST /api/admin/service-groups
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "service-groups", "attributes": {"name": "Platform"}}}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/service-groups/f633…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "service-groups", "id": "f633…",
+    "attributes": {
+      "slug": "platform", "name": "Platform", "description": null, "sortOrder": 0, "isPublic": true,
+      "collapsedByDefault": false, "createdAt": "2026-11-19T21:25:01.695Z",
+      "updatedAt": "2026-11-19T21:25:01.695Z"
+    },
+    "links": {"self": "/api/admin/service-groups/f633…"}
+  },
+  "links": {"self": "/api/admin/service-groups"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/service-groups</code></summary>
+
+```http
+GET /api/admin/service-groups
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "service-groups", "id": "f633…",
+      "attributes": {
+        "slug": "platform", "name": "Platform", "description": null, "sortOrder": 0,
+        "isPublic": true, "collapsedByDefault": false, "createdAt": "2026-11-19T21:25:01.695Z",
+        "updatedAt": "2026-11-19T21:25:01.695Z"
+      },
+      "links": {"self": "/api/admin/service-groups/f633…"}
+    }
+  ],
+  "links": {"self": "/api/admin/service-groups"}, "meta": {"total": 1}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/service-groups/:id</code></summary>
+
+```http
+GET /api/admin/service-groups/f633…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "service-groups", "id": "f633…",
+    "attributes": {
+      "slug": "platform", "name": "Platform", "description": null, "sortOrder": 0, "isPublic": true,
+      "collapsedByDefault": false, "createdAt": "2026-11-19T21:25:01.695Z",
+      "updatedAt": "2026-11-19T21:25:01.695Z"
+    },
+    "links": {"self": "/api/admin/service-groups/f633…"}
+  },
+  "links": {"self": "/api/admin/service-groups/f633…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/service-groups/:id</code></summary>
+
+```http
+PATCH /api/admin/service-groups/f633…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "service-groups", "attributes": {"description": "Core platform"}, "id": "f633…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "service-groups", "id": "f633…",
+    "attributes": {
+      "slug": "platform", "name": "Platform", "description": "Core platform", "sortOrder": 0,
+      "isPublic": true, "collapsedByDefault": false, "createdAt": "2026-11-19T21:25:01.695Z",
+      "updatedAt": "2026-11-19T21:25:01.696Z"
+    },
+    "links": {"self": "/api/admin/service-groups/f633…"}
+  },
+  "links": {"self": "/api/admin/service-groups/f633…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/service-groups/reorder</code></summary>
+
+```http
+POST /api/admin/service-groups/reorder
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "reorder", "attributes": {"ids": ["f633…"]}}}
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/services</code></summary>
+
+```http
+POST /api/admin/services
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "services",
+    "attributes": {"name": "Public API", "checks": [{"checkId": "9deb…"}]},
+    "relationships": {
+      "group": {"data": {"type": "service-groups", "id": "f633…"}},
+      "locations": {"data": [{"type": "locations", "id": "8361…"}]}
+    }
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/services/33ea…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "services", "id": "33ea…",
+    "attributes": {
+      "slug": "public-api", "name": "Public API", "description": null, "kind": "service",
+      "url": null, "sortOrder": 0, "isPublic": true, "statusMode": "auto",
+      "manualStatus": "operational", "aggregation": "worst", "status": "operational",
+      "monitorStatus": "operational", "statusChangedAt": null,
+      "checks": [
+        {
+          "checkId": "9deb…", "warningStatus": "degraded", "criticalStatus": "major_outage",
+          "unknownStatus": null,
+          "check": {
+            "id": "9deb…", "sourceId": "0bf2…", "sourceName": "Internal monitoring",
+            "sourceType": "webhook", "externalId": "web1!https", "name": "HTTPS", "host": "web1",
+            "state": "ok", "output": null, "lastCheckAt": "2026-11-19T21:25:01.696Z",
+            "lastStateChangeAt": "2026-11-19T21:25:01.696Z", "serviceCount": 1
+          }
+        }
+      ],
+      "createdAt": "2026-11-19T21:25:01.698Z", "updatedAt": "2026-11-19T21:25:01.698Z"
+    },
+    "relationships": {
+      "group": {"data": {"type": "service-groups", "id": "f633…"}},
+      "locations": {"data": [{"type": "locations", "id": "8361…"}]}
+    },
+    "links": {"self": "/api/admin/services/33ea…"}
+  },
+  "links": {"self": "/api/admin/services"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/services</code></summary>
+
+```http
+GET /api/admin/services
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "services", "id": "33ea…",
+      "attributes": {
+        "slug": "public-api", "name": "Public API", "description": null, "kind": "service",
+        "url": null, "sortOrder": 0, "isPublic": true, "statusMode": "auto",
+        "manualStatus": "operational", "aggregation": "worst", "status": "operational",
+        "monitorStatus": "operational", "statusChangedAt": null,
+        "checks": [
+          {
+            "checkId": "9deb…", "warningStatus": "degraded", "criticalStatus": "major_outage",
+            "unknownStatus": null,
+            "check": {
+              "id": "9deb…", "sourceId": "0bf2…", "sourceName": "Internal monitoring",
+              "sourceType": "webhook", "externalId": "web1!https", "name": "HTTPS", "host": "web1",
+              "state": "ok", "output": null, "lastCheckAt": "2026-11-19T21:25:01.696Z",
+              "lastStateChangeAt": "2026-11-19T21:25:01.696Z", "serviceCount": 1
+            }
+          }
+        ],
+        "createdAt": "2026-11-19T21:25:01.698Z", "updatedAt": "2026-11-19T21:25:01.698Z"
+      },
+      "relationships": {
+        "group": {"data": {"type": "service-groups", "id": "f633…"}},
+        "locations": {"data": [{"type": "locations", "id": "8361…"}]}
+      },
+      "links": {"self": "/api/admin/services/33ea…"}
+    }
+  ],
+  "links": {"self": "/api/admin/services"}, "meta": {"total": 1}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/services/:id</code></summary>
+
+```http
+GET /api/admin/services/33ea…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "services", "id": "33ea…",
+    "attributes": {
+      "slug": "public-api", "name": "Public API", "description": null, "kind": "service",
+      "url": null, "sortOrder": 0, "isPublic": true, "statusMode": "auto",
+      "manualStatus": "operational", "aggregation": "worst", "status": "operational",
+      "monitorStatus": "operational", "statusChangedAt": null,
+      "checks": [
+        {
+          "checkId": "9deb…", "warningStatus": "degraded", "criticalStatus": "major_outage",
+          "unknownStatus": null,
+          "check": {
+            "id": "9deb…", "sourceId": "0bf2…", "sourceName": "Internal monitoring",
+            "sourceType": "webhook", "externalId": "web1!https", "name": "HTTPS", "host": "web1",
+            "state": "ok", "output": null, "lastCheckAt": "2026-11-19T21:25:01.696Z",
+            "lastStateChangeAt": "2026-11-19T21:25:01.696Z", "serviceCount": 1
+          }
+        }
+      ],
+      "createdAt": "2026-11-19T21:25:01.698Z", "updatedAt": "2026-11-19T21:25:01.698Z"
+    },
+    "relationships": {
+      "group": {"data": {"type": "service-groups", "id": "f633…"}},
+      "locations": {"data": [{"type": "locations", "id": "8361…"}]}
+    },
+    "links": {"self": "/api/admin/services/33ea…"}
+  },
+  "links": {"self": "/api/admin/services/33ea…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/services/:id</code></summary>
+
+```http
+PATCH /api/admin/services/33ea…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "services", "attributes": {"description": "REST API"}, "id": "33ea…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "services", "id": "33ea…",
+    "attributes": {
+      "slug": "public-api", "name": "Public API", "description": "REST API", "kind": "service",
+      "url": null, "sortOrder": 0, "isPublic": true, "statusMode": "auto",
+      "manualStatus": "operational", "aggregation": "worst", "status": "operational",
+      "monitorStatus": "operational", "statusChangedAt": null,
+      "checks": [
+        {
+          "checkId": "9deb…", "warningStatus": "degraded", "criticalStatus": "major_outage",
+          "unknownStatus": null,
+          "check": {
+            "id": "9deb…", "sourceId": "0bf2…", "sourceName": "Internal monitoring",
+            "sourceType": "webhook", "externalId": "web1!https", "name": "HTTPS", "host": "web1",
+            "state": "ok", "output": null, "lastCheckAt": "2026-11-19T21:25:01.696Z",
+            "lastStateChangeAt": "2026-11-19T21:25:01.696Z", "serviceCount": 1
+          }
+        }
+      ],
+      "createdAt": "2026-11-19T21:25:01.698Z", "updatedAt": "2026-11-19T21:25:01.700Z"
+    },
+    "relationships": {
+      "group": {"data": {"type": "service-groups", "id": "f633…"}},
+      "locations": {"data": [{"type": "locations", "id": "8361…"}]}
+    },
+    "links": {"self": "/api/admin/services/33ea…"}
+  },
+  "links": {"self": "/api/admin/services/33ea…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/services/reorder</code></summary>
+
+```http
+POST /api/admin/services/reorder
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "reorder", "attributes": {"ids": ["33ea…"]}}}
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/services/:id/preview</code></summary>
+
+```http
+GET /api/admin/services/33ea…/preview
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "meta": {"monitorStatus": "operational", "status": "operational"},
+  "links": {"self": "/api/admin/services/33ea…/preview"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/services/preview</code></summary>
+
+```http
+POST /api/admin/services/preview
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "services",
+    "attributes": {
+      "name": "Draft", "statusMode": "auto", "aggregation": "worst",
+      "checks": [{"checkId": "9deb…"}]
+    }
+  }
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{"jsonapi": {"version": "1.1"}, "meta": {"monitorStatus": "operational"}}
+```
+
+</details>
+
+
+### Incidents
+
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/incidents` | `filter[status]=active\|resolved\|all`, `page[number]`, `page[size]`, `include` (`updates`, default) | paginated `incidents[]` (`AdminIncident`, newest first; relationships `locations`, `updates`) | editor |
+| POST | `/api/admin/incidents` | `incidents` (`IncidentCreateInput`, relationship `locations`) | `incidents` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/incidents/:id` | `incidents` (`IncidentPatchInput`) | `incidents`; DELETE 204 | editor |
+| POST | `/api/admin/incidents/:incidentId/updates` | `incident-updates` (`IncidentUpdateInput`) | `incident-updates` (201, relationship `incident`; the incident with its new status is included) | editor |
+| GET/PATCH/DELETE | `/api/admin/incidents/:incidentId/updates/:id` | `incident-updates` (`IncidentUpdateEditInput`) | `incident-updates` with the incident included; DELETE 204 (deleting the last update is `409`) | editor |
+
+- Posting an update with `status = resolved` sets `resolvedAt`; posting a
+  non-resolved status on a resolved incident re-opens it (`resolvedAt = null`).
 - `PATCH /api/admin/incidents/:id` accepts `resolvedAt` only for resolved incidents
   (to correct the time); resolving and re-opening is done by posting an update.
+
+Examples:
+
+<details>
+<summary><code>POST /api/admin/incidents</code></summary>
+
+```http
+POST /api/admin/incidents
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "incidents",
+    "attributes": {
+      "title": "Database outage", "message": "We are investigating.", "impact": "major",
+      "affectedServices": [{"serviceId": "33ea…", "status": "major_outage"}]
+    }
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/incidents/6c02…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "incidents", "id": "6c02…",
+    "attributes": {
+      "title": "Database outage", "status": "investigating", "impact": "major",
+      "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+      "updatedAt": "2026-11-19T21:25:01.702Z",
+      "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}],
+      "isPublic": true, "source": "manual", "createdAt": "2026-11-19T21:25:01.702Z",
+      "createdBy": "c941…"
+    },
+    "relationships": {
+      "locations": {"data": []},
+      "updates": {"data": [{"type": "incident-updates", "id": "6d14…"}]}
+    },
+    "links": {"self": "/api/admin/incidents/6c02…"}
+  },
+  "links": {"self": "/api/admin/incidents"},
+  "included": [
+    {
+      "type": "incident-updates", "id": "6d14…",
+      "attributes": {
+        "status": "investigating", "message": "We are investigating.",
+        "createdAt": "2026-11-19T21:25:01.702Z"
+      },
+      "relationships": {"incident": {"data": {"type": "incidents", "id": "6c02…"}}},
+      "links": {"self": "/api/admin/incidents/6c02…/updates/6d14…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/incidents</code></summary>
+
+```http
+GET /api/admin/incidents?filter[status]=active&page[size]=10
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "incidents", "id": "6c02…",
+      "attributes": {
+        "title": "Database outage", "status": "investigating", "impact": "major",
+        "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+        "updatedAt": "2026-11-19T21:25:01.702Z",
+        "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}],
+        "isPublic": true, "source": "manual", "createdAt": "2026-11-19T21:25:01.702Z",
+        "createdBy": "c941…"
+      },
+      "relationships": {
+        "locations": {"data": []},
+        "updates": {"data": [{"type": "incident-updates", "id": "6d14…"}]}
+      },
+      "links": {"self": "/api/admin/incidents/6c02…"}
+    }
+  ],
+  "links": {
+    "self": "/api/admin/incidents?filter[status]=active&page[number]=1&page[size]=10",
+    "first": "/api/admin/incidents?filter[status]=active&page[number]=1&page[size]=10", "prev": null,
+    "next": null, "last": "/api/admin/incidents?filter[status]=active&page[number]=1&page[size]=10"
+  },
+  "meta": {"total": 1, "page": {"number": 1, "size": 10}},
+  "included": [
+    {
+      "type": "incident-updates", "id": "6d14…",
+      "attributes": {
+        "status": "investigating", "message": "We are investigating.",
+        "createdAt": "2026-11-19T21:25:01.702Z"
+      },
+      "relationships": {"incident": {"data": {"type": "incidents", "id": "6c02…"}}},
+      "links": {"self": "/api/admin/incidents/6c02…/updates/6d14…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/incidents/:id</code></summary>
+
+```http
+GET /api/admin/incidents/6c02…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "incidents", "id": "6c02…",
+    "attributes": {
+      "title": "Database outage", "status": "investigating", "impact": "major",
+      "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+      "updatedAt": "2026-11-19T21:25:01.702Z",
+      "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}],
+      "isPublic": true, "source": "manual", "createdAt": "2026-11-19T21:25:01.702Z",
+      "createdBy": "c941…"
+    },
+    "relationships": {
+      "locations": {"data": []},
+      "updates": {"data": [{"type": "incident-updates", "id": "6d14…"}]}
+    },
+    "links": {"self": "/api/admin/incidents/6c02…"}
+  },
+  "links": {"self": "/api/admin/incidents/6c02…"},
+  "included": [
+    {
+      "type": "incident-updates", "id": "6d14…",
+      "attributes": {
+        "status": "investigating", "message": "We are investigating.",
+        "createdAt": "2026-11-19T21:25:01.702Z"
+      },
+      "relationships": {"incident": {"data": {"type": "incidents", "id": "6c02…"}}},
+      "links": {"self": "/api/admin/incidents/6c02…/updates/6d14…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/incidents/:id</code></summary>
+
+```http
+PATCH /api/admin/incidents/6c02…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "incidents", "attributes": {"title": "Database outage (EU)"}, "id": "6c02…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "incidents", "id": "6c02…",
+    "attributes": {
+      "title": "Database outage (EU)", "status": "investigating", "impact": "major",
+      "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+      "updatedAt": "2026-11-19T21:25:01.705Z",
+      "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}],
+      "isPublic": true, "source": "manual", "createdAt": "2026-11-19T21:25:01.702Z",
+      "createdBy": "c941…"
+    },
+    "relationships": {
+      "locations": {"data": []},
+      "updates": {"data": [{"type": "incident-updates", "id": "6d14…"}]}
+    },
+    "links": {"self": "/api/admin/incidents/6c02…"}
+  },
+  "links": {"self": "/api/admin/incidents/6c02…"},
+  "included": [
+    {
+      "type": "incident-updates", "id": "6d14…",
+      "attributes": {
+        "status": "investigating", "message": "We are investigating.",
+        "createdAt": "2026-11-19T21:25:01.702Z"
+      },
+      "relationships": {"incident": {"data": {"type": "incidents", "id": "6c02…"}}},
+      "links": {"self": "/api/admin/incidents/6c02…/updates/6d14…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/incidents/:incidentId/updates</code></summary>
+
+```http
+POST /api/admin/incidents/6c02…/updates
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "incident-updates",
+    "attributes": {"status": "identified", "message": "A failed disk."}
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/incidents/6c02…/updates/25c4…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "incident-updates", "id": "25c4…",
+    "attributes": {
+      "status": "identified", "message": "A failed disk.", "createdAt": "2026-11-19T21:25:01.706Z"
+    },
+    "relationships": {"incident": {"data": {"type": "incidents", "id": "6c02…"}}},
+    "links": {"self": "/api/admin/incidents/6c02…/updates/25c4…"}
+  },
+  "links": {"self": "/api/admin/incidents/6c02…/updates"},
+  "included": [
+    {
+      "type": "incidents", "id": "6c02…",
+      "attributes": {
+        "title": "Database outage (EU)", "status": "identified", "impact": "major",
+        "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+        "updatedAt": "2026-11-19T21:25:01.706Z",
+        "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}],
+        "isPublic": true, "source": "manual", "createdAt": "2026-11-19T21:25:01.702Z",
+        "createdBy": "c941…"
+      },
+      "relationships": {
+        "locations": {"data": []},
+        "updates": {
+          "data": [
+            {"type": "incident-updates", "id": "25c4…"},
+            {"type": "incident-updates", "id": "6d14…"}
+          ]
+        }
+      },
+      "links": {"self": "/api/admin/incidents/6c02…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/incidents/:incidentId/updates/:id</code></summary>
+
+```http
+GET /api/admin/incidents/6c02…/updates/25c4…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "incident-updates", "id": "25c4…",
+    "attributes": {
+      "status": "identified", "message": "A failed disk.", "createdAt": "2026-11-19T21:25:01.706Z"
+    },
+    "relationships": {"incident": {"data": {"type": "incidents", "id": "6c02…"}}},
+    "links": {"self": "/api/admin/incidents/6c02…/updates/25c4…"}
+  },
+  "links": {"self": "/api/admin/incidents/6c02…/updates/25c4…"},
+  "included": [
+    {
+      "type": "incidents", "id": "6c02…",
+      "attributes": {
+        "title": "Database outage (EU)", "status": "identified", "impact": "major",
+        "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+        "updatedAt": "2026-11-19T21:25:01.706Z",
+        "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}],
+        "isPublic": true, "source": "manual", "createdAt": "2026-11-19T21:25:01.702Z",
+        "createdBy": "c941…"
+      },
+      "relationships": {
+        "locations": {"data": []},
+        "updates": {
+          "data": [
+            {"type": "incident-updates", "id": "25c4…"},
+            {"type": "incident-updates", "id": "6d14…"}
+          ]
+        }
+      },
+      "links": {"self": "/api/admin/incidents/6c02…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/incidents/:incidentId/updates/:id</code></summary>
+
+```http
+PATCH /api/admin/incidents/6c02…/updates/25c4…
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "incident-updates",
+    "attributes": {"message": "A failed disk in the primary."},
+    "id": "25c4…"
+  }
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "incident-updates", "id": "25c4…",
+    "attributes": {
+      "status": "identified", "message": "A failed disk in the primary.",
+      "createdAt": "2026-11-19T21:25:01.706Z"
+    },
+    "relationships": {"incident": {"data": {"type": "incidents", "id": "6c02…"}}},
+    "links": {"self": "/api/admin/incidents/6c02…/updates/25c4…"}
+  },
+  "links": {"self": "/api/admin/incidents/6c02…/updates/25c4…"},
+  "included": [
+    {
+      "type": "incidents", "id": "6c02…",
+      "attributes": {
+        "title": "Database outage (EU)", "status": "identified", "impact": "major",
+        "startedAt": "2026-11-19T21:25:01.702Z", "resolvedAt": null,
+        "updatedAt": "2026-11-19T21:25:01.707Z",
+        "affectedServices": [{"id": "33ea…", "name": "Public API", "status": "major_outage"}],
+        "isPublic": true, "source": "manual", "createdAt": "2026-11-19T21:25:01.702Z",
+        "createdBy": "c941…"
+      },
+      "relationships": {
+        "locations": {"data": []},
+        "updates": {
+          "data": [
+            {"type": "incident-updates", "id": "25c4…"},
+            {"type": "incident-updates", "id": "6d14…"}
+          ]
+        }
+      },
+      "links": {"self": "/api/admin/incidents/6c02…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>DELETE /api/admin/incidents/:incidentId/updates/:id</code></summary>
+
+```http
+DELETE /api/admin/incidents/6c02…/updates/25c4…
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+</details>
+
+
+### Maintenance
+
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/maintenances` | `filter[status]=upcoming\|active\|past\|all`, `page[number]`, `page[size]`, `include` (`updates`, default) | paginated `maintenances[]` (`AdminMaintenance`; relationships `services`, `locations`, `updates`) | editor |
+| POST | `/api/admin/maintenances` | `maintenances` (`MaintenanceCreateInput`, relationships `services`, `locations`) | `maintenances` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/maintenances/:id` | `maintenances` (`MaintenancePatchInput`) | `maintenances`; DELETE 204 | editor |
+| POST | `/api/admin/maintenances/:maintenanceId/updates` | `maintenance-updates` (`MaintenanceUpdateInput`) | `maintenance-updates` (201, relationship `maintenance`, the maintenance included) | editor |
+| GET | `/api/admin/maintenances/:maintenanceId/updates/:id` | – | `maintenance-updates` with the maintenance included | editor |
+
 - Creating a maintenance adds a first `scheduled` update with an empty message
   (clients render a localized default text). Windows that are already due are
   started/completed right away instead of on the next worker tick.
+- Update `in_progress` sets `actualStart` (if empty), `completed`/`cancelled` sets
+  `actualEnd`.
 - Retroactive maintenance (`AdminMaintenance.retroactive`): a window whose end is
   not after the creation time is created directly as `completed` with
   `actualStart`/`actualEnd` = the window and `in_progress`/`completed` updates at
-  those times; **no** email is queued (no announcement, reminder or transition).
-  A window with `autoStart` that started at least 5 minutes before the creation
-  time and has not ended is created as `in_progress` (`actualStart` = scheduled
-  start, one `in_progress` update at that time); only that "in progress" email is
-  queued (if `notify` and public), no announcement. Windows starting later or
-  without `autoStart` behave as before. Changing the window of a retroactive
-  maintenance keeps `actualStart` (and, when completed, `actualEnd`, which must
-  then not be in the future) in line with it.
-- `PUT` bodies are complete objects (schema defaults apply to omitted fields);
-  an omitted `slug` keeps the current slug. An explicit slug that is taken is `409`.
-  explicit slug that is taken is `409`.
-- `PUT /api/admin/users/:id` with `password: null` removes the local password
-  (not allowed for yourself). Changing a password signs that user out everywhere.
-- Mutations through API tokens are audited with `userId = null` and
-  `details.apiToken = <token name>`; logins are audited as `auth.login`.
-- API tokens are prefixed with `osp_`.
-- `/api/public/history?locationId=` matches items linked to the location directly
-  or affecting a service running there. Filters referencing non-public entities
-  return an empty page.
-- Check bundles: each bundle owns a check of the built-in source of type `bundle`
-  (`AdminCheckBundle.checkId`) that is linked to services like any check. That
-  source answers `409` to `PATCH` and `rotate-token`, `400` to `test`/`poll`, `409`
-  to ingest and to `DELETE` while bundles exist. Members must be existing checks
-  that are not bundle checks (`400`). Voting rules: [adapters/README.md](adapters/README.md#check-bundles).
-  Audit actions `check_bundle.create|update|delete`.
-- History import ([adapters/README.md](adapters/README.md#history-import)):
-  `HistoryImportCreateInput` = `{ from, to, onlyLinkedChecks = true, credentials?, csv? }`
-  with `to` capped at now and a range of at most 731 days. `credentials`
-  (`username`, `password`, `totp` for Uptime Kuma, `databaseUrl` for Icinga DB)
-  are used for this import only: stored encrypted on the job until fetching
-  ends, never returned; without them the values stored in the source config
-  (`historyUsername`/`historyPassword`, `icingaDbUrl`, both secrets masked like
-  `password`) are used, otherwise `400`. `csv` imports the file instead of
-  calling the source (required for `webhook` sources); an invalid file is `400`
-  with `issues: [{ line, code, params, message }]` (`code` and `params` for
-  translated messages, `message` in English; codes in `HistoryCsvIssue`). One active job (`fetching`, `ready`,
-  `applying`) per source, otherwise `409`; the `bundle` source answers `409`.
-  Jobs run in the background (poll `GET …/:importId`); jobs without progress for
-  15 minutes are marked `failed` and previews expire after 24 hours (checked
-  whenever jobs are read or started, so also without a worker process).
-  Applying is serialised across all sources (PostgreSQL advisory lock, SQLite
-  write lock): the plan is made and written in one transaction. Preview
-  `warnings` are `{ code, params, message }` (`HistoryImportWarning`); a failed
-  or expired job has `errorCode` (`source`, `timeout`, `shutdown`, `interrupted`,
-  `expired`, `apply_failed`) and an English `error`, redacted of secrets. Audit actions
-  `history_import.start|apply|complete|cancel` (entity `monitor_source`, details
-  without credentials or CSV content).
-- `monitor_check_history` rows carry `source = live | import`,
-  `service_status_history` rows `live | import | import_explicit` (service
-  statuses from a CSV file). Imports only write into periods without `live`
-  rows; they replace earlier `import` rows in their range, and
-  `import_explicit` rows only where a new CSV file has service rows.
-- Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
-- `notify` (default `true`) in `IncidentCreateInput`, `IncidentUpdateInput`,
-  `MaintenanceCreateInput` and `MaintenanceUpdateInput` queues subscriber emails for
-  that event, only for public incidents/maintenance. The maintenance stores the flag
-  (`AdminMaintenance.notify`, changeable with `MaintenancePatchInput.notify`); automatic
-  start/completion and the reminder only notify when it is set.
-  `AdminMaintenance.reminderSentAt` is the time the reminder was queued; it is reset
-  when `scheduledStart` moves later. Notification errors never fail the request.
+  those times; **no** email is queued. A window with `autoStart` that started at
+  least 5 minutes before the creation time and has not ended is created as
+  `in_progress` (`actualStart` = scheduled start, one `in_progress` update at that
+  time); only that "in progress" email is queued (if `notify` and public). Changing
+  the window of a retroactive maintenance keeps `actualStart` (and, when completed,
+  `actualEnd`, which must then not be in the future) in line with it. A running
+  retroactive maintenance whose `scheduledEnd` is moved into the past is completed
+  at once, without email.
+
+Examples:
+
+<details>
+<summary><code>POST /api/admin/maintenances</code></summary>
+
+```http
+POST /api/admin/maintenances
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "maintenances",
+    "attributes": {
+      "title": "Database upgrade", "scheduledStart": "2026-11-20T21:25:01.707Z",
+      "scheduledEnd": "2026-11-20T22:25:01.707Z"
+    },
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}}
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/maintenances/f84a…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "maintenances", "id": "f84a…",
+    "attributes": {
+      "title": "Database upgrade", "description": "", "status": "scheduled",
+      "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
+      "actualStart": null, "actualEnd": null,
+      "affectedServices": [{"id": "33ea…", "name": "Public API"}], "autoStart": true,
+      "autoComplete": true, "isPublic": true, "notify": true, "reminderSentAt": null,
+      "retroactive": false, "createdAt": "2026-11-19T21:25:01.708Z",
+      "updatedAt": "2026-11-19T21:25:01.708Z"
+    },
+    "relationships": {
+      "services": {"data": [{"type": "services", "id": "33ea…"}]},
+      "locations": {"data": []},
+      "updates": {"data": [{"type": "maintenance-updates", "id": "cd48…"}]}
+    },
+    "links": {"self": "/api/admin/maintenances/f84a…"}
+  },
+  "links": {"self": "/api/admin/maintenances"},
+  "included": [
+    {
+      "type": "maintenance-updates", "id": "cd48…",
+      "attributes": {"status": "scheduled", "message": "", "createdAt": "2026-11-19T21:25:01.708Z"},
+      "relationships": {"maintenance": {"data": {"type": "maintenances", "id": "f84a…"}}},
+      "links": {"self": "/api/admin/maintenances/f84a…/updates/cd48…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/maintenances</code></summary>
+
+```http
+GET /api/admin/maintenances?filter[status]=upcoming
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "maintenances", "id": "f84a…",
+      "attributes": {
+        "title": "Database upgrade", "description": "", "status": "scheduled",
+        "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
+        "actualStart": null, "actualEnd": null,
+        "affectedServices": [{"id": "33ea…", "name": "Public API"}], "autoStart": true,
+        "autoComplete": true, "isPublic": true, "notify": true, "reminderSentAt": null,
+        "retroactive": false, "createdAt": "2026-11-19T21:25:01.708Z",
+        "updatedAt": "2026-11-19T21:25:01.708Z"
+      },
+      "relationships": {
+        "services": {"data": [{"type": "services", "id": "33ea…"}]},
+        "locations": {"data": []},
+        "updates": {"data": [{"type": "maintenance-updates", "id": "cd48…"}]}
+      },
+      "links": {"self": "/api/admin/maintenances/f84a…"}
+    }
+  ],
+  "links": {
+    "self": "/api/admin/maintenances?filter[status]=upcoming&page[number]=1&page[size]=20",
+    "first": "/api/admin/maintenances?filter[status]=upcoming&page[number]=1&page[size]=20",
+    "prev": null, "next": null,
+    "last": "/api/admin/maintenances?filter[status]=upcoming&page[number]=1&page[size]=20"
+  },
+  "meta": {"total": 1, "page": {"number": 1, "size": 20}},
+  "included": [
+    {
+      "type": "maintenance-updates", "id": "cd48…",
+      "attributes": {"status": "scheduled", "message": "", "createdAt": "2026-11-19T21:25:01.708Z"},
+      "relationships": {"maintenance": {"data": {"type": "maintenances", "id": "f84a…"}}},
+      "links": {"self": "/api/admin/maintenances/f84a…/updates/cd48…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/maintenances/:id</code></summary>
+
+```http
+GET /api/admin/maintenances/f84a…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "maintenances", "id": "f84a…",
+    "attributes": {
+      "title": "Database upgrade", "description": "", "status": "scheduled",
+      "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
+      "actualStart": null, "actualEnd": null,
+      "affectedServices": [{"id": "33ea…", "name": "Public API"}], "autoStart": true,
+      "autoComplete": true, "isPublic": true, "notify": true, "reminderSentAt": null,
+      "retroactive": false, "createdAt": "2026-11-19T21:25:01.708Z",
+      "updatedAt": "2026-11-19T21:25:01.708Z"
+    },
+    "relationships": {
+      "services": {"data": [{"type": "services", "id": "33ea…"}]},
+      "locations": {"data": []},
+      "updates": {"data": [{"type": "maintenance-updates", "id": "cd48…"}]}
+    },
+    "links": {"self": "/api/admin/maintenances/f84a…"}
+  },
+  "links": {"self": "/api/admin/maintenances/f84a…"},
+  "included": [
+    {
+      "type": "maintenance-updates", "id": "cd48…",
+      "attributes": {"status": "scheduled", "message": "", "createdAt": "2026-11-19T21:25:01.708Z"},
+      "relationships": {"maintenance": {"data": {"type": "maintenances", "id": "f84a…"}}},
+      "links": {"self": "/api/admin/maintenances/f84a…/updates/cd48…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/maintenances/:id</code></summary>
+
+```http
+PATCH /api/admin/maintenances/f84a…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "maintenances", "attributes": {"description": "PostgreSQL 17"}, "id": "f84a…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "maintenances", "id": "f84a…",
+    "attributes": {
+      "title": "Database upgrade", "description": "PostgreSQL 17", "status": "scheduled",
+      "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
+      "actualStart": null, "actualEnd": null,
+      "affectedServices": [{"id": "33ea…", "name": "Public API"}], "autoStart": true,
+      "autoComplete": true, "isPublic": true, "notify": true, "reminderSentAt": null,
+      "retroactive": false, "createdAt": "2026-11-19T21:25:01.708Z",
+      "updatedAt": "2026-11-19T21:25:01.710Z"
+    },
+    "relationships": {
+      "services": {"data": [{"type": "services", "id": "33ea…"}]},
+      "locations": {"data": []},
+      "updates": {"data": [{"type": "maintenance-updates", "id": "cd48…"}]}
+    },
+    "links": {"self": "/api/admin/maintenances/f84a…"}
+  },
+  "links": {"self": "/api/admin/maintenances/f84a…"},
+  "included": [
+    {
+      "type": "maintenance-updates", "id": "cd48…",
+      "attributes": {"status": "scheduled", "message": "", "createdAt": "2026-11-19T21:25:01.708Z"},
+      "relationships": {"maintenance": {"data": {"type": "maintenances", "id": "f84a…"}}},
+      "links": {"self": "/api/admin/maintenances/f84a…/updates/cd48…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/maintenances/:maintenanceId/updates</code></summary>
+
+```http
+POST /api/admin/maintenances/f84a…/updates
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "maintenance-updates",
+    "attributes": {"status": "scheduled", "message": "Moved by one hour."}
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/maintenances/f84a…/updates/8c90…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "maintenance-updates", "id": "8c90…",
+    "attributes": {
+      "status": "scheduled", "message": "Moved by one hour.",
+      "createdAt": "2026-11-19T21:25:01.711Z"
+    },
+    "relationships": {"maintenance": {"data": {"type": "maintenances", "id": "f84a…"}}},
+    "links": {"self": "/api/admin/maintenances/f84a…/updates/8c90…"}
+  },
+  "links": {"self": "/api/admin/maintenances/f84a…/updates"},
+  "included": [
+    {
+      "type": "maintenances", "id": "f84a…",
+      "attributes": {
+        "title": "Database upgrade", "description": "PostgreSQL 17", "status": "scheduled",
+        "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
+        "actualStart": null, "actualEnd": null,
+        "affectedServices": [{"id": "33ea…", "name": "Public API"}], "autoStart": true,
+        "autoComplete": true, "isPublic": true, "notify": true, "reminderSentAt": null,
+        "retroactive": false, "createdAt": "2026-11-19T21:25:01.708Z",
+        "updatedAt": "2026-11-19T21:25:01.711Z"
+      },
+      "relationships": {
+        "services": {"data": [{"type": "services", "id": "33ea…"}]},
+        "locations": {"data": []},
+        "updates": {
+          "data": [
+            {"type": "maintenance-updates", "id": "8c90…"},
+            {"type": "maintenance-updates", "id": "cd48…"}
+          ]
+        }
+      },
+      "links": {"self": "/api/admin/maintenances/f84a…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/maintenances/:maintenanceId/updates/:id</code></summary>
+
+```http
+GET /api/admin/maintenances/f84a…/updates/8c90…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "maintenance-updates", "id": "8c90…",
+    "attributes": {
+      "status": "scheduled", "message": "Moved by one hour.",
+      "createdAt": "2026-11-19T21:25:01.711Z"
+    },
+    "relationships": {"maintenance": {"data": {"type": "maintenances", "id": "f84a…"}}},
+    "links": {"self": "/api/admin/maintenances/f84a…/updates/8c90…"}
+  },
+  "links": {"self": "/api/admin/maintenances/f84a…/updates/8c90…"},
+  "included": [
+    {
+      "type": "maintenances", "id": "f84a…",
+      "attributes": {
+        "title": "Database upgrade", "description": "PostgreSQL 17", "status": "scheduled",
+        "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
+        "actualStart": null, "actualEnd": null,
+        "affectedServices": [{"id": "33ea…", "name": "Public API"}], "autoStart": true,
+        "autoComplete": true, "isPublic": true, "notify": true, "reminderSentAt": null,
+        "retroactive": false, "createdAt": "2026-11-19T21:25:01.708Z",
+        "updatedAt": "2026-11-19T21:25:01.711Z"
+      },
+      "relationships": {
+        "services": {"data": [{"type": "services", "id": "33ea…"}]},
+        "locations": {"data": []},
+        "updates": {
+          "data": [
+            {"type": "maintenance-updates", "id": "8c90…"},
+            {"type": "maintenance-updates", "id": "cd48…"}
+          ]
+        }
+      },
+      "links": {"self": "/api/admin/maintenances/f84a…"}
+    }
+  ]
+}
+```
+
+</details>
+
 
 ### History corrections
 
-The measured `service_status_history` is never changed. Whenever uptime or
-history is computed (public uptime bars and percentages, the admin history
-comparison), corrections are applied on top
-(`apps/server/src/services/history-corrections.ts`, pure and unit tested):
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/corrections` | `filter[service]`, `filter[from]`, `filter[to]` (overlapping the range), `page[number]`, `page[size]`, `include` (`services`, default) | paginated `corrections[]` (`AdminCorrection`, newest start first; relationship `services`, included as sparse resources with only their `name`) | editor |
+| POST | `/api/admin/corrections` | `corrections` (`CorrectionInput`, relationship `services`) | `corrections` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/corrections/:id` | `corrections` (`CorrectionPatchInput`) | `corrections`; DELETE 204 | editor |
+| GET | `/api/admin/services/:id/history` | `filter[from]`, `filter[to]` (required, at most 366 days, `ServiceHistoryQuery`) | `service-histories` (id = service id; `AdminServiceHistory`: measured and corrected segments and uptime; relationships `service`, `corrections`; the corrections and their services are included) | editor |
+
+The measured `service_status_history` is never changed. Whenever uptime or history
+is computed (public uptime bars and percentages, the admin history comparison),
+corrections are applied on top (`apps/server/src/services/history-corrections.ts`,
+pure and unit tested):
 
 1. measured segments,
 2. retroactive maintenance windows (`retroactive = 1`, status `in_progress` or
@@ -580,37 +2637,294 @@ comparison), corrections are applied on top
    overlap, the one **created last** wins (creation times are strictly increasing).
 
 Everything is clipped at now; corrections may also cover time without measured
-data. Corrections never change the current status of a service and send no
-email.
+data. Corrections never change the current status of a service and send no email.
 
-- `CorrectionInput`: `serviceIds` (≥ 1), `startsAt`, `endsAt` (after `startsAt`,
-  at most 366 days later, not in the future: up to 5 minutes ahead is clamped to
-  now, more is `400`), `status` (any `ServiceStatus`), `reason` (required,
-  internal), `showPublic` (default `false`), `publicNote` (optional, ≤ 500).
-- `PATCH` accepts any subset; the merged range is validated again. `serviceIds`
-  replaces the services.
-- Validation errors (`400`): `startsAt must be in the past`, `endsAt must be
-  after startsAt` (also when clamping the end to now leaves an empty range),
-  span longer than 366 days; the same for `POST` and `PATCH`.
+- `CorrectionInput`: `serviceIds` (≥ 1, the `services` relationship), `startsAt`,
+  `endsAt` (after `startsAt`, at most 366 days later, not in the future: up to
+  5 minutes ahead is clamped to now, more is `400`), `status` (any
+  `ServiceStatus`), `reason` (required, internal), `showPublic` (default `false`),
+  `publicNote` (optional, ≤ 500).
+- `PATCH` accepts any subset; the merged range is validated again. The `services`
+  relationship replaces the services.
+- Validation errors (`400`): `startsAt must be in the past`, `endsAt must be after
+  startsAt` (also when clamping the end to now leaves an empty range), span longer
+  than 366 days; the same for `POST` and `PATCH`.
 - Audit: `correction.create` (services, range, status, reason, public flag and
-  note), `correction.update` (`fields` plus `before` and `after` with all of
-  these), `correction.delete` (services, range, status and reason).
-- Deleting a service removes it from its corrections; corrections left without
-  any service are deleted with it (their ids are recorded in the
-  `service.delete` audit entry).
-- Retroactive maintenance (`retroactive = true`) that is still running and
-  whose `scheduledEnd` is moved into the past by `PATCH` is completed at once,
-  with `actualEnd = scheduledEnd` and a `completed` update at that time, and
-  without email.
+  note), `correction.update` (`fields` plus `before` and `after` with all of these),
+  `correction.delete` (services, range, status and reason).
+- Deleting a service removes it from its corrections; corrections left without any
+  service are deleted with it (their ids are recorded in the `service.delete` audit
+  entry).
 
-### Monitoring resources
+Examples:
+
+<details>
+<summary><code>POST /api/admin/corrections</code></summary>
+
+```http
+POST /api/admin/corrections
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "corrections",
+    "attributes": {
+      "startsAt": "2026-11-19T19:25:01.712Z", "endsAt": "2026-11-19T20:25:01.712Z",
+      "status": "operational", "reason": "False alarm"
+    },
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}}
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/corrections/5684…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "corrections", "id": "5684…",
+    "attributes": {
+      "startsAt": "2026-11-19T19:25:01.712Z", "endsAt": "2026-11-19T20:25:01.712Z",
+      "status": "operational", "reason": "False alarm", "showPublic": false, "publicNote": null,
+      "createdBy": "c941…", "createdByName": "Ada", "createdAt": "2026-11-19T21:25:01.712Z",
+      "updatedAt": "2026-11-19T21:25:01.712Z"
+    },
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}},
+    "links": {"self": "/api/admin/corrections/5684…"}
+  },
+  "links": {"self": "/api/admin/corrections"},
+  "included": [{"type": "services", "id": "33ea…", "attributes": {"name": "Public API"}}]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/corrections</code></summary>
+
+```http
+GET /api/admin/corrections?filter[service]=33ea…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "corrections", "id": "5684…",
+      "attributes": {
+        "startsAt": "2026-11-19T19:25:01.712Z", "endsAt": "2026-11-19T20:25:01.712Z",
+        "status": "operational", "reason": "False alarm", "showPublic": false, "publicNote": null,
+        "createdBy": "c941…", "createdByName": "Ada", "createdAt": "2026-11-19T21:25:01.712Z",
+        "updatedAt": "2026-11-19T21:25:01.712Z"
+      },
+      "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}},
+      "links": {"self": "/api/admin/corrections/5684…"}
+    }
+  ],
+  "links": {
+    "self": "/api/admin/corrections?filter[service]=33ea…&page[number]=1&page[size]=20",
+    "first": "/api/admin/corrections?filter[service]=33ea…&page[number]=1&page[size]=20",
+    "prev": null, "next": null,
+    "last": "/api/admin/corrections?filter[service]=33ea…&page[number]=1&page[size]=20"
+  },
+  "meta": {"total": 1, "page": {"number": 1, "size": 20}},
+  "included": [{"type": "services", "id": "33ea…", "attributes": {"name": "Public API"}}]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/corrections/:id</code></summary>
+
+```http
+GET /api/admin/corrections/5684…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "corrections", "id": "5684…",
+    "attributes": {
+      "startsAt": "2026-11-19T19:25:01.712Z", "endsAt": "2026-11-19T20:25:01.712Z",
+      "status": "operational", "reason": "False alarm", "showPublic": false, "publicNote": null,
+      "createdBy": "c941…", "createdByName": "Ada", "createdAt": "2026-11-19T21:25:01.712Z",
+      "updatedAt": "2026-11-19T21:25:01.712Z"
+    },
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}},
+    "links": {"self": "/api/admin/corrections/5684…"}
+  },
+  "links": {"self": "/api/admin/corrections/5684…"},
+  "included": [{"type": "services", "id": "33ea…", "attributes": {"name": "Public API"}}]
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/corrections/:id</code></summary>
+
+```http
+PATCH /api/admin/corrections/5684…
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "corrections",
+    "attributes": {"showPublic": true, "publicNote": "Monitoring glitch"},
+    "id": "5684…"
+  }
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "corrections", "id": "5684…",
+    "attributes": {
+      "startsAt": "2026-11-19T19:25:01.712Z", "endsAt": "2026-11-19T20:25:01.712Z",
+      "status": "operational", "reason": "False alarm", "showPublic": true,
+      "publicNote": "Monitoring glitch", "createdBy": "c941…", "createdByName": "Ada",
+      "createdAt": "2026-11-19T21:25:01.712Z", "updatedAt": "2026-11-19T21:25:01.714Z"
+    },
+    "relationships": {"services": {"data": [{"type": "services", "id": "33ea…"}]}},
+    "links": {"self": "/api/admin/corrections/5684…"}
+  },
+  "links": {"self": "/api/admin/corrections/5684…"},
+  "included": [{"type": "services", "id": "33ea…", "attributes": {"name": "Public API"}}]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/services/:id/history</code></summary>
+
+```http
+GET /api/admin/services/33ea…/history?filter[from]=2026-11-18T21%3A25%3A01.714Z&filter[to]=2026-11-19T21%3A25%3A01.714Z
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "service-histories", "id": "33ea…",
+    "attributes": {
+      "from": "2026-11-18T21:25:01.714Z", "to": "2026-11-19T21:25:01.714Z",
+      "measured": [
+        {
+          "status": "operational", "startedAt": "2026-11-19T21:25:01.698Z",
+          "endedAt": "2026-11-19T21:25:01.702Z", "source": "measured", "sourceId": null
+        },
+        {
+          "status": "major_outage", "startedAt": "2026-11-19T21:25:01.702Z", "endedAt": null,
+          "source": "measured", "sourceId": null
+        }
+      ],
+      "corrected": [
+        {
+          "status": "operational", "startedAt": "2026-11-19T19:25:01.712Z",
+          "endedAt": "2026-11-19T20:25:01.712Z", "source": "correction", "sourceId": "5684…"
+        },
+        {
+          "status": "operational", "startedAt": "2026-11-19T21:25:01.698Z",
+          "endedAt": "2026-11-19T21:25:01.702Z", "source": "measured", "sourceId": null
+        },
+        "…"
+      ],
+      "measuredUptime": 25, "correctedUptime": 100, "maintenances": []
+    },
+    "relationships": {
+      "service": {"data": {"type": "services", "id": "33ea…"}},
+      "corrections": {"data": [{"type": "corrections", "id": "5684…"}]}
+    }
+  },
+  "links": {
+    "self": "/api/admin/services/33ea…/history?filter[from]=2026-11-18T21%3A25%3A01.714Z&filter[to]=…"
+  },
+  "included": [{"type": "services", "id": "33ea…", "attributes": {"name": "Public API"}}]
+}
+```
+
+</details>
+
+
+### Monitoring sources, checks and history imports
 
 | Resource `type` | Attributes | Relationships |
 | --- | --- | --- |
 | `monitor-sources` | `AdminMonitorSource`: the kind of source is `sourceType` (`icinga2`, `uptimekuma`, `openitcockpit`, `webhook`, `bundle`), because JSON:API reserves `type` | – (`checks` on bundle candidates) |
 | `monitor-checks` | `AdminMonitorCheck` without `sourceId` | `source` (`monitor-sources`) |
-| `check-bundles` | `AdminCheckBundle` without `checkId`; `members` and `vote` are value objects | `check` (`monitor-checks`) |
 | `history-imports` | `AdminHistoryImport` without `sourceId` and `createdBy` | `source` (`monitor-sources`), `createdBy` (`users`, included by default with its `name`; `include=` leaves it out) |
+
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/monitor-sources` | – | collection of `monitor-sources` | admin |
+| POST | `/api/admin/monitor-sources` | `monitor-sources` (`MonitorSourceInput`) | `monitor-sources` (201) with the attribute `ingestToken` (shown once) | admin |
+| GET/PATCH/DELETE | `/api/admin/monitor-sources/:id` | `monitor-sources` (partial `MonitorSourceInput`) | `monitor-sources`; DELETE 204 | admin |
+| POST | `/api/admin/monitor-sources/:id/test` | – | meta `{ ok, message, checkCount? }` (`MonitorSourceTestResult`) | admin |
+| POST | `/api/admin/monitor-sources/:id/poll` | – | meta `{ ok, message, checkCount? }` (polls now and stores the results; `400` for push-only sources) | admin |
+| POST | `/api/admin/monitor-sources/:id/rotate-token` | – | meta `{ ingestToken }` | admin |
+| GET | `/api/admin/checks` | `filter[source]`, `filter[q]` (name/host/external id), `filter[state]`, `filter[unlinked]=true` | collection of `monitor-checks` (not paginated; `sourceType` is `bundle` for bundle checks) | editor |
+| GET/DELETE | `/api/admin/checks/:id` | – | `monitor-checks`; DELETE 204 (`409` for the check of a bundle: delete the bundle) | GET editor, DELETE admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports` | – | collection of `history-imports` (latest 20, newest first, `preview` is `null`) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports` | `history-imports` (`HistoryImportCreateInput`, body up to ~10 MB for CSV) | `history-imports` (202 with `Location`, status `fetching`) | admin |
+| GET | `/api/admin/monitor-sources/:id/history-imports/:importId` | – | `history-imports` with `progress`, `preview` (status `ready`) or `result` | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/apply` | – | `history-imports` (202, status `applying`; `409` unless `ready`) | admin |
+| POST | `/api/admin/monitor-sources/:id/history-imports/:importId/cancel` | – | `history-imports` (aborts `fetching`, discards `ready`; `409` otherwise) | admin |
+
+- `PATCH` on sources: left-out attributes keep their values; the `config` is kept
+  when left out and replaced as a whole otherwise. Secrets equal to `SECRET_MASK`
+  keep the stored value only while `sourceType`, `baseUrl` and `username`
+  (`historyUsername` for `historyPassword`) are unchanged, otherwise `400`
+  `secret_required`; `icingaDbUrl` is kept regardless.
+- History import ([adapters/README.md](adapters/README.md#history-import)):
+  `HistoryImportCreateInput` = `{ from, to, onlyLinkedChecks = true, credentials?, csv? }`
+  with `to` capped at now and a range of at most 731 days. `credentials`
+  (`username`, `password`, `totp` for Uptime Kuma, `databaseUrl` for Icinga DB) are
+  used for this import only: stored encrypted on the job until fetching ends, never
+  returned; without them the values stored in the source config
+  (`historyUsername`/`historyPassword`, `icingaDbUrl`, both masked like `password`)
+  are used, otherwise `400`. `csv` imports the file instead of calling the source
+  (required for `webhook` sources); an invalid file is `400` with one error per
+  problem whose `code` is a `HistoryCsvIssue` code and whose `meta` carries `line`
+  and `params` (for translated messages; `detail` is English). One active job
+  (`fetching`, `ready`, `applying`) per source, otherwise `409`; the `bundle` source
+  answers `409`. Jobs run in the background (poll `GET …/:importId`); jobs without
+  progress for 15 minutes are marked `failed` and previews expire after 24 hours.
+  Applying is serialised across all sources (PostgreSQL advisory lock, SQLite write
+  lock). Preview `warnings` are `{ code, params, message }` (`HistoryImportWarning`);
+  a failed or expired job has `errorCode` (`source`, `timeout`, `shutdown`,
+  `interrupted`, `expired`, `apply_failed`) and an English `error`, redacted of
+  secrets. Audit actions `history_import.start|apply|complete|cancel`.
+- `monitor_check_history` rows carry `source = live | import`,
+  `service_status_history` rows `live | import | import_explicit` (service statuses
+  from a CSV file). Imports only write into periods without `live` rows; they replace
+  earlier `import` rows in their range, and `import_explicit` rows only where a new
+  CSV file has service rows.
+
+Examples:
+
+<details>
+<summary><code>POST /api/admin/monitor-sources</code></summary>
 
 ```http
 POST /api/admin/monitor-sources
@@ -619,11 +2933,480 @@ Content-Type: application/vnd.api+json
 {
   "data": {
     "type": "monitor-sources",
+    "attributes": {"name": "Webhook", "sourceType": "webhook", "config": {}}
+  }
+}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/monitor-sources/febb…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "monitor-sources", "id": "febb…",
     "attributes": {
-      "name": "Uptime Kuma",
-      "sourceType": "uptimekuma",
-      "pollIntervalSeconds": 60,
-      "config": { "baseUrl": "https://kuma.example.com", "apiKey": "uk1_…" }
+      "name": "Webhook", "sourceType": "webhook", "enabled": true, "pollIntervalSeconds": 60,
+      "config": {}, "ingestUrl": "https://status.example.com/api/ingest/febb…", "lastPollAt": null,
+      "lastPollOk": null, "lastError": null, "checkCount": 0,
+      "createdAt": "2026-11-19T21:25:01.716Z", "updatedAt": "2026-11-19T21:25:01.716Z",
+      "ingestToken": "…"
+    },
+    "links": {"self": "/api/admin/monitor-sources/febb…"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/monitor-sources</code></summary>
+
+```http
+GET /api/admin/monitor-sources
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "monitor-sources", "id": "0bf2…",
+      "attributes": {
+        "name": "Internal monitoring", "sourceType": "webhook", "enabled": true,
+        "pollIntervalSeconds": 60, "config": {},
+        "ingestUrl": "https://status.example.com/api/ingest/0bf2…", "lastPollAt": null,
+        "lastPollOk": null, "lastError": null, "checkCount": 1,
+        "createdAt": "2026-11-19T21:25:01.696Z", "updatedAt": "2026-11-19T21:25:01.696Z"
+      },
+      "links": {"self": "/api/admin/monitor-sources/0bf2…"}
+    }
+  ],
+  "links": {"self": "/api/admin/monitor-sources"}, "meta": {"total": 2}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/monitor-sources/:id</code></summary>
+
+```http
+GET /api/admin/monitor-sources/febb…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "monitor-sources", "id": "febb…",
+    "attributes": {
+      "name": "Webhook", "sourceType": "webhook", "enabled": true, "pollIntervalSeconds": 60,
+      "config": {}, "ingestUrl": "https://status.example.com/api/ingest/febb…", "lastPollAt": null,
+      "lastPollOk": null, "lastError": null, "checkCount": 0,
+      "createdAt": "2026-11-19T21:25:01.716Z", "updatedAt": "2026-11-19T21:25:01.716Z"
+    },
+    "links": {"self": "/api/admin/monitor-sources/febb…"}
+  },
+  "links": {"self": "/api/admin/monitor-sources/febb…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/monitor-sources/:id</code></summary>
+
+```http
+PATCH /api/admin/monitor-sources/febb…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "monitor-sources", "attributes": {"pollIntervalSeconds": 120}, "id": "febb…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "monitor-sources", "id": "febb…",
+    "attributes": {
+      "name": "Webhook", "sourceType": "webhook", "enabled": true, "pollIntervalSeconds": 120,
+      "config": {}, "ingestUrl": "https://status.example.com/api/ingest/febb…", "lastPollAt": null,
+      "lastPollOk": null, "lastError": null, "checkCount": 0,
+      "createdAt": "2026-11-19T21:25:01.716Z", "updatedAt": "2026-11-19T21:25:01.717Z"
+    },
+    "links": {"self": "/api/admin/monitor-sources/febb…"}
+  },
+  "links": {"self": "/api/admin/monitor-sources/febb…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/monitor-sources/:id/test</code></summary>
+
+```http
+POST /api/admin/monitor-sources/febb…/test
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "meta": {
+    "ok": true,
+    "message": "This source only receives pushed results; there is no connection to test."
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/monitor-sources/:id/rotate-token</code></summary>
+
+```http
+POST /api/admin/monitor-sources/febb…/rotate-token
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{"jsonapi": {"version": "1.1"}, "meta": {"ingestToken": "…"}}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/checks</code></summary>
+
+```http
+GET /api/admin/checks?filter[source]=febb…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "monitor-checks", "id": "5fb8…",
+      "attributes": {
+        "sourceName": "Webhook", "sourceType": "webhook", "externalId": "db1!pg",
+        "name": "PostgreSQL", "host": "db1", "state": "critical", "output": "connection refused",
+        "lastCheckAt": "2026-11-19T21:25:01.718Z", "lastStateChangeAt": "2026-11-19T21:25:01.718Z",
+        "serviceCount": 0
+      },
+      "relationships": {"source": {"data": {"type": "monitor-sources", "id": "febb…"}}},
+      "links": {"self": "/api/admin/checks/5fb8…"}
+    }
+  ],
+  "links": {"self": "/api/admin/checks?filter[source]=febb…"},
+  "meta": {"total": 1}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/checks/:id</code></summary>
+
+```http
+GET /api/admin/checks/5fb8…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "monitor-checks", "id": "5fb8…",
+    "attributes": {
+      "sourceName": "Webhook", "sourceType": "webhook", "externalId": "db1!pg", "name": "PostgreSQL",
+      "host": "db1", "state": "critical", "output": "connection refused",
+      "lastCheckAt": "2026-11-19T21:25:01.718Z", "lastStateChangeAt": "2026-11-19T21:25:01.718Z",
+      "serviceCount": 0
+    },
+    "relationships": {"source": {"data": {"type": "monitor-sources", "id": "febb…"}}},
+    "links": {"self": "/api/admin/checks/5fb8…"}
+  },
+  "links": {"self": "/api/admin/checks/5fb8…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/monitor-sources/:id/history-imports</code></summary>
+
+```http
+POST /api/admin/monitor-sources/febb…/history-imports
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "history-imports",
+    "attributes": {
+      "from": "2026-11-17T21:25:01.719Z", "to": "2026-11-18T21:25:01.719Z",
+      "onlyLinkedChecks": false,
+      "csv": "check,start,end,state\ndb1!pg,2026-11-17T22:25:01.719Z,2026-11-17T23:25:01.719Z,critical"
+    }
+  }
+}
+```
+
+```http
+HTTP/1.1 202 Accepted
+Location: /api/admin/monitor-sources/febb…/history-imports/8654…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "history-imports", "id": "8654…",
+    "attributes": {
+      "status": "fetching", "from": "2026-11-17T21:25:01.719Z", "to": "2026-11-18T21:25:01.719Z",
+      "onlyLinkedChecks": false,
+      "progress": {"phase": "queued", "done": 0, "total": 0},
+      "preview": null, "result": null, "error": null, "errorCode": null,
+      "createdAt": "2026-11-19T21:25:01.720Z", "updatedAt": "2026-11-19T21:25:01.720Z",
+      "finishedAt": null
+    },
+    "relationships": {
+      "source": {"data": {"type": "monitor-sources", "id": "febb…"}},
+      "createdBy": {"data": {"type": "users", "id": "c941…"}}
+    },
+    "links": {"self": "/api/admin/monitor-sources/febb…/history-imports/8654…"}
+  },
+  "links": {"self": "/api/admin/monitor-sources/febb…/history-imports/8654…"},
+  "included": [{"type": "users", "id": "c941…", "attributes": {"name": "Ada"}}]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/monitor-sources/:id/history-imports</code></summary>
+
+```http
+GET /api/admin/monitor-sources/febb…/history-imports
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "history-imports", "id": "8654…",
+      "attributes": {
+        "status": "ready", "from": "2026-11-17T21:25:01.719Z", "to": "2026-11-18T21:25:01.719Z",
+        "onlyLinkedChecks": false,
+        "progress": {"phase": "ready", "done": 1, "total": 1},
+        "preview": null, "result": null, "error": null, "errorCode": null,
+        "createdAt": "2026-11-19T21:25:01.720Z", "updatedAt": "2026-11-19T21:25:01.721Z",
+        "finishedAt": null
+      },
+      "relationships": {
+        "source": {"data": {"type": "monitor-sources", "id": "febb…"}},
+        "createdBy": {"data": {"type": "users", "id": "c941…"}}
+      },
+      "links": {"self": "/api/admin/monitor-sources/febb…/history-imports/8654…"}
+    }
+  ],
+  "links": {"self": "/api/admin/monitor-sources/febb…/history-imports"},
+  "meta": {"total": 1},
+  "included": [{"type": "users", "id": "c941…", "attributes": {"name": "Ada"}}]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/monitor-sources/:id/history-imports/:importId</code></summary>
+
+```http
+GET /api/admin/monitor-sources/febb…/history-imports/8654…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "history-imports", "id": "8654…",
+    "attributes": {
+      "status": "ready", "from": "2026-11-17T21:25:01.719Z", "to": "2026-11-18T21:25:01.719Z",
+      "onlyLinkedChecks": false,
+      "progress": {"phase": "ready", "done": 1, "total": 1},
+      "preview": {
+        "from": "2026-11-17T21:25:01.719Z", "to": "2026-11-18T21:25:01.719Z",
+        "checks": [
+          {
+            "checkId": "5fb8…", "name": "PostgreSQL", "host": "db1", "externalId": "db1!pg",
+            "intervals": 1, "coveredMs": 3600000, "firstAt": "2026-11-17T22:25:01.719Z",
+            "lastAt": "2026-11-17T23:25:01.719Z", "stateMs": {"critical": 3600000}
+          }
+        ],
+        "services": [], "unmatched": [], "unmatchedCount": 0, "checksWithoutData": 0, "warnings": []
+      },
+      "result": null, "error": null, "errorCode": null, "createdAt": "2026-11-19T21:25:01.720Z",
+      "updatedAt": "2026-11-19T21:25:01.721Z", "finishedAt": null
+    },
+    "relationships": {
+      "source": {"data": {"type": "monitor-sources", "id": "febb…"}},
+      "createdBy": {"data": {"type": "users", "id": "c941…"}}
+    },
+    "links": {"self": "/api/admin/monitor-sources/febb…/history-imports/8654…"}
+  },
+  "links": {"self": "/api/admin/monitor-sources/febb…/history-imports/8654…"},
+  "included": [{"type": "users", "id": "c941…", "attributes": {"name": "Ada"}}]
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/monitor-sources/:id/history-imports/:importId/apply</code></summary>
+
+```http
+POST /api/admin/monitor-sources/febb…/history-imports/8654…/apply
+```
+
+```http
+HTTP/1.1 202 Accepted
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "history-imports", "id": "8654…",
+    "attributes": {
+      "status": "applying", "from": "2026-11-17T21:25:01.719Z", "to": "2026-11-18T21:25:01.719Z",
+      "onlyLinkedChecks": false,
+      "progress": {"phase": "writing", "done": 0, "total": 1},
+      "preview": {
+        "from": "2026-11-17T21:25:01.719Z", "to": "2026-11-18T21:25:01.719Z",
+        "checks": [
+          {
+            "checkId": "5fb8…", "name": "PostgreSQL", "host": "db1", "externalId": "db1!pg",
+            "intervals": 1, "coveredMs": 3600000, "firstAt": "2026-11-17T22:25:01.719Z",
+            "lastAt": "2026-11-17T23:25:01.719Z", "stateMs": {"critical": 3600000}
+          }
+        ],
+        "services": [], "unmatched": [], "unmatchedCount": 0, "checksWithoutData": 0, "warnings": []
+      },
+      "result": null, "error": null, "errorCode": null, "createdAt": "2026-11-19T21:25:01.720Z",
+      "updatedAt": "2026-11-19T21:25:02.815Z", "finishedAt": null
+    },
+    "relationships": {
+      "source": {"data": {"type": "monitor-sources", "id": "febb…"}},
+      "createdBy": {"data": {"type": "users", "id": "c941…"}}
+    },
+    "links": {"self": "/api/admin/monitor-sources/febb…/history-imports/8654…"}
+  },
+  "links": {"self": "/api/admin/monitor-sources/febb…/history-imports/8654…"},
+  "included": [{"type": "users", "id": "c941…", "attributes": {"name": "Ada"}}]
+}
+```
+
+</details>
+
+
+### Check bundles
+
+`check-bundles` resources: `AdminCheckBundle` without `checkId`; `members` and
+`vote` are value objects; relationship `check` (`monitor-checks`).
+
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/check-bundles` | – | collection of `check-bundles` with the live vote and per-member breakdown | admin |
+| GET | `/api/admin/check-bundles/candidates` | `filter[sourceType]` (configurable source type) | collection of `monitor-sources` (`BundleCandidateSource`) whose checks (relationship `checks`) are included: the checks that can become members | admin |
+| POST | `/api/admin/check-bundles` | `check-bundles` (`CheckBundleInput`) | `check-bundles` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/check-bundles/:id` | `check-bundles` (partial `CheckBundleInput`; `members` replaces the list) | `check-bundles`; DELETE 204 removes the bundle check and its service links | admin |
+
+Each bundle owns a check of the built-in source of type `bundle` that is linked to
+services like any check. That source answers `409` to `PATCH` and `rotate-token`,
+`400` to `test`/`poll`, `409` to ingest and to `DELETE` while bundles exist. Members
+must be existing checks that are not bundle checks (`400`). Voting rules:
+[adapters/README.md](adapters/README.md#check-bundles). Audit actions
+`check_bundle.create|update|delete`.
+
+Examples:
+
+<details>
+<summary><code>GET /api/admin/check-bundles/candidates</code></summary>
+
+```http
+GET /api/admin/check-bundles/candidates?filter[sourceType]=webhook
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "monitor-sources", "id": "0bf2…",
+      "attributes": {"name": "Internal monitoring", "sourceType": "webhook", "enabled": true},
+      "relationships": {"checks": {"data": [{"type": "monitor-checks", "id": "9deb…"}]}},
+      "links": {"self": "/api/admin/monitor-sources/0bf2…"}
+    }
+  ],
+  "links": {"self": "/api/admin/check-bundles/candidates?filter[sourceType]=webhook"},
+  "meta": {"total": 2},
+  "included": [
+    {
+      "type": "monitor-checks", "id": "9deb…",
+      "attributes": {
+        "name": "HTTPS", "host": "web1", "state": "ok", "lastCheckAt": "2026-11-19T21:25:01.696Z"
+      },
+      "links": {"self": "/api/admin/checks/9deb…"}
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/check-bundles</code></summary>
+
+```http
+POST /api/admin/check-bundles
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "check-bundles",
+    "attributes": {
+      "name": "Web",
+      "members": [{"checkId": "9deb…", "votes": 1}, {"checkId": "5fb8…", "votes": 1}]
     }
   }
 }
@@ -631,67 +3414,624 @@ Content-Type: application/vnd.api+json
 
 ```http
 HTTP/1.1 201 Created
-Location: /api/admin/monitor-sources/5f0c…
+Location: /api/admin/check-bundles/51de…
 Content-Type: application/vnd.api+json
 
 {
-  "jsonapi": { "version": "1.1" },
+  "jsonapi": {"version": "1.1"},
   "data": {
-    "type": "monitor-sources",
-    "id": "5f0c…",
+    "type": "check-bundles", "id": "51de…",
     "attributes": {
-      "name": "Uptime Kuma",
-      "sourceType": "uptimekuma",
-      "enabled": true,
-      "config": { "baseUrl": "https://kuma.example.com", "apiKey": "••••••••", "verifyTls": true },
-      "ingestUrl": "https://status.example.com/api/ingest/5f0c…",
-      "ingestToken": "…",
-      "checkCount": 0,
-      "…": "…"
+      "name": "Web", "description": null,
+      "vote": {
+        "state": "ok", "totalVotes": 2, "reportingVotes": 2, "criticalVotes": 1, "warningVotes": 0,
+        "okVotes": 1
+      },
+      "members": [
+        {
+          "checkId": "9deb…", "votes": 1, "checkName": "HTTPS", "host": "web1", "sourceId": "0bf2…",
+          "sourceName": "Internal monitoring", "sourceType": "webhook", "state": "ok",
+          "lastCheckAt": "2026-11-19T21:25:01.696Z", "reporting": true, "reason": "reporting"
+        },
+        {
+          "checkId": "5fb8…", "votes": 1, "checkName": "PostgreSQL", "host": "db1",
+          "sourceId": "febb…", "sourceName": "Webhook", "sourceType": "webhook", "state": "critical",
+          "lastCheckAt": "2026-11-19T21:25:01.718Z", "reporting": true, "reason": "reporting"
+        }
+      ],
+      "serviceCount": 0, "createdAt": "2026-11-19T21:25:02.820Z",
+      "updatedAt": "2026-11-19T21:25:02.820Z"
     },
-    "links": { "self": "/api/admin/monitor-sources/5f0c…" }
+    "relationships": {"check": {"data": {"type": "monitor-checks", "id": "740b…"}}},
+    "links": {"self": "/api/admin/check-bundles/51de…"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/check-bundles</code></summary>
+
+```http
+GET /api/admin/check-bundles
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "check-bundles", "id": "51de…",
+      "attributes": {
+        "name": "Web", "description": null,
+        "vote": {
+          "state": "ok", "totalVotes": 2, "reportingVotes": 2, "criticalVotes": 1, "warningVotes": 0,
+          "okVotes": 1
+        },
+        "members": [
+          {
+            "checkId": "9deb…", "votes": 1, "checkName": "HTTPS", "host": "web1",
+            "sourceId": "0bf2…", "sourceName": "Internal monitoring", "sourceType": "webhook",
+            "state": "ok", "lastCheckAt": "2026-11-19T21:25:01.696Z", "reporting": true,
+            "reason": "reporting"
+          },
+          {
+            "checkId": "5fb8…", "votes": 1, "checkName": "PostgreSQL", "host": "db1",
+            "sourceId": "febb…", "sourceName": "Webhook", "sourceType": "webhook",
+            "state": "critical", "lastCheckAt": "2026-11-19T21:25:01.718Z", "reporting": true,
+            "reason": "reporting"
+          }
+        ],
+        "serviceCount": 0, "createdAt": "2026-11-19T21:25:02.820Z",
+        "updatedAt": "2026-11-19T21:25:02.820Z"
+      },
+      "relationships": {"check": {"data": {"type": "monitor-checks", "id": "740b…"}}},
+      "links": {"self": "/api/admin/check-bundles/51de…"}
+    }
+  ],
+  "links": {"self": "/api/admin/check-bundles"}, "meta": {"total": 1}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/check-bundles/:id</code></summary>
+
+```http
+GET /api/admin/check-bundles/51de…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "check-bundles", "id": "51de…",
+    "attributes": {
+      "name": "Web", "description": null,
+      "vote": {
+        "state": "ok", "totalVotes": 2, "reportingVotes": 2, "criticalVotes": 1, "warningVotes": 0,
+        "okVotes": 1
+      },
+      "members": [
+        {
+          "checkId": "9deb…", "votes": 1, "checkName": "HTTPS", "host": "web1", "sourceId": "0bf2…",
+          "sourceName": "Internal monitoring", "sourceType": "webhook", "state": "ok",
+          "lastCheckAt": "2026-11-19T21:25:01.696Z", "reporting": true, "reason": "reporting"
+        },
+        {
+          "checkId": "5fb8…", "votes": 1, "checkName": "PostgreSQL", "host": "db1",
+          "sourceId": "febb…", "sourceName": "Webhook", "sourceType": "webhook", "state": "critical",
+          "lastCheckAt": "2026-11-19T21:25:01.718Z", "reporting": true, "reason": "reporting"
+        }
+      ],
+      "serviceCount": 0, "createdAt": "2026-11-19T21:25:02.820Z",
+      "updatedAt": "2026-11-19T21:25:02.820Z"
+    },
+    "relationships": {"check": {"data": {"type": "monitor-checks", "id": "740b…"}}},
+    "links": {"self": "/api/admin/check-bundles/51de…"}
+  },
+  "links": {"self": "/api/admin/check-bundles/51de…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/check-bundles/:id</code></summary>
+
+```http
+PATCH /api/admin/check-bundles/51de…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "check-bundles", "attributes": {"name": "Web frontends"}, "id": "51de…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "check-bundles", "id": "51de…",
+    "attributes": {
+      "name": "Web frontends", "description": null,
+      "vote": {
+        "state": "ok", "totalVotes": 2, "reportingVotes": 2, "criticalVotes": 1, "warningVotes": 0,
+        "okVotes": 1
+      },
+      "members": [
+        {
+          "checkId": "9deb…", "votes": 1, "checkName": "HTTPS", "host": "web1", "sourceId": "0bf2…",
+          "sourceName": "Internal monitoring", "sourceType": "webhook", "state": "ok",
+          "lastCheckAt": "2026-11-19T21:25:01.696Z", "reporting": true, "reason": "reporting"
+        },
+        {
+          "checkId": "5fb8…", "votes": 1, "checkName": "PostgreSQL", "host": "db1",
+          "sourceId": "febb…", "sourceName": "Webhook", "sourceType": "webhook", "state": "critical",
+          "lastCheckAt": "2026-11-19T21:25:01.718Z", "reporting": true, "reason": "reporting"
+        }
+      ],
+      "serviceCount": 0, "createdAt": "2026-11-19T21:25:02.820Z",
+      "updatedAt": "2026-11-19T21:25:02.825Z"
+    },
+    "relationships": {"check": {"data": {"type": "monitor-checks", "id": "740b…"}}},
+    "links": {"self": "/api/admin/check-bundles/51de…"}
+  },
+  "links": {"self": "/api/admin/check-bundles/51de…"}
+}
+```
+
+</details>
+
+
+### Users and API tokens
+
+| Method | Path | Body | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/users` | – | collection of `users` (`AdminUser`), by name | admin |
+| POST | `/api/admin/users` | `users` (`UserCreateInput`) | `users` (201) | admin |
+| GET/PATCH/DELETE | `/api/admin/users/:id` | `users` (`UserUpdateInput`, partial) | `users`; DELETE 204 (deleting or demoting yourself or the last admin is `409`) | admin |
+| GET | `/api/admin/api-tokens` | – | collection of `api-tokens` (`AdminApiToken`), newest first | admin |
+| POST | `/api/admin/api-tokens` | `api-tokens` (`ApiTokenCreateInput`) | `api-tokens` (201); only this response has the attribute `token`. Created with a token, the new token belongs to that token's owner. | admin |
+| DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
+
+- `PATCH /api/admin/users/:id` with `password: null` removes the local password (not
+  allowed for yourself). Changing a password signs that user out everywhere.
+- API tokens are prefixed with `osp_`. They are revoked when their creator is
+  deleted; admin tokens are revoked when their creator loses the admin role.
+- Logins are audited as `auth.login`.
+
+Examples:
+
+<details>
+<summary><code>POST /api/admin/users</code></summary>
+
+```http
+POST /api/admin/users
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "users",
+    "attributes": {
+      "email": "editor@example.com", "name": "Eddie", "role": "editor", "password": "…"
+    }
   }
 }
 ```
 
 ```http
-GET /api/admin/checks?filter[source]=5f0c…&filter[state]=critical
+HTTP/1.1 201 Created
+Location: /api/admin/users/2e18…
+Content-Type: application/vnd.api+json
 
 {
-  "jsonapi": { "version": "1.1" },
-  "data": [
-    {
-      "type": "monitor-checks",
-      "id": "8a1d…",
-      "attributes": { "name": "HTTPS", "host": "web01", "state": "critical", "sourceName": "Uptime Kuma", "sourceType": "uptimekuma", "serviceCount": 1, "…": "…" },
-      "relationships": { "source": { "data": { "type": "monitor-sources", "id": "5f0c…" } } },
-      "links": { "self": "/api/admin/checks/8a1d…" }
-    }
-  ],
-  "meta": { "total": 1 },
-  "links": { "self": "/api/admin/checks?filter[source]=5f0c…&filter[state]=critical" }
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "users", "id": "2e18…",
+    "attributes": {
+      "email": "editor@example.com", "name": "Eddie", "role": "editor", "hasPassword": true,
+      "oidcLinked": false, "createdAt": "2026-11-19T21:25:02.827Z", "lastLoginAt": null
+    },
+    "links": {"self": "/api/admin/users/2e18…"}
+  }
 }
 ```
 
-## Ingest API (`/api/ingest`)
+</details>
 
-Monitoring systems push check results. Authentication: `Authorization: Bearer <ingest token>`
-of the source (or `?token=` query parameter for systems that cannot set headers; its
-value is redacted in the request log).
-Request bodies are the native payloads below (`application/json`, JSON sent as
+<details>
+<summary><code>GET /api/admin/users</code></summary>
+
+```http
+GET /api/admin/users
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "users", "id": "c941…",
+      "attributes": {
+        "email": "admin@example.com", "name": "Ada", "role": "admin", "hasPassword": true,
+        "oidcLinked": false, "createdAt": "2026-11-19T21:25:01.655Z",
+        "lastLoginAt": "2026-11-19T21:25:01.678Z"
+      },
+      "links": {"self": "/api/admin/users/c941…"}
+    }
+  ],
+  "links": {"self": "/api/admin/users"}, "meta": {"total": 2}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/users/:id</code></summary>
+
+```http
+GET /api/admin/users/2e18…
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "users", "id": "2e18…",
+    "attributes": {
+      "email": "editor@example.com", "name": "Eddie", "role": "editor", "hasPassword": true,
+      "oidcLinked": false, "createdAt": "2026-11-19T21:25:02.827Z", "lastLoginAt": null
+    },
+    "links": {"self": "/api/admin/users/2e18…"}
+  },
+  "links": {"self": "/api/admin/users/2e18…"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>PATCH /api/admin/users/:id</code></summary>
+
+```http
+PATCH /api/admin/users/2e18…
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "users", "attributes": {"name": "Edith"}, "id": "2e18…"}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "users", "id": "2e18…",
+    "attributes": {
+      "email": "editor@example.com", "name": "Edith", "role": "editor", "hasPassword": true,
+      "oidcLinked": false, "createdAt": "2026-11-19T21:25:02.827Z", "lastLoginAt": null
+    },
+    "links": {"self": "/api/admin/users/2e18…"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/api-tokens</code></summary>
+
+```http
+POST /api/admin/api-tokens
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "api-tokens", "attributes": {"name": "CI", "role": "editor"}}}
+```
+
+```http
+HTTP/1.1 201 Created
+Location: /api/admin/api-tokens/5399…
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "api-tokens", "id": "5399…",
+    "attributes": {
+      "name": "CI", "role": "editor", "createdAt": "2026-11-19T21:25:02.843Z", "lastUsedAt": null,
+      "token": "…"
+    },
+    "links": {"self": "/api/admin/api-tokens/5399…"}
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/api-tokens</code></summary>
+
+```http
+GET /api/admin/api-tokens
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "api-tokens", "id": "5399…",
+      "attributes": {
+        "name": "CI", "role": "editor", "createdAt": "2026-11-19T21:25:02.843Z", "lastUsedAt": null
+      },
+      "links": {"self": "/api/admin/api-tokens/5399…"}
+    }
+  ],
+  "links": {"self": "/api/admin/api-tokens"}, "meta": {"total": 1}
+}
+```
+
+</details>
+
+<details>
+<summary><code>DELETE /api/admin/api-tokens/:id</code></summary>
+
+```http
+DELETE /api/admin/api-tokens/5399…
+```
+
+```http
+HTTP/1.1 204 No Content
+```
+
+</details>
+
+
+### Subscribers and notifications
+
+| Method | Path | Body / parameters | Response | Role |
+| --- | --- | --- | --- | --- |
+| GET | `/api/admin/subscribers` | `page[number]`, `page[size]` (default 50), `filter[q]` (email substring), `filter[status]=all\|confirmed\|pending` | paginated `subscribers` (`AdminSubscriber`, newest first); relationship `services` with the selected services included (`name` only) | admin |
+| DELETE | `/api/admin/subscribers/:id` | – | 204 (audit `subscriber.delete` with masked address) | admin |
+| GET | `/api/admin/notifications/status` | – | `notification-statuses/current` (`NotificationStatus`) | admin |
+| POST | `/api/admin/notifications/test` | `test-emails` (`TestEmailInput`) | meta `{ ok, message }`; sends immediately (not queued); `409` without transport | admin |
+| POST | `/api/admin/notifications/retry-failed` | – | meta `{ requeued }` | admin |
+
+`notify` (default `true`) in `IncidentCreateInput`, `IncidentUpdateInput`,
+`MaintenanceCreateInput` and `MaintenanceUpdateInput` queues subscriber emails for
+that event, only for public incidents/maintenance. The maintenance stores the flag
+(`AdminMaintenance.notify`, changeable with `MaintenancePatchInput.notify`);
+automatic start/completion and the reminder only notify when it is set.
+`AdminMaintenance.reminderSentAt` is the time the reminder was queued; it is reset
+when `scheduledStart` moves later. Notification errors never fail the request.
+Feed items and emails link to `${BASE_URL}/incidents/:id` and
+`${BASE_URL}/maintenance/:id`.
+
+Examples:
+
+<details>
+<summary><code>GET /api/admin/subscribers</code></summary>
+
+```http
+GET /api/admin/subscribers?filter[status]=confirmed
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": [
+    {
+      "type": "subscribers", "id": "2d3c…",
+      "attributes": {
+        "email": "jane@example.com", "locale": "en", "allServices": true, "confirmed": true,
+        "createdAt": "2026-11-19T21:25:02.853Z", "confirmedAt": "2026-11-19T21:25:02.855Z"
+      },
+      "relationships": {"services": {"data": []}}
+    }
+  ],
+  "links": {
+    "self": "/api/admin/subscribers?filter[status]=confirmed&page[number]=1&page[size]=50",
+    "first": "/api/admin/subscribers?filter[status]=confirmed&page[number]=1&page[size]=50",
+    "prev": null, "next": null,
+    "last": "/api/admin/subscribers?filter[status]=confirmed&page[number]=1&page[size]=50"
+  },
+  "meta": {"total": 1, "page": {"number": 1, "size": 50}}
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/admin/notifications/status</code></summary>
+
+```http
+GET /api/admin/notifications/status
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "notification-statuses", "id": "current",
+    "attributes": {
+      "transport": "smtp", "configured": true, "from": "Example Status <status@example.com>",
+      "subscriptionsEnabled": true, "subscribers": {"confirmed": 1, "pending": 0},
+      "queue": {"pending": 1, "failed": 0}, "lastSentAt": null, "lastError": null
+    },
+    "links": {"self": "/api/admin/notifications/status"}
+  },
+  "links": {"self": "/api/admin/notifications/status"}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/notifications/test</code></summary>
+
+```http
+POST /api/admin/notifications/test
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "test-emails", "attributes": {"to": "ops@example.com"}}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{"jsonapi": {"version": "1.1"}, "meta": {"ok": true, "message": "Test email sent"}}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/admin/notifications/retry-failed</code></summary>
+
+```http
+POST /api/admin/notifications/retry-failed
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{"jsonapi": {"version": "1.1"}, "meta": {"requeued": 0}}
+```
+
+</details>
+
+
+### Side effects the server must apply
+
+- Creating/updating/resolving incidents, changing their affected services,
+  starting/completing/cancelling maintenance, editing services (mode, manual status,
+  checks) and deleting checks must call `ctx.engine.recompute(serviceIds)` for every
+  service that was affected **before and after** the change.
+
+## Ingest API
+
+`/api/ingest`. Monitoring systems push check results. Authentication:
+`Authorization: Bearer <ingest token>` of the source (or the `?token=` query
+parameter for systems that cannot set headers; its value is redacted in the request
+log).
+
+Request bodies are the native payloads below (`application/json`; JSON sent as
 `text/plain` is accepted, too), not JSON:API documents. Responses are JSON:API: a
-meta document `{ "jsonapi": { "version": "1.1" }, "meta": { "created", "updated",
-"removed", "stateChanges" } }`, errors are error documents whose `source.pointer`
-points into the body as sent (e.g. `/checks/0/state`).
-`full: true` (remove checks missing from the payload) is accepted only for sources of type
-`webhook` (`400` otherwise); a full push that would remove more than half of the checks linked
-to services or used as bundle members is rejected with `409` and stores nothing (see docs/adapters/README.md).
+meta document `{ "meta": { "created", "updated", "removed", "stateChanges" } }`;
+errors are error documents whose `source.pointer` points into the body as sent
+(e.g. `/checks/0/state`).
 
 | Method | Path | Body |
 | --- | --- | --- |
 | POST | `/api/ingest/:sourceId` | `GenericIngestPayload` (works for every source type). Numeric states: 0=ok, 1=warning, 2=critical, 3=unknown |
 | POST | `/api/ingest/:sourceId/uptimekuma` | Native Uptime Kuma webhook notification payload |
-| POST | `/api/ingest/:sourceId/icinga2` | Payload of the bundled Icinga 2 notification script (see docs/adapters/icinga2.md) |
-| POST | `/api/ingest/:sourceId/openitcockpit` | Payload of the bundled openITCockpit notification command (see docs/adapters/openitcockpit.md) |
+| POST | `/api/ingest/:sourceId/icinga2` | Payload of the bundled Icinga 2 notification script (see [adapters/icinga2.md](adapters/icinga2.md)) |
+| POST | `/api/ingest/:sourceId/openitcockpit` | Payload of the bundled openITCockpit notification command (see [adapters/openitcockpit.md](adapters/openitcockpit.md)) |
 
-Rate limited per source (default 120 requests/min).
+`full: true` (remove checks missing from the payload) is accepted only for sources
+of type `webhook` (`400` otherwise); a full push that would remove more than half of
+the checks linked to services or used as bundle members is rejected with `409` and
+stores nothing (see [adapters/README.md](adapters/README.md)). Rate limited per
+source (default 120 requests/min).
+
+Examples:
+
+<details>
+<summary><code>POST /api/ingest/:sourceId</code></summary>
+
+```http
+POST /api/ingest/febb…
+Content-Type: application/json
+
+{
+  "checks": [
+    {
+      "id": "db1!pg", "name": "PostgreSQL", "host": "db1", "state": "critical",
+      "output": "connection refused"
+    }
+  ]
+}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "meta": {"created": 1, "updated": 0, "removed": 0, "stateChanges": 0}
+}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/ingest/:sourceId</code> with an invalid body</summary>
+
+```http
+POST /api/ingest/febb…
+Content-Type: application/json
+
+{"checks": [{"id": "db1!pg", "name": "PostgreSQL", "state": "broken"}]}
+```
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [
+    {
+      "status": "400", "code": "invalid_union", "title": "Invalid request",
+      "detail": "Invalid input", "source": {"pointer": "/checks/0/state"},
+      "meta": {
+        "errors": [
+          [
+            {
+              "code": "invalid_value", "values": ["ok", "warning", "…"], "path": [],
+              "message": "Invalid option: expected one of \"ok\"|\"warning\"|\"critical\"|\"unknown\""
+            }
+          ],
+          [
+            {
+              "expected": "number", "code": "invalid_type", "path": [],
+              "message": "Invalid input: expected number, received string"
+            }
+          ]
+        ]
+      }
+    }
+  ]
+}
+```
+
+</details>
+
