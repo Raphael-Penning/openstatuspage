@@ -5,8 +5,9 @@ kind: Deployment
 metadata:
   name: openstatuspage
 spec:
-  # Keep exactly one replica with SQLite. Several replicas need PostgreSQL and
-  # WORKER_ENABLED=false on all but one (docs/guide/en/09-operations.md).
+  # Keep exactly one replica with SQLite. Several replicas need PostgreSQL (and
+  # no data volume); they coordinate background tasks through the database
+  # (docs/guide/en/09-operations.md).
   replicas: 1
   # The volume is ReadWriteOnce and SQLite allows one writer: stop the old pod
   # before the new one starts.

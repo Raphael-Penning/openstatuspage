@@ -79,7 +79,7 @@ instance does; see [Split deployment](#split-deployment) below.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `WORKER_ENABLED` | `true` for `all` and `worker`, `false` for `admin` | Runs maintenance auto start/complete, monitoring pollers, check bundle re-evaluation, email delivery, maintenance reminders and the cleanup tasks. Set to `false` on additional `all` replicas so only one instance runs background jobs. Must not be `true` with `APP_ROLE=public` or `false` with `APP_ROLE=worker` (the server refuses to start). |
+| `WORKER_ENABLED` | `true` for `all` and `worker`, `false` for `admin` | Runs maintenance auto start/complete, monitoring pollers, check bundle re-evaluation, email delivery, maintenance reminders and the cleanup tasks. On PostgreSQL several instances may run them: tasks are coordinated through the database, so each one runs on one instance at a time (see [architecture.md](architecture.md#several-instances)). Must not be `true` with `APP_ROLE=public` or `false` with `APP_ROLE=worker` (the server refuses to start). |
 
 ## Split deployment
 
@@ -116,6 +116,12 @@ What a `public` instance does **not** do:
 Monitoring sources changed on an admin instance reach the worker's pollers within
 30 seconds. Results pushed to the ingest endpoints go to the admin instance, so
 monitoring systems need to reach the admin host, not the public one.
+
+Each role can run as several instances (e.g. two `worker` instances for
+availability, several `public` instances behind a load balancer): background tasks
+and polls are coordinated through the database, and every instance can serve every
+request. Use the same `SECRET_KEY` everywhere. Rate limits are counted per instance
+(see [Rate limits](#rate-limits)). Details: [architecture.md](architecture.md#several-instances).
 
 SQLite is a single-file database for one instance: with SQLite only `APP_ROLE=all`
 is supported.
@@ -162,3 +168,7 @@ invalidates links in emails already sent.
 
 Behind a reverse proxy set `TRUST_PROXY` (hop count or proxy addresses), otherwise all
 clients share the proxy's IP.
+
+The counters live in the memory of each instance. With *n* instances behind a load
+balancer a client can make up to *n* times as many requests. For exact limits route
+each client to one instance (sticky sessions by client IP) or limit at the proxy.
