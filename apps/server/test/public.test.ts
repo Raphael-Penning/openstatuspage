@@ -153,7 +153,7 @@ describe('public API privacy', () => {
       '/api/public/history',
       `/api/public/history?filter[service]=${ids.api}`,
       `/api/public/history?filter[location]=${ids.fra}`,
-      '/api/public/status.json',
+      '/api/public/status',
       '/feed.rss',
       '/feed.atom',
     ];
@@ -378,20 +378,7 @@ describe('public status', () => {
   });
 });
 
-describe('status.json and feeds', () => {
-  it('returns compact status', async () => {
-    const res = (await get('/api/public/status.json')).json();
-    expect(res.overall).toBe('major_outage');
-    // Display order: grouped services first, then ungrouped ones.
-    expect(res.services).toEqual([
-      { id: ids.api, name: 'Public API', group: 'Platform', status: 'major_outage' },
-      { id: ids.inHiddenGroup, name: 'Billing', group: null, status: 'operational' },
-      { id: ids.web, name: 'Website', group: null, status: 'degraded' },
-    ]);
-    expect(res.activeIncidents).toEqual([{ id: ids.incident, title: 'Database outage', status: 'investigating', impact: 'minor' }]);
-    expect(res.activeMaintenances).toEqual([]);
-  });
-
+describe('feeds', () => {
   it('renders RSS and Atom with escaped content', async () => {
     await admin.post('/api/admin/incidents', { title: 'Errors <script>alert("x")</script> & more', message: 'a < b' });
     await admin.patch('/api/admin/settings', { siteName: 'Example & Co' });

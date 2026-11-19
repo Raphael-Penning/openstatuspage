@@ -1,7 +1,7 @@
 /**
  * Walks every registered route and checks that JSON responses are JSON:API
  * documents. The only routes outside JSON:API are the documented non-JSON:API
- * endpoints (health check, status.json, feeds, OIDC and the unsubscribe redirect).
+ * endpoints (health check, feeds, OIDC and the unsubscribe redirect).
  */
 import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
 import type { HTTPMethods, LightMyRequestResponse, RouteOptions } from 'fastify';
@@ -11,7 +11,6 @@ import { adminClient, createTestApp, data, seedChecks, type Client, type TestApp
 /** Routes that are not JSON:API on purpose (see docs/api.md). */
 const NON_JSONAPI = [
   'GET /api/health',
-  'GET /api/public/status.json',
   'GET /api/public/subscriptions/:id/unsubscribe',
   'GET /api/auth/oidc/login',
   'GET /api/auth/oidc/callback',
@@ -20,7 +19,7 @@ const NON_JSONAPI = [
 ];
 
 /** Non-JSON:API routes whose successful answer is plain JSON. */
-const PLAIN_JSON = new Set(['GET /api/health', 'GET /api/public/status.json']);
+const PLAIN_JSON = new Set(['GET /api/health']);
 
 /** Requests that end the admin session run last. */
 const LAST = new Set(['POST /api/auth/logout']);
@@ -191,7 +190,7 @@ describe('registered routes', () => {
     expect(res.json()).toMatchObject({ jsonapi: { version: '1.1' }, errors: [{ status: '404' }] });
   });
 
-  it('answers errors of status.json and the feeds as JSON:API error documents', async () => {
+  it('answers errors of the feeds as JSON:API error documents', async () => {
     const wrongMethod = await t.app.inject({ method: 'POST', url: '/feed.rss' });
     expect(wrongMethod.statusCode).toBe(404);
     expect(wrongMethod.headers['content-type']).toBe(JSONAPI_MEDIA_TYPE);
@@ -201,7 +200,7 @@ describe('registered routes', () => {
       throw new Error('database unavailable');
     });
     try {
-      for (const url of ['/api/public/status.json', '/feed.atom']) {
+      for (const url of ['/api/public/status', '/feed.atom']) {
         const res = await t.app.inject({ method: 'GET', url });
         expect(res.statusCode, url).toBe(500);
         expect(res.headers['content-type'], url).toBe(JSONAPI_MEDIA_TYPE);

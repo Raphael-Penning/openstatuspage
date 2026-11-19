@@ -105,7 +105,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   registerJsonApi(app);
 
   // Every error answer is a JSON:API error document, also on the few non-JSON:API
-  // routes (health check, status.json, feeds, OIDC and browser redirects).
+  // routes (health check, feeds, OIDC and browser redirects).
   app.setErrorHandler((err, req, reply) => sendJsonApiError(err, req, reply));
 
   await registerRoutes(app);

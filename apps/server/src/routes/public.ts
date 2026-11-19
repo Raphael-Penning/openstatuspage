@@ -6,8 +6,7 @@
  * serializers/public.ts). Nothing about monitoring sources or checks is ever
  * exposed here.
  *
- * /api/public/status.json and the feeds are not JSON:API (stable formats for
- * third-party tools and feed readers).
+ * The feeds are not JSON:API (stable formats for feed readers).
  */
 import { overallStatus, zId, type PublicIncident, type PublicMaintenance, type ResourceObject } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
@@ -466,41 +465,9 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  // Plain JSON and feeds (not JSON:API).
+  // Feeds (not JSON:API).
   await app.register(async (scope) => {
     cacheHeaders(scope);
-
-    scope.get('/api/public/status.json', async () => {
-      const now = new Date();
-      const settings = await getSettings(db);
-      // Uptime is not part of status.json; skip computing it.
-      const catalog = await loadPublicCatalog(db, { ...settings, showUptime: false }, now);
-      const [incidents, maintenances] = await Promise.all([
-        activeIncidentIds(db).then((ids) => loadIncidents(db, ids)),
-        activeMaintenanceIds(db).then((ids) => loadMaintenances(db, ids)),
-      ]);
-      return {
-        overall: overallStatus(catalog.services.map((s) => s.status)),
-        updatedAt: now.toISOString(),
-        services: catalog.services.map((s) => ({
-          id: s.id,
-          name: s.name,
-          group: s.groupId ? (catalog.groupNames.get(s.groupId) ?? null) : null,
-          status: s.status,
-        })),
-        activeIncidents: incidents.map((r) => ({
-          id: r.row.id,
-          title: r.row.title,
-          status: r.row.status,
-          impact: r.row.impact,
-        })),
-        activeMaintenances: maintenances.map((r) => ({
-          id: r.row.id,
-          title: r.row.title,
-          scheduledEnd: r.row.scheduled_end,
-        })),
-      };
-    });
 
     await registerFeedRoutes(scope);
   });

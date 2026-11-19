@@ -37,8 +37,6 @@ export interface PublicCatalog {
   groups: PublicServiceGroup[];
   ungrouped: PublicService[];
   counts: Record<ServiceStatus, number>;
-  /** Public group names by id (for status.json). */
-  groupNames: Map<string, string>;
 }
 
 export interface UptimeOptions {
@@ -217,7 +215,6 @@ export async function loadPublicCatalog(db: DB, settings: PublicPageSettings, no
     groups,
     ungrouped,
     counts: countStatuses(services.map((s) => s.status)),
-    groupNames: new Map(groupRows.map((g) => [g.id, g.name])),
   };
 }
 
