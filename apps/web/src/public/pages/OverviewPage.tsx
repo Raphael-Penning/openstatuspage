@@ -61,7 +61,7 @@ export function OverviewPage() {
             ))}
           </div>
         ) : (
-          <EmptyState icon={<CircleCheck aria-hidden className="size-5 shrink-0 text-status-operational" />}>
+          <EmptyState icon={<CircleCheck aria-hidden className="size-5 shrink-0 text-status-operational-text" />}>
             {t('overview.noActiveMaintenance')}
           </EmptyState>
         )}
@@ -104,7 +104,7 @@ export function OverviewPage() {
             ))}
           </div>
         ) : (
-          <EmptyState icon={<CircleCheck aria-hidden className="size-5 shrink-0 text-status-operational" />}>
+          <EmptyState icon={<CircleCheck aria-hidden className="size-5 shrink-0 text-status-operational-text" />}>
             {t('overview.noRecentIncidents', { count: data.page.recentIncidentDays })}
           </EmptyState>
         )}

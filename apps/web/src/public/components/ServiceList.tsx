@@ -29,7 +29,7 @@ export function ServiceRow({ service, days }: { service: PublicService; days: nu
     <li className="px-4 py-3.5 sm:px-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Link to={`/services/${service.slug}`} className="truncate font-medium hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+          <Link to={`/services/${service.slug}`} className="font-medium break-words hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
             {service.name}
           </Link>
           {service.kind === 'site' && service.url && (
@@ -38,7 +38,7 @@ export function ServiceRow({ service, days }: { service: PublicService; days: nu
               target="_blank"
               rel="noopener noreferrer"
               aria-label={t('services.openSite', { name: service.name })}
-              className="shrink-0 text-muted hover:text-[color:var(--osp-accent-text,var(--accent))]"
+              className="grid size-6 shrink-0 place-items-center rounded text-muted hover:text-[color:var(--osp-accent-text,var(--accent))]"
             >
               <ExternalLink aria-hidden className="size-3.5" />
             </a>
@@ -64,9 +64,12 @@ interface GroupCardProps {
   days: number;
   /** Forces the group open (e.g. while searching). */
   forceOpen?: boolean;
+  /** Level of the group headings, so the outline has no gaps (2 on the services page, 3 below a section heading). */
+  headingLevel?: 2 | 3;
 }
 
-export function ServiceGroupCard({ group, days, forceOpen }: GroupCardProps) {
+export function ServiceGroupCard({ group, days, forceOpen, headingLevel = 3 }: GroupCardProps) {
+  const Heading = headingLevel === 2 ? 'h2' : 'h3';
   const { t } = useTranslation('public');
   const [open, setOpen] = useState(!group.collapsedByDefault);
   const contentId = useId();
@@ -74,25 +77,25 @@ export function ServiceGroupCard({ group, days, forceOpen }: GroupCardProps) {
 
   return (
     <Card as="section" className="overflow-hidden">
-      <h3>
+      <Heading>
         <button
           type="button"
           aria-expanded={expanded}
           aria-controls={contentId}
           onClick={() => setOpen(!expanded)}
-          className="flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent sm:px-5"
+          className="flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus sm:px-5"
         >
           <ChevronDown
             aria-hidden
             className={clsx('size-4 shrink-0 text-muted motion-safe:transition-transform', !expanded && '-rotate-90')}
           />
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold">{group.name}</span>
+            <span className="block font-semibold break-words">{group.name}</span>
             <span className="block text-xs text-muted">{t('services.count', { count: group.services.length })}</span>
           </span>
           <StatusPill status={group.status} />
         </button>
-      </h3>
+      </Heading>
       <div id={contentId} hidden={!expanded}>
         {group.description && <p className="border-t border-border px-4 py-2 text-sm text-muted sm:px-5">{group.description}</p>}
         <ul className="divide-y divide-border border-t border-border">
@@ -110,22 +113,25 @@ export function ServiceCatalog({
   groups,
   ungrouped,
   forceOpen,
+  headingLevel = 3,
 }: {
   groups: PublicServiceGroup[];
   ungrouped: PublicService[];
   forceOpen?: boolean;
+  headingLevel?: 2 | 3;
 }) {
   const { t } = useTranslation('public');
   const days = useBarDays();
+  const Heading = headingLevel === 2 ? 'h2' : 'h3';
   return (
     <div className="space-y-4">
       {groups.map((g) => (
-        <ServiceGroupCard key={g.id} group={g} days={days} forceOpen={forceOpen} />
+        <ServiceGroupCard key={g.id} group={g} days={days} forceOpen={forceOpen} headingLevel={headingLevel} />
       ))}
       {ungrouped.length > 0 && (
         <Card as="section" className="overflow-hidden">
           {groups.length > 0 && (
-            <h3 className="border-b border-border px-4 py-3 text-sm font-semibold text-muted sm:px-5">{t('services.ungrouped')}</h3>
+            <Heading className="border-b border-border px-4 py-3 text-sm font-semibold text-muted sm:px-5">{t('services.ungrouped')}</Heading>
           )}
           <ul className="divide-y divide-border">
             {ungrouped.map((s) => (

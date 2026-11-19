@@ -69,8 +69,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 aria-hidden
                 className={clsx(
                   'mt-0.5 size-4 shrink-0',
-                  item.kind === 'success' && 'text-status-operational',
-                  item.kind === 'error' && 'text-status-major-outage',
+                  item.kind === 'success' && 'text-status-operational-text',
+                  item.kind === 'error' && 'text-status-major-outage-text',
                   item.kind === 'info' && 'text-accent',
                 )}
               />

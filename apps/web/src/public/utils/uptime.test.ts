@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   averageUptime,
   barDaysForWidth,
+  dayIndexAt,
+  dayPattern,
   formatPercent,
   lastDays,
   outageMinutes,
@@ -91,5 +93,31 @@ describe('tooltipAlign', () => {
     expect(tooltipAlign(45, 90)).toBe('center');
     expect(tooltipAlign(89, 90)).toBe('end');
     expect(tooltipAlign(0, 1)).toBe('center');
+  });
+});
+
+describe('dayIndexAt', () => {
+  it('maps the pointer position to the day under it', () => {
+    expect(dayIndexAt(0, 900, 90)).toBe(0);
+    expect(dayIndexAt(9.9, 900, 90)).toBe(0);
+    expect(dayIndexAt(10, 900, 90)).toBe(1);
+    expect(dayIndexAt(899, 900, 90)).toBe(89);
+  });
+
+  it('clamps positions outside the bar and handles empty bars', () => {
+    expect(dayIndexAt(-5, 900, 90)).toBe(0);
+    expect(dayIndexAt(1200, 900, 90)).toBe(89);
+    expect(dayIndexAt(10, 0, 90)).toBe(0);
+    expect(dayIndexAt(10, 900, 0)).toBe(0);
+  });
+});
+
+describe('dayPattern', () => {
+  it('marks days by pattern as well as by color', () => {
+    expect(dayPattern('operational')).toBe('solid');
+    expect(dayPattern('maintenance')).toBe('striped');
+    expect(dayPattern('degraded')).toBe('striped');
+    expect(dayPattern('major_outage')).toBe('striped');
+    expect(dayPattern(null)).toBe('outline');
   });
 });

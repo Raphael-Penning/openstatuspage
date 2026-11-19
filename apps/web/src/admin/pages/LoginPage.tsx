@@ -82,7 +82,7 @@ export default function LoginPage() {
           ) : (
             <div className="flex flex-col gap-5">
               {(redirectError || loginError) && (
-                <p role="alert" className="rounded-lg bg-status-major-outage/10 px-3 py-2 text-sm text-status-major-outage">
+                <p role="alert" className="rounded-lg bg-status-major-outage/10 px-3 py-2 text-sm text-status-major-outage-text">
                   {loginError ?? redirectError}
                 </p>
               )}

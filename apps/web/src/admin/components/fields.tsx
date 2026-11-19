@@ -38,7 +38,7 @@ export function FieldShell({ id, label, help, error, required, className, childr
       <label htmlFor={id} className="text-sm font-medium">
         {label}
         {required && (
-          <span aria-hidden className="ml-0.5 text-status-major-outage">
+          <span aria-hidden className="ml-0.5 text-status-major-outage-text">
             *
           </span>
         )}
@@ -50,7 +50,7 @@ export function FieldShell({ id, label, help, error, required, className, childr
         </p>
       )}
       {error && (
-        <p id={`${id}-error`} className="text-xs text-status-major-outage">
+        <p id={`${id}-error`} className="text-xs text-status-major-outage-text">
           {error}
         </p>
       )}
@@ -350,7 +350,7 @@ export function MultiSelect({
       </div>
       {help && !error && <p className="text-xs text-muted">{help}</p>}
       {error && (
-        <p id={`${groupId}-error`} className="text-xs text-status-major-outage">
+        <p id={`${groupId}-error`} className="text-xs text-status-major-outage-text">
           {error}
         </p>
       )}
@@ -363,7 +363,7 @@ export function FormErrorSummary({ errors }: { errors: Record<string, unknown> }
   const { t } = useTranslation('admin');
   if (Object.keys(errors).length === 0) return null;
   return (
-    <p role="alert" className="rounded-lg bg-status-major-outage/10 px-3 py-2 text-sm text-status-major-outage">
+    <p role="alert" className="rounded-lg bg-status-major-outage/10 px-3 py-2 text-sm text-status-major-outage-text">
       {t('form.fixErrors')}
     </p>
   );

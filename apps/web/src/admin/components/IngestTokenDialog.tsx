@@ -46,7 +46,7 @@ export function IngestTokenDialog({
       }
     >
       <div className="flex flex-col gap-4">
-        <p className="flex items-start gap-2 rounded-lg bg-status-degraded/10 px-3 py-2 text-sm text-status-degraded">
+        <p className="flex items-start gap-2 rounded-lg bg-status-degraded/10 px-3 py-2 text-sm text-status-degraded-text">
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
           {t('ingest.onceWarning')}
         </p>

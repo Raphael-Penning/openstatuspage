@@ -76,3 +76,24 @@ export function tooltipAlign(index: number, count: number): 'start' | 'center' |
   if (pos > 0.8) return 'end';
   return 'center';
 }
+
+/**
+ * Index of the day under a pointer at `offsetX` px of a bar `width` px wide
+ * with `count` days. The whole bar is one pointer target (WCAG 2.5.8), the
+ * day follows from the position.
+ */
+export function dayIndexAt(offsetX: number, width: number, count: number): number {
+  if (count <= 0 || width <= 0) return 0;
+  const index = Math.floor((offsetX / width) * count);
+  return Math.min(count - 1, Math.max(0, index));
+}
+
+/**
+ * Pattern of a day segment in addition to its color, so the bar does not
+ * rely on color alone (WCAG 1.4.1): striped when the day was not fully
+ * operational, an outline when there is no data.
+ */
+export function dayPattern(status: ServiceStatus | null): 'solid' | 'striped' | 'outline' {
+  if (status === null) return 'outline';
+  return status === 'operational' ? 'solid' : 'striped';
+}

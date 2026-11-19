@@ -48,7 +48,7 @@ export function CounterCards({
                 onClick={() => onSelect(selected === key ? null : key)}
                 className={clsx(
                   base,
-                  'hover:border-accent focus-visible:outline-2 focus-visible:outline-accent',
+                  'hover:border-accent focus-visible:outline-2 focus-visible:outline-focus',
                   selected === key ? 'border-accent ring-1 ring-accent' : 'border-border',
                 )}
               >

@@ -23,6 +23,19 @@ export const LANGUAGES = [
   { code: 'de', label: 'Deutsch' },
 ] as const;
 
+/**
+ * <html lang> and dir follow the UI language, so screen readers pronounce the
+ * page correctly and hyphenation works (WCAG 3.1.1).
+ */
+export function applyDocumentLanguage(lng: string | undefined): void {
+  if (typeof document === 'undefined') return;
+  const code = lng && LANGUAGES.some((l) => l.code === lng) ? lng : 'en';
+  document.documentElement.lang = code;
+  document.documentElement.dir = i18n.dir(code);
+}
+
+i18n.on('languageChanged', () => applyDocumentLanguage(i18n.resolvedLanguage));
+
 void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
@@ -42,5 +55,6 @@ void i18n
       caches: ['localStorage'],
     },
   });
+applyDocumentLanguage(i18n.resolvedLanguage);
 
 export default i18n;

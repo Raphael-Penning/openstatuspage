@@ -63,7 +63,7 @@ export default function HelpPage() {
   if (guide.error) {
     return (
       <div role="alert" className="flex flex-col items-center gap-3 p-10 text-center text-sm">
-        <p className="text-status-major-outage">{t('loadError')}</p>
+        <p className="text-status-major-outage-text">{t('loadError')}</p>
         <Button size="sm" onClick={guide.retry}>
           {t('common:actions.retry')}
         </Button>

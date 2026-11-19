@@ -107,7 +107,7 @@ export function CheckLinksEditor({
           })}
         </ul>
       )}
-      {error && <p className="text-xs text-status-major-outage">{error}</p>}
+      {error && <p className="text-xs text-status-major-outage-text">{error}</p>}
 
       {!readOnly &&
         (pickerOpen ? (

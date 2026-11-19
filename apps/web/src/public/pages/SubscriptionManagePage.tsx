@@ -122,6 +122,13 @@ function PreferencesForm({
   const [errors, setErrors] = useState<SubscriptionErrors>({});
   const [saved, setSaved] = useState(false);
   const update = useUpdateSubscription(id, token);
+  const scopeRef = useRef<HTMLFieldSetElement>(null);
+  // Focus the service selection once its error is rendered (WCAG 3.3.1).
+  const [focusRequest, setFocusRequest] = useState(0);
+  useEffect(() => {
+    if (focusRequest > 0 && errors.serviceIds) scopeRef.current?.focus();
+    // Only on a new request, not on every change of the errors.
+  }, [focusRequest]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -133,6 +140,7 @@ function PreferencesForm({
     });
     if (!parsed.success) {
       setErrors(subscriptionErrors(parsed.error.issues));
+      setFocusRequest((n) => n + 1);
       return;
     }
     setErrors({});
@@ -144,7 +152,10 @@ function PreferencesForm({
       },
       onError: (error) => {
         if (isNotFound(error)) return onInvalid();
-        if (error instanceof ApiError && error.status === 400) return setErrors(subscriptionErrors(error.body?.issues));
+        if (error instanceof ApiError && error.status === 400) {
+          setErrors(subscriptionErrors(error.body?.issues));
+          return setFocusRequest((n) => n + 1);
+        }
         if (error instanceof ApiError && error.status === 429) return setErrors({ form: 'subscription.errors.rateLimited' });
         setErrors({ form: 'subscription.errors.generic' });
       },
@@ -161,7 +172,7 @@ function PreferencesForm({
         <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-sm font-medium">{t('subscription.email')}</span>
-            <span className="truncate rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm" title={subscription.email}>
+            <span className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm break-all">
               {subscription.email}
             </span>
           </div>
@@ -176,12 +187,13 @@ function PreferencesForm({
 
         {!subscription.confirmed && (
           <p className="flex items-start gap-2 rounded-xl bg-status-degraded/12 px-4 py-3 text-sm">
-            <Clock aria-hidden className="mt-0.5 size-4 shrink-0 text-status-degraded" />
+            <Clock aria-hidden className="mt-0.5 size-4 shrink-0 text-status-degraded-text" />
             {t('subscription.manage.pending')}
           </p>
         )}
 
         <ScopePicker
+          ref={scopeRef}
           value={scope}
           onChange={(v) => {
             setScope(v);
@@ -193,13 +205,13 @@ function PreferencesForm({
         />
 
         {errors.form && (
-          <p role="alert" className="rounded-xl bg-status-major-outage/10 px-4 py-3 text-sm text-status-major-outage">
+          <p role="alert" className="rounded-xl bg-status-major-outage/10 px-4 py-3 text-sm text-status-major-outage-text">
             {t(errors.form)}
           </p>
         )}
 
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <p role="status" className="flex items-center gap-1.5 text-sm text-status-operational">
+          <p role="status" className="flex items-center gap-1.5 text-sm text-status-operational-text">
             {saved && (
               <>
                 <CircleCheck aria-hidden className="size-4" />
@@ -208,7 +220,7 @@ function PreferencesForm({
             )}
           </p>
           <button type="submit" className={primaryButton} disabled={update.isPending} aria-busy={update.isPending || undefined}>
-            {update.isPending && <Loader2 aria-hidden className="size-4 animate-spin" />}
+            {update.isPending && <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" />}
             {t('subscription.manage.save')}
           </button>
         </div>
@@ -259,7 +271,7 @@ function UnsubscribeCard({
             <p className="text-sm font-medium">{t('subscription.unsubscribe.confirm', { email })}</p>
             <div className="flex flex-wrap gap-2">
               <button type="button" className={dangerButton} onClick={unsubscribe} disabled={remove.isPending} aria-busy={remove.isPending || undefined}>
-                {remove.isPending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <MailMinus aria-hidden className="size-4" />}
+                {remove.isPending ? <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" /> : <MailMinus aria-hidden className="size-4" />}
                 {t('subscription.unsubscribe.confirmButton')}
               </button>
               {/* Focus the safe choice when the confirmation opens. */}
@@ -277,7 +289,7 @@ function UnsubscribeCard({
           </div>
         )}
         {failed && (
-          <p role="alert" className="text-sm text-status-major-outage">
+          <p role="alert" className="text-sm text-status-major-outage-text">
             {t('subscription.errors.generic')}
           </p>
         )}
