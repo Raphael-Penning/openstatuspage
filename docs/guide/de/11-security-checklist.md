@@ -25,8 +25,8 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
       PostgreSQL ist nicht veröffentlicht.
 - [ ] Getrennter Betrieb: Die `public`-Instanz meldet sich mit einer eigenen,
       eingeschränkten Rolle an (`DB_PUBLIC_ROLE`, angelegt mit
-      `deploy/postgres/roles.sql`) und schreibt keine Warnung über einen
-      uneingeschränkten Login ins Log; sie bekommt `SUBSCRIPTION_TOKEN_KEY`,
+      `deploy/postgres/roles.sql`), `ALLOW_UNRESTRICTED_PUBLIC_DB` ist nicht
+      gesetzt; sie bekommt `SUBSCRIPTION_TOKEN_KEY`,
       aber nicht `SECRET_KEY`; den Admin-Host erreichst du nicht aus dem
       Internet. Siehe [Sicherheitsmodell](../../security-model.md).
 

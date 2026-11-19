@@ -33,13 +33,14 @@ export interface StartupLog {
  * starts safe on PostgreSQL. On PostgreSQL they then grant DB_PUBLIC_ROLE its
  * restricted access (docs/security-model.md) once that role exists.
  * A public instance never migrates: it waits up to SCHEMA_WAIT_SECONDS for another
- * instance to do it and fails clearly otherwise. On PostgreSQL it warns when its
- * login is not a registered public role.
+ * instance to do it and fails clearly otherwise. On PostgreSQL it refuses to start
+ * when its login is not a registered public role (ALLOW_UNRESTRICTED_PUBLIC_DB=true
+ * only warns).
  */
 export async function prepareDatabase(
   db: DB,
   config: Pick<Config, 'APP_ROLE' | 'SCHEMA_WAIT_SECONDS'> &
-    Partial<Pick<Config, 'SUBSCRIPTION_TOKEN_KEY' | 'DB_PUBLIC_ROLE' | 'database'>>,
+    Partial<Pick<Config, 'SUBSCRIPTION_TOKEN_KEY' | 'DB_PUBLIC_ROLE' | 'database' | 'ALLOW_UNRESTRICTED_PUBLIC_DB'>>,
   log: StartupLog,
   options: { intervalMs?: number } = {},
 ): Promise<void> {
@@ -85,13 +86,17 @@ export async function prepareDatabase(
     },
   });
   if (postgres && !(await connectionRestricted(db))) {
+    const message =
+      'the database login of this public instance is not a registered public role (DB_PUBLIC_ROLE), so the ' +
+      'database does not restrict it (see docs/security-model.md)';
+    if (!config.ALLOW_UNRESTRICTED_PUBLIC_DB) {
+      throw new Error(
+        `Refusing to start: ${message}. Connect with the public role, or set ALLOW_UNRESTRICTED_PUBLIC_DB=true ` +
+          'to run without the database boundary.',
+      );
+    }
     const warn = log.warn ?? log.info;
-    warn.call(
-      log,
-      { role: config.DB_PUBLIC_ROLE },
-      'the database login of this public instance is not a registered public role, so the database does not ' +
-        'restrict it (see docs/security-model.md)',
-    );
+    warn.call(log, { role: config.DB_PUBLIC_ROLE }, message);
   }
 }
 

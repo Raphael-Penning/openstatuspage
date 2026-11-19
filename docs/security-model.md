@@ -165,9 +165,10 @@ way on every version.
 3. Public instance: `APP_ROLE=public` and
    `DATABASE_URL=postgres://osp_public:...@db/openstatuspage`. It waits for the
    schema, then checks its login: if it is **not** a registered public role (e.g.
-   it was given the owner's credentials by mistake) it logs a warning
-   *"the database login of this public instance is not a registered public role"*.
-   Treat that warning as a configuration error.
+   it was given the owner's credentials by mistake) it refuses to start with
+   *"Refusing to start: the database login of this public instance is not a
+   registered public role"*. `ALLOW_UNRESTRICTED_PUBLIC_DB=true` turns this into
+   a warning, for setups that knowingly run without the database boundary.
 
 All instances need the same `SUBSCRIPTION_TOKEN_KEY`: the public instance
 derives the token hashes of new subscriptions and the manage token it returns on

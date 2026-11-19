@@ -60,6 +60,11 @@ const EnvSchema = z.object({
    * the public instance only this key, not SECRET_KEY.
    */
   SUBSCRIPTION_TOKEN_KEY: z.string().min(32).optional(),
+  /**
+   * APP_ROLE=public on PostgreSQL refuses to start when its database login is not a
+   * registered public role (DB_PUBLIC_ROLE). `true` only logs a warning instead.
+   */
+  ALLOW_UNRESTRICTED_PUBLIC_DB: bool.default(false),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   /**
    * Reverse proxy trust, so client IPs and https are detected from X-Forwarded-* headers.

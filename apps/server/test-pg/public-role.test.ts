@@ -349,6 +349,16 @@ describe('start-up', () => {
     expect(path).toBe('osp_public');
   });
 
+  it('refuses to start a public instance whose login is not restricted, unless explicitly allowed', async () => {
+    // E.g. the owner's credentials given to the public instance by mistake.
+    await expect(prepareDatabase(owner, pgdb.config('public'), log)).rejects.toThrow(
+      /Refusing to start: the database login of this public instance is not a registered public role/,
+    );
+    logs.length = 0;
+    await prepareDatabase(owner, pgdb.config('public', { ALLOW_UNRESTRICTED_PUBLIC_DB: 'true' }), log);
+    expect(logs.map((l) => l.msg)).toEqual([expect.stringMatching(/^WARN the database login of this public instance/)]);
+  });
+
   it('grants idempotently and refuses roles that would not be restricted', async () => {
     await sql`select osp_grant_public_role(${pgdb.publicRole})`.execute(owner);
     const { granted } = (await sql<{ granted: boolean }>`select osp_grant_public_role('osp_no_such_role') as granted`.execute(owner)).rows[0]!;

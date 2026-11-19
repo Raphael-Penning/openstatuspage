@@ -42,6 +42,7 @@ The Docker image also sets `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` (use `sqlite::memory:` for throw-away instances) or `postgres://user:password@host:5432/database`. Migrations run automatically on start (except with `APP_ROLE=public`). |
+| `ALLOW_UNRESTRICTED_PUBLIC_DB` | `false` | PostgreSQL, `APP_ROLE=public` only: a public instance refuses to start when its database login is not a registered public role (`DB_PUBLIC_ROLE`), because the database would not restrict it. `true` starts anyway and only logs a warning. |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL only: the restricted login role of `APP_ROLE=public` instances (lower case letters, digits, `_`). Instances that migrate grant it read access to the public views and the subscription functions of schema `osp_public` on every start, once the role exists (create it with [`deploy/postgres/roles.sql`](../deploy/postgres/roles.sql)). See [security-model.md](security-model.md). |
 
 ## Initial administrator
