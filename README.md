@@ -27,7 +27,7 @@ management area.
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
-- **Public API and RSS/Atom feeds**
+- **[JSON:API 1.1](docs/api.md) HTTP API and RSS/Atom feeds** (since 0.2.0; a breaking change for API clients of 0.1.x, see the [changelog](CHANGELOG.md))
 
 ## Quick start (Docker Compose)
 
