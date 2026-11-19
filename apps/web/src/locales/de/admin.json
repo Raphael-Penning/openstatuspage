@@ -292,7 +292,7 @@
     "record": "Wartung eintragen",
     "retroactiveHint": {
       "past": "Dieses Fenster ist schon vorbei. Es wird als abgeschlossen eingetragen, es geht keine E-Mail raus, und die Zeit zählt im Uptime-Verlauf als Wartung (nicht als Ausfall).",
-      "started": "Dieses Fenster hat schon begonnen. Es startet sofort; Abonnenten bekommen nur die E-Mail „In Arbeit“ (keine Ankündigung), und die Zeit seit dem Start zählt im Uptime-Verlauf als Wartung."
+      "started": "Dieses Fenster hat schon begonnen. Es startet sofort; Abonnenten bekommen nur die E-Mail „Die Wartung hat begonnen“ (keine Ankündigung), und die Zeit seit dem Start zählt im Uptime-Verlauf als Wartung."
     }
   },
   "corrections": {

@@ -32,6 +32,12 @@ Responses may be cached (`Cache-Control: public, max-age=30`).
 | GET | `/api/public/status.json` | Compact machine-readable status: `{ overall, updatedAt, services: [{ id, name, group, status }], activeIncidents: [{ id, title, status, impact }], activeMaintenances: [{ id, title, scheduledEnd }] }` |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 
+Uptime (`uptime`, `uptimePercent`) is computed from the **corrected** history
+(see [History corrections](#history-corrections)). A `DailyUptime` entry of a day
+that contains a correction marked public carries `corrected: true` and
+`correctionNotes: string[]` (the public notes, possibly empty). The internal
+reason of a correction is never returned by public endpoints.
+
 Upcoming maintenance = `status = scheduled` and `scheduled_end > now`.
 Active maintenance = `status = in_progress`.
 Active incidents = `status != resolved`.
@@ -103,7 +109,7 @@ Expired sessions are deleted lazily and by a periodic cleanup task.
 ## Admin API (`/api/admin`)
 
 Authentication: session cookie **or** `Authorization: Bearer <api token>`.
-Roles: `editor` may manage incidents, maintenance and read everything;
+Roles: `editor` may manage incidents, maintenance, history corrections and read everything;
 `admin` may additionally manage services, groups, locations, monitoring sources,
 settings, users and API tokens. Every mutating call writes an audit log entry.
 
@@ -137,6 +143,10 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/maintenances` | `MaintenanceCreateInput` | `AdminMaintenance` (201) | editor |
 | GET/PATCH/DELETE | `/api/admin/maintenances/:id` | `MaintenancePatchInput` | `AdminMaintenance` | editor |
 | POST | `/api/admin/maintenances/:id/updates` | `MaintenanceUpdateInput` | `AdminMaintenance` | editor |
+| GET | `/api/admin/corrections` | query `CorrectionListQuery` (`serviceId`, `from`, `to` = overlapping the range, `page`, `pageSize`) | `Paginated<AdminCorrection>` (newest start first) | editor |
+| POST | `/api/admin/corrections` | `CorrectionInput` | `AdminCorrection` (201) | editor |
+| GET/PATCH/DELETE | `/api/admin/corrections/:id` | `CorrectionPatchInput` | `AdminCorrection` | editor |
+| GET | `/api/admin/services/:id/history` | query `ServiceHistoryQuery` (`from`, `to`, at most 366 days) | `AdminServiceHistory` (measured and corrected segments and uptime) | editor |
 | GET | `/api/admin/monitor-sources` | – | `AdminMonitorSource[]` | admin |
 | POST | `/api/admin/monitor-sources` | `MonitorSourceInput` | `AdminMonitorSource & { ingestToken: string }` (201, token shown once) | admin |
 | GET/PUT/DELETE | `/api/admin/monitor-sources/:id` | `MonitorSourceInput` (secrets equal to `SECRET_MASK` keep the stored value; only while type, `baseUrl` and `username` are unchanged, otherwise 400) | `AdminMonitorSource` | admin |
@@ -182,6 +192,17 @@ their creator loses the admin role.
 - Creating a maintenance adds a first `scheduled` update with an empty message
   (clients render a localized default text). Windows that are already due are
   started/completed right away instead of on the next worker tick.
+- Retroactive maintenance (`AdminMaintenance.retroactive`): a window whose end is
+  not after the creation time is created directly as `completed` with
+  `actualStart`/`actualEnd` = the window and `in_progress`/`completed` updates at
+  those times; **no** email is queued (no announcement, reminder or transition).
+  A window with `autoStart` that started at least 5 minutes before the creation
+  time and has not ended is created as `in_progress` (`actualStart` = scheduled
+  start, one `in_progress` update at that time); only that "in progress" email is
+  queued (if `notify` and public), no announcement. Windows starting later or
+  without `autoStart` behave as before. Changing the window of a retroactive
+  maintenance keeps `actualStart` (and, when completed, `actualEnd`, which must
+  then not be in the future) in line with it.
 - `PUT` bodies are complete objects (schema defaults apply to omitted fields);
   an omitted `slug` keeps the current slug. An explicit slug that is taken is `409`.
 - `PUT /api/admin/users/:id` with `password: null` removes the local password
@@ -200,6 +221,35 @@ their creator loses the admin role.
   start/completion and the reminder only notify when it is set.
   `AdminMaintenance.reminderSentAt` is the time the reminder was queued; it is reset
   when `scheduledStart` moves later. Notification errors never fail the request.
+
+### History corrections
+
+The measured `service_status_history` is never changed. Whenever uptime or
+history is computed (public uptime bars and percentages, the admin history
+comparison), corrections are applied on top
+(`apps/server/src/services/history-corrections.ts`, pure and unit tested):
+
+1. measured segments,
+2. retroactive maintenance windows (`retroactive = 1`, status `in_progress` or
+   `completed`): `maintenance` from `actualStart` to `actualEnd` (or now while
+   running), for its services, public or hidden,
+3. status corrections: their `status` for `[startsAt, endsAt)`. Where corrections
+   overlap, the one **created last** wins (creation times are strictly increasing).
+
+Everything is clipped at now; corrections may also cover time without measured
+data. Corrections never change the current status of a service and send no
+email.
+
+- `CorrectionInput`: `serviceIds` (≥ 1), `startsAt`, `endsAt` (after `startsAt`,
+  at most 366 days later, not in the future: up to 5 minutes ahead is clamped to
+  now, more is `400`), `status` (any `ServiceStatus`), `reason` (required,
+  internal), `showPublic` (default `false`), `publicNote` (optional, ≤ 500).
+- `PATCH` accepts any subset; the merged range is validated again. `serviceIds`
+  replaces the services.
+- Audit: `correction.create`, `correction.update`, `correction.delete` (with
+  services, range, status and reason).
+- Deleting a service removes it from its corrections; a correction without
+  services stays listed until it is deleted.
 
 ## Ingest API (`/api/ingest`)
 

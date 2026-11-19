@@ -76,8 +76,10 @@ Irrtümer.
 | Auf der öffentlichen Statusseite sichtbar | Versteckte Wartungen erscheinen nicht öffentlich und ändern keine Status. |
 | Abonnenten benachrichtigen | Kündigt die Wartung per E-Mail an und wird für spätere Benachrichtigungen **gespeichert** (siehe unten). |
 
-Geplante Wartungen stehen in der öffentlichen Übersicht. Ist der Zeitraum beim
-Speichern schon erreicht, startet (und endet) die Wartung sofort.
+Geplante Wartungen stehen in der öffentlichen Übersicht. Beginnt der Zeitraum
+jetzt (oder vor wenigen Minuten), startet die Wartung sofort. Zeiträume, die
+schon früher begonnen haben oder vorbei sind, werden nachträglich
+eingetragen, siehe [Den Verlauf korrigieren](#den-verlauf-korrigieren).
 
 ### Automatischer Start und Abschluss
 
@@ -105,6 +107,69 @@ Zeitraum (bei einem späteren Beginn bekommen Abonnenten eine neue
 Erinnerung); fällt eine Wartung aus,
 nutze **Wartung absagen**, damit Kunden sehen, dass sie nicht stattfindet.
 Löschen entfernt sie vollständig.
+
+## Den Verlauf korrigieren
+
+Die Verfügbarkeitsbalken werden aus dem Status berechnet, den das Monitoring
+aufgezeichnet hat. Stimmt diese Aufzeichnung nicht, korrigierst du sie
+nachträglich. Korrekturen liegen als Schicht über den aufgezeichneten Daten:
+Die aufgezeichneten Daten werden nie verändert, deshalb kannst du jede
+Korrektur wieder bearbeiten oder löschen, und die Uptime wird sofort neu
+berechnet. Jede Korrektur landet im Audit-Log.
+
+### Eine vergessene Wartung nachtragen
+
+Beispiel: Du hast gestern einen Switch aktualisiert, die Wartung nicht
+eingetragen, und das Monitoring hat die Zeit als Ausfall aufgezeichnet.
+
+1. **Wartungen → Wartung planen**.
+2. Trag den **echten** Zeitraum (Beginn und Ende in der Vergangenheit) und
+   die betroffenen Services ein, wie bei jeder Wartung.
+3. Das Formular weist darauf hin, dass der Zeitraum schon vorbei ist.
+   Speichere mit **Wartung eintragen**.
+
+Die Wartung wird als *Abgeschlossen* angelegt, mit ihrem Verlauf (gestartet,
+abgeschlossen) zu den echten Zeiten, und ist als *Nachträglich eingetragen*
+markiert. Für ihre Services zählt der Zeitraum in den Verfügbarkeitsbalken und
+Prozentwerten als *Wartung* und nicht mehr als Ausfall. Eine öffentliche
+Wartung erscheint wie jede andere im öffentlichen Verlauf. Für einen schon
+vergangenen Zeitraum geht **keine E-Mail** raus, auch keine Erinnerung. Eine
+versteckte Wartung korrigiert die Uptime, ohne öffentlich aufzutauchen.
+
+Hat der Zeitraum begonnen, ist aber noch nicht vorbei (du steckst z. B.
+mitten in der Arbeit), startet die Wartung sofort: Abonnenten bekommen nur
+die E-Mail „Läuft“ (die Wartung hat begonnen), keine Ankündigung, und die Zeit seit dem Beginn zählt
+als Wartung. Änderst du später den Zeitraum einer solchen Wartung, wird der
+Verlauf entsprechend korrigiert; löschst du sie, entfällt die Korrektur.
+
+### Einen Fehlalarm oder verpassten Ausfall markieren
+
+**Korrekturen → Neue Korrektur** setzt den Status eines oder mehrerer
+Services für einen vergangenen Zeitraum:
+
+| Feld | Hinweise |
+| --- | --- |
+| Services | Ein oder mehrere Services. |
+| Beginn / Ende | Der Zeitraum. Das Ende darf nicht in der Zukunft liegen. |
+| Status | *Betriebsbereit* für einen Fehlalarm (z. B. hat der Monitoring-Host sein Netz verloren). Ein Ausfall-Status trägt einen Ausfall nach, den das Monitoring nicht bemerkt hat. |
+| Grund | Pflichtfeld. Nur intern: wird nie öffentlich angezeigt, steht im Audit-Log. |
+| Hinweis auf der öffentlichen Seite zeigen | Pro Korrektur wählbar: Tage mit dieser Korrektur werden öffentlich als *Nachträglich korrigiert* markiert (im Tooltip der Verfügbarkeitsbalken und auf der Service-Seite). |
+| Öffentlicher Hinweis | Optionaler Text zur Markierung, z. B. „Fehlalarm des Monitorings.“ |
+
+Ohne den öffentlichen Hinweis wird die korrigierte Uptime ohne Markierung
+angezeigt. Überschneiden sich Korrekturen, gilt die **zuletzt erstellte**;
+eine Korrektur gilt auch vor einer nachträglich eingetragenen Wartung. Die
+Liste kannst du nach Service und Datum filtern.
+
+Um die Wirkung zu prüfen, öffne den Service (**Services & Sites**) und scrolle
+zu **Verlauf: gemessen und korrigiert**: Dort siehst du für einen
+Datumsbereich gemessenen und korrigierten Status samt Uptime im Vergleich und
+die korrigierten Zeiträume. **Korrektur hinzufügen** legt eine neue Korrektur
+für den angezeigten Bereich an.
+
+Korrekturen ändern nur den Verlauf. Sie ändern nicht den aktuellen Status
+eines Services und verschicken keine E-Mail; für etwas, das gerade passiert,
+nimmst du einen Vorfall oder eine Wartung.
 
 ## Die Checkbox „Abonnenten benachrichtigen“
 
@@ -138,7 +203,7 @@ Wer die E-Mail bekommt, hängt von den betroffenen Services ab, siehe
 
 ## Rollen
 
-Redakteure dürfen Vorfälle und Wartungen anlegen und ändern und alles andere
-lesen. Services, Gruppen, Standorte, Monitoring, Einstellungen, Benutzer und
+Redakteure dürfen Vorfälle, Wartungen und Korrekturen anlegen und ändern und
+alles andere lesen. Services, Gruppen, Standorte, Monitoring, Einstellungen, Benutzer und
 API-Tokens verwalten Administratoren; siehe
 [Benutzer und Zugriff](08-users-and-access.md).

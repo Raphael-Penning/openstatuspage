@@ -86,6 +86,9 @@ How several checks are combined is configured per service (*aggregation*):
 
 Uptime bars on the public page are calculated per UTC day from the recorded
 status history. *Degraded performance* and *Maintenance* count as up.
+[Corrections](06-daily-work.md#correcting-the-history) (a forgotten
+maintenance, a false alarm) are applied on top of the recorded history; the
+recorded data itself is never changed.
 
 See [Monitoring integration](05-monitoring.md) for the details of composing
 services from checks.
