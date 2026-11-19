@@ -137,7 +137,11 @@ function baseEnv(role) {
     NODE_ENV: 'production',
     APP_ROLE: role,
     DATABASE_URL: role === 'public' ? PUBLIC_DATABASE_URL : DATABASE_URL,
-    SECRET_KEY,
+    // Like a split deployment: the public instance gets only the token key.
+    ...(role === 'public' ? {} : { SECRET_KEY }),
+    SUBSCRIPTION_TOKEN_KEY: SECRET_KEY,
+    // Without PUBLIC_DATABASE_URL the public instance measures with the owner login.
+    ...(role === 'public' && !process.env.PUBLIC_DATABASE_URL ? { ALLOW_UNRESTRICTED_PUBLIC_DB: 'true' } : {}),
     LOG_LEVEL: process.env.LOG_LEVEL || 'warn',
     MAIL_TRANSPORT: 'log',
     SMTP_FROM: 'Status <status@example.com>',
