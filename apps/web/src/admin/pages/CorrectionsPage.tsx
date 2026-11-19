@@ -135,7 +135,7 @@ export default function CorrectionsPage() {
                         <td className={td}>
                           <StatusBadge status={c.status} />
                         </td>
-                        <td className={`${td} max-w-xs`}>
+                        <td className={`${td} max-w-xs min-w-48`}>
                           <p className="line-clamp-3 text-sm break-words">{c.reason}</p>
                           <p className="mt-1 text-xs text-muted">
                             {t('corrections.createdBy', { name: c.createdByName ?? t('audit.system'), time: fmt.dateTime(c.createdAt) })}
