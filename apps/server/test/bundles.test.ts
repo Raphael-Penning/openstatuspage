@@ -4,7 +4,7 @@ import { BUNDLE_SOURCE_ID, BUNDLE_TASK } from '../src/services/bundles.js';
 import { newId } from '../src/lib/ids.js';
 import { nowIso } from '../src/lib/time.js';
 import { sha256 } from '../src/lib/crypto.js';
-import { adminClient, client, createTestApp, createUser, login, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, data, login, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -324,7 +324,7 @@ describe('bundles and other views', () => {
   it('leaves the bundle source and its checks out of the overview counts', async () => {
     const a = await kumaNode('Kuma FRA', 'critical');
     await admin.post('/api/admin/check-bundles', { name: 'Web', members: [{ checkId: a.checkId }] });
-    const counts = (await admin.get('/api/admin/overview')).json().counts;
+    const counts = data<{ counts: Record<string, number> }>(await admin.get('/api/admin/overview')).counts;
     expect(counts).toMatchObject({ sources: 1, checks: 1, checksFailing: 1 });
   });
 

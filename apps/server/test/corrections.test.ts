@@ -55,7 +55,7 @@ beforeEach(async () => {
   api = (await admin.post('/api/admin/services', { name: 'Public API' })).json().id;
   web = (await admin.post('/api/admin/services', { name: 'Web App' })).json().id;
   hidden = (await admin.post('/api/admin/services', { name: 'Hidden backend', isPublic: false })).json().id;
-  await admin.put('/api/admin/settings', { siteName: 'Example Status', emailSubscriptionsEnabled: true, uptimeDays: 7 });
+  await admin.patch('/api/admin/settings', { siteName: 'Example Status', emailSubscriptionsEnabled: true, uptimeDays: 7 });
 });
 afterEach(async () => {
   await t.close();

@@ -3,7 +3,7 @@ import { loadConfig } from '../src/config.js';
 import { sha256 } from '../src/lib/crypto.js';
 import { cleanupExpiredSessions } from '../src/services/sessions.js';
 import { createOrResetLocalUser } from '../src/services/users.js';
-import { PASSWORD, client, createTestApp, createUser, data, doc, errors, login, loginRequest, type TestApp } from './helpers.js';
+import { PASSWORD, client, createTestApp, createUser, data, doc, errors, login, loginRequest, page, type TestApp } from './helpers.js';
 
 const HOUR_MS = 3600_000;
 
@@ -216,7 +216,7 @@ describe('authorization', () => {
     expect((await editor.post('/api/admin/locations', { name: 'X', region: 'europe' })).statusCode).toBe(403);
     expect((await editor.get('/api/admin/users')).statusCode).toBe(403);
     expect((await editor.get('/api/admin/monitor-sources')).statusCode).toBe(403);
-    expect((await editor.put('/api/admin/settings', { siteName: 'X' })).statusCode).toBe(403);
+    expect((await editor.patch('/api/admin/settings', { siteName: 'X' })).statusCode).toBe(403);
     const incident = await editor.post('/api/admin/incidents', { title: 'Slow', message: 'Investigating' });
     expect(incident.statusCode).toBe(201);
   });
@@ -267,8 +267,8 @@ describe('authorization', () => {
     expect((await bot.post('/api/admin/service-groups', { name: 'Nope' })).statusCode).toBe(403);
     expect((await client(t.app, { token: 'osp_invalid' }).get('/api/admin/services')).statusCode).toBe(401);
 
-    const audit = await admin.get('/api/admin/audit-log?entityType=incident');
-    expect(audit.json().items[0]).toMatchObject({ action: 'incident.create', userId: null, details: { apiToken: 'CI' } });
+    const audit = await admin.get('/api/admin/audit-log?filter[entityType]=incident');
+    expect(page(audit).items[0]).toMatchObject({ action: 'incident.create', userId: null, details: { apiToken: 'CI' } });
     const tokens = await admin.get('/api/admin/api-tokens');
     expect(data<{ lastUsedAt: string | null }[]>(tokens)[0]!.lastUsedAt).not.toBeNull();
 
@@ -418,7 +418,7 @@ describe('dashboard activity', () => {
     await editor.post('/api/admin/incidents', { title: 'Slow', message: 'Investigating' });
 
     const types = async (c: typeof admin) =>
-      ((await c.get('/api/admin/overview')).json().recentAudit as { entityType: string }[]).map((e) => e.entityType);
+      data<{ recentAudit: { entityType: string }[] }>(await c.get('/api/admin/overview')).recentAudit.map((e) => e.entityType);
     expect(await types(editor)).toEqual(['incident']);
     expect(await types(admin)).toEqual(expect.arrayContaining(['incident', 'user', 'api_token']));
   });

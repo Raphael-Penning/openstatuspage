@@ -77,8 +77,7 @@ describe('public endpoints', () => {
 
   it('hides locations when the page disables them', async () => {
     expect((await t.app.inject({ url: '/api/public/locations' })).statusCode).toBe(200);
-    const settings = (await admin.get('/api/admin/settings')).json();
-    await admin.put('/api/admin/settings', { ...settings, showLocations: false });
+    await admin.patch('/api/admin/settings', { showLocations: false });
     expect((await t.app.inject({ url: '/api/public/locations' })).statusCode).toBe(404);
   });
 
@@ -93,8 +92,7 @@ describe('public endpoints', () => {
     expect(en).toContain('10 Jan 2026, 10:00 UTC');
     expect(en).not.toContain('in_progress');
 
-    const settings = (await admin.get('/api/admin/settings')).json();
-    await admin.put('/api/admin/settings', { ...settings, defaultLocale: 'de' });
+    await admin.patch('/api/admin/settings', { defaultLocale: 'de' });
     const de = (await t.app.inject({ url: '/feed.atom' })).body;
     expect(de).toContain('Status: Abgeschlossen');
   });

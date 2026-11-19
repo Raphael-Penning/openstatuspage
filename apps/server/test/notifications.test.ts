@@ -11,6 +11,7 @@ import {
   client,
   createTestApp,
   createUser,
+  data,
   login,
   type Client,
   type TestApp,
@@ -39,7 +40,7 @@ afterEach(async () => {
 });
 
 async function settings(extra: object) {
-  const res = await admin.put('/api/admin/settings', {
+  const res = await admin.patch('/api/admin/settings', {
     siteName: 'Example Status',
     emailSubscriptionsEnabled: true,
     ...extra,
@@ -639,18 +640,20 @@ describe('admin endpoints', () => {
   });
 
   it('round-trips the subscription settings', async () => {
-    const saved = await admin.put('/api/admin/settings', {
+    const saved = await admin.patch('/api/admin/settings', {
       siteName: 'Example Status',
       emailSubscriptionsEnabled: true,
       maintenanceReminderHours: 6,
     });
-    expect(saved.json()).toMatchObject({ emailSubscriptionsEnabled: true, maintenanceReminderHours: 6 });
-    expect((await admin.get('/api/admin/settings')).json()).toMatchObject({
+    expect(data(saved)).toMatchObject({ emailSubscriptionsEnabled: true, maintenanceReminderHours: 6 });
+    expect(data(await admin.get('/api/admin/settings'))).toMatchObject({
       emailSubscriptionsEnabled: true,
       maintenanceReminderHours: 6,
     });
-    const defaults = await admin.put('/api/admin/settings', { siteName: 'Example Status' });
-    expect(defaults.json()).toMatchObject({ emailSubscriptionsEnabled: false, maintenanceReminderHours: 24 });
-    expect((await admin.put('/api/admin/settings', { siteName: 'x', maintenanceReminderHours: 500 })).statusCode).toBe(400);
+    const kept = await admin.patch('/api/admin/settings', { siteName: 'Example Status' });
+    expect(data(kept)).toMatchObject({ emailSubscriptionsEnabled: true, maintenanceReminderHours: 6 });
+    const off = await admin.patch('/api/admin/settings', { emailSubscriptionsEnabled: false });
+    expect(data(off)).toMatchObject({ emailSubscriptionsEnabled: false, maintenanceReminderHours: 6 });
+    expect((await admin.patch('/api/admin/settings', { siteName: 'x', maintenanceReminderHours: 500 })).statusCode).toBe(400);
   });
 });

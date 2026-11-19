@@ -2,13 +2,18 @@ import { BUNDLE_SOURCE_TYPE, SERVICE_STATUS_SEVERITY, SettingsInput, type AuditL
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from '../../db/index.js';
-import { offsetOf, PageQuery, paginated, parse } from '../../lib/http.js';
+import { parse } from '../../lib/http.js';
+import { collection, document, Included, selfLink } from '../../lib/jsonapi.js';
+import { parseListQuery } from '../../lib/jsonapi-query.js';
 import { hasRole } from '../../plugins/auth.js';
+import { useJsonApi } from '../../plugins/jsonapi.js';
+import { adminSettingsResource, AUTH_TYPES, auditEntryResource, overviewResource } from '../../serializers/auth-users.js';
 import { loadAdminServices } from '../../services/admin-catalog.js';
 import { getSettings, saveSettings } from '../../services/settings.js';
 import { admin, auditRequest, editor } from './util.js';
 
-const AuditQuery = PageQuery.extend({ entityType: z.string().min(1).max(64).optional() });
+/** `filter[entityType]` of GET /api/admin/audit-log. */
+const AuditFilter = { entityType: z.string().min(1).max(64).optional() };
 
 /**
  * Audit entity types editors may see on the dashboard: the ones they can change
@@ -58,8 +63,13 @@ export async function loadAuditEntries(
   }));
 }
 
-/** /api/admin/overview, /api/admin/settings and /api/admin/audit-log */
+/** /api/admin/overview, /api/admin/settings and /api/admin/audit-log (JSON:API) */
 export async function registerOverviewRoutes(app: FastifyInstance): Promise<void> {
+  await app.register(registerOverviewScope);
+}
+
+async function registerOverviewScope(app: FastifyInstance): Promise<void> {
+  useJsonApi(app);
   const { db } = app.ctx;
 
   app.get('/api/admin/overview', editor, async (req) => {
@@ -130,8 +140,10 @@ export async function registerOverviewRoutes(app: FastifyInstance): Promise<void
       .sort((a, b) => SERVICE_STATUS_SEVERITY[b.s.status] - SERVICE_STATUS_SEVERITY[a.s.status] || a.index - b.index)
       .map((x) => x.s);
 
-    return {
-      counts: {
+    const included = new Included();
+    const overview = overviewResource(
+      {
+        counts: {
         services: services.length,
         incidentsActive,
         maintenancesActive,
@@ -139,30 +151,36 @@ export async function registerOverviewRoutes(app: FastifyInstance): Promise<void
         sources,
         sourcesFailing,
         checks,
-        checksFailing,
+          checksFailing,
+        },
+        services: ordered,
+        recentAudit,
       },
-      services: ordered,
-      recentAudit,
-    };
+      included,
+    );
+    return document(overview, { included, links: { self: selfLink(req) } });
   });
 
-  app.get('/api/admin/settings', editor, async () => getSettings(db));
+  app.get('/api/admin/settings', editor, async (req) => document(adminSettingsResource(await getSettings(db)), { links: { self: selfLink(req) } }));
 
-  app.put('/api/admin/settings', admin, async (req) => {
-    const input = parse(SettingsInput, req.body);
+  // Partial update: missing attributes keep their current value.
+  app.patch('/api/admin/settings', { ...admin, config: { jsonapi: { type: AUTH_TYPES.settings } } }, async (req) => {
+    const current = await getSettings(db);
+    const input = parse(SettingsInput, { ...current, ...(req.body as object) });
     const saved = await saveSettings(db, input);
     await auditRequest(db, req, 'settings.update', 'settings', null, { siteName: input.siteName });
-    return saved;
+    return document(adminSettingsResource(saved));
   });
 
   app.get('/api/admin/audit-log', admin, async (req) => {
-    const q = parse(AuditQuery, req.query);
+    const q = parseListQuery(req.query, { page: { defaultSize: 20, maxSize: 100 }, filter: AuditFilter });
+    const { entityType } = q.filter;
     let totalQuery = db.selectFrom('audit_log').select((eb) => eb.fn.countAll<number>().as('n'));
-    if (q.entityType) totalQuery = totalQuery.where('entity_type', '=', q.entityType);
+    if (entityType) totalQuery = totalQuery.where('entity_type', '=', entityType);
     const [total, items] = await Promise.all([
       totalQuery.executeTakeFirstOrThrow().then((r) => Number(r.n)),
-      loadAuditEntries(db, { limit: q.pageSize, offset: offsetOf(q), entityType: q.entityType }),
+      loadAuditEntries(db, { limit: q.page.size, offset: q.page.offset, entityType }),
     ]);
-    return paginated(items, total, q);
+    return collection(req, items.map(auditEntryResource), { page: q.page, total });
   });
 }

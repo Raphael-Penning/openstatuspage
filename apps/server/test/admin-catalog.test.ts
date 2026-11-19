@@ -1,6 +1,6 @@
 import { SECRET_MASK } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { adminClient, createTestApp, data, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, errors, page, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -51,9 +51,9 @@ describe('locations', () => {
     expect((await admin.delete(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(204);
     expect((await admin.get(`/api/admin/locations/${a.json().id}`)).statusCode).toBe(404);
 
-    const audit = await admin.get('/api/admin/audit-log?entityType=location');
+    const audit = await admin.get('/api/admin/audit-log?filter[entityType]=location');
     // Entries within the same millisecond have no defined order, so compare sorted.
-    expect(audit.json().items.map((e: { action: string }) => e.action).sort()).toEqual([
+    expect(page<{ action: string }>(audit).items.map((e: { action: string }) => e.action).sort()).toEqual([
       'location.create',
       'location.create',
       'location.delete',
@@ -169,7 +169,10 @@ describe('services', () => {
     await admin.post('/api/admin/services', { name: 'Fine' });
     const res = await admin.get('/api/admin/overview');
     expect(res.statusCode).toBe(200);
-    expect(res.json().counts).toEqual({
+    expect(res.json().data).toMatchObject({ type: 'overviews', id: 'current' });
+    const overview = data<{ counts: object; recentAudit: { action: string }[]; services: { id: string; name: string }[] }>(res);
+    expect(overview.services.map((s) => s.name)).toEqual(['Fine']);
+    expect(overview.counts).toEqual({
       services: 1,
       incidentsActive: 0,
       maintenancesActive: 0,
@@ -179,16 +182,22 @@ describe('services', () => {
       checks: 1,
       checksFailing: 1,
     });
-    expect(res.json().recentAudit.map((e: { action: string }) => e.action)).toContain('service.create');
+    expect(overview.recentAudit.map((e) => e.action)).toContain('service.create');
   });
 });
 
 describe('settings', () => {
   it('validates and stores settings', async () => {
-    const res = await admin.put('/api/admin/settings', { siteName: 'Example Status', uptimeDays: 30 });
+    const res = await admin.patch('/api/admin/settings', { siteName: 'Example Status', uptimeDays: 30 });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ siteName: 'Example Status', uptimeDays: 30, showUptime: true });
-    expect((await admin.put('/api/admin/settings', { siteName: '' })).statusCode).toBe(400);
+    expect(res.json().data).toMatchObject({ type: 'settings', id: 'site' });
+    expect(data(res)).toMatchObject({ siteName: 'Example Status', uptimeDays: 30, showUptime: true });
+    const invalid = await admin.patch('/api/admin/settings', { siteName: '' });
+    expect(invalid.statusCode).toBe(400);
+    expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/siteName' } });
+    // PATCH is partial: attributes left out keep their value.
+    expect(data(await admin.patch('/api/admin/settings', { showUptime: false }))).toMatchObject({ siteName: 'Example Status', uptimeDays: 30, showUptime: false });
+    expect((await admin.put('/api/admin/settings', { siteName: 'X' })).statusCode).toBe(404);
     expect(data<{ siteName: string }>(await t.app.inject({ method: 'GET', url: '/api/public/settings' })).siteName).toBe('Example Status');
   });
 });
@@ -255,7 +264,7 @@ describe('monitoring sources', () => {
     expect(rotated.statusCode).toBe(200);
     expect(rotated.json().ingestToken).not.toBe(source.ingestToken);
 
-    const audit = await admin.get('/api/admin/audit-log?entityType=monitor_source');
+    const audit = await admin.get('/api/admin/audit-log?filter[entityType]=monitor_source');
     expect(audit.body).not.toContain('super-secret-password');
     expect(audit.body).not.toContain(rotated.json().ingestToken);
 

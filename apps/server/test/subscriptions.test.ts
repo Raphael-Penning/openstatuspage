@@ -28,7 +28,7 @@ afterEach(async () => {
 });
 
 async function enableSubscriptions(enabled = true) {
-  const res = await admin.put('/api/admin/settings', { siteName: 'Example Status', emailSubscriptionsEnabled: enabled });
+  const res = await admin.patch('/api/admin/settings', { siteName: 'Example Status', emailSubscriptionsEnabled: enabled });
   expect(res.statusCode).toBe(200);
 }
 
@@ -265,7 +265,7 @@ describe('subscribe and confirm', () => {
     const noTransport = await createTestApp();
     try {
       const a = await adminClient(noTransport);
-      await a.put('/api/admin/settings', { siteName: 'Example Status', emailSubscriptionsEnabled: true });
+      await a.patch('/api/admin/settings', { siteName: 'Example Status', emailSubscriptionsEnabled: true });
       const res = await noTransport.app.inject({
         method: 'POST',
         url: '/api/public/subscriptions',
