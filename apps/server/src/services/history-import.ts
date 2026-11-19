@@ -45,7 +45,7 @@ import { newId } from '../lib/ids.js';
 import type { Valued } from '../lib/intervals.js';
 import { nowIso } from '../lib/time.js';
 import { CsvImportError, parseHistoryCsv } from '../importers/csv.js';
-import { defaultImporters, type ImporterRegistry } from '../importers/index.js';
+import type { ImporterRegistry } from '../importers/index.js';
 import type { ImportedHistory, ImportTarget } from '../importers/types.js';
 import type { Worker } from '../worker.js';
 import { audit } from './audit.js';
@@ -95,11 +95,19 @@ function json<T>(value: string | null): T | null {
 const iso = (t: number) => new Date(t).toISOString();
 
 export class HistoryImportService {
-  /** Replaceable in tests. */
-  importers: ImporterRegistry = defaultImporters;
+  /**
+   * Importers per source type, loaded with the first import job (they are only
+   * needed on the instance that runs one). Replaceable in tests.
+   */
+  importers: ImporterRegistry | null = null;
   fetchFactory: (options: AdapterFetchOptions) => FetchFn = createAdapterFetch;
 
   private readonly running = new Map<string, AbortController>();
+
+  private async importerRegistry(): Promise<ImporterRegistry> {
+    this.importers ??= (await import('../importers/index.js')).defaultImporters;
+    return this.importers;
+  }
   private shuttingDown = false;
 
   constructor(
@@ -189,7 +197,7 @@ export class HistoryImportService {
         throw err;
       }
     } else {
-      if (!this.importers[source.type]) {
+      if (!(await this.importerRegistry())[source.type]) {
         throw badRequest('This source type has no history API; upload a CSV file instead.');
       }
       this.assertCredentials(source.type, config, credentials);
@@ -313,7 +321,7 @@ export class HistoryImportService {
         const parsed = parseHistoryCsv(csv);
         fetched = { checks: parsed.checks, services: parsed.services, warnings: [] };
       } else {
-        const importer = this.importers[source.type];
+        const importer = (await this.importerRegistry())[source.type];
         if (!importer) throw new Error('No importer for this source type');
         fetched = await importer.fetch(config, credentials, targets, range, {
           signal,
