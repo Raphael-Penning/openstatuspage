@@ -190,7 +190,8 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       const settings = await getSettings(db);
       const catalog = await loadPublicCatalog(db, settings, new Date());
       const services = [...catalog.groups.flatMap((g) => g.services), ...catalog.ungrouped];
-      // The group's services are primary data already.
+      // The group's services are primary data already. loadPublicCatalog drops groups
+      // without public services, so every included group is linked from a service.
       const included = catalog.groups.map((g) => groupResource(g, new Included()));
       return collection(
         req,

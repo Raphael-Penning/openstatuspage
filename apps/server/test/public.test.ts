@@ -224,6 +224,10 @@ describe('public summary and services', () => {
     expect(services.map((s: Any) => s.id)).toEqual([ids.api, ids.inHiddenGroup, ids.web]);
     expect(services[0]).toMatchObject({ groupId: ids.group, locationIds: [ids.fra] });
     expect(included.map((g) => [resourceType(g), g.id, g.serviceIds])).toEqual([['service-groups', ids.group, [ids.api]]]);
+    // Full linkage: a public group without public services is not part of `included`.
+    expect((await admin.post('/api/admin/service-groups', { name: 'Empty', isPublic: true })).statusCode).toBe(201);
+    const withEmpty = deserializeDocument<Any[]>((await get('/api/public/services')).json() as DataDocument);
+    expect(withEmpty.included.map((g) => g.id)).toEqual([ids.group]);
 
     const detailRes = await get('/api/public/services/public-api');
     expect(detailRes.json().data.links).toEqual({ self: '/api/public/services/public-api' });
