@@ -84,7 +84,9 @@ breaking changes.
   instances grant the role on every start. Subscription tokens are additionally
   stored as SHA-256 hashes so the database can check them. A public instance
   whose login is not a registered public role refuses to start
-  (`ALLOW_UNRESTRICTED_PUBLIC_DB=true` only warns). See
+  (`ALLOW_UNRESTRICTED_PUBLIC_DB=true` only warns). `deploy/postgres/roles.sql`
+  also runs the new `deploy/postgres/harden.sql`: advisory locks only for the app
+  role, no large objects or temporary tables for other roles. See
   [docs/security-model.md](docs/security-model.md).
   - Upgrading on PostgreSQL: migration `0007_public_role` needs PostgreSQL 11 or
     newer (15 or newer recommended). The schema `osp_public` also needs `CREATE`

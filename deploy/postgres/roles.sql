@@ -17,7 +17,11 @@
 --     -f deploy/postgres/roles.sql
 --
 -- Optional: -v public_role=<name> (default osp_public, must match DB_PUBLIC_ROLE)
---           -v app_role=<name>    (default osp_app)
+--           -v app_role=<name>    (default osp_app; also when you keep an existing
+--                                  role for admin and worker: it gets the advisory
+--                                  locks that harden.sql takes from everyone else)
+-- It also runs harden.sql (next to this file): no advisory locks, large objects
+-- or temporary tables for the public role. Rerun it after an upgrade that changes it.
 -- The passwords above are placeholders: never commit real ones, read them from your
 -- secret store when you run the script.
 
@@ -61,3 +65,14 @@ SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'app_role') \gexec
 
 -- Nobody but the owner creates objects in the schema "public" (the default since PostgreSQL 15).
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- No advisory locks, large objects or temporary tables for roles that do not need them.
+\ir harden.sql
+-- The admin and worker instances serialise work with advisory locks (and the
+-- migrations take one): grant them back to the app role. A superuser needs no
+-- grant; if admin and worker use another role that is not a superuser, pass it
+-- as -v app_role=<name>.
+SELECT format('GRANT EXECUTE ON FUNCTION %s TO %I', p.oid::regprocedure, :'app_role')
+FROM pg_proc p
+WHERE p.pronamespace = 'pg_catalog'::regnamespace AND p.proname LIKE 'pg\_%advisory\_%'
+  AND EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname = :'app_role') \gexec

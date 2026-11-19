@@ -9,6 +9,7 @@
  * Every test file gets a fresh database, dropped afterwards.
  */
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { loadConfig, type Config } from '../src/config.js';
 import { createDb, type DB } from '../src/db/index.js';
@@ -35,6 +36,28 @@ function withDatabase(url: string, database: string): string {
   return u.toString();
 }
 
+const HARDEN_SQL = readFileSync(new URL('../../../deploy/postgres/harden.sql', import.meta.url), 'utf8');
+
+/** Runs `text` in `database` as the user of `url`. */
+export async function queryIn(url: string, database: string, text: string): Promise<void> {
+  const client = new pg.Client({ connectionString: withDatabase(url, database) });
+  await client.connect();
+  try {
+    await client.query(text);
+  } finally {
+    await client.end();
+  }
+}
+
+/** The grant of deploy/postgres/roles.sql for an app role that is not a superuser. */
+export const GRANT_ADVISORY_LOCKS = (role: string) => `
+  DO $$ DECLARE f regprocedure; BEGIN
+    FOR f IN SELECT p.oid::regprocedure FROM pg_proc p
+      WHERE p.pronamespace = 'pg_catalog'::regnamespace AND p.proname LIKE 'pg\_%advisory\_%' LOOP
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', f, '${role}');
+    END LOOP;
+  END $$`;
+
 export interface PgTestDatabase {
   /** Owner connection URL of the test database. */
   ownerUrl: string;
@@ -56,6 +79,9 @@ export async function createTestDatabase(): Promise<PgTestDatabase> {
   await admin.connect();
   await admin.query(`create database ${name}`);
   await admin.end();
+  // Like deploy/postgres/roles.sql: no advisory locks, large objects or temporary tables
+  // for roles that are not granted them (the owner here is a superuser).
+  await queryIn(adminUrl, name, HARDEN_SQL);
 
   const ownerUrl = withDatabase(adminUrl, name);
   const publicUrl = withDatabase(publicBase, name);

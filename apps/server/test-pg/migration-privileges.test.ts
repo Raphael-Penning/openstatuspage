@@ -12,7 +12,7 @@ import { loadConfig } from '../src/config.js';
 import { createDb, EXPECTED_MIGRATION, schemaStatus, type DB } from '../src/db/index.js';
 import { connectionRestricted } from '../src/db/public-role.js';
 import { prepareDatabase } from '../src/startup.js';
-import { createTestDatabase, SECRET_KEY, type PgTestDatabase } from './setup.js';
+import { createTestDatabase, GRANT_ADVISORY_LOCKS, SECRET_KEY, type PgTestDatabase } from './setup.js';
 
 let pgdb: PgTestDatabase;
 let db: DB;
@@ -39,6 +39,8 @@ beforeAll(async () => {
   const database = new URL(pgdb.ownerUrl).pathname.slice(1);
   await asSuperuser(database, `create role ${role} login password '${password}'`);
   await asSuperuser(database, `grant usage, create on schema public to ${role}`);
+  // As deploy/postgres/roles.sql does for the app role (the migrations take an advisory lock).
+  await asSuperuser(database, GRANT_ADVISORY_LOCKS(role));
   const url = new URL(pgdb.ownerUrl);
   url.username = role;
   url.password = password;

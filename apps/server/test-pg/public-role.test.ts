@@ -576,6 +576,23 @@ describe('tables', () => {
     }
   });
 
+  it('do not let the public role take advisory locks, create large objects or temporary tables', async () => {
+    // The lock keys of the admin and worker instances (db/locks.ts) and any other key.
+    for (const call of [
+      'select pg_advisory_lock(4711007)',
+      'select pg_try_advisory_lock(4711006)',
+      'select pg_advisory_lock_shared(4711005)',
+      'select pg_advisory_xact_lock(1)',
+      'select pg_try_advisory_xact_lock(1, 2)',
+      'select pg_advisory_unlock_all()',
+      'select lo_create(0)',
+      'select lo_from_bytea(0, \'x\')',
+      'create temporary table exfil (x text)',
+    ]) {
+      expect(await attempt(call), call).toBe('42501');
+    }
+  });
+
   it('do not let the public role call internal functions', async () => {
     for (const call of [
       `select public.osp_grant_public_role('x')`,

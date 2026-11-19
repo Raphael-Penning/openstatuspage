@@ -72,7 +72,13 @@ with `search_path=osp_public`, so the public code runs unchanged against them.
   the internal `reason` of a history correction, unpublished correction notes,
   the notification flags of maintenance windows, any other settings row.
 - **Write anything directly.** No `INSERT`, `UPDATE`, `DELETE` or `TRUNCATE` on
-  any table or view, no `CREATE` in any schema.
+  any table or view, no `CREATE` in the table schema or `osp_public`. With
+  `deploy/postgres/harden.sql` (part of `roles.sql`) also no temporary tables
+  and no large objects.
+- **Block the background work.** `harden.sql` takes the advisory lock functions
+  from `PUBLIC` and grants them only to the app role, so the public role cannot
+  hold the lock keys with which admin and worker serialise status and bundle
+  recomputes and history imports.
 - **Call internal functions** such as `osp_grant_public_role`, or the helpers
   that queue mails.
 - **Choose what a mail says.** The subscription functions queue confirmation and
@@ -132,7 +138,14 @@ stop a leak on its own; together they are defense in depth:
 `deploy/postgres/roles.sql` creates the login roles. It also sets a
 `statement_timeout`, an idle-in-transaction timeout and a connection limit for
 the public role, to bound what a compromised public instance can make the
-database do.
+database do, and runs `deploy/postgres/harden.sql`: it revokes from `PUBLIC`
+the advisory lock functions (granted back to the app role), the functions that
+create large objects and `TEMPORARY` on the database. Session advisory locks
+outlive `statement_timeout`; without this a compromised public instance could
+hold the application's lock keys and stall status recomputes, bundle evaluation
+and history imports on every instance. These privileges exist per database and
+also affect other applications in the same database. Rerun `roles.sql` on an
+existing installation to apply it.
 
 PostgreSQL 11 is the minimum and 15 or newer is recommended: older servers do not support
 `security_invoker` views. There all views run with the owner's rights (as
@@ -207,7 +220,8 @@ execution) and holds its environment: the public database login and
     encrypted with a key it does not have, and it cannot forge the signed OIDC
     state cookie of the admin instance.
   - Denial of service against the database is bounded by the role's timeouts and
-    connection limit, not prevented.
+    connection limit, not prevented. It cannot take the advisory locks of the
+    background work (`harden.sql`).
 
 ### SQL injection in the public code
 
