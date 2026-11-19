@@ -3,6 +3,7 @@ import type { Config } from './config.js';
 import type { DB } from './db/index.js';
 import { SecretBox } from './lib/crypto.js';
 import { createMailer, type Mailer } from './mail/mailer.js';
+import { BundleService } from './services/bundles.js';
 import { IngestService } from './services/ingest.js';
 import { NotificationService } from './services/notifications.js';
 import { StatusEngine } from './services/status-engine.js';
@@ -16,6 +17,8 @@ export interface AppContext {
   secrets: SecretBox;
   engine: StatusEngine;
   ingest: IngestService;
+  /** Check bundles (weighted voting over checks of several sources). */
+  bundles: BundleService;
   worker: Worker;
   /** Mail transport (MAIL_TRANSPORT). */
   mailer: Mailer;
@@ -37,13 +40,16 @@ export function createContext(
   const engine = new StatusEngine(db);
   const worker = new Worker(log);
   const mailer = options.mailer ?? createMailer(config, log);
+  const secrets = new SecretBox(config.SECRET_KEY);
+  const bundles = new BundleService(db, engine, secrets, config.BUNDLE_PUSH_STALE_SECONDS * 1000);
   return {
     config,
     db,
     log,
-    secrets: new SecretBox(config.SECRET_KEY),
+    secrets,
     engine,
-    ingest: new IngestService(db, engine),
+    ingest: new IngestService(db, engine, bundles),
+    bundles,
     worker,
     mailer,
     notifications: new NotificationService(db, config, mailer, log, worker),

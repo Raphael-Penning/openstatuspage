@@ -7,6 +7,7 @@ import type { DB } from '../db/index.js';
 import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso, toIso } from '../lib/time.js';
+import type { BundleService } from './bundles.js';
 import type { StatusEngine } from './status-engine.js';
 
 export interface IngestResult {
@@ -20,6 +21,8 @@ export class IngestService {
   constructor(
     private readonly db: DB,
     private readonly engine: StatusEngine,
+    /** Re-evaluates check bundles whose members belong to the ingested source. */
+    private readonly bundles?: BundleService,
   ) {}
 
   /**
@@ -40,6 +43,7 @@ export class IngestService {
     const result: IngestResult = { created: 0, updated: 0, removed: 0, stateChanges: 0 };
     const affectedCheckIds: string[] = [];
     const servicesOfRemovedChecks: string[] = [];
+    const bundlesOfRemovedChecks: string[] = [];
 
     // Last result wins when a payload contains duplicates.
     const byExternalId = new Map(checks.map((c) => [c.externalId, c]));
@@ -130,6 +134,17 @@ export class IngestService {
               stale.map((c) => c.id),
             )
             .execute();
+          // Their bundle memberships cascade too: re-evaluate those bundles afterwards.
+          const memberships = await trx
+            .selectFrom('check_bundle_members')
+            .select('bundle_id')
+            .where(
+              'check_id',
+              'in',
+              stale.map((c) => c.id),
+            )
+            .execute();
+          bundlesOfRemovedChecks.push(...memberships.map((m) => m.bundle_id));
           await trx
             .deleteFrom('monitor_checks')
             .where(
@@ -146,6 +161,11 @@ export class IngestService {
 
     await this.engine.recomputeForChecks(affectedCheckIds);
     await this.engine.recompute(servicesOfRemovedChecks);
+    // Fresh results (even without a state change) can bring a stale member back into the vote.
+    if (this.bundles) {
+      await this.bundles.recomputeForSource(sourceId);
+      if (bundlesOfRemovedChecks.length > 0) await this.bundles.recompute(bundlesOfRemovedChecks);
+    }
     return result;
   }
 
@@ -181,6 +201,8 @@ export class IngestService {
       .set({ last_poll_at: nowIso(), last_poll_ok: ok ? 1 : 0, last_error: ok ? null : truncate(error, 1000) })
       .where('id', '=', sourceId)
       .execute();
+    // A failed poll takes the source's checks out of bundle votes (and a good one brings them back).
+    await this.bundles?.recomputeForSource(sourceId);
   }
 }
 

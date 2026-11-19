@@ -47,8 +47,10 @@ describe('state helpers', () => {
 
 describe('adapter registry', () => {
   it('knows every source type', () => {
-    expect(Object.keys(adapters).sort()).toEqual(['icinga2', 'openitcockpit', 'uptimekuma', 'webhook']);
+    expect(Object.keys(adapters).sort()).toEqual(['bundle', 'icinga2', 'openitcockpit', 'uptimekuma', 'webhook']);
     expect(isPollable('icinga2')).toBe(true);
+    expect(isPollable('bundle')).toBe(false);
+    expect(getAdapter('bundle')?.push).toBeUndefined();
     expect(isPollable('webhook')).toBe(false);
     expect(getAdapter('webhook')?.push).toBeUndefined();
     expect(getAdapter('toString')).toBeUndefined();

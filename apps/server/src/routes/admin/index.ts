@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerBundleRoutes } from './bundles.js';
 import { registerIncidentRoutes } from './incidents.js';
 import { registerLocationAndGroupRoutes } from './locations.js';
 import { registerMaintenanceRoutes } from './maintenances.js';
@@ -16,6 +17,7 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   await registerIncidentRoutes(app);
   await registerMaintenanceRoutes(app);
   await registerMonitoringRoutes(app);
+  await registerBundleRoutes(app);
   await registerUserRoutes(app);
   await registerSubscriberRoutes(app);
 }
