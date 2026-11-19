@@ -23,3 +23,4 @@ export const MAINTENANCE_DOCUMENT: DocumentOptions = {
   relationships: { serviceIds: 'services', locationIds: 'locations' },
 };
 export const MAINTENANCE_UPDATE_DOCUMENT: DocumentOptions = { type: 'maintenance-updates' };
+export const CORRECTION_DOCUMENT: DocumentOptions = { type: 'corrections', relationships: { serviceIds: 'services' } };

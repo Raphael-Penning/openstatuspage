@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newId } from '../src/lib/ids.js';
 import { runMaintenanceTransitions } from '../src/services/maintenance-scheduler.js';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
-import { adminClient, client, createTestApp, createUser, data, login, page, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, data, errors, login, page, type Client, type TestApp } from './helpers.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -76,15 +76,21 @@ describe('status corrections', () => {
   it('creates, lists, updates and deletes corrections with audit entries', async () => {
     const created = await admin.post('/api/admin/corrections', falseAlarm());
     expect(created.statusCode).toBe(201);
-    const c = created.json();
+    const c = data<Any>(created);
+    expect(created.headers.location).toBe(`/api/admin/corrections/${c.id}`);
+    expect(created.json().data.relationships.services.data).toHaveLength(2);
+    expect(created.json().included.map((r: { type: string }) => r.type)).toEqual(['services', 'services']);
     expect(c).toMatchObject({ status: 'operational', showPublic: false, publicNote: null, createdByName: 'admin' });
     expect(c.services.map((s: { name: string }) => s.name).sort()).toEqual(['Public API', 'Web App']);
 
-    const listed = await admin.get(`/api/admin/corrections?serviceId=${api}`);
-    expect(listed.json()).toMatchObject({ total: 1, items: [{ id: c.id }] });
-    expect((await admin.get(`/api/admin/corrections?serviceId=${hidden}`)).json().total).toBe(0);
-    expect((await admin.get(`/api/admin/corrections?to=${encodeURIComponent(iso(30 * HOUR))}`)).json().total).toBe(0);
-    expect((await admin.get(`/api/admin/corrections?from=${encodeURIComponent(iso(23 * HOUR))}`)).json().total).toBe(1);
+    const listed = await admin.get(`/api/admin/corrections?filter[service]=${api}`);
+    expect(page(listed)).toMatchObject({ total: 1, page: 1, pageSize: 20, items: [{ id: c.id }] });
+    expect(page<Any>(listed).items[0].services).toHaveLength(2);
+    expect(page(await admin.get(`/api/admin/corrections?filter[service]=${hidden}`)).total).toBe(0);
+    expect(page(await admin.get(`/api/admin/corrections?filter[to]=${encodeURIComponent(iso(30 * HOUR))}`)).total).toBe(0);
+    expect(page(await admin.get(`/api/admin/corrections?filter[from]=${encodeURIComponent(iso(23 * HOUR))}`)).total).toBe(1);
+    const badFilter = await admin.get('/api/admin/corrections?filter[serviceId]=x');
+    expect(errors(badFilter)[0]).toMatchObject({ status: '400', source: { parameter: 'filter[serviceId]' } });
 
     const patched = await admin.patch(`/api/admin/corrections/${c.id}`, {
       serviceIds: [api],
@@ -92,8 +98,8 @@ describe('status corrections', () => {
       publicNote: 'False alarm of the monitoring.',
     });
     expect(patched.statusCode).toBe(200);
-    expect(patched.json()).toMatchObject({ showPublic: true, publicNote: 'False alarm of the monitoring.' });
-    expect(patched.json().services).toEqual([{ id: api, name: 'Public API' }]);
+    expect(data(patched)).toMatchObject({ showPublic: true, publicNote: 'False alarm of the monitoring.' });
+    expect(data<Any>(patched).services).toEqual([{ id: api, name: 'Public API' }]);
 
     expect((await admin.delete(`/api/admin/corrections/${c.id}`)).statusCode).toBe(204);
     expect((await admin.get(`/api/admin/corrections/${c.id}`)).statusCode).toBe(404);
@@ -127,9 +133,9 @@ describe('status corrections', () => {
     for (const body of bad) {
       expect((await admin.post('/api/admin/corrections', body)).statusCode, JSON.stringify(body).slice(0, 120)).toBe(400);
     }
-    const created = (await admin.post('/api/admin/corrections', base)).json();
+    const created = data<Any>(await admin.post('/api/admin/corrections', base));
     expect((await admin.patch(`/api/admin/corrections/${created.id}`, { startsAt: base.endsAt })).statusCode).toBe(400);
-    expect((await admin.patch(`/api/admin/corrections/missing`, { reason: 'x' })).statusCode).toBe(404);
+    expect((await admin.patch('/api/admin/corrections/missing', { data: { type: 'corrections', attributes: { reason: 'x' } } })).statusCode).toBe(404);
   });
 
   it('clamps an end time just after now to now', async () => {
@@ -138,7 +144,7 @@ describe('status corrections', () => {
       endsAt: new Date(Date.now() + 60_000).toISOString(),
     });
     expect(res.statusCode).toBe(201);
-    expect(new Date(res.json().endsAt).getTime()).toBeLessThanOrEqual(Date.now());
+    expect(new Date(data<Any>(res).endsAt).getTime()).toBeLessThanOrEqual(Date.now());
   });
 
   it('allows editors and rejects anonymous requests', async () => {
@@ -146,9 +152,9 @@ describe('status corrections', () => {
     const editor = client(t.app, { cookie: await login(t.app, 'editor@example.com') });
     const created = await editor.post('/api/admin/corrections', falseAlarm());
     expect(created.statusCode).toBe(201);
-    expect((await editor.patch(`/api/admin/corrections/${created.json().id}`, { status: 'degraded' })).statusCode).toBe(200);
-    expect((await editor.get(`/api/admin/services/${api}/history?from=${encodeURIComponent(iso(DAY))}&to=${encodeURIComponent(iso(0))}`)).statusCode).toBe(200);
-    expect((await editor.delete(`/api/admin/corrections/${created.json().id}`)).statusCode).toBe(204);
+    expect((await editor.patch(`/api/admin/corrections/${data<Any>(created).id}`, { status: 'degraded' })).statusCode).toBe(200);
+    expect((await editor.get(`/api/admin/services/${api}/history?filter[from]=${encodeURIComponent(iso(DAY))}&filter[to]=${encodeURIComponent(iso(0))}`)).statusCode).toBe(200);
+    expect((await editor.delete(`/api/admin/corrections/${data<Any>(created).id}`)).statusCode).toBe(204);
 
     const anon = client(t.app, {});
     expect((await anon.get('/api/admin/corrections')).statusCode).toBe(401);
@@ -192,7 +198,7 @@ describe('status corrections', () => {
     expect(data<PublicServiceBody>(detail).uptime.some((d) => d.corrected)).toBe(true);
 
     // Deleting restores the measured data.
-    await admin.delete(`/api/admin/corrections/${pub.json().id}`);
+    await admin.delete(`/api/admin/corrections/${data<Any>(pub).id}`);
     expect(await publicPercent(api)).toBe(before);
   });
 
@@ -216,12 +222,13 @@ describe('status corrections', () => {
 
   it('compares measured and corrected history for a time range', async () => {
     await seedOutage(api);
-    const c = (await admin.post('/api/admin/corrections', { ...falseAlarm(), serviceIds: [api] })).json();
+    const c = data<Any>(await admin.post('/api/admin/corrections', { ...falseAlarm(), serviceIds: [api] }));
     const from = iso(2 * DAY);
     const to = new Date(Date.now() + HOUR).toISOString();
-    const res = await admin.get(`/api/admin/services/${api}/history?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    const res = await admin.get(`/api/admin/services/${api}/history?filter[from]=${encodeURIComponent(from)}&filter[to]=${encodeURIComponent(to)}`);
     expect(res.statusCode).toBe(200);
-    const h = res.json();
+    expect(res.json().data).toMatchObject({ type: 'service-histories', id: api });
+    const h = data<Any>(res);
     expect(h.measured.map((s: { status: string }) => s.status)).toEqual(['operational', 'major_outage', 'operational']);
     expect(h.measured[0].startedAt).toBe(from);
     expect(h.measured[2].endedAt).toBeNull();
@@ -234,19 +241,21 @@ describe('status corrections', () => {
     expect(h.correctedUptime).toBe(100);
     expect(h.corrections.map((x: { id: string }) => x.id)).toEqual([c.id]);
 
-    const missing = await admin.get(`/api/admin/services/missing/history?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    const missing = await admin.get(`/api/admin/services/missing/history?filter[from]=${encodeURIComponent(from)}&filter[to]=${encodeURIComponent(to)}`);
     expect(missing.statusCode).toBe(404);
     const tooLong = await admin.get(
-      `/api/admin/services/${api}/history?from=${encodeURIComponent(iso(400 * DAY))}&to=${encodeURIComponent(to)}`,
+      `/api/admin/services/${api}/history?filter[from]=${encodeURIComponent(iso(400 * DAY))}&filter[to]=${encodeURIComponent(to)}`,
     );
-    expect(tooLong.statusCode).toBe(400);
+    expect(errors(tooLong)[0]).toMatchObject({ status: '400', source: { parameter: 'filter[to]' } });
+    const noRange = await admin.get(`/api/admin/services/${api}/history`);
+    expect(errors(noRange)[0]).toMatchObject({ status: '400', source: { parameter: 'filter[from]' } });
   });
 
   it('unlinks a deleted service and removes corrections left without services', async () => {
-    const c = (await admin.post('/api/admin/corrections', falseAlarm())).json();
-    const webOnly = (await admin.post('/api/admin/corrections', { ...falseAlarm(), serviceIds: [web] })).json();
+    const c = data<Any>(await admin.post('/api/admin/corrections', falseAlarm()));
+    const webOnly = data<Any>(await admin.post('/api/admin/corrections', { ...falseAlarm(), serviceIds: [web] }));
     await admin.delete(`/api/admin/services/${web}`);
-    expect((await admin.get(`/api/admin/corrections/${c.id}`)).json().services).toEqual([{ id: api, name: 'Public API' }]);
+    expect(data<Any>(await admin.get(`/api/admin/corrections/${c.id}`)).services).toEqual([{ id: api, name: 'Public API' }]);
     expect((await admin.get(`/api/admin/corrections/${webOnly.id}`)).statusCode).toBe(404);
     const audit = await t.db
       .selectFrom('audit_log')

@@ -29,6 +29,7 @@ import type {
   SessionInfo,
   SubscriberListQuery,
 } from '@openstatuspage/shared';
+import { toQueryParams } from '@openstatuspage/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../components/Toast';
@@ -205,12 +206,21 @@ export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
 export const useCorrections = (filter: CorrectionsFilter, pageSize = 20) =>
   useQuery({
     queryKey: keys.corrections(filter),
-    queryFn: () => api.get<Paginated<AdminCorrection>>('/api/admin/corrections', { ...filter, pageSize }),
+    queryFn: () =>
+      api.getPage<AdminCorrection>('/api/admin/corrections', {
+        page: { number: filter.page, size: pageSize },
+        filter: { service: filter.serviceId, from: filter.from, to: filter.to },
+      }),
     retry: notRetryingClientErrors,
     placeholderData: keepPreviousData,
   });
 export const useServiceHistory = (id: string, from: string, to: string, enabled = true) =>
-  useAdminQuery<AdminServiceHistory>(keys.serviceHistory(id, from, to), `/api/admin/services/${id}/history`, { from, to }, enabled);
+  useAdminQuery<AdminServiceHistory>(
+    keys.serviceHistory(id, from, to),
+    `/api/admin/services/${id}/history`,
+    toQueryParams({ filter: { from, to } }),
+    enabled,
+  );
 
 export const useSubscribers = (query: SubscriberListQuery) =>
   useQuery({
