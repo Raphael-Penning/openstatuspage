@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, parseHex, readableOn, solidAccent } from './color';
+import { contrastRatio, parseHex, readableOn, readableOnAll, solidAccent } from './color';
 
 describe('contrastRatio', () => {
   it('matches the WCAG reference values', () => {
@@ -24,6 +24,25 @@ describe('readableOn', () => {
     expect(contrastRatio(light, '#ffffff')).toBeGreaterThanOrEqual(4.5);
     const dark = readableOn('#3b2fa0', '#1e1e21');
     expect(contrastRatio(dark, '#1e1e21')).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('readableOnAll', () => {
+  const lightBackgrounds = ['#f7f7f8', '#ffffff', '#f1f1f3'];
+  const darkBackgrounds = ['#161618', '#1e1e21', '#26262a'];
+
+  it.each(['#7c6cf2', '#ffd400', '#00ff00', '#ff0000', '#00bcd4', '#ffffff', '#000000'])(
+    'makes the accent %s readable on every background of a theme',
+    (accent) => {
+      for (const backgrounds of [lightBackgrounds, darkBackgrounds]) {
+        const color = readableOnAll(accent, backgrounds);
+        for (const bg of backgrounds) expect(contrastRatio(color, bg)).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+
+  it('keeps an accent that is readable everywhere', () => {
+    expect(readableOnAll('#1d4ed8', lightBackgrounds)).toBe('#1d4ed8');
   });
 });
 
