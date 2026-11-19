@@ -90,3 +90,21 @@ warnings) are accepted and ignored.
 - Uptime Kuma sends notifications only on **important** heartbeats (state
   changes). Combine push with pull (e.g. every 5 minutes) for reconciliation.
 - Group monitors are exported like any other monitor.
+
+## Several Uptime Kuma nodes (check bundles)
+
+Running Uptime Kuma in more than one place (e.g. `kuma-fra.example.com` and
+`kuma-ams.example.com`) avoids false alarms caused by the network of a single
+monitoring node. Add each instance as its own source, then combine the
+monitors that watch the same target into a **check bundle**
+(**Admin → Monitoring → Bundles**): pick the monitor of each node, give every
+node a number of votes and link the bundle to the service instead of the
+individual monitors. The bundle is down only when more than half of the votes
+of the reporting nodes say so; *pending* counts as a warning. A node whose
+poll fails or whose results are older than 3 poll intervals (at least
+5 minutes) is left out of the vote. Details and examples:
+[Check bundles](README.md#check-bundles).
+
+Use pull for bundle members (optionally plus push): webhook notifications
+arrive only on state changes, so a push-only source would look silent and drop
+out of the vote after `BUNDLE_PUSH_STALE_SECONDS`.

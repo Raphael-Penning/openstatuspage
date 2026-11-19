@@ -116,6 +116,58 @@ Customers only ever see the resulting status. Incidents and maintenance are
 managed separately and override the check-based status (see
 [Overview](01-overview.md#how-a-service-gets-its-status)).
 
+## Check bundles: several nodes vote
+
+If you monitor the same target from several places, for example with two or
+three Uptime Kuma instances in different data centres, a single node should not
+be able to put your status page into an outage: maybe only its own network is
+broken. A **check bundle** combines one check per node into one check that is
+decided by a **majority vote**.
+
+**When to use a bundle:** the checks measure the *same* thing from *different*
+places. For different components (web server, database, …) keep linking the
+checks to the service directly and use the aggregation (worst check / quorum).
+
+**Create a bundle:**
+
+1. Add every monitoring node as its own source (e.g. *Kuma Frankfurt*,
+   *Kuma Amsterdam*, *Kuma New York*).
+2. **Monitoring → Bundles → New bundle**: enter a name, then pick for each node
+   the check that watches the target and click **Add**. The list shows Uptime
+   Kuma sources; choose another source type in the filter if needed.
+3. Set the **votes** of each member (whole number, at least 1). Give a node more
+   votes if you trust it more, e.g. because it runs in a better connected
+   location.
+4. Save, then link the bundle in the service like any other check
+   (**Link checks**, search for the bundle name). Do not link the individual
+   node checks as well, or a single node can still change the service.
+
+**How the vote works:** only nodes that currently **report** count. A node does
+not report when its source is disabled, its last poll failed, its check is
+*unknown*, or its last result is too old (older than 3 poll intervals, at
+least 5 minutes; for pure webhook sources older than one hour by default). Of
+the votes of the reporting nodes:
+
+- more than half say *down* → the bundle is **critical**;
+- otherwise more than half say *down* or *pending/warning* → **warning**;
+- otherwise → **OK**;
+- no node reports → **unknown** (ignored by the default mapping).
+
+Exactly half is **not** a majority. Examples with three nodes, Frankfurt
+2 votes, Amsterdam and New York 1 vote each (4 votes):
+
+| Frankfurt | Amsterdam | New York | Bundle |
+| --- | --- | --- | --- |
+| down | up | up | OK (2 of 4, exactly half) |
+| down | down | up | critical (3 of 4) |
+| up | down | down | OK (2 of 4) |
+| down | not reporting | up | critical (2 of 3 reporting votes) |
+| down | pending | up | warning (3 of 4 down or pending) |
+
+The **Bundles** page shows every bundle with its current result and, per node,
+the votes, the state and whether (and why not) it counts. It refreshes on its
+own. All of this is internal; customers only see the resulting service status.
+
 ## Tips
 
 - Monitoring downtimes and acknowledgements do not change the imported state.

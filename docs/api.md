@@ -105,7 +105,7 @@ Expired sessions are deleted lazily and by a periodic cleanup task.
 Authentication: session cookie **or** `Authorization: Bearer <api token>`.
 Roles: `editor` may manage incidents, maintenance and read everything;
 `admin` may additionally manage services, groups, locations, monitoring sources,
-settings, users and API tokens. Every mutating call writes an audit log entry.
+check bundles, settings, users and API tokens. Every mutating call writes an audit log entry.
 
 Cookie-authenticated mutating requests must send the header `X-Requested-With: openstatuspage`
 (simple CSRF protection; the web client always sends it). Bearer-token requests are exempt.
@@ -144,7 +144,11 @@ Cookie-authenticated mutating requests must send the header `X-Requested-With: o
 | POST | `/api/admin/monitor-sources/:id/poll` | – | `MonitorSourceTestResult` (polls now and stores the results) | admin |
 | POST | `/api/admin/monitor-sources/:id/rotate-token` | – | `{ ingestToken: string }` | admin |
 | GET | `/api/admin/checks` | query `sourceId`, `q` (search name/host/external id), `state`, `unlinked=true` | `AdminMonitorCheck[]` | editor |
-| DELETE | `/api/admin/checks/:id` | – | 204 | admin |
+| DELETE | `/api/admin/checks/:id` | – | 204 (409 for the check of a bundle: delete the bundle) | admin |
+| GET | `/api/admin/check-bundles` | – | `AdminCheckBundle[]` with the live vote and per-member breakdown | admin |
+| GET | `/api/admin/check-bundles/candidates` | query `type` (configurable source type) | `BundleCandidateSource[]`: checks that can become members, grouped by source | admin |
+| POST | `/api/admin/check-bundles` | `CheckBundleInput` | `AdminCheckBundle` (201) | admin |
+| GET/PUT/DELETE | `/api/admin/check-bundles/:id` | `CheckBundleInput` (members are replaced) | `AdminCheckBundle`; DELETE 204 removes the bundle check and its service links | admin |
 | GET | `/api/admin/users` | – | `AdminUser[]` | admin |
 | POST | `/api/admin/users` | `UserCreateInput` | `AdminUser` (201) | admin |
 | GET/PUT/DELETE | `/api/admin/users/:id` | `UserUpdateInput` | `AdminUser` (cannot delete or demote yourself / the last admin) | admin |
@@ -192,6 +196,12 @@ their creator loses the admin role.
 - `/api/public/history?locationId=` matches items linked to the location directly
   or affecting a service running there. Filters referencing non-public entities
   return an empty page.
+- Check bundles: each bundle owns a check of the built-in source of type `bundle`
+  (`AdminCheckBundle.checkId`) that is linked to services like any check. That
+  source answers `409` to `PUT` and `rotate-token`, `400` to `test`/`poll`, `409`
+  to ingest and to `DELETE` while bundles exist. Members must be existing checks
+  that are not bundle checks (`400`). Voting rules: [adapters/README.md](adapters/README.md#check-bundles).
+  Audit actions `check_bundle.create|update|delete`.
 - Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
 - `notify` (default `true`) in `IncidentCreateInput`, `IncidentUpdateInput`,
   `MaintenanceCreateInput` and `MaintenanceUpdateInput` queues subscriber emails for

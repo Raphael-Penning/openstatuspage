@@ -31,6 +31,9 @@ The core promise: **customers see services, never infrastructure.**
 ```
 monitoring system ──(poll / push)──► adapter ──► IngestService ──► monitor_checks
                                                                        │
+           check bundles: weighted vote of member checks ──► bundle check
+           (BundleService, rules in bundle-rules.ts)          (also a monitor_check)
+                                                                       │
              service_checks (link + mapping per check) ◄───────────────┘
                                 │
                                 ▼
@@ -101,6 +104,8 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
 
 - maintenance transitions (auto start/complete) every 30 s, notifying subscribers
 - one poll task per enabled pull-capable monitoring source
+- `bundle-evaluation`: re-evaluates every check bundle each minute, so members
+  whose results become stale stop counting
 - session cleanup (hourly)
 - `email-delivery`: sends due outbox mails every 10 s
 - `maintenance-reminders`: queues reminders every minute

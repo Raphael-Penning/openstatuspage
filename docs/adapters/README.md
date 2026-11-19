@@ -84,6 +84,76 @@ page does not expose monitoring credentials.
    maintenance windows are managed separately and override the check-based
    status where appropriate.
 
+## Check bundles
+
+When several monitoring nodes watch the **same target from different places**
+(typically several Uptime Kuma instances in different data centres or
+networks), one node alone should not decide that the target is down: its own
+network may be the problem. A **check bundle** combines one check of each node
+into a single check that is decided by a **weighted majority vote**.
+
+- **Admin → Monitoring → Bundles → New bundle**: give the bundle a name and pick,
+  per source (node), the check that watches the target. Every member gets a
+  number of **votes** (whole number, at least 1, default 1). Matching is manual:
+  nothing is grouped automatically. A check may belong to several bundles; a
+  bundle cannot contain another bundle. Members may come from any source type;
+  the dialog shows Uptime Kuma sources by default.
+- Each bundle is a check of the built-in source **Check bundles** (type
+  `bundle`) and is linked to services like any other check, with the usual
+  warning/critical/unknown mappings. That source is created with the first
+  bundle, is never polled, accepts no pushes and cannot be edited; it can only
+  be deleted while no bundle exists.
+
+### How the vote works
+
+Only members that currently **report** take part. A member does not report when
+
+| Reason | Shown as |
+| --- | --- |
+| its source is disabled | source disabled |
+| the last poll of its (pull) source failed | last poll failed |
+| its check state is `unknown` | state unknown |
+| it has no result yet | no result yet |
+| its last result is too old: older than **3 poll intervals, at least 5 minutes** for pull sources (Icinga 2, Uptime Kuma, openITCockpit), older than `BUNDLE_PUSH_STALE_SECONDS` (default 1 hour) for push-only `webhook` sources | result too old |
+
+The age is taken from the check's result time. Uptime Kuma's `/metrics` has
+none, so every successful poll counts as a fresh result. Icinga 2 and
+openITCockpit report when the check really ran: a check that runs less often
+than 3 poll intervals (at least 5 minutes) would count as not reporting, so
+use such checks only with a matching check interval.
+
+With *R* = the votes of the reporting members:
+
+| Bundle state | Condition |
+| --- | --- |
+| `critical` | critical votes **> 50 %** of *R* |
+| `warning` | otherwise, critical + warning votes > 50 % of *R* |
+| `ok` | otherwise |
+| `unknown` | no member reports (*R* = 0) |
+
+Exactly half is **not** a majority. Uptime Kuma's *pending* (retrying) is a
+warning, so pending nodes make the bundle *degraded* (with the default mapping)
+before they make it *down*.
+
+Examples with three nodes A (2 votes), B (1 vote), C (1 vote), 4 votes in total:
+
+| A | B | C | Result |
+| --- | --- | --- | --- |
+| down | up | up | `ok`: 2 of 4 votes is exactly half |
+| down | down | up | `critical`: 3 of 4 |
+| up | down | down | `ok`: 2 of 4 |
+| down | not reporting | up | `critical`: 2 of 3 reporting votes |
+| down | pending | up | `warning`: critical + warning = 3 of 4 |
+| not reporting | not reporting | not reporting | `unknown` (ignored by the default mapping) |
+
+Bundles are re-evaluated whenever a member check receives a result, after every
+poll (success or failure), when a source is enabled, disabled, changed or
+deleted, when the bundle is edited, and every minute by the background worker,
+so a node that goes silent drops out of the vote even if nothing else happens.
+The bundle check's output (admin only) summarizes the vote, e.g.
+`critical: 3 of 4 reporting votes down, 0 warning`; the admin page shows the
+breakdown per member. Nothing of this is visible publicly.
+
 ## Ingest API
 
 ```
@@ -101,8 +171,9 @@ POST /api/ingest/<source-id>/openitcockpit   openITCockpit notification command
   `webhook`; the generic endpoint works for every source type.
 - Responses: `200 {"ok":true,"created":0,"updated":1,"removed":0,"stateChanges":1}`,
   `400` invalid payload (or `full` on a source that is not of type `webhook`),
-  `401` missing or wrong token, `404` unknown source, `409` source disabled or
-  full sync rejected (see below), `429` more than 120 requests per minute for
+  `401` missing or wrong token, `404` unknown source, `409` source disabled,
+  the check bundle source (bundle states are computed) or full sync rejected
+  (see below), `429` more than 120 requests per minute for
   the source (see `Retry-After`).
 
 ### Generic push API
