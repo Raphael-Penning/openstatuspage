@@ -59,5 +59,10 @@ machine. `docker compose down -v` removes the stack including its data.
   IPs, credentials or company names. Use `example.com` and fictional data.
 - Public API responses must never expose internal monitoring details
   (see [docs/architecture.md](docs/architecture.md#privacy-model)).
+- The public page and the emails target WCAG 2.2 AA
+  ([docs/accessibility.md](docs/accessibility.md)): new public pages go into
+  the axe-core test (`apps/web/src/public/a11y`), new colors into the tokens in
+  `styles.css` (checked by `tokens.test.ts`), and status is never shown by
+  color alone.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
 - Database changes: add a new migration, never modify an existing one.

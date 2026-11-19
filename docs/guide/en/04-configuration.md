@@ -59,7 +59,7 @@ variables into the secret `openstatuspage` or the `env:` list of
 | Branding | Site name | Shown in the header, the browser title, feeds and email subjects. |
 | Branding | Description | Short text below the site name. |
 | Branding | Logo URL, Favicon URL | `https://` URLs or paths. |
-| Branding | Accent color | Color of buttons and highlights (hex, e.g. `#7c6cf2`). |
+| Branding | Accent color | Color of buttons and highlights (hex, e.g. `#7c6cf2`); adjusted automatically for contrast, see [below](#accent-color-and-accessibility). |
 | Display | Default language | Used when the visitor's browser language is not available (English or German). |
 | Display | Default theme | System, light or dark; visitors can switch. |
 | Display | Support URL | Optional link to your support or contact page. |
@@ -73,6 +73,25 @@ variables into the secret `openstatuspage` or the `env:` list of
 
 The email settings and the **Email delivery** panel below them are explained
 in [Email subscriptions](07-email-subscriptions.md).
+
+### Accent color and accessibility
+
+The public page and the emails aim to meet WCAG 2.2 level AA (see
+`docs/accessibility.md` in the repository). You can pick any accent color; the
+page keeps it readable on its own:
+
+- Links, highlighted text and the keyboard focus outline use a variant of your
+  color that is darkened (light theme) or lightened (dark theme) just enough to
+  reach a contrast of 4.5:1 on every background.
+- Buttons in your color get white or dark text, whichever is readable, and the
+  color is darkened slightly if needed. Emails do the same for their button.
+
+So a very light color such as yellow looks darker on the page than in the
+color picker. For the result closest to your brand, pick a medium or dark
+color, check the page in the light and the dark theme, and avoid logos that
+contain important text other than the site name (the logo has no text
+alternative because the site name is shown next to it). Write incident and
+maintenance texts in the language of most of your visitors.
 
 The language and theme of the management UI are personal settings in the user
 menu (bottom left).

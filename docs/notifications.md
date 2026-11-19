@@ -29,7 +29,10 @@ server and how to operate and troubleshoot delivery.
   before its start is not reminded (the announcement was just sent). When the
   start is moved later, a new reminder is sent before the new start.
 - Emails are sent in the subscriber's language (English or German), as plain text
-  plus a simple HTML version. Times are shown in UTC.
+  plus a simple HTML version. Times are shown in UTC. Both parts carry the same
+  content; the HTML part is built for WCAG 2.2 AA (language, headings, relative
+  font sizes, contrast-safe button colors derived from the accent color), see
+  [accessibility.md](accessibility.md#emails).
 - Every notification contains links to manage the subscription and to unsubscribe,
   and the `List-Unsubscribe` / `List-Unsubscribe-Post` headers for one-click
   unsubscribe in mail clients (RFC 8058). The unsubscribe link in the body opens
