@@ -133,7 +133,12 @@ export const useLocations = () => useAdminQuery<AdminLocation[]>(keys.locations,
 export const useLocation = (id: string | undefined) =>
   useAdminQuery<AdminLocation>(keys.location(id ?? ''), `/api/admin/locations/${id}`, undefined, Boolean(id));
 export const useIncidents = (status: string, page: number, pageSize = 20) =>
-  useAdminQuery<Paginated<AdminIncident>>(keys.incidents(status, page), '/api/admin/incidents', { status, page, pageSize });
+  useQuery({
+    queryKey: keys.incidents(status, page),
+    queryFn: () =>
+      api.getPage<AdminIncident>('/api/admin/incidents', { page: { number: page, size: pageSize }, filter: { status } }),
+    retry: notRetryingClientErrors,
+  });
 export const useIncident = (id: string | undefined) =>
   useAdminQuery<AdminIncident>(keys.incident(id ?? ''), `/api/admin/incidents/${id}`, undefined, Boolean(id));
 export const useMaintenances = (status: string, page: number, pageSize = 20) =>

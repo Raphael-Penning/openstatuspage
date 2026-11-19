@@ -1,6 +1,9 @@
 import { sql } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { adminClient, createTestApp, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, doc, errors, page, type Client, type TestApp } from './helpers.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
 
 let t: TestApp;
 let admin: Client;
@@ -36,7 +39,9 @@ describe('incident lifecycle', () => {
       affectedServices: [{ serviceId, status: 'partial_outage' }],
     });
     expect(created.statusCode).toBe(201);
-    const incident = created.json();
+    const incident = data<Any>(created);
+    expect(created.headers.location).toBe(`/api/admin/incidents/${incident.id}`);
+    expect(created.json().included.map((r: { type: string }) => r.type)).toEqual(['incident-updates']);
     expect(incident).toMatchObject({
       status: 'investigating',
       impact: 'major',
@@ -50,30 +55,40 @@ describe('incident lifecycle', () => {
     expect(await statusOf(serviceId)).toBe('partial_outage');
 
     // Update with new affected services: old and new services are recomputed.
-    const moved = await admin.post(`/api/admin/incidents/${incident.id}/updates`, {
+    const moved = await admin.post(`/api/admin/incidents/${incident.id}/updates`, doc('incident-updates', {
       status: 'identified',
       message: 'Root cause found.',
       affectedServices: [{ serviceId: otherServiceId, status: 'degraded' }],
-    });
-    expect(moved.statusCode).toBe(200);
-    expect(moved.json().updates.map((u: { status: string }) => u.status)).toEqual(['identified', 'investigating']);
+    }));
+    expect(moved.statusCode).toBe(201);
+    const movedUpdate = data<Any>(moved);
+    expect(moved.headers.location).toBe(`/api/admin/incidents/${incident.id}/updates/${movedUpdate.id}`);
+    expect(movedUpdate).toMatchObject({ status: 'identified', message: 'Root cause found.', incidentId: incident.id });
+    expect(movedUpdate.incident).toMatchObject({ status: 'identified', affectedServices: [{ id: otherServiceId }] });
+    const detail = data<Any>(await admin.get(`/api/admin/incidents/${incident.id}`));
+    expect(detail.updates.map((u: { status: string }) => u.status)).toEqual(['identified', 'investigating']);
+    const withoutUpdates = await admin.get(`/api/admin/incidents/${incident.id}?include=`);
+    expect(withoutUpdates.json()).not.toHaveProperty('included');
+    expect((await admin.get(`/api/admin/incidents/${incident.id}?include=locations`)).statusCode).toBe(400);
+    const plainType = await admin.post(`/api/admin/incidents/${incident.id}/updates`, { status: 'identified', message: 'x' });
+    expect(errors(plainType)[0]).toMatchObject({ status: '409', code: 'type_mismatch' });
     expect(await statusOf(serviceId)).toBe('operational');
     expect(await statusOf(otherServiceId)).toBe('degraded');
 
     // Resolve.
-    const resolved = await admin.post(`/api/admin/incidents/${incident.id}/updates`, {
+    const resolved = await admin.post(`/api/admin/incidents/${incident.id}/updates`, doc('incident-updates', {
       status: 'resolved',
       message: 'Fixed.',
-    });
-    expect(resolved.json().resolvedAt).toEqual(expect.any(String));
+    }));
+    expect(data<Any>(resolved).incident.resolvedAt).toEqual(expect.any(String));
     expect(await statusOf(otherServiceId)).toBe('operational');
 
     // Re-open.
-    const reopened = await admin.post(`/api/admin/incidents/${incident.id}/updates`, {
+    const reopened = await admin.post(`/api/admin/incidents/${incident.id}/updates`, doc('incident-updates', {
       status: 'monitoring',
       message: 'Errors are back.',
-    });
-    expect(reopened.json()).toMatchObject({ status: 'monitoring', resolvedAt: null });
+    }));
+    expect(data<Any>(reopened).incident).toMatchObject({ status: 'monitoring', resolvedAt: null });
     expect(await statusOf(otherServiceId)).toBe('degraded');
 
     const history = await historyOf(serviceId);
@@ -82,13 +97,17 @@ describe('incident lifecycle', () => {
 
     // Hiding the incident removes its influence.
     const hidden = await admin.patch(`/api/admin/incidents/${incident.id}`, { isPublic: false, title: 'Errors' });
-    expect(hidden.json()).toMatchObject({ isPublic: false, title: 'Errors' });
+    expect(data(hidden)).toMatchObject({ isPublic: false, title: 'Errors' });
     expect(await statusOf(otherServiceId)).toBe('operational');
 
     // Edit and delete update entries.
-    const updateId = reopened.json().updates[0].id;
-    const edited = await admin.patch(`/api/admin/incidents/${incident.id}/updates/${updateId}`, { message: 'Edited.' });
-    expect(edited.json().updates[0].message).toBe('Edited.');
+    const updateId = data<Any>(reopened).id;
+    const updateUrl = `/api/admin/incidents/${incident.id}/updates/${updateId}`;
+    const edited = await admin.patch(updateUrl, { data: { type: 'incident-updates', id: updateId, attributes: { message: 'Edited.' } } });
+    expect(data(edited)).toMatchObject({ id: updateId, message: 'Edited.' });
+    expect(data(await admin.get(updateUrl))).toMatchObject({ message: 'Edited.', status: 'monitoring' });
+    const wrongId = await admin.patch(updateUrl, { data: { type: 'incident-updates', id: incident.id, attributes: { message: 'x' } } });
+    expect(wrongId.statusCode).toBe(409);
     expect((await admin.delete(`/api/admin/incidents/${incident.id}/updates/${updateId}`)).statusCode).toBe(204);
 
     // Delete the incident.
@@ -109,25 +128,31 @@ describe('incident lifecycle', () => {
     }
     await admin.post('/api/admin/incidents', { title: 'Old', message: 'x', status: 'resolved' });
 
-    const page = await admin.get('/api/admin/incidents?page=1&pageSize=2');
-    expect(page.json()).toMatchObject({ total: 4, page: 1, pageSize: 2 });
-    expect(page.json().items).toHaveLength(2);
-    expect((await admin.get('/api/admin/incidents?status=active')).json().total).toBe(3);
-    const resolved = (await admin.get('/api/admin/incidents?status=resolved')).json();
+    const first = await admin.get('/api/admin/incidents?page[number]=1&page[size]=2');
+    expect(page(first)).toMatchObject({ total: 4, page: 1, pageSize: 2 });
+    expect(page(first).items).toHaveLength(2);
+    expect(page<Any>(first).items[0].updates).toHaveLength(1);
+    expect(first.json().links.next).toBe('/api/admin/incidents?page[number]=2&page[size]=2');
+    expect(page(await admin.get('/api/admin/incidents?filter[status]=active')).total).toBe(3);
+    const resolved = page<Any>(await admin.get('/api/admin/incidents?filter[status]=resolved'));
     expect(resolved.total).toBe(1);
     expect(resolved.items[0].resolvedAt).toEqual(expect.any(String));
-    expect((await admin.get('/api/admin/incidents?pageSize=1000')).statusCode).toBe(400);
+    const tooLarge = await admin.get('/api/admin/incidents?page[size]=1000');
+    expect(errors(tooLarge)[0]).toMatchObject({ status: '400', source: { parameter: 'page[size]' } });
+    expect((await admin.get('/api/admin/incidents?filter[status]=open')).statusCode).toBe(400);
   });
 
   it('validates input', async () => {
-    expect((await admin.post('/api/admin/incidents', { title: 'x' })).statusCode).toBe(400);
+    const missing = await admin.post('/api/admin/incidents', { title: 'x' });
+    expect(missing.statusCode).toBe(400);
+    expect(errors(missing)[0]).toMatchObject({ source: { pointer: '/data/attributes/message' } });
     const unknown = await admin.post('/api/admin/incidents', {
       title: 'x',
       message: 'y',
       affectedServices: [{ serviceId: 'nope', status: 'degraded' }],
     });
     expect(unknown.statusCode).toBe(400);
-    const open = (await admin.post('/api/admin/incidents', { title: 'x', message: 'y' })).json();
+    const open = data<Any>(await admin.post('/api/admin/incidents', { title: 'x', message: 'y' }));
     const badResolve = await admin.patch(`/api/admin/incidents/${open.id}`, { resolvedAt: new Date().toISOString() });
     expect(badResolve.statusCode).toBe(400);
   });
@@ -165,8 +190,8 @@ describe('maintenance lifecycle', () => {
       affectedServices: [{ serviceId, status: 'major_outage' }],
     });
     expect(await statusOf(serviceId)).toBe('major_outage');
-    const incidents = (await admin.get('/api/admin/incidents')).json();
-    await admin.post(`/api/admin/incidents/${incidents.items[0].id}/updates`, { status: 'resolved', message: 'Ok.' });
+    const incidents = page<Any>(await admin.get('/api/admin/incidents'));
+    await admin.post(`/api/admin/incidents/${incidents.items[0].id}/updates`, doc('incident-updates', { status: 'resolved', message: 'Ok.' }));
     expect(await statusOf(serviceId)).toBe('maintenance');
 
     const done = await admin.post(`/api/admin/maintenances/${m.id}/updates`, { status: 'completed', message: 'Done.' });

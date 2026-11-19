@@ -11,6 +11,7 @@ import {
   client,
   createTestApp,
   createUser,
+  doc,
   login,
   type Client,
   type TestApp,
@@ -122,7 +123,7 @@ describe('incident notifications', () => {
     expect(mail.subject).toBe('[Example Status] Incident: Elevated error rates');
     expect(mail.text).toContain('Public API');
     expect(mail.text).toContain('We are investigating.');
-    expect(mail.text).toContain(`${BASE_URL}/incidents/${created.json().id}`);
+    expect(mail.text).toContain(`${BASE_URL}/incidents/${created.json().data.id}`);
     for (const body of [mail.text, mail.html]) {
       expect(body).not.toContain('Hidden backend');
       expect(body).toContain('/subscription/manage?id=');
@@ -143,11 +144,11 @@ describe('incident notifications', () => {
     expect(`${mail.text}${mail.html}`).not.toContain('__OSP_');
 
     // Update moves to another service.
-    await admin.post(`/api/admin/incidents/${created.json().id}/updates`, {
+    await admin.post(`/api/admin/incidents/${created.json().data.id}/updates`, doc('incident-updates', {
       status: 'identified',
       message: 'Root cause found.',
       affectedServices: [{ serviceId: web, status: 'degraded' }],
-    });
+    }));
     const updates = await deliver();
     expect(recipients(updates)).toEqual(['all@example.com', 'web@example.com']);
     expect(updates[0]!.subject).toBe('[Example Status] Elevated error rates: Identified');
@@ -167,18 +168,18 @@ describe('incident notifications', () => {
   it('never notifies about private incidents or with notify=false', async () => {
     await seedSubscribers();
     const priv = await admin.post('/api/admin/incidents', { title: 'Private', message: 'x', isPublic: false });
-    await admin.post(`/api/admin/incidents/${priv.json().id}/updates`, { status: 'resolved', message: 'done' });
+    await admin.post(`/api/admin/incidents/${priv.json().data.id}/updates`, doc('incident-updates', { status: 'resolved', message: 'done' }));
     const quiet = await admin.post('/api/admin/incidents', { title: 'Quiet', message: 'x', notify: false });
-    await admin.post(`/api/admin/incidents/${quiet.json().id}/updates`, {
+    await admin.post(`/api/admin/incidents/${quiet.json().data.id}/updates`, doc('incident-updates', {
       status: 'resolved',
       message: 'done',
       notify: false,
-    });
+    }));
     expect(await deliver()).toHaveLength(0);
     expect(await t.db.selectFrom('email_outbox').selectAll().execute()).toHaveLength(0);
 
     // A notifying update of the quiet incident does send.
-    await admin.post(`/api/admin/incidents/${quiet.json().id}/updates`, { status: 'monitoring', message: 'again' });
+    await admin.post(`/api/admin/incidents/${quiet.json().data.id}/updates`, doc('incident-updates', { status: 'monitoring', message: 'again' }));
     expect(recipients(await deliver())).toEqual(['all@example.com']);
   });
 

@@ -1,7 +1,7 @@
 import { deserializeDocument, resourceType, type DataDocument } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newId } from '../src/lib/ids.js';
-import { adminClient, createTestApp, data, errors, page, seedChecks, type Client, type TestApp } from './helpers.js';
+import { adminClient, createTestApp, data, doc, errors, page, seedChecks, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -96,10 +96,10 @@ beforeEach(async () => {
       ],
       locationIds: [fra, hiddenLocation],
     })
-  ).json().id;
+  ).json().data.id;
   const privateIncident = (
     await admin.post('/api/admin/incidents', { title: 'Private incident', message: 'internal', isPublic: false })
-  ).json().id;
+  ).json().data.id;
   const maintenance = (
     await admin.post('/api/admin/maintenances', {
       title: 'Network upgrade',
@@ -269,7 +269,7 @@ describe('public locations', () => {
     expect((res.meta?.counts as Any).major_outage).toBe(1);
 
     // Resolve the incident; the api's check is still critical, so move it to manual operational.
-    await admin.post(`/api/admin/incidents/${ids.incident}/updates`, { status: 'resolved', message: 'ok' });
+    await admin.post(`/api/admin/incidents/${ids.incident}/updates`, doc('incident-updates', { status: 'resolved', message: 'ok' }));
     await admin.patch(`/api/admin/services/${ids.api}`, { statusMode: 'manual', checks: [] });
     const after = await getData('/api/public/locations');
     // The hidden service is still in major outage, but the public location stays operational.

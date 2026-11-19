@@ -11,6 +11,7 @@ import { countryOptions, parseCoordinate } from '../../lib/countries';
 import { useFormat, useOptions } from '../../lib/format';
 import { nextSortOrder } from '../../lib/ordering';
 import { useAdminMutation, useLocation, useLocations, useServices } from '../../lib/queries';
+import { LOCATION_DOCUMENT } from '../../lib/documents';
 import { useForm } from '../../lib/useForm';
 import { useIsAdmin } from '../../session';
 
@@ -76,8 +77,8 @@ function LocationForm({ location, sortOrder }: { location?: AdminLocation; sortO
   const save = useAdminMutation(
     (body: LocationInput) =>
       location
-        ? api.patch<AdminLocation>(`/api/admin/locations/${location.id}`, body, { type: 'locations', id: location.id })
-        : api.post<AdminLocation>('/api/admin/locations', body, { type: 'locations' }),
+        ? api.patch<AdminLocation>(`/api/admin/locations/${location.id}`, body, { ...LOCATION_DOCUMENT, id: location.id })
+        : api.post<AdminLocation>('/api/admin/locations', body, LOCATION_DOCUMENT),
     {
       success: location ? t('locations.saved') : t('locations.created'),
       onSuccess: (l) => {

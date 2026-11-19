@@ -23,6 +23,7 @@ import { useOptions } from '../../lib/format';
 import { keys, useAdminMutation, useGroups, useService, useServices, type PreviewResult } from '../../lib/queries';
 import { emptyServiceForm, serviceFormToPayload, serviceToForm, type ServiceFormValues } from '../../lib/service-form';
 import { useDebounced } from '../../lib/useDebounced';
+import { SERVICE_DOCUMENT } from '../../lib/documents';
 import { useForm } from '../../lib/useForm';
 import { useIsAdmin } from '../../session';
 
@@ -99,9 +100,6 @@ function RadioCard<T extends string>({
     </label>
   );
 }
-
-/** Request documents of a service: the group and locations are relationships. */
-const SERVICE_DOCUMENT = { type: 'services', relationships: { groupId: 'service-groups', locationIds: 'locations' } };
 
 function ServiceBuilder({ service, siblings = [] }: { service?: AdminService; siblings?: AdminService[] }) {
   const { t } = useTranslation('admin');

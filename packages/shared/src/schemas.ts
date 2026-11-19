@@ -447,6 +447,12 @@ export interface AdminIncident extends PublicIncident {
   createdBy: string | null;
 }
 
+/** An `incident-updates` resource as answered by the admin API, with its incident (without the updates). */
+export interface AdminIncidentUpdate extends IncidentUpdateEntry {
+  incidentId: string;
+  incident?: Omit<AdminIncident, 'updates'>;
+}
+
 // ---------------------------------------------------------------------------
 // Maintenance
 // ---------------------------------------------------------------------------
