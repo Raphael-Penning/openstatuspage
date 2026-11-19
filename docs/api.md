@@ -1,17 +1,118 @@
 # HTTP API
 
-All request/response types live in [`packages/shared/src/schemas.ts`](../packages/shared/src/schemas.ts).
-Input bodies are validated with the zod schemas named below; responses use the
-TypeScript interfaces of the same file.
+The API follows [JSON:API 1.1](https://jsonapi.org/format/1.1/) (since 0.2.0, a
+breaking change; there is no compatibility layer for the former plain JSON format).
+Attribute types live in [`packages/shared/src/schemas.ts`](../packages/shared/src/schemas.ts),
+the JSON:API document types and helpers in
+[`packages/shared/src/jsonapi.ts`](../packages/shared/src/jsonapi.ts).
+Request attributes are validated with the zod schemas named below.
 
-Conventions:
+> The public API (`/api/public/*`) is converted. Sections below that still show
+> plain bodies are being converted to the same conventions.
 
-- JSON everywhere, timestamps are ISO-8601 UTC strings.
-- Errors: `{ error: string, message: string, issues?: ZodIssue[] }` with a fitting HTTP status
-  (400 validation, 401 unauthenticated, 403 forbidden, 404 not found, 409 conflict).
-- `DELETE` returns `204 No Content`.
-- Slugs are generated from the name when not provided; duplicates get a numeric suffix.
-- Lists of an entity are returned as plain arrays unless noted as `Paginated<T>`.
+## Conventions
+
+### Media type and negotiation
+
+- Every JSON:API response is `Content-Type: application/vnd.api+json` and carries
+  `"jsonapi": { "version": "1.1" }`.
+- Requests with a body must send `Content-Type: application/vnd.api+json`. Any media
+  type parameter other than `profile` (including `ext`: no extensions are
+  implemented) is answered with `415 Unsupported Media Type`.
+- When every `application/vnd.api+json` entry in `Accept` carries such parameters, the
+  answer is `406 Not Acceptable`. `Accept: */*` or no `Accept` header is fine.
+- Exceptions (not JSON:API): `/api/health`, `/api/public/status.json`, the RSS/Atom
+  feeds, OIDC redirects and email confirmation links that redirect to HTML. Ingest
+  and webhook endpoints accept the native payloads of the monitoring systems; their
+  responses are JSON:API.
+
+### Resource objects
+
+- `type` is the kebab-case plural (`services`, `service-groups`, `incidents`,
+  `incident-updates`, `maintenances`, `locations`, ...), `id` a string.
+- `attributes` use the camelCase field names of the types in `schemas.ts`.
+- Foreign keys are `relationships` with resource identifier objects. A to-one
+  relationship `group` corresponds to the field `groupId`, a to-many relationship
+  `services` to `serviceIds` (the shared deserializer flattens them that way).
+- Complex value objects stay attributes (e.g. `uptime: DailyUptime[]`,
+  `affectedServices` with the impact per service).
+- Singletons have a stable id: `settings/site`, `summaries/current`.
+- Resources carry `links.self` where they can be fetched on their own; documents
+  carry a top-level `links.self` (relative URLs).
+
+### Compound documents
+
+Related resources needed by the UI are part of the response (`included`). The
+`include` query parameter selects them explicitly (comma-separated paths, empty
+value for none); unsupported paths are answered with `400` and
+`source.parameter = "include"`. Without `include`, the defaults listed per endpoint
+are included.
+
+### Collections
+
+- Pagination: `page[number]` (1-based) and `page[size]` (default 20, max 100).
+  Paginated documents carry `meta.total`, `meta.page = { number, size }` and
+  `links.first/prev/next/last` (`prev`/`next` are `null` at the ends).
+- Filters: `filter[name]=value`. Unknown filters are answered with `400`.
+- Sorting: `sort=field,-other` where an endpoint lists sortable fields.
+- Collections without pagination still carry `meta.total`.
+
+### Writing
+
+- Create: `POST` to the collection with `{ "data": { "type", "attributes", "relationships" } }`
+  answers `201 Created` with a `Location` header and the new resource.
+- Update: `PATCH` the resource (partial attributes). A `data.id` that differs from
+  the URL or another `data.type` than the endpoint expects is answered with `409`.
+- Delete: `204 No Content` without a body.
+- Actions (login, logout, rotate token, test, poll, apply import, resend, confirm)
+  are `POST` endpoints returning a resource document, a meta-only document
+  (`{ "jsonapi": ..., "meta": { ... } }`) or `204`.
+
+```http
+POST /api/admin/services
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "services",
+    "attributes": { "name": "Public API", "kind": "service" },
+    "relationships": {
+      "group": { "data": { "type": "service-groups", "id": "1b6f…" } },
+      "locations": { "data": [{ "type": "locations", "id": "9c2e…" }] }
+    }
+  }
+}
+```
+
+### Errors
+
+Every error status (400, 401, 403, 404, 406, 409, 415, 429, 500) uses an error document:
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "errors": [
+    {
+      "status": "400",
+      "code": "too_small",
+      "title": "Invalid request",
+      "detail": "Too small: expected string to have >=1 characters",
+      "source": { "pointer": "/data/attributes/name" },
+      "meta": { "origin": "string", "minimum": 1 }
+    }
+  ]
+}
+```
+
+- Validation errors produce one error per issue. `code` is the zod issue code,
+  further issue details are in `meta`, `source.pointer` points into the request
+  document (`/data/attributes/<field>`, or `/data/relationships/<name>` for fields
+  sent as relationships). Bad query parameters use `source.parameter`.
+- Other errors carry a stable snake_case `code` (`not_found`, `conflict`,
+  `unauthorized`, `forbidden`, `rate_limited`, `unsupported_media_type`,
+  `not_acceptable`, `invalid_document`, `type_mismatch`, `unsupported_include`, ...).
+- Other conventions: timestamps are ISO-8601 UTC strings; slugs are generated from the
+  name when not provided, duplicates get a numeric suffix.
 
 ## Public API (no authentication)
 
@@ -19,18 +120,70 @@ Only public entities are returned (`is_public = 1`). **Nothing about monitoring
 sources or checks is ever exposed here**: no check names, hosts, outputs, IPs or counts.
 Responses may be cached (`Cache-Control: public, max-age=30`).
 
-| Method | Path | Response |
-| --- | --- | --- |
-| GET | `/api/public/summary` | `PublicSummary` (overview page: settings, overall, groups with services incl. uptime, active/recent incidents, active/upcoming maintenance) |
-| GET | `/api/public/settings` | `PublicPageSettings` |
-| GET | `/api/public/services` | `{ groups: PublicServiceGroup[], ungrouped: PublicService[], counts: Record<ServiceStatus, number> }` incl. uptime |
-| GET | `/api/public/services/:idOrSlug` | `PublicService & { uptime: DailyUptime[], incidents: PublicIncident[] /* last 90d */, maintenances: PublicMaintenance[] /* active+upcoming */ }` |
-| GET | `/api/public/locations` | `PublicLocationsResponse` (404 when `showLocations` is disabled) |
-| GET | `/api/public/incidents/:id` | `PublicIncident` |
-| GET | `/api/public/maintenances/:id` | `PublicMaintenance` |
-| GET | `/api/public/history` | `Paginated<HistoryItem>`, query: `HistoryQuery` (type, serviceId, locationId, month, page, pageSize). Newest first; incidents sorted by `startedAt`, maintenance by `scheduledStart`. Includes active and resolved items, excludes scheduled-in-the-future maintenance. |
-| GET | `/api/public/status.json` | Compact machine-readable status: `{ overall, updatedAt, services: [{ id, name, group, status }], activeIncidents: [{ id, title, status, impact }], activeMaintenances: [{ id, title, scheduledEnd }] }` |
-| GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
+| Method | Path | Primary data | Included by default |
+| --- | --- | --- | --- |
+| GET | `/api/public/summary` | `summaries/current`: `overall`, `emailSubscriptions`, `generatedAt`; relationships `page` (settings), `groups`, `ungrouped` (services), `activeIncidents`, `recentIncidents`, `activeMaintenances`, `upcomingMaintenances` | everything referenced (settings, groups, services incl. uptime, incidents and maintenance with their updates) |
+| GET | `/api/public/settings` | `settings/site` (`PublicPageSettings`) | – |
+| GET | `/api/public/services` | `services[]` in display order (grouped services in group order, then ungrouped), `meta.counts: Record<ServiceStatus, number>` | the `service-groups` |
+| GET | `/api/public/services/:idOrSlug` | `services` incl. `uptime: DailyUptime[]`; relationships `incidents` (last 90 days and unresolved), `maintenances` (active and upcoming) | `include`: `incidents`, `incidents.updates`, `maintenances`, `maintenances.updates` (default: all) |
+| GET | `/api/public/locations` | `locations[]` (relationship `services`), `meta.counts`; 404 when `showLocations` is disabled | – |
+| GET | `/api/public/incidents/:id` | `incidents` (relationships `locations`, `updates`) | `include`: `updates` (default) |
+| GET | `/api/public/maintenances/:id` | `maintenances` (relationships `locations`, `updates`) | `include`: `updates` (default) |
+| GET | `/api/public/history` | heterogeneous, paginated collection of `incidents` and `maintenances`, newest first (incidents by `startedAt`, maintenance by `scheduledStart`); includes active and resolved items, excludes maintenance scheduled in the future. Filters: `filter[type]` (`all`, `incident`, `maintenance`), `filter[service]`, `filter[location]` (public ids), `filter[month]` (`YYYY-MM`) | `include`: `updates` (default) |
+| GET | `/api/public/status.json` | **Not JSON:API** (stable format for third-party tools): `{ overall, updatedAt, services: [{ id, name, group, status }], activeIncidents: [{ id, title, status, impact }], activeMaintenances: [{ id, title, scheduledEnd }] }` | |
+| GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) | |
+
+Example (`GET /api/public/incidents/7d0c…`):
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "incidents",
+    "id": "7d0c…",
+    "attributes": {
+      "title": "Database outage",
+      "status": "investigating",
+      "impact": "major",
+      "startedAt": "2026-11-19T08:00:00.000Z",
+      "resolvedAt": null,
+      "updatedAt": "2026-11-19T08:05:00.000Z",
+      "affectedServices": [{ "id": "1b6f…", "name": "Public API", "status": "major_outage" }]
+    },
+    "relationships": {
+      "locations": { "data": [{ "type": "locations", "id": "9c2e…" }] },
+      "updates": { "data": [{ "type": "incident-updates", "id": "a41f…" }] }
+    },
+    "links": { "self": "/api/public/incidents/7d0c…" }
+  },
+  "included": [
+    {
+      "type": "incident-updates",
+      "id": "a41f…",
+      "attributes": { "status": "investigating", "message": "We are investigating.", "createdAt": "2026-11-19T08:05:00.000Z" }
+    }
+  ],
+  "links": { "self": "/api/public/incidents/7d0c…" }
+}
+```
+
+Example (`GET /api/public/history?filter[type]=incident&page[number]=2&page[size]=10`):
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": [{ "type": "incidents", "id": "…", "attributes": { "…": "…" }, "relationships": { "…": "…" } }],
+  "included": [{ "type": "incident-updates", "id": "…", "attributes": { "…": "…" } }],
+  "meta": { "total": 25, "page": { "number": 2, "size": 10 } },
+  "links": {
+    "self": "/api/public/history?filter[type]=incident&page[number]=2&page[size]=10",
+    "first": "/api/public/history?filter[type]=incident&page[number]=1&page[size]=10",
+    "prev": "/api/public/history?filter[type]=incident&page[number]=1&page[size]=10",
+    "next": "/api/public/history?filter[type]=incident&page[number]=3&page[size]=10",
+    "last": "/api/public/history?filter[type]=incident&page[number]=3&page[size]=10"
+  }
+}
+```
 
 Uptime (`uptime`, `uptimePercent`) is computed from the **corrected** history
 (see [History corrections](#history-corrections)). A `DailyUptime` entry of a day
@@ -44,7 +197,7 @@ Upcoming maintenance = `status = scheduled` and `scheduled_end > now`.
 Active maintenance = `status = in_progress`.
 Active incidents = `status != resolved`.
 
-`PublicSummary.emailSubscriptions` is `true` when email subscriptions are enabled in
+The summary attribute `emailSubscriptions` is `true` when email subscriptions are enabled in
 the settings and a mail transport is configured (the page then offers the subscribe form).
 
 ## Email subscriptions (`/api/public/subscriptions`, no authentication)
