@@ -273,7 +273,7 @@ export async function loadAdminSources(
   return rows.map((s) => ({
     id: s.id,
     name: s.name,
-    type: s.type,
+    sourceType: s.type,
     enabled: s.enabled === 1,
     pollIntervalSeconds: s.poll_interval_seconds,
     config: maskSecrets(decryptSourceConfig(secrets, s)),

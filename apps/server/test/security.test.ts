@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SECRET_MASK } from '@openstatuspage/shared';
-import { adminClient, client, createTestApp, createUser, login, page, type Client, type TestApp } from './helpers.js';
+import { adminClient, client, createTestApp, createUser, data, login, page, type Client, type TestApp } from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -17,22 +17,22 @@ describe('monitoring credentials', () => {
   it('cannot be redirected to another host with the secret mask', async () => {
     const icinga = {
       name: 'Icinga',
-      type: 'icinga2',
+      sourceType: 'icinga2',
       config: { baseUrl: 'https://monitoring.example.com:5665', username: 'statuspage', password: 'super-secret-password' },
     };
-    const source = (await admin.post('/api/admin/monitor-sources', icinga)).json();
+    const source = data<{ id: string }>(await admin.post('/api/admin/monitor-sources', icinga));
     const url = `/api/admin/monitor-sources/${source.id}`;
 
-    const otherHost = await admin.put(url, {
+    const otherHost = await admin.patch(url, {
       ...icinga,
       config: { ...icinga.config, baseUrl: 'https://attacker.example.net', password: SECRET_MASK },
     });
     expect(otherHost.statusCode).toBe(400);
-    const otherUser = await admin.put(url, { ...icinga, config: { ...icinga.config, username: 'x', password: SECRET_MASK } });
+    const otherUser = await admin.patch(url, { ...icinga, config: { ...icinga.config, username: 'x', password: SECRET_MASK } });
     expect(otherUser.statusCode).toBe(400);
 
     // Re-entering the password allows the change.
-    const ok = await admin.put(url, { ...icinga, config: { ...icinga.config, baseUrl: 'https://mon2.example.com' } });
+    const ok = await admin.patch(url, { ...icinga, config: { ...icinga.config, baseUrl: 'https://mon2.example.com' } });
     expect(ok.statusCode).toBe(200);
   });
 });

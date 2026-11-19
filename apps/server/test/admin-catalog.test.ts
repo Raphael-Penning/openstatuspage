@@ -1,6 +1,16 @@
 import { SECRET_MASK } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { adminClient, createTestApp, data, seedChecks, setCheckState, type Client, type TestApp } from './helpers.js';
+import {
+  adminClient,
+  createTestApp,
+  data,
+  doc,
+  errors,
+  seedChecks,
+  setCheckState,
+  type Client,
+  type TestApp,
+} from './helpers.js';
 
 let t: TestApp;
 let admin: Client;
@@ -129,12 +139,12 @@ describe('services', () => {
     expect(manual.json()).toMatchObject({ status: 'degraded', monitorStatus: 'major_outage', locationIds: [] });
 
     // Checks: filters and deletion.
-    const unlinked = await admin.get('/api/admin/checks?unlinked=true');
-    expect(unlinked.json().map((c: { externalId: string }) => c.externalId)).toEqual(['web2!https']);
-    const search = await admin.get('/api/admin/checks?q=WEB1.internal');
-    expect(search.json()).toHaveLength(1);
-    const critical = await admin.get(`/api/admin/checks?state=critical&sourceId=${sourceId}`);
-    expect(critical.json()).toHaveLength(1);
+    const unlinked = await admin.get('/api/admin/checks?filter[unlinked]=true');
+    expect(data<{ externalId: string }[]>(unlinked).map((c) => c.externalId)).toEqual(['web2!https']);
+    const search = await admin.get('/api/admin/checks?filter[q]=WEB1.internal');
+    expect(data<unknown[]>(search)).toHaveLength(1);
+    const critical = await admin.get(`/api/admin/checks?filter[state]=critical&filter[source]=${sourceId}`);
+    expect(data<{ sourceId: string }[]>(critical)).toEqual([expect.objectContaining({ sourceId })]);
 
     await admin.put(`/api/admin/services/${svc.id}`, { name: 'Web App', checks: [{ checkId: checkIds['web1!https'] }] });
     current = (await admin.get(`/api/admin/services/${svc.id}`)).json();
@@ -196,7 +206,7 @@ describe('settings', () => {
 describe('monitoring sources', () => {
   const icinga = {
     name: 'Icinga',
-    type: 'icinga2',
+    sourceType: 'icinga2',
     config: {
       baseUrl: 'https://monitoring.example.com:5665',
       username: 'statuspage',
@@ -207,7 +217,10 @@ describe('monitoring sources', () => {
   it('encrypts and masks secrets, keeps them when the mask is sent back', async () => {
     const created = await admin.post('/api/admin/monitor-sources', icinga);
     expect(created.statusCode).toBe(201);
-    const source = created.json();
+    expect(created.headers['content-type']).toBe('application/vnd.api+json');
+    expect(created.json().data).toMatchObject({ type: 'monitor-sources', attributes: { sourceType: 'icinga2' } });
+    const source = data<{ id: string; ingestToken: string; ingestUrl: string; config: Record<string, unknown> }>(created);
+    expect(created.headers.location).toBe(`/api/admin/monitor-sources/${source.id}`);
     expect(source.ingestToken).toEqual(expect.any(String));
     expect(source.config.password).toBe(SECRET_MASK);
     expect(source.config.username).toBe('statuspage');
@@ -221,15 +234,21 @@ describe('monitoring sources', () => {
     const list = await admin.get('/api/admin/monitor-sources');
     expect(list.body).not.toContain('super-secret-password');
     expect(list.body).not.toContain(source.ingestToken);
+    expect(list.json().meta).toEqual({ total: 1 });
 
     // Update with the mask keeps the stored password.
-    const updated = await admin.put(`/api/admin/monitor-sources/${source.id}`, {
+    const updated = await admin.patch(`/api/admin/monitor-sources/${source.id}`, {
       ...icinga,
       name: 'Icinga (primary)',
       config: { ...icinga.config, password: SECRET_MASK, includeHosts: false },
     });
     expect(updated.statusCode).toBe(200);
-    expect(updated.json()).toMatchObject({ name: 'Icinga (primary)', config: { password: SECRET_MASK, includeHosts: false } });
+    expect(data(updated)).toMatchObject({ name: 'Icinga (primary)', config: { password: SECRET_MASK, includeHosts: false } });
+
+    // Partial update: the config stays when it is left out.
+    const renamed = await admin.patch(`/api/admin/monitor-sources/${source.id}`, { name: 'Icinga' });
+    expect(data(renamed)).toMatchObject({ name: 'Icinga', sourceType: 'icinga2', config: { includeHosts: false } });
+    expect(data(await admin.get(`/api/admin/monitor-sources/${source.id}`))).not.toHaveProperty('ingestToken');
     const stored = t.app.ctx.secrets.decryptJson<Record<string, unknown>>(
       (await t.db.selectFrom('monitor_sources').select('config_encrypted').where('id', '=', source.id).executeTakeFirstOrThrow())
         .config_encrypted,
@@ -237,12 +256,17 @@ describe('monitoring sources', () => {
     expect(stored.password).toBe('super-secret-password');
 
     // Changing the type requires new credentials.
-    const typeChange = await admin.put(`/api/admin/monitor-sources/${source.id}`, {
+    const typeChange = await admin.patch(`/api/admin/monitor-sources/${source.id}`, {
       name: 'Kuma',
-      type: 'uptimekuma',
+      sourceType: 'uptimekuma',
       config: { baseUrl: 'https://kuma.example.com', apiKey: SECRET_MASK },
     });
     expect(typeChange.statusCode).toBe(400);
+    expect(errors(typeChange)[0]).toMatchObject({ code: 'secret_required', source: { pointer: '/data/attributes/config/apiKey' } });
+    // A new type without a config: the config is required.
+    const noConfig = await admin.patch(`/api/admin/monitor-sources/${source.id}`, { sourceType: 'webhook' });
+    expect(noConfig.statusCode).toBe(400);
+    expect(errors(noConfig)[0]?.source).toEqual({ pointer: '/data/attributes/config' });
 
     // The mask is not accepted as a real secret on create.
     const masked = await admin.post('/api/admin/monitor-sources', {
@@ -250,30 +274,43 @@ describe('monitoring sources', () => {
       config: { ...icinga.config, password: SECRET_MASK },
     });
     expect(masked.statusCode).toBe(400);
+    expect(errors(masked)[0]?.source).toEqual({ pointer: '/data/attributes/config/password' });
+
+    // Request documents of another type are rejected.
+    const wrongType = await admin.post('/api/admin/monitor-sources', doc('services', icinga));
+    expect(wrongType.statusCode).toBe(409);
 
     const rotated = await admin.post(`/api/admin/monitor-sources/${source.id}/rotate-token`);
     expect(rotated.statusCode).toBe(200);
-    expect(rotated.json().ingestToken).not.toBe(source.ingestToken);
+    const { ingestToken } = rotated.json().meta as { ingestToken: string };
+    expect(ingestToken).not.toBe(source.ingestToken);
 
     const audit = await admin.get('/api/admin/audit-log?entityType=monitor_source');
     expect(audit.body).not.toContain('super-secret-password');
-    expect(audit.body).not.toContain(rotated.json().ingestToken);
+    expect(audit.body).not.toContain(ingestToken);
 
     expect((await admin.delete(`/api/admin/monitor-sources/${source.id}`)).statusCode).toBe(204);
     expect((await admin.get(`/api/admin/monitor-sources/${source.id}`)).statusCode).toBe(404);
   });
 
   it('disabling a source removes the influence of its checks', async () => {
-    const created = (await admin.post('/api/admin/monitor-sources', { name: 'Hook', type: 'webhook', config: {} })).json();
+    const created = data<{ id: string }>(await admin.post('/api/admin/monitor-sources', { name: 'Hook', sourceType: 'webhook', config: {} }));
     await t.app.ctx.ingest.ingest(created.id, [{ externalId: 'x', name: 'X', host: 'h', state: 'critical' }], { full: false });
-    const check = (await admin.get(`/api/admin/checks?sourceId=${created.id}`)).json()[0];
+    const checks = await admin.get(`/api/admin/checks?filter[source]=${created.id}`);
+    expect(checks.json().data[0]).toMatchObject({
+      type: 'monitor-checks',
+      relationships: { source: { data: { type: 'monitor-sources', id: created.id } } },
+    });
+    const check = data<{ id: string }[]>(checks)[0]!;
+    expect(data(await admin.get(`/api/admin/checks/${check.id}`))).toMatchObject({ id: check.id, sourceId: created.id });
+    expect(errors(await admin.get('/api/admin/checks?filter[nope]=1'))[0]?.source).toEqual({ parameter: 'filter[nope]' });
     const svc = (await admin.post('/api/admin/services', { name: 'S', checks: [{ checkId: check.id }] })).json();
     expect(svc.status).toBe('major_outage');
 
-    await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: false });
+    await admin.patch(`/api/admin/monitor-sources/${created.id}`, { enabled: false });
     expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('operational');
 
-    await admin.put(`/api/admin/monitor-sources/${created.id}`, { name: 'Hook', type: 'webhook', config: {}, enabled: true });
+    await admin.patch(`/api/admin/monitor-sources/${created.id}`, { enabled: true });
     expect((await admin.get(`/api/admin/services/${svc.id}`)).json().status).toBe('major_outage');
 
     await admin.delete(`/api/admin/monitor-sources/${created.id}`);
