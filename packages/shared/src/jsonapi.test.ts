@@ -5,6 +5,7 @@ import {
   deserializePage,
   errorIssues,
   flattenResource,
+  inferResourceType,
   pointerToPath,
   relationshipKey,
   relationshipNameForKey,
@@ -131,6 +132,16 @@ describe('deserialize', () => {
     });
     expect(page).toEqual({ items: [{ id: '1' }], total: 41, page: 3, pageSize: 20 });
     expect(deserializePage({ data: [] })).toEqual({ items: [], total: 0, page: 1, pageSize: 0 });
+  });
+});
+
+describe('inferResourceType', () => {
+  it('uses the last non-id path segment', () => {
+    expect(inferResourceType('/api/admin/services')).toBe('services');
+    expect(inferResourceType('/api/admin/services/3f2b8c1e-1a2b-4c3d-8e9f-0a1b2c3d4e5f?x=1')).toBe('services');
+    expect(inferResourceType('/api/admin/incidents/3f2b8c1e-1a2b-4c3d-8e9f-0a1b2c3d4e5f/updates')).toBe('updates');
+    expect(inferResourceType('/api/admin/sources/12')).toBe('sources');
+    expect(inferResourceType('/api')).toBe('resources');
   });
 });
 

@@ -190,6 +190,32 @@ export interface ToResourceOptions {
   relationships?: Record<string, string>;
 }
 
+const ID_SEGMENT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d+)$/i;
+
+/**
+ * Fallback resource type for a request body, derived from the URL: the last path
+ * segment that is not an id. `/api/admin/services/<uuid>` → "services",
+ * `/api/admin/incidents/<uuid>/updates` → "updates". Pass the type explicitly
+ * where the route checks it (sub-resources, actions).
+ */
+export function inferResourceType(url: string): string {
+  const segments = (url.split(/[?#]/)[0] ?? '')
+    .split('/')
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    });
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const s = segments[i]!;
+    if (!ID_SEGMENT.test(s) && s !== 'api') return s;
+  }
+  return 'resources';
+}
+
 /** Wraps a plain object as a request document: `{ data: { type, attributes, relationships } }`. */
 export function toRequestDocument<A extends object>(
   type: string,
