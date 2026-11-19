@@ -102,6 +102,24 @@ function fastifyValidationErrors(err: FastifyLikeError, relationships?: Readonly
 }
 
 /**
+ * Fastify body/content-type errors with stable codes and neutral details (the
+ * framework's own codes and messages name internals and the wrong media type).
+ */
+const FASTIFY_ERRORS: Record<string, { status: number; code: string; detail: string }> = {
+  FST_ERR_CTP_INVALID_JSON_BODY: { status: 400, code: 'invalid_json', detail: 'The request body is not valid JSON' },
+  FST_ERR_CTP_EMPTY_JSON_BODY: { status: 400, code: 'empty_body', detail: 'The request body is empty' },
+  FST_ERR_CTP_BODY_TOO_LARGE: { status: 413, code: 'payload_too_large', detail: 'The request body is too large' },
+  FST_ERR_CTP_INVALID_CONTENT_LENGTH: {
+    status: 400,
+    code: 'invalid_content_length',
+    detail: 'The Content-Length header does not match the request body',
+  },
+  FST_ERR_CTP_INVALID_MEDIA_TYPE: { status: 415, code: 'unsupported_media_type', detail: 'Unsupported Content-Type' },
+  FST_ERR_CTP_EMPTY_TYPE: { status: 415, code: 'unsupported_media_type', detail: 'The Content-Type header is empty' },
+  FST_ERR_CTP_INVALID_TYPE: { status: 415, code: 'unsupported_media_type', detail: 'Unsupported Content-Type' },
+};
+
+/**
  * Maps any thrown value to a status code and JSON:API error objects.
  * `relationships`: names of the relationships in the request document (for pointers).
  */
@@ -122,6 +140,12 @@ export function mapError(err: unknown, relationships?: ReadonlySet<string>): Map
   }
   const e = (err ?? {}) as FastifyLikeError;
   if (Array.isArray(e.validation)) return { status: 400, errors: fastifyValidationErrors(e, relationships) };
+  const known = typeof e.code === 'string' ? FASTIFY_ERRORS[e.code] : undefined;
+  if (known) {
+    const error: ErrorObject = { status: String(known.status), code: known.code, title: statusTitle(known.status), detail: known.detail };
+    if (known.status === 415) error.source = { header: 'Content-Type' };
+    return { status: known.status, errors: [error] };
+  }
   const status = typeof e.statusCode === 'number' && e.statusCode >= 400 && e.statusCode < 600 ? e.statusCode : 500;
   if (status >= 500) {
     return {

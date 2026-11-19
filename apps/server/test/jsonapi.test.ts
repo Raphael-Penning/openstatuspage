@@ -132,8 +132,11 @@ describe('error mapping', () => {
       status: '429',
       code: 'rate_limited',
     });
-    expect(mapError(Object.assign(new Error('Too large'), { statusCode: 413, code: 'FST_ERR_CTP_BODY_TOO_LARGE' })).errors[0]).toMatchObject({
-      code: 'fst_err_ctp_body_too_large',
+    expect(mapError(Object.assign(new Error('Too large'), { statusCode: 413, code: 'FST_ERR_CTP_BODY_TOO_LARGE' })).errors[0]).toEqual({
+      status: '413',
+      code: 'payload_too_large',
+      title: 'Payload Too Large',
+      detail: 'The request body is too large',
     });
     expect(mapError(new Error('secret db detail'))).toEqual({
       status: 500,
@@ -249,7 +252,12 @@ describe('JSON:API routes', () => {
     expect(clientId.json().errors[0]).toMatchObject({ code: 'client_id_unsupported', source: { pointer: '/data/id' } });
     const invalidJson = await app.inject({ method: 'POST', url: '/things', payload: '{', headers: { 'content-type': MEDIA } });
     expect(invalidJson.statusCode).toBe(400);
-    expect(invalidJson.json().errors[0].status).toBe('400');
+    expect(invalidJson.json().errors[0]).toEqual({
+      status: '400',
+      code: 'invalid_json',
+      title: 'Bad Request',
+      detail: 'The request body is not valid JSON',
+    });
   });
 
   it('maps validation errors to pointers', async () => {
