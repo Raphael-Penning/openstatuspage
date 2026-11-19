@@ -14,7 +14,9 @@ let api: string;
 let web: string;
 let hidden: string;
 
-const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+/** Fixed per test, so seeded segments and corrections share exact boundaries. */
+let anchor = Date.now();
+const iso = (msAgo: number) => new Date(anchor - msAgo).toISOString();
 const get = (url: string) => t.app.inject({ method: 'GET', url });
 
 /** Replaces a service's measured history: operational for 3 days with a 2 h outage ending 22 h ago. */
@@ -43,6 +45,7 @@ async function publicPercent(serviceId: string): Promise<number | null> {
 }
 
 beforeEach(async () => {
+  anchor = Date.now();
   mailer = new MemoryMailer();
   t = await createTestApp({}, { mailer });
   admin = await adminClient(t);
