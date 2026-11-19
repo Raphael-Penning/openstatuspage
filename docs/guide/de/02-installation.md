@@ -335,7 +335,7 @@ passe es in `.env` an (nur Buchstaben und Ziffern) und führe dann aus:
 
 ```bash
 docker compose -f compose.split.yaml up -d db
-docker compose -f compose.split.yaml exec db /docker-entrypoint-initdb.d/10-roles.sh
+docker compose -f compose.split.yaml exec db sh /docker-entrypoint-initdb.d/10-roles.sh
 docker compose -f compose.split.yaml up -d public admin worker
 ```
 

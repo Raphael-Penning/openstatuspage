@@ -6,8 +6,12 @@
 # POSTGRES_APP_PASSWORD, not a superuser), and hardens the database.
 # To change a password later, rerun this script (roles.sql is idempotent).
 #
-# The image sources this file (it is not executable), so it does not set shell
-# options: a failing command ends the init with an error.
+# The image runs this file as a program when it is executable (as in git) and
+# sources it otherwise, so it sets no shell options and ends with `exit 1` on
+# error in both cases. Run it by hand with `sh`, which works without the
+# executable bit too:
+#
+#   docker compose -f compose.split.yaml exec db sh /docker-entrypoint-initdb.d/10-roles.sh
 ROLES_SQL="${ROLES_SQL:-/osp-postgres/roles.sql}"
 : "${POSTGRES_PUBLIC_PASSWORD:?POSTGRES_PUBLIC_PASSWORD is not set}"
 : "${POSTGRES_APP_PASSWORD:?POSTGRES_APP_PASSWORD is not set}"
