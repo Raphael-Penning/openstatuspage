@@ -471,6 +471,37 @@ describe('outbox delivery', () => {
     expect(after.lastSentAt).toEqual(expect.any(String));
   });
 
+  it('never sends to a recipient that is not exactly one plain address', async () => {
+    const { notifications } = t.app.ctx;
+    const now = new Date().toISOString();
+    await t.db
+      .insertInto('email_outbox')
+      .values(
+        ['victim@example.com,a', 'Victim <victim@example.com>', 'victim@example.com;other@example.com'].map((recipient, i) => ({
+          id: `bad-${i}`,
+          subscriber_id: null,
+          recipient,
+          kind: 'test',
+          subject: 's',
+          text_body: 't',
+          html_body: 'h',
+          headers: null,
+          status: 'pending' as const,
+          attempts: 0,
+          next_attempt_at: now,
+          last_error: null,
+          last_attempt_at: null,
+          created_at: now,
+          sent_at: null,
+        })) as never,
+      )
+      .execute();
+    expect(await notifications.deliverDue()).toEqual({ sent: 0, retried: 0, failed: 3 });
+    expect(mailer.sent).toEqual([]);
+    const rows = await t.db.selectFrom('email_outbox').select(['status', 'last_error']).execute();
+    expect(rows.every((r) => r.status === 'failed' && r.last_error === 'Invalid recipient address')).toBe(true);
+  });
+
   it('uses the time of each row, not the batch start, for backoff and timestamps', async () => {
     await addSubscriber('a@example.com');
     await addSubscriber('b@example.com');

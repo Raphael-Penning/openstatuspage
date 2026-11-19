@@ -22,6 +22,7 @@
  */
 import type { NotificationStatus } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
+import { z } from 'zod';
 import type { Config } from '../config.js';
 import type { DB } from '../db/index.js';
 import type { OutboxRow } from '../db/types.js';
@@ -87,6 +88,12 @@ export interface DeliveryResult {
 }
 
 const BASE_HEADERS = { 'Auto-Submitted': 'auto-generated' };
+
+/**
+ * A recipient must be exactly one plain address (the rule of the subscribe form). Rows
+ * written through the database functions of the public role are checked again here.
+ */
+const Recipient = z.email().max(254);
 
 /**
  * A confirmation or "manage" mail queued without content. The database functions of
@@ -395,6 +402,17 @@ export class NotificationService {
 
   private async deliverOne(row: OutboxRow, result: DeliveryResult): Promise<void> {
     const attempts = row.attempts + 1;
+    if (!Recipient.safeParse(row.recipient).success) {
+      // Never retried: the address does not change.
+      await this.db
+        .updateTable('email_outbox')
+        .set({ status: 'failed', attempts, last_error: 'Invalid recipient address', last_attempt_at: this.clock().toISOString() })
+        .where('id', '=', row.id)
+        .execute();
+      this.log.warn({ outboxId: row.id, kind: row.kind }, 'email not sent: invalid recipient address');
+      result.failed++;
+      return;
+    }
     const mail = await this.prepare(row);
     if (!mail) {
       await this.db.deleteFrom('email_outbox').where('id', '=', row.id).execute();
