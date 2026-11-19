@@ -230,7 +230,7 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
         <nav aria-label={t('footer.label')}>
           <ul className="flex flex-wrap gap-x-5 gap-y-2">
             <li>
-              <a href="/api/public/status.json" className={linkClass}>
+              <a href="/api/public/status" className={linkClass}>
                 {t('footer.statusApi')}
               </a>
             </li>
