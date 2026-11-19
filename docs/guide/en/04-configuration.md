@@ -29,7 +29,7 @@ The complete reference with every option lives in
 | `OIDC_*` | – | Single sign-on, see [Users and access](08-users-and-access.md#single-sign-on-oidc). |
 | `APP_ROLE` | `all` | `all`, or with PostgreSQL `public`, `admin` or `worker` to run the status page and the management side as separate instances. See [Split deployment](../../configuration.md#split-deployment). |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL login of the `public` instance. It can only read public data and manage subscriptions through checked functions. Create it with `deploy/postgres/roles.sql`; see [Security model](../../security-model.md). |
-| `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; `false` on additional `all` replicas. |
+| `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; on PostgreSQL several instances may run them (coordinated through the database). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | Email delivery, see [Email subscriptions](07-email-subscriptions.md#mail-server). |
 
 Rules that apply to all variables:

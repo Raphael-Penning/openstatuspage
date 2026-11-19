@@ -18,6 +18,9 @@ import { syncSubscriptionTokenHashes } from './services/subscriptions.js';
 /** Re-reads the monitoring sources so a worker picks up changes made on an admin instance. */
 export const POLLER_SYNC_TASK = 'poller-sync';
 const POLLER_SYNC_INTERVAL_MS = 30_000;
+/** Removes leases of tasks that no longer exist (PostgreSQL only). */
+export const LEASE_CLEANUP_TASK = 'task-lease-cleanup';
+const LEASE_CLEANUP_INTERVAL_MS = 3600_000;
 
 export interface StartupLog {
   info(obj: object, msg: string): void;
@@ -87,6 +90,10 @@ export async function prepareDatabase(
 /**
  * Registers and starts the background tasks when WORKER_ENABLED (default for the
  * roles all and worker). Returns whether the worker was started.
+ *
+ * On PostgreSQL every task runs under a lease (ctx.leases), so any number of
+ * worker or all instances can run side by side: each task (and the poll of each
+ * source) runs on one instance at a time and once per interval overall.
  */
 export async function startBackgroundTasks(ctx: AppContext): Promise<boolean> {
   const { config, db } = ctx;
@@ -100,9 +107,21 @@ export async function startBackgroundTasks(ctx: AppContext): Promise<boolean> {
   registerHistoryImportTasks(ctx);
   await syncPollers(ctx);
   // Sources edited on another instance (APP_ROLE=admin) only reach this worker this way.
-  ctx.worker.schedule(POLLER_SYNC_TASK, POLLER_SYNC_INTERVAL_MS, async () => {
-    await syncPollers(ctx);
-  });
+  // Local: every worker keeps its own schedule up to date; the polls themselves are leased.
+  ctx.worker.schedule(
+    POLLER_SYNC_TASK,
+    POLLER_SYNC_INTERVAL_MS,
+    async () => {
+      await syncPollers(ctx);
+    },
+    { local: true },
+  );
+  const { leases } = ctx;
+  if (leases) {
+    ctx.worker.schedule(LEASE_CLEANUP_TASK, LEASE_CLEANUP_INTERVAL_MS, async () => {
+      await leases.purge();
+    });
+  }
   ctx.worker.start();
   return true;
 }

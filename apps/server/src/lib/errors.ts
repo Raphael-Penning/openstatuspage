@@ -37,3 +37,11 @@ export const conflict = (message: string) => new HttpError(409, 'conflict', mess
 export const unauthorized = (message = 'Authentication required') =>
   new HttpError(401, 'unauthorized', message);
 export const forbidden = (message = 'Insufficient permissions') => new HttpError(403, 'forbidden', message);
+
+/** Whether a database error is a unique constraint violation (PostgreSQL 23505, SQLite UNIQUE). */
+export function isUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; message?: unknown };
+  if (e.code === '23505' || e.code === 'SQLITE_CONSTRAINT_UNIQUE') return true;
+  return typeof e.message === 'string' && e.message.includes('UNIQUE constraint failed');
+}

@@ -445,6 +445,7 @@ describe('tables', () => {
     'check_bundle_members',
     'history_imports',
     'history_import_intervals',
+    'task_leases',
     'osp_public_roles',
   ];
 

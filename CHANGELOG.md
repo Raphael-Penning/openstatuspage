@@ -86,3 +86,10 @@ breaking changes.
   [docs/security-model.md](docs/security-model.md).
 - `WORKER_ENABLED` defaults to `false` for `APP_ROLE=admin`; contradicting settings
   stop the server on start.
+- **Several instances with background tasks** on PostgreSQL: every task (and the
+  poll of every monitoring source) runs under a lease in the new `task_leases`
+  table, so it runs on one instance at a time and once per interval across the
+  deployment; an instance that stops is replaced within a minute. Status and
+  bundle recomputes are serialised with advisory locks, and only one history
+  import per source can be active, also across admin instances. Rate limits stay
+  per instance. See [docs/architecture.md](docs/architecture.md#several-instances).

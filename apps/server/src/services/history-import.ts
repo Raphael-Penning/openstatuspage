@@ -10,7 +10,8 @@
  *            different sources feeding the same service never interleave.
  *   cancel   "fetching" (aborts) or "ready" (discards) → "cancelled"
  *
- * Only one job per source can be active (fetching, ready, applying). One-off
+ * Only one job per source can be active (fetching, ready, applying; a unique
+ * index enforces it across instances). One-off
  * credentials are stored encrypted on the job and cleared when fetching ends.
  * Jobs run in the process that received the request; a periodic task fails
  * jobs that stopped making progress (e.g. after a restart); previews nobody
@@ -36,9 +37,10 @@ import { createAdapterFetch, type AdapterFetchOptions, type FetchFn } from '../a
 import { getAdapter } from '../adapters/index.js';
 import { redactSecrets } from '../adapters/runner.js';
 import type { DB } from '../db/index.js';
+import { LOCK_KEYS } from '../db/locks.js';
 import type { Database, HistoryImport, MonitorSource } from '../db/types.js';
 import type { SecretBox } from '../lib/crypto.js';
-import { badRequest, conflict, notFound } from '../lib/errors.js';
+import { badRequest, conflict, isUniqueViolation, notFound } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import type { Valued } from '../lib/intervals.js';
 import { nowIso } from '../lib/time.js';
@@ -49,8 +51,6 @@ import type { Worker } from '../worker.js';
 import { audit } from './audit.js';
 import { planImport, type ImportPlan, type StagedData } from './history-import-plan.js';
 
-/** Key of the PostgreSQL advisory lock that serialises applying imports. */
-const APPLY_LOCK_KEY = 4_711_005;
 
 /** Requests of importers may take long (large heartbeat lists, long polling). */
 export const IMPORT_REQUEST_TIMEOUT_MS = 120_000;
@@ -202,10 +202,12 @@ export class HistoryImportService {
       .where('source_id', '=', source.id)
       .where('status', 'in', [...ACTIVE])
       .executeTakeFirst();
-    if (active) throw conflict('Another history import of this source is still running or waiting for confirmation.');
+    const busy = 'Another history import of this source is still running or waiting for confirmation.';
+    if (active) throw conflict(busy);
 
     const id = newId();
     const ts = nowIso();
+    // history_imports_active_idx also rejects a job another instance started in the meantime.
     await this.db
       .insertInto('history_imports')
       .values({
@@ -227,7 +229,10 @@ export class HistoryImportService {
         updated_at: ts,
         finished_at: null,
       })
-      .execute();
+      .execute()
+      .catch((err: unknown) => {
+        throw isUniqueViolation(err) ? conflict(busy) : err;
+      });
     // Never log credentials or the CSV content.
     await audit(this.db, {
       userId: actor.userId,
@@ -563,7 +568,7 @@ export class HistoryImportService {
    * which takes the database write lock for the rest of the transaction.
    */
   private async lockApply(trx: Kysely<Database>, id: string): Promise<void> {
-    if (this.dialect === 'postgres') await sql`select pg_advisory_xact_lock(${APPLY_LOCK_KEY})`.execute(trx);
+    if (this.dialect === 'postgres') await sql`select pg_advisory_xact_lock(${LOCK_KEYS.historyImportApply})`.execute(trx);
     const touched = await trx
       .updateTable('history_imports')
       .set({ updated_at: nowIso() })

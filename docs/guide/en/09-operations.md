@@ -260,28 +260,34 @@ URL (ingest, email links) are only written at `warn` level and above.
 ## Running several instances
 
 One instance is enough for most setups. If you run several instances (e.g.
-for high availability):
+for high availability, or the [split deployment](../../configuration.md#split-deployment)
+with separate public, admin and worker instances):
 
 - Use **PostgreSQL**. SQLite cannot be shared between instances.
-- Set `WORKER_ENABLED=false` on all but **one** instance. The worker runs
-  monitoring polls, automatic maintenance start/completion, email delivery,
-  reminders and clean-up jobs; running it on several instances would do the
-  work twice.
-- Use the same `SECRET_KEY` and `BASE_URL` on all instances.
-- Rate limits are counted per instance.
+- Background work may run on several instances. Monitoring polls, automatic
+  maintenance start/completion, email delivery, reminders and clean-up jobs
+  are coordinated through the database: each task runs on one instance at a
+  time and once per interval, each source is polled once per interval, and
+  each email is sent once. If a worker instance stops, another one takes over
+  its tasks within about a minute.
+- Use the same `SECRET_KEY` and `BASE_URL` on all instances. Logins work on
+  every instance (sessions are stored in the database).
+- Rate limits are counted per instance: with three instances behind a load
+  balancer a client can try to log in up to three times as often. If that
+  matters to you, let the proxy send each client to the same instance (sticky
+  sessions by client IP) or limit requests at the proxy.
+- After an update, start the new version on one instance first; it migrates
+  the database. Instances may start at the same time: only one of them
+  migrates.
 
-If the worker instance is down, the page and the management UI keep working,
-but polls, automatic maintenance transitions and emails pause until it is
-back.
+If every instance with background tasks is down, the page and the management
+UI keep working, but polls, automatic maintenance transitions and emails pause
+until one is back.
 
-The same applies to **Kubernetes replicas**. The example deployment runs one
-replica, and all pods of a deployment share the same environment, so do not
-just raise `replicas`. Instead keep this deployment at one replica as the
-worker and run the additional pods in a second deployment with
-`WORKER_ENABLED=false` (with its own selector, and a service selector that
-matches the pods of both). The extra pods need no `/data` volume when
-PostgreSQL is used; the example volume is `ReadWriteOnce` and can only be
-mounted on one node.
+With **Kubernetes** you can raise `replicas` of the example deployment once it
+uses PostgreSQL. The pods then need no `/data` volume, and the example volume is
+`ReadWriteOnce` (mountable on one node only): remove the `data` volume and its
+mount from `deployment.yaml` and `pvc.yaml` from `kustomization.yaml`.
 
 ## SECRET_KEY
 
