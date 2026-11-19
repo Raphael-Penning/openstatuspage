@@ -7,7 +7,7 @@
  * without an IdP.
  */
 import type { UserRole } from '@openstatuspage/shared';
-import * as client from 'openid-client';
+import type * as OidcLib from 'openid-client';
 import type { Config } from '../config.js';
 import type { DB } from '../db/index.js';
 import type { User } from '../db/types.js';
@@ -191,9 +191,13 @@ export async function resolveOidcUser(
   return { ok: true, user: created, created: true };
 }
 
+/** openid-client, loaded with the first login so instances without OIDC never keep it in memory. */
+let library: Promise<typeof OidcLib> | null = null;
+const loadLibrary = (): Promise<typeof OidcLib> => (library ??= import('openid-client'));
+
 /** Lazily discovered OIDC client configuration. */
 export class OidcClient {
-  private configuration: Promise<client.Configuration> | null = null;
+  private configuration: Promise<OidcLib.Configuration> | null = null;
 
   constructor(private readonly config: Config) {}
 
@@ -201,19 +205,21 @@ export class OidcClient {
     return `${this.config.BASE_URL}/api/auth/oidc/callback`;
   }
 
-  private discover(): Promise<client.Configuration> {
+  private discover(): Promise<OidcLib.Configuration> {
     if (!this.configuration) {
       const { OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET } = this.config;
       if (!OIDC_ISSUER_URL || !OIDC_CLIENT_ID) throw new Error('OIDC is not configured');
       const issuer = new URL(OIDC_ISSUER_URL);
-      this.configuration = client
-        .discovery(
-          issuer,
-          OIDC_CLIENT_ID,
-          OIDC_CLIENT_SECRET || undefined,
-          OIDC_CLIENT_SECRET ? undefined : client.None(),
-          // Plain http issuers are only meant for local test setups.
-          issuer.protocol === 'http:' ? { execute: [client.allowInsecureRequests] } : undefined,
+      this.configuration = loadLibrary()
+        .then((client) =>
+          client.discovery(
+            issuer,
+            OIDC_CLIENT_ID,
+            OIDC_CLIENT_SECRET || undefined,
+            OIDC_CLIENT_SECRET ? undefined : client.None(),
+            // Plain http issuers are only meant for local test setups.
+            issuer.protocol === 'http:' ? { execute: [client.allowInsecureRequests] } : undefined,
+          ),
         )
         .catch((err: unknown) => {
           // Retry discovery on the next login attempt.
@@ -227,6 +233,7 @@ export class OidcClient {
   /** Builds the IdP redirect URL and the state to keep in the signed cookie. */
   async startLogin(): Promise<{ url: string; state: OidcLoginState }> {
     const configuration = await this.discover();
+    const client = await loadLibrary();
     const verifier = client.randomPKCECodeVerifier();
     const state: OidcLoginState = {
       v: verifier,
@@ -248,6 +255,7 @@ export class OidcClient {
   /** Exchanges the authorization code and returns the merged ID token / userinfo claims. */
   async finishLogin(currentUrl: URL, state: OidcLoginState): Promise<Claims> {
     const configuration = await this.discover();
+    const client = await loadLibrary();
     const tokens = await client.authorizationCodeGrant(configuration, currentUrl, {
       pkceCodeVerifier: state.v,
       expectedState: state.s,
