@@ -65,7 +65,8 @@ describe('http hardening', () => {
     for (const url of ['/api', '/api?x=1', '/api/nope']) {
       const res = await app.inject({ url });
       expect(res.statusCode).toBe(404);
-      expect(res.headers['content-type']).toContain('application/json');
+      expect(res.headers['content-type']).toBe('application/vnd.api+json');
+      expect(res.json().errors[0]).toMatchObject({ status: '404', code: 'not_found' });
     }
   });
 

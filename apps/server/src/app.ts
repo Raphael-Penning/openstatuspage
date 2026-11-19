@@ -3,13 +3,15 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import { ZodError } from 'zod';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
 import { HttpError } from './lib/errors.js';
+import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
 import type { Mailer } from './mail/mailer.js';
+import { isJsonApiRoute, registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { registerRoutes } from './routes/index.js';
 
 export interface BuildAppOptions {
@@ -98,7 +100,12 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
     }
   });
 
+  registerJsonApi(app);
+
   app.setErrorHandler((err, req, reply) => {
+    // JSON:API routes (see plugins/jsonapi.ts) answer with JSON:API error documents.
+    if (isJsonApiRoute(req)) return sendJsonApiError(err, req, reply);
+    // Legacy format of route groups not converted to JSON:API yet.
     if (err instanceof HttpError) {
       return reply.status(err.statusCode).send({ error: err.code, message: err.message, issues: err.issues });
     }
@@ -126,13 +133,20 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream 
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
         return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile('index.html');
       }
-      return reply.status(404).send({ error: 'not_found', message: 'Route not found' });
+      return routeNotFound(reply);
     });
   } else {
-    app.setNotFoundHandler((_req, reply) => reply.status(404).send({ error: 'not_found', message: 'Route not found' }));
+    app.setNotFoundHandler((_req, reply) => routeNotFound(reply));
   }
 
   return app;
+}
+
+function routeNotFound(reply: FastifyReply) {
+  return reply
+    .status(404)
+    .type(JSONAPI_MEDIA_TYPE)
+    .send(errorDocument([{ status: '404', code: 'not_found', title: 'Not Found', detail: 'Route not found' }]));
 }
 
 /** Hop count → trust function (only the nearest n proxies), as proxy-addr does. */
