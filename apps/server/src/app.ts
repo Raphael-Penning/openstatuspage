@@ -11,6 +11,7 @@ import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { registerRoutes } from './routes/index.js';
+import { webAssetPolicy } from './web-assets.js';
 
 export interface BuildAppOptions {
   config: Config;
@@ -111,15 +112,23 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   await registerRoutes(app);
 
   const webDir = resolveWebDir(config);
-  if (serveWeb && webDir) {
-    await app.register(fastifyStatic, { root: webDir, wildcard: false, index: false });
-    // SPA fallback: client routes (GET/HEAD, not /api, no file extension) return index.html.
-    // Missing assets get a real 404 so stale chunk requests fail cleanly after a deploy.
+  // Per role (web-assets.ts): public serves public.html and its files only, worker nothing.
+  const web = serveWeb && webDir ? webAssetPolicy(config.APP_ROLE, webDir) : null;
+  if (web && webDir) {
+    await app.register(fastifyStatic, {
+      root: webDir,
+      wildcard: false,
+      index: false,
+      allowedPath: (pathname) => web.allows(pathname),
+    });
+    // SPA fallback: client routes (GET/HEAD, not /api, no file extension) return the
+    // entry page. Missing assets get a real 404 so stale chunk requests fail cleanly
+    // after a deploy. A public instance answers /admin/... with 404.
     app.setNotFoundHandler((req, reply) => {
       const path = req.url.split('?')[0] ?? '';
-      const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path);
+      const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
-        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile('index.html');
+        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index);
       }
       return routeNotFound(reply);
     });
