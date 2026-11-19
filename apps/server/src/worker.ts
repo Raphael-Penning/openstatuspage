@@ -14,8 +14,15 @@ interface Task {
   name: string;
   intervalMs: number;
   run: (signal: AbortSignal) => Promise<void>;
+  /** Runs on every instance without a lease (e.g. syncing this instance's own schedule). */
+  local: boolean;
   timer?: NodeJS.Timeout;
   running: boolean;
+}
+
+export interface ScheduleOptions {
+  /** Run on every instance, without a lease. Default false (one instance at a time). */
+  local?: boolean;
 }
 
 export class Worker {
@@ -31,9 +38,14 @@ export class Worker {
   ) {}
 
   /** Registers (or replaces) a periodic task. */
-  schedule(name: string, intervalMs: number, run: (signal: AbortSignal) => Promise<void>): void {
+  schedule(
+    name: string,
+    intervalMs: number,
+    run: (signal: AbortSignal) => Promise<void>,
+    options: ScheduleOptions = {},
+  ): void {
     this.unschedule(name);
-    const task: Task = { name, intervalMs, run, running: false };
+    const task: Task = { name, intervalMs, run, local: options.local === true, running: false };
     this.tasks.set(name, task);
     if (this.started) this.arm(task, true);
   }
@@ -109,7 +121,7 @@ export class Worker {
     task.running = true;
     try {
       await withLease(
-        this.coordinator,
+        task.local ? null : this.coordinator,
         task.name,
         scheduled ? task.intervalMs : null,
         () => task.run(this.abort.signal),
