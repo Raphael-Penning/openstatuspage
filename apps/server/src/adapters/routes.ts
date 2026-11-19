@@ -5,6 +5,11 @@
  *   POST /api/admin/monitor-sources/:id/test      test connection without storing (admin)
  *   POST /api/admin/monitor-sources/:id/poll      poll now and store (admin)
  *
+ * Responses are JSON:API documents. Ingest bodies keep the native formats of the
+ * monitoring systems; the answer is a meta-only document with the counts
+ * (`{ jsonapi, meta: { created, updated, removed, stateChanges } }`). Test and poll
+ * answer `meta: { ok, message, checkCount? }`.
+ *
  * Ingest authentication: `Authorization: Bearer <token>` or `?token=<token>`;
  * the SHA-256 of the token is compared with `monitor_sources.ingest_token_hash`.
  */
@@ -15,7 +20,9 @@ import type { AppContext } from '../context.js';
 import type { MonitorSource } from '../db/types.js';
 import { safeEqual, sha256 } from '../lib/crypto.js';
 import { badRequest, conflict, HttpError, notFound, unauthorized } from '../lib/errors.js';
+import { metaDocument } from '../lib/jsonapi.js';
 import { requireRole } from '../plugins/auth.js';
+import { useJsonApi } from '../plugins/jsonapi.js';
 import { audit } from '../services/audit.js';
 import type { IngestResult } from '../services/ingest.js';
 import { genericPushParser, getAdapter } from './index.js';
@@ -41,6 +48,8 @@ export async function registerAdapterRoutes(app: FastifyInstance, options: Adapt
 
   // Encapsulated so the text/plain handling below only applies to ingest routes.
   await app.register(async (scope) => {
+    // Bodies are dictated by the monitoring systems; only the responses are JSON:API.
+    useJsonApi(scope, { requestBody: 'native' });
     // Some senders cannot set a JSON content type; accept text/plain bodies containing JSON.
     scope.removeContentTypeParser('text/plain');
     scope.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => {
@@ -55,39 +64,41 @@ export async function registerAdapterRoutes(app: FastifyInstance, options: Adapt
     // Full syncs of large sources can exceed the global 1 MiB body limit.
     const routeOptions = { logLevel: 'warn' as const, bodyLimit: 5 * 1024 * 1024 };
 
-    scope.post<{ Params: { sourceId: string } }>('/api/ingest/:sourceId', routeOptions, async (req, reply) => {
-      const result = await handleIngest(app.ctx, limiter, req, reply, req.params.sourceId, null);
-      return { ok: true, ...result };
-    });
+    scope.post<{ Params: { sourceId: string } }>('/api/ingest/:sourceId', routeOptions, async (req, reply) =>
+      metaDocument({ ...(await handleIngest(app.ctx, limiter, req, reply, req.params.sourceId, null)) }),
+    );
 
     scope.post<{ Params: { sourceId: string; type: string } }>(
       '/api/ingest/:sourceId/:type',
       routeOptions,
-      async (req, reply) => {
-        const result = await handleIngest(app.ctx, limiter, req, reply, req.params.sourceId, req.params.type);
-        return { ok: true, ...result };
-      },
+      async (req, reply) =>
+        metaDocument({ ...(await handleIngest(app.ctx, limiter, req, reply, req.params.sourceId, req.params.type)) }),
     );
   });
 
-  app.post<{ Params: { id: string } }>(
-    '/api/admin/monitor-sources/:id/test',
-    { preHandler: requireRole('admin') },
-    async (req) => testMonitorSource(app.ctx, req.params.id),
-  );
+  await app.register(async (scope) => {
+    useJsonApi(scope);
 
-  app.post<{ Params: { id: string } }>(
-    '/api/admin/monitor-sources/:id/poll',
-    { preHandler: requireRole('admin') },
-    async (req) => {
-      // audit_log.user_id references users: API tokens are recorded by name instead.
-      const user = req.authUser;
-      return pollMonitorSourceNow(app.ctx, req.params.id, {
-        userId: user?.via === 'session' ? user.id : null,
-        apiToken: user?.via === 'token' ? user.name : null,
-      });
-    },
-  );
+    scope.post<{ Params: { id: string } }>(
+      '/api/admin/monitor-sources/:id/test',
+      { preHandler: requireRole('admin') },
+      async (req) => metaDocument({ ...(await testMonitorSource(app.ctx, req.params.id)) }),
+    );
+
+    scope.post<{ Params: { id: string } }>(
+      '/api/admin/monitor-sources/:id/poll',
+      { preHandler: requireRole('admin') },
+      async (req) => {
+        // audit_log.user_id references users: API tokens are recorded by name instead.
+        const user = req.authUser;
+        const result = await pollMonitorSourceNow(app.ctx, req.params.id, {
+          userId: user?.via === 'session' ? user.id : null,
+          apiToken: user?.via === 'token' ? user.name : null,
+        });
+        return metaDocument({ ...result });
+      },
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
