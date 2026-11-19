@@ -64,7 +64,11 @@ To build the image from a clone instead, create `.env` the same way in
 
 The [installation and deployment guide](docs/guide/en/02-installation.md)
 covers the Compose setup in detail, SQLite, Kubernetes
-([example manifests](deploy/kubernetes/)) and upgrades. See
+([example manifests](deploy/kubernetes/)) and upgrades. To serve the public
+page and the admin area on separate domains, with a worker of its own and a
+database role that can only read public data, see the
+[split deployment](docs/guide/en/02-installation.md#split-deployment)
+([compose example](deploy/compose/compose.split.yaml)). See
 [docs/configuration.md](docs/configuration.md) for all settings,
 [CONTRIBUTING.md](CONTRIBUTING.md) for local development and
 [docs/releasing.md](docs/releasing.md) for how images and releases are made.
