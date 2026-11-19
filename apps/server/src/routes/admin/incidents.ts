@@ -17,7 +17,7 @@ import { collection, created, document, Included, noContent, selfLink } from '..
 import { parseInclude, parseListQuery } from '../../lib/jsonapi-query.js';
 import { nowIso, toIso } from '../../lib/time.js';
 import { actorUserId } from '../../plugins/auth.js';
-import { useJsonApi } from '../../plugins/jsonapi.js';
+import { useJsonApi, withInclude } from '../../plugins/jsonapi.js';
 import { adminIncidentResource, CATALOG_TYPES, incidentUpdateResource } from '../../serializers/catalog.js';
 import { loadIncident, loadIncidents, nextUpdateTimestamp, toAdminIncident } from '../../services/incidents.js';
 import { assertExist, auditRequest, editor } from './util.js';
@@ -77,7 +77,7 @@ export async function registerIncidentRoutes(app: FastifyInstance): Promise<void
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine, notifications } = app.ctx;
-  const incidentType = { config: { jsonapi: { type: CATALOG_TYPES.incident } } };
+  const incidentType = { config: { jsonapi: { type: CATALOG_TYPES.incident, include: true } } };
   const updateType = { config: { jsonapi: { type: CATALOG_TYPES.incidentUpdate } } };
 
   /** Incident document; its updates are included unless `include` says otherwise. */
@@ -99,7 +99,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
   };
 
-  app.get('/api/admin/incidents', editor, async (req) => {
+  app.get('/api/admin/incidents', { ...editor, ...withInclude }, async (req) => {
     const q = parseListQuery(req.query, { filter: ListFilter, include: INCLUDES });
     let base = db.selectFrom('incidents');
     if (q.filter.status === 'active') base = base.where('status', '!=', 'resolved');
@@ -169,7 +169,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
     return created(reply, await incidentDocument(req, id), `/api/admin/incidents/${id}`);
   });
 
-  app.get('/api/admin/incidents/:id', editor, async (req) => incidentDocument(req, parse(IdParams, req.params).id));
+  app.get('/api/admin/incidents/:id', { ...editor, ...withInclude }, async (req) => incidentDocument(req, parse(IdParams, req.params).id));
 
   app.patch('/api/admin/incidents/:id', { ...editor, ...incidentType }, async (req) => {
     const { id } = parse(IdParams, req.params);

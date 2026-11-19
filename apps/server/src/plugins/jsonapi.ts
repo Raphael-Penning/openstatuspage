@@ -24,7 +24,7 @@ import {
   type NewResourceObject,
 } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { HttpError } from '../lib/errors.js';
+import { HttpError, invalidParameter } from '../lib/errors.js';
 import { errorDocument } from '../lib/jsonapi.js';
 import { mapError } from '../lib/jsonapi-errors.js';
 
@@ -37,6 +37,13 @@ export interface JsonApiRouteConfig {
   requestBody?: 'jsonapi' | 'native';
   /** Expected `data.type` of the request document; another type is answered with 409. */
   type?: string;
+  /**
+   * The handler reads the `include` parameter (parseInclude/parseListQuery). On
+   * other routes `include` is answered with 400 `unsupported_include` (JSON:API 1.1).
+   */
+  include?: boolean;
+  /** The handler reads the `sort` parameter; on other routes `sort` is answered with 400 `unsupported_sort`. */
+  sort?: boolean;
 }
 
 declare module 'fastify' {
@@ -53,6 +60,9 @@ export function useJsonApi(scope: FastifyInstance, defaults: JsonApiRouteConfig 
     route.config = { ...config, jsonapi: { requestBody: 'jsonapi', ...defaults, ...config.jsonapi } } as typeof route.config;
   });
 }
+
+/** Route options of a handler that reads `include` (spread into the route options). */
+export const withInclude = { config: { jsonapi: { include: true } } };
 
 export function jsonApiConfig(req: FastifyRequest): JsonApiRouteConfig | undefined {
   return (req.routeOptions?.config as { jsonapi?: JsonApiRouteConfig } | undefined)?.jsonapi;
@@ -124,6 +134,20 @@ function negotiate(req: FastifyRequest, reply: FastifyReply, config: JsonApiRout
   reply.type(JSONAPI_MEDIA_TYPE);
 }
 
+/**
+ * `include` and `sort` on a route that does not support them: 400 (JSON:API 1.1
+ * says an endpoint MUST answer 400 to parameters it does not support).
+ */
+function checkQuery(req: FastifyRequest, config: JsonApiRouteConfig): void {
+  const query = (req.query ?? {}) as Record<string, unknown>;
+  if (!config.include && query.include !== undefined) {
+    throw invalidParameter('include', 'This endpoint does not support the include parameter', 'unsupported_include');
+  }
+  if (!config.sort && query.sort !== undefined) {
+    throw invalidParameter('sort', 'This endpoint does not support the sort parameter', 'unsupported_sort');
+  }
+}
+
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 const invalidDocument = (detail: string, pointer: string) =>
@@ -187,7 +211,9 @@ export function registerJsonApi(app: FastifyInstance): void {
 
   app.addHook('onRequest', async (req, reply) => {
     const config = jsonApiConfig(req);
-    if (config) negotiate(req, reply, config);
+    if (!config) return;
+    negotiate(req, reply, config);
+    checkQuery(req, config);
   });
 
   app.addHook('preValidation', async (req) => {

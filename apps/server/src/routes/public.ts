@@ -27,7 +27,7 @@ import {
   loadPublicService,
 } from '../services/public-catalog.js';
 import { getSettings } from '../services/settings.js';
-import { useJsonApi } from '../plugins/jsonapi.js';
+import { useJsonApi, withInclude } from '../plugins/jsonapi.js';
 import {
   groupResource,
   incidentResource,
@@ -199,7 +199,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       );
     });
 
-    scope.get('/api/public/services/:idOrSlug', async (req) => {
+    scope.get('/api/public/services/:idOrSlug', withInclude, async (req) => {
       const { idOrSlug } = parse(IdOrSlugParams, req.params);
       const include = parseInclude(
         req.query as Record<string, unknown>,
@@ -270,7 +270,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       });
     });
 
-    scope.get('/api/public/incidents/:id', async (req) => {
+    scope.get('/api/public/incidents/:id', withInclude, async (req) => {
       const { id } = parse(IdParams, req.params);
       const include = parseInclude(req.query as Record<string, unknown>, UPDATE_INCLUDES, UPDATE_INCLUDES);
       const [rec] = await loadIncidents(db, [id]);
@@ -280,7 +280,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       return document(data, { included, links: { self: selfLink(req) } });
     });
 
-    scope.get('/api/public/maintenances/:id', async (req) => {
+    scope.get('/api/public/maintenances/:id', withInclude, async (req) => {
       const { id } = parse(IdParams, req.params);
       const include = parseInclude(req.query as Record<string, unknown>, UPDATE_INCLUDES, UPDATE_INCLUDES);
       const [rec] = await loadMaintenances(db, [id]);
@@ -294,7 +294,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
      * Incidents and maintenance windows, newest first: a heterogeneous collection
      * (`incidents` ordered by startedAt, `maintenances` by scheduledStart).
      */
-    scope.get('/api/public/history', async (req) => {
+    scope.get('/api/public/history', withInclude, async (req) => {
       const q = parseListQuery(req.query, {
         filter: HistoryFilter,
         include: { allowed: UPDATE_INCLUDES, default: UPDATE_INCLUDES },

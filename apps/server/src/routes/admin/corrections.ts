@@ -18,7 +18,7 @@ import { collection, created, document, Included, noContent, selfLink } from '..
 import { parseFilter, parseInclude, parseListQuery } from '../../lib/jsonapi-query.js';
 import { nowIso, toIso } from '../../lib/time.js';
 import { actorUserId } from '../../plugins/auth.js';
-import { useJsonApi } from '../../plugins/jsonapi.js';
+import { useJsonApi, withInclude } from '../../plugins/jsonapi.js';
 import { CATALOG_TYPES, correctionResource, serviceHistoryResource } from '../../serializers/catalog.js';
 import { loadCorrectionLayers, loadCorrections } from '../../services/corrections.js';
 import { applyCorrections, type CorrectedSegment } from '../../services/history-corrections.js';
@@ -132,7 +132,7 @@ export async function registerCorrectionRoutes(app: FastifyInstance): Promise<vo
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db } = app.ctx;
-  const correctionType = { config: { jsonapi: { type: CATALOG_TYPES.correction } } };
+  const correctionType = { config: { jsonapi: { type: CATALOG_TYPES.correction, include: true } } };
 
   const correctionDocument = async (req: FastifyRequest, id: string) => {
     const include = parseInclude((req.query ?? {}) as Record<string, unknown>, INCLUDES.allowed, INCLUDES.default);
@@ -141,7 +141,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
     return document(res, { included, links: { self: selfLink(req) } });
   };
 
-  app.get('/api/admin/corrections', editor, async (req) => {
+  app.get('/api/admin/corrections', { ...editor, ...withInclude }, async (req) => {
     const q = parseListQuery(req.query, { filter: CorrectionListFilter, include: INCLUDES });
     const { filter } = q;
     let base = db.selectFrom('status_corrections');
@@ -181,7 +181,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
     return collection(req, resources, { page: q.page, total, included });
   });
 
-  app.get('/api/admin/corrections/:id', editor, async (req) => correctionDocument(req, parse(IdParams, req.params).id));
+  app.get('/api/admin/corrections/:id', { ...editor, ...withInclude }, async (req) => correctionDocument(req, parse(IdParams, req.params).id));
 
   app.post('/api/admin/corrections', { ...editor, ...correctionType }, async (req, reply) => {
     const input = parse(CorrectionInput, req.body);

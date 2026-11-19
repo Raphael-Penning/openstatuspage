@@ -57,7 +57,9 @@ Related resources needed by the UI are part of the response (`included`). The
 `include` query parameter selects them explicitly (comma-separated paths, an empty
 value for none); unsupported paths are answered with `400` `unsupported_include`
 and `source.parameter = "include"`. Without `include`, the defaults listed per
-endpoint are included.
+endpoint are included. Only the endpoints that list `include` paths take the
+parameter; every other endpoint answers any `include` (even an empty one) with
+`400` `unsupported_include`.
 
 ### Collections
 
@@ -71,7 +73,8 @@ endpoint are included.
   filters or pages, unknown filters and invalid values are answered with `400`
   `invalid_parameter` and `source.parameter`, e.g. `filter[nope]`.
 - Sorting: every collection has a fixed order (stated per endpoint); no endpoint
-  takes a `sort` parameter yet (where list parameters are parsed, `sort` is `400`).
+  takes a `sort` parameter yet, so `sort` is answered with `400`
+  `unsupported_sort` and `source.parameter = "sort"` everywhere.
 
 ### Writing
 

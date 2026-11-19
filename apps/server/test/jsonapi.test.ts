@@ -168,6 +168,10 @@ describe('JSON:API routes', () => {
         return document(resource('things', (req.params as { id: string }).id, req.body as object));
       });
       scope.delete('/things/:id', async (_req, reply) => noContent(reply));
+      scope.get('/listed', { config: { jsonapi: { include: true } } }, async (req) => {
+        const include = parseInclude(req.query as Record<string, unknown>, ['owner']);
+        return metaDocument({ include: [...include] });
+      });
       scope.get('/limited', { config: { rateLimit: { max: 1, timeWindow: '1 minute' } } }, async () => metaDocument({ ok: true }));
       scope.get('/query', { schema: { querystring: { type: 'object', properties: { n: { type: 'integer' } } } } }, async () => metaDocument({}));
     });
@@ -263,6 +267,19 @@ describe('JSON:API routes', () => {
     expect(limited.statusCode).toBe(429);
     expect(limited.headers['content-type']).toBe(MEDIA);
     expect(limited.json().errors[0]).toMatchObject({ status: '429', code: 'rate_limited' });
+  });
+
+  it('rejects include and sort on routes that do not support them', async () => {
+    const include = await app.inject({ url: '/things/a?include=owner' });
+    expect(include.statusCode).toBe(400);
+    expect(include.json().errors[0]).toMatchObject({ code: 'unsupported_include', source: { parameter: 'include' } });
+    const sort = await app.inject({ url: '/things/a?sort=name' });
+    expect(sort.statusCode).toBe(400);
+    expect(sort.json().errors[0]).toMatchObject({ code: 'unsupported_sort', source: { parameter: 'sort' } });
+    expect((await app.inject({ method: 'DELETE', url: '/things/a?include=' })).statusCode).toBe(400);
+    expect((await app.inject({ url: '/listed?include=owner' })).json().meta).toEqual({ include: ['owner'] });
+    expect((await app.inject({ url: '/listed?include=nope' })).json().errors[0].code).toBe('unsupported_include');
+    expect((await app.inject({ url: '/listed?sort=name' })).statusCode).toBe(400);
   });
 
   it('passes native bodies through on ingest-style routes', async () => {

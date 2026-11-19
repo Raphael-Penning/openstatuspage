@@ -15,7 +15,7 @@ import { notFound } from '../../lib/errors.js';
 import { IdParams, parse } from '../../lib/http.js';
 import { collection, document, Included, selfLink } from '../../lib/jsonapi.js';
 import { parseInclude } from '../../lib/jsonapi-query.js';
-import { useJsonApi } from '../../plugins/jsonapi.js';
+import { useJsonApi, withInclude } from '../../plugins/jsonapi.js';
 import { historyImportLink, historyImportResource, MONITORING_TYPES } from '../../serializers/monitoring.js';
 import type { Actor } from '../../services/history-import.js';
 import { admin } from './util.js';
@@ -59,7 +59,7 @@ async function historyImportRoutes(app: FastifyInstance): Promise<void> {
     return document(res, { included: keep ? included : undefined, links: { self: historyImportLink(job.sourceId, job.id) } });
   };
 
-  app.get('/api/admin/monitor-sources/:id/history-imports', admin, async (req) => {
+  app.get('/api/admin/monitor-sources/:id/history-imports', { ...admin, ...withInclude }, async (req) => {
     const { id } = parse(IdParams, req.params);
     await loadSource(id);
     const { included, keep } = includedFor(req);
@@ -73,7 +73,7 @@ async function historyImportRoutes(app: FastifyInstance): Promise<void> {
     {
       ...admin,
       bodyLimit: HISTORY_CSV_MAX_CHARS * 2 + 64 * 1024,
-      config: { jsonapi: { type: MONITORING_TYPES.historyImport } },
+      config: { jsonapi: { type: MONITORING_TYPES.historyImport, include: true } },
     },
     async (req, reply) => {
       const { id } = parse(IdParams, req.params);
@@ -85,19 +85,19 @@ async function historyImportRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get('/api/admin/monitor-sources/:id/history-imports/:importId', admin, async (req) => {
+  app.get('/api/admin/monitor-sources/:id/history-imports/:importId', { ...admin, ...withInclude }, async (req) => {
     const { id, importId } = parse(ImportParams, req.params);
     const job = await historyImports.get(id, importId);
     const doc = jobDocument(req, job);
     return { ...doc, links: { self: selfLink(req) } };
   });
 
-  app.post('/api/admin/monitor-sources/:id/history-imports/:importId/apply', admin, async (req, reply) => {
+  app.post('/api/admin/monitor-sources/:id/history-imports/:importId/apply', { ...admin, ...withInclude }, async (req, reply) => {
     const { id, importId } = parse(ImportParams, req.params);
     return reply.status(202).send(jobDocument(req, await historyImports.apply(id, importId, actorOf(req))));
   });
 
-  app.post('/api/admin/monitor-sources/:id/history-imports/:importId/cancel', admin, async (req) => {
+  app.post('/api/admin/monitor-sources/:id/history-imports/:importId/cancel', { ...admin, ...withInclude }, async (req) => {
     const { id, importId } = parse(ImportParams, req.params);
     return jobDocument(req, await historyImports.cancel(id, importId, actorOf(req)));
   });

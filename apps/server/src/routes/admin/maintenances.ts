@@ -15,7 +15,7 @@ import { collection, created, document, Included, noContent, selfLink } from '..
 import { parseInclude, parseListQuery } from '../../lib/jsonapi-query.js';
 import { nowIso, toIso } from '../../lib/time.js';
 import { actorUserId } from '../../plugins/auth.js';
-import { useJsonApi } from '../../plugins/jsonapi.js';
+import { useJsonApi, withInclude } from '../../plugins/jsonapi.js';
 import { adminMaintenanceResource, CATALOG_TYPES, maintenanceUpdateResource } from '../../serializers/catalog.js';
 import { nextUpdateTimestamp } from '../../services/incidents.js';
 import { runMaintenanceTransitions } from '../../services/maintenance-scheduler.js';
@@ -96,7 +96,7 @@ export async function registerMaintenanceRoutes(app: FastifyInstance): Promise<v
 
 async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, engine, notifications } = app.ctx;
-  const maintenanceType = { config: { jsonapi: { type: CATALOG_TYPES.maintenance } } };
+  const maintenanceType = { config: { jsonapi: { type: CATALOG_TYPES.maintenance, include: true } } };
   const updateType = { config: { jsonapi: { type: CATALOG_TYPES.maintenanceUpdate } } };
 
   /** Maintenance document; its updates are included unless `include` says otherwise. */
@@ -121,7 +121,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
   /** Applies due automatic transitions right away instead of waiting for the next worker tick. */
   const applyDueTransitions = () => runMaintenanceTransitions(db, engine, undefined, notifications);
 
-  app.get('/api/admin/maintenances', editor, async (req) => {
+  app.get('/api/admin/maintenances', { ...editor, ...withInclude }, async (req) => {
     const q = parseListQuery(req.query, { filter: ListFilter, include: INCLUDES });
     const status = q.filter.status;
     const now = nowIso();
@@ -236,7 +236,7 @@ async function registerRoutes(app: FastifyInstance): Promise<void> {
     return created(reply, await maintenanceDocument(req, id), `/api/admin/maintenances/${id}`);
   });
 
-  app.get('/api/admin/maintenances/:id', editor, async (req) => maintenanceDocument(req, parse(IdParams, req.params).id));
+  app.get('/api/admin/maintenances/:id', { ...editor, ...withInclude }, async (req) => maintenanceDocument(req, parse(IdParams, req.params).id));
 
   app.patch('/api/admin/maintenances/:id', { ...editor, ...maintenanceType }, async (req) => {
     const { id } = parse(IdParams, req.params);
