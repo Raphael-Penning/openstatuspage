@@ -137,6 +137,12 @@ monitor. The API key cannot be used for this; a **login** is required. See
   heartbeat counts until the next one, but at most three check intervals
   (minimum 10 minutes): a paused monitor leaves a gap instead of extending its
   last state.
-- Large ranges with short intervals mean many heartbeats (one per minute is
-  about 260 000 per monitor and half year); such imports take a while and one
-  response is limited to 50 MB.
+- **Size limit**: `getMonitorBeats` returns all heartbeats of a monitor from
+  the start of the range up to now in one response, and one response is
+  limited to 50 MiB, which is roughly 200 000 heartbeats. One per minute is
+  about 260 000 per half year, one every 20 seconds about 780 000. A monitor
+  over the limit is skipped and named in a preview warning; the other monitors
+  are still imported (the importer logs in again with the session token, so
+  no new 2FA code is needed). For such monitors choose a range that starts
+  later (the response always reaches up to now), or lower the retention in
+  Uptime Kuma. Large imports take a while.

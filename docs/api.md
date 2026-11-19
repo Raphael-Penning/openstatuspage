@@ -216,16 +216,24 @@ their creator loses the admin role.
   (`historyUsername`/`historyPassword`, `icingaDbUrl`, both secrets masked like
   `password`) are used, otherwise `400`. `csv` imports the file instead of
   calling the source (required for `webhook` sources); an invalid file is `400`
-  with `issues: [{ line, message }]`. One active job (`fetching`, `ready`,
+  with `issues: [{ line, code, params, message }]` (`code` and `params` for
+  translated messages, `message` in English; codes in `HistoryCsvIssue`). One active job (`fetching`, `ready`,
   `applying`) per source, otherwise `409`; the `bundle` source answers `409`.
   Jobs run in the background (poll `GET …/:importId`); jobs without progress for
-  15 minutes are marked `failed` and previews expire after 24 hours. Errors of a
-  failed job are redacted of secrets. Audit actions
+  15 minutes are marked `failed` and previews expire after 24 hours (checked
+  whenever jobs are read or started, so also without a worker process).
+  Applying is serialised across all sources (PostgreSQL advisory lock, SQLite
+  write lock): the plan is made and written in one transaction. Preview
+  `warnings` are `{ code, params, message }` (`HistoryImportWarning`); a failed
+  or expired job has `errorCode` (`source`, `timeout`, `shutdown`, `interrupted`,
+  `expired`, `apply_failed`) and an English `error`, redacted of secrets. Audit actions
   `history_import.start|apply|complete|cancel` (entity `monitor_source`, details
   without credentials or CSV content).
-- `service_status_history` and `monitor_check_history` rows carry
-  `source = live | import`; imports only replace `import` rows and only write
-  into periods without `live` rows.
+- `monitor_check_history` rows carry `source = live | import`,
+  `service_status_history` rows `live | import | import_explicit` (service
+  statuses from a CSV file). Imports only write into periods without `live`
+  rows; they replace earlier `import` rows in their range, and
+  `import_explicit` rows only where a new CSV file has service rows.
 - Feed items link to `${BASE_URL}/incidents/:id` and `${BASE_URL}/maintenance/:id`.
 - `notify` (default `true`) in `IncidentCreateInput`, `IncidentUpdateInput`,
   `MaintenanceCreateInput` and `MaintenanceUpdateInput` queues subscriber emails for

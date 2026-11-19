@@ -221,7 +221,15 @@ Darauf kannst du dich verlassen:
 - **Wiederholen ist gefahrlos.** Derselbe Import ein zweites Mal ändert
   nichts; ein späterer Import desselben Zeitraums ersetzt die zuvor
   importierten Daten (zum Beispiel, nachdem du eine zweite Quelle importiert
-  hast, die dieselben Services speist).
+  hast, die dieselben Services speist). Importe werden nacheinander
+  geschrieben, auch wenn du mehrere gleichzeitig bestätigst.
+- **Service-Status aus einer CSV-Datei bleiben.** Wenn du den Status eines
+  Services direkt in einer CSV-Datei setzt (Spalte `service`), behalten spätere
+  Importe ihn bei. Nur eine weitere CSV-Datei mit Zeilen für diesen Service
+  ändert ihn, und zwar nur für die Zeiten in ihren Zeilen.
+- **Uptime Kuma:** Ein Monitor mit sehr vielen Heartbeats (mehr als etwa
+  200 000 vom Beginn des Zeitraums bis heute) wird übersprungen und in der
+  Vorschau genannt. Wähl für ihn einen späteren Beginn.
 - Jeder Import landet im Audit-Log.
 
 Das CSV-Format und die Details je System findest du in der

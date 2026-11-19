@@ -184,7 +184,9 @@ you can close the dialog and come back. Only administrators can import.
    external IDs and warnings (e.g. retention) are listed. Nothing is written yet.
 3. **Apply.** The import is planned again against the current data and written
    in one transaction; the audit log gets `history_import.start`, `.apply`,
-   `.complete` (or `.cancel`). An unapplied preview is discarded after 24 hours.
+   `.complete` (or `.cancel`). Only one import is written at a time (across all
+   sources and server processes), so two sources feeding the same service
+   cannot overwrite each other. An unapplied preview is discarded after 24 hours.
 
 Rules:
 
@@ -195,6 +197,11 @@ Rules:
 - **Re-runs are safe.** Data of earlier imports inside the range is replaced,
   outside the range it stays. Running the same import twice changes nothing;
   importing a second source that feeds the same services completes them.
+- **Explicit service statuses win over the replay.** Service rows of a CSV file
+  are stored as such (`import_explicit`). Precedence: recorded (live) history,
+  then explicit CSV statuses, then statuses replayed from check history. Later
+  imports keep them; only a later CSV file with service rows for the same
+  service replaces them, and only where its rows lie.
 - **Services are rebuilt with the live rules** for their gaps: the imported
   check states go through the current service links and state mappings, the
   aggregation mode (worst/quorum), the weighted vote of check bundles (a member
@@ -226,7 +233,7 @@ web01!http,,2026-01-01T02:30:00Z,2026-02-01T00:00:00Z,ok
 | Column | Description |
 | --- | --- |
 | `check` | external ID of a check of this source (as shown on the Checks page) |
-| `service` | slug of a service; its status is taken as it is, without replay |
+| `service` | slug of a service; its status is taken as it is, without replay, and kept by later imports (see the rules above) |
 | `start`, `end` | ISO 8601 with time zone (`Z` or `+01:00`); `start` before `end` |
 | `state` (or `status`) | check rows: `ok`, `warning`, `critical`, `unknown`; service rows: `operational`, `degraded`, `partial_outage`, `major_outage`, `maintenance` |
 

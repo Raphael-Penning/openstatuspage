@@ -133,7 +133,12 @@ openITCockpit API, CSV) ──► history_import_intervals ──preview──�
 - `monitor_check_history` keeps state intervals per check; the open row
   (`ended_at = null`) is the current state.
 - Imports never touch `live` rows and replace earlier `import` rows inside their
-  range, so re-runs are idempotent.
+  range, so re-runs are idempotent. Service statuses from CSV files are stored
+  as `import_explicit` and kept by later imports (precedence live > explicit >
+  replayed).
+- Applying plans and writes in one transaction under a global lock
+  (`pg_advisory_xact_lock` on PostgreSQL, the write lock on SQLite), so imports
+  of different sources feeding the same service never interleave.
 - Code: `apps/server/src/importers/` (one importer per source type, CSV parser,
   minimal Socket.IO client), `services/history-import*.ts` (jobs, planning),
   `services/history-replay.ts` (pure, unit tested).

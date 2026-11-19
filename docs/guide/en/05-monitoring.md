@@ -206,7 +206,15 @@ What you can rely on:
   status are left alone.
 - **Repeating is safe.** Running the same import again changes nothing; a later
   import of the same period replaces the earlier imported data (for example
-  after you imported a second source that feeds the same services).
+  after you imported a second source that feeds the same services). Imports
+  are written one after the other, even when you confirm several at once.
+- **Service statuses from a CSV file stay.** If you set a service's status
+  directly in a CSV file (column `service`), later imports keep it. Only
+  another CSV file with rows for that service changes it, and only for the
+  times in its rows.
+- **Uptime Kuma:** a monitor with very many heartbeats (more than about
+  200 000 from the start of the range until today) is skipped and named in
+  the preview. Choose a later start for it.
 - Every import is recorded in the audit log.
 
 For the CSV format and the details per system, see the
