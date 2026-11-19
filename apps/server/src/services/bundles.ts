@@ -20,7 +20,9 @@ import {
 } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { isPollable } from '../adapters/index.js';
-import type { DB } from '../db/index.js';
+import type { Kysely } from 'kysely';
+import type { Database, DB } from '../db/index.js';
+import { LOCK_KEYS, serialized } from '../db/locks.js';
 import type { CheckBundle } from '../db/types.js';
 import { sha256, type SecretBox } from '../lib/crypto.js';
 import { newToken } from '../lib/ids.js';
@@ -103,14 +105,14 @@ export class BundleService {
   }
 
   /** Evaluates the given bundles (all when omitted) without storing anything. */
-  async evaluate(bundleIds?: string[], now = Date.now()): Promise<BundleEvaluation[]> {
+  async evaluate(bundleIds?: string[], now = Date.now(), db: Kysely<Database> = this.db): Promise<BundleEvaluation[]> {
     if (bundleIds && bundleIds.length === 0) return [];
-    let q = this.db.selectFrom('check_bundles').selectAll().orderBy('name').orderBy('id');
+    let q = db.selectFrom('check_bundles').selectAll().orderBy('name').orderBy('id');
     if (bundleIds) q = q.where('id', 'in', [...new Set(bundleIds)]);
     const bundles = await q.execute();
     if (bundles.length === 0) return [];
 
-    const rows = await this.db
+    const rows = await db
       .selectFrom('check_bundle_members')
       .innerJoin('monitor_checks', 'monitor_checks.id', 'check_bundle_members.check_id')
       .innerJoin('monitor_sources', 'monitor_sources.id', 'monitor_checks.source_id')
@@ -182,7 +184,9 @@ export class BundleService {
    * recomputes the services linked to bundles whose state changed.
    *
    * Calls are serialised (worker, ingest and poll outcomes can overlap), so an
-   * older evaluation can never overwrite a newer one.
+   * older evaluation can never overwrite a newer one: in this process by a queue
+   * (at most one connection waits), across instances on PostgreSQL by an advisory
+   * lock held while evaluating and storing (db/locks.ts).
    */
   recompute(bundleIds?: string[]): Promise<void> {
     const run = this.queue.then(() => this.recomputeNow(bundleIds));
@@ -192,9 +196,16 @@ export class BundleService {
   }
 
   private async recomputeNow(bundleIds?: string[]): Promise<void> {
-    const evaluations = await this.evaluate(bundleIds);
-    if (evaluations.length === 0) return;
-    const current = await this.db
+    const changed = await serialized(this.db, LOCK_KEYS.bundleRecompute, (q) => this.store(q, bundleIds));
+    // Outside the lock: the status engine takes its own.
+    await this.engine.recomputeForChecks(changed);
+  }
+
+  /** Evaluates and stores; returns the bundle checks whose state changed. */
+  private async store(db: Kysely<Database>, bundleIds?: string[]): Promise<string[]> {
+    const evaluations = await this.evaluate(bundleIds, Date.now(), db);
+    if (evaluations.length === 0) return [];
+    const current = await db
       .selectFrom('monitor_checks')
       .select(['id', 'state', 'output'])
       .where(
@@ -216,7 +227,7 @@ export class BundleService {
         unchanged.push(check.id);
         continue;
       }
-      await this.db
+      await db
         .updateTable('monitor_checks')
         .set({
           state: vote.state,
@@ -228,15 +239,15 @@ export class BundleService {
         .where('id', '=', check.id)
         .execute();
       if (stateChanged) {
-        await recordCheckState(this.db, check.id, vote.state, now);
+        await recordCheckState(db, check.id, vote.state, now);
         changed.push(check.id);
       }
     }
     // Unchanged bundles only note when they were last evaluated, in one statement.
     if (unchanged.length > 0) {
-      await this.db.updateTable('monitor_checks').set({ last_check_at: now }).where('id', 'in', unchanged).execute();
+      await db.updateTable('monitor_checks').set({ last_check_at: now }).where('id', 'in', unchanged).execute();
     }
-    await this.engine.recomputeForChecks(changed);
+    return changed;
   }
 
   async recomputeForChecks(checkIds: string[]): Promise<void> {
