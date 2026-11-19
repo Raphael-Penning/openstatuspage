@@ -5,6 +5,7 @@ import * as m0003 from './0003_check_bundles.js';
 import * as m0004 from './0004_history_corrections.js';
 import * as m0005 from './0005_check_history.js';
 import * as m0006 from './0006_subscription_token_hashes.js';
+import * as m0007 from './0007_public_role.js';
 
 /**
  * Migrations are registered statically so they survive bundling.
@@ -17,4 +18,5 @@ export const migrations: Record<string, Migration> = {
   '0004_history_corrections': m0004,
   '0005_check_history': m0005,
   '0006_subscription_token_hashes': m0006,
+  '0007_public_role': m0007,
 };
