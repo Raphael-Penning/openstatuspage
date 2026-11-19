@@ -9,6 +9,7 @@ import {
   pointerToPath,
   relationshipKey,
   relationshipNameForKey,
+  resourceType,
   toQueryParams,
   toRequestDocument,
   type DataDocument,
@@ -108,7 +109,17 @@ describe('deserialize', () => {
     expect(meta).toEqual({ counts: { operational: 2 } });
     expect(links).toEqual({ self: '/api/x' });
     // Included resources resolve their relations from the primary data.
-    expect(included[0]).toMatchObject({ id: 's1', group: { id: 'g1', name: 'Platform' } });
+    // Back-references to a type already being resolved keep their ids only.
+    expect(included[0]).toEqual({
+      id: 's1',
+      name: 'API',
+      groupId: 'g1',
+      ownerId: null,
+      group: { id: 'g1', name: 'Platform', serviceIds: ['s1', 's2'] },
+    });
+    expect(resourceType(data as object)).toBe('service-groups');
+    expect(resourceType(included[0]!)).toBe('services');
+    expect(resourceType({})).toBeUndefined();
   });
 
   it('leaves relations unresolved when a related resource is missing', () => {

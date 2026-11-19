@@ -277,6 +277,17 @@ export interface DeserializedDocument<T> {
 
 const keyOf = (type: string, id: string) => `${type}\u0000${id}`;
 
+/** JSON:API type of every plain object built by the deserializer. */
+const resourceTypes = new WeakMap<object, string>();
+
+/**
+ * JSON:API `type` of a plain object returned by {@link deserialize} (e.g. to tell
+ * the members of a heterogeneous collection apart). Not kept by copies of the object.
+ */
+export function resourceType(plain: object): string | undefined {
+  return resourceTypes.get(plain);
+}
+
 class Resolver {
   private readonly index = new Map<string, ResourceObject>();
 
@@ -292,28 +303,26 @@ class Resolver {
 
   /**
    * Builds the plain object. Related resources found in the document are resolved
-   * recursively; a resource already being resolved further up is left out (ids only),
-   * so the result is always a tree without cycles.
+   * recursively, except resources of a type already being resolved further up
+   * (e.g. service → group → services): those keep their ids only, so the result is
+   * a small tree without cycles.
    */
-  plain(res: ResourceObject, stack: Set<string> = new Set()): PlainResource {
-    const key = keyOf(res.type, res.id);
+  plain(res: ResourceObject, types: ReadonlySet<string> = new Set()): PlainResource {
     const out: PlainResource = { ...(res.attributes ?? {}), id: res.id };
-    const nextStack = new Set(stack).add(key);
+    resourceTypes.set(out, res.type);
+    const nested = new Set(types).add(res.type);
+    const resolvable = (r: ResourceIdentifier) => !nested.has(r.type) && this.index.has(keyOf(r.type, r.id));
     for (const [name, rel] of Object.entries(res.relationships ?? {})) {
-      if (!rel || !('data' in rel) || rel.data === undefined) continue;
+      if (typeof rel !== 'object' || rel === null || rel.data === undefined) continue;
       const data = rel.data;
       if (Array.isArray(data)) {
         out[relationshipKey(name, true)] = data.map((r) => r.id);
-        const related = data.map((r) => this.index.get(keyOf(r.type, r.id)));
-        if (related.every((r) => r !== undefined && !nextStack.has(keyOf(r.type, r.id)))) {
-          out[name] = (related as ResourceObject[]).map((r) => this.plain(r, nextStack));
-        }
+        if (data.every(resolvable)) out[name] = data.map((r) => this.plain(this.index.get(keyOf(r.type, r.id))!, nested));
       } else if (data === null) {
         out[relationshipKey(name, false)] = null;
       } else {
         out[relationshipKey(name, false)] = data.id;
-        const related = this.index.get(keyOf(data.type, data.id));
-        if (related && !nextStack.has(keyOf(related.type, related.id))) out[name] = this.plain(related, nextStack);
+        if (resolvable(data)) out[name] = this.plain(this.index.get(keyOf(data.type, data.id))!, nested);
       }
     }
     return out;
