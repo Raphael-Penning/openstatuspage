@@ -4,16 +4,26 @@ import { Kysely, PostgresDialect, sql, SqliteDialect } from 'kysely';
 import { Migrator, type MigrationProvider } from 'kysely/migration';
 import type { Config } from '../config.js';
 import { migrations } from './migrations/index.js';
+import { PUBLIC_SCHEMA } from './public-role.js';
 import type { Database } from './types.js';
 
 export type DB = Kysely<Database>;
 
-export async function createDb(config: Pick<Config, 'database'>): Promise<DB> {
+/**
+ * Opens the database. On PostgreSQL an APP_ROLE=public instance uses search_path
+ * osp_public: its unchanged queries then read the views of public rows and columns
+ * instead of the tables (0007_public_role, docs/security-model.md).
+ */
+export async function createDb(config: Pick<Config, 'database'> & Partial<Pick<Config, 'APP_ROLE'>>): Promise<DB> {
   if (config.database.dialect === 'postgres') {
     const { default: pg } = await import('pg');
     return new Kysely<Database>({
       dialect: new PostgresDialect({
-        pool: new pg.Pool({ connectionString: config.database.connectionString, max: 10 }),
+        pool: new pg.Pool({
+          connectionString: config.database.connectionString,
+          max: 10,
+          ...(config.APP_ROLE === 'public' ? { options: `-c search_path=${PUBLIC_SCHEMA}` } : {}),
+        }),
       }),
     });
   }
