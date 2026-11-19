@@ -55,9 +55,13 @@ breaking changes.
     resource linkage of the wrong type with `409` `type_mismatch`. The reorder
     actions take documents of type `orderings`. Body errors use stable codes
     (`invalid_json`, `empty_body`, `payload_too_large`).
-  - Unchanged: `/api/public/status.json`, `/api/health` and the RSS/Atom feeds.
-    `status.json` deliberately stays plain JSON: it is a stable, minimal format
-    for third-party widgets and monitoring tools (only its errors are JSON:API).
+  - `/api/public/status.json` is removed (no alias) and replaced by
+    `GET /api/public/status`, a JSON:API document with a `statuses/current`
+    resource: attribute `overall` and `updatedAt`; relationships `services`,
+    `activeIncidents` and `activeMaintenances` (resources included). The former
+    `services[].group` name is the `service-groups` relationship of each service.
+  - Unchanged: `/api/health` and the RSS/Atom feeds (plain formats, documented in
+    [docs/api.md](docs/api.md)).
   - Migrating a client: send `Content-Type: application/vnd.api+json` and wrap
     bodies in `data`; read `data.attributes` (or use `deserialize()` from
     `@openstatuspage/shared`); replace `PUT` by `PATCH`; rename list parameters
