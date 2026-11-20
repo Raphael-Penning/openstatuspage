@@ -7,8 +7,8 @@
  * instance serves public.html for every client route and only the files public.html
  * can reach (static and dynamic imports, CSS, assets), so neither the admin page
  * nor any chunk that only the management UI loads is ever served. Files outside
- * the manifest (favicon.svg, ...) are served as usual. The manifest itself is
- * never served by any role.
+ * the manifest (favicon.svg, ...) are served as usual. The manifest and the
+ * server-side rendering bundle (.ssr/) are never served by any role.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -49,7 +49,9 @@ function isAdminRoute(pathname: string): boolean {
   return path === '/admin' || path.startsWith('/admin/');
 }
 
-const isManifestPath = (pathname: string) => pathname === '/.vite' || pathname.startsWith('/.vite/');
+/** Build files only the server reads: the Vite manifest and the server-side rendering bundle. */
+const isServerOnlyPath = (pathname: string) =>
+  ['/.vite', '/.ssr'].some((dir) => pathname === dir || pathname.startsWith(`${dir}/`));
 
 /** Every file (JS, CSS, assets) one manifest chunk and its imports reach. */
 function reachableFiles(manifest: Manifest, entry: string): Set<string> {
@@ -104,7 +106,7 @@ export function webAssetPolicy(role: AppRole, webDir: string): WebAssetPolicy | 
   if (role !== 'public') {
     return {
       index: FULL_INDEX,
-      allows: (pathname) => !isManifestPath(pathname),
+      allows: (pathname) => !isServerOnlyPath(pathname),
       servesRoute: () => true,
     };
   }
@@ -112,7 +114,7 @@ export function webAssetPolicy(role: AppRole, webDir: string): WebAssetPolicy | 
   return {
     index: PUBLIC_INDEX,
     allows: (pathname) => {
-      if (isManifestPath(pathname)) return false;
+      if (isServerOnlyPath(pathname)) return false;
       const file = pathname.replace(/^\/+/, '');
       // Source maps of admin chunks are denied with their chunk.
       return !denied.has(file) && !denied.has(file.replace(/\.map$/, ''));

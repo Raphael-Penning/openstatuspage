@@ -14,7 +14,7 @@ import {
   type UserRole,
 } from '@openstatuspage/shared';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse, RouteOptions } from 'fastify';
-import { buildApp } from '../src/app.js';
+import { buildApp, type BuildAppOptions } from '../src/app.js';
 import { loadConfig, type Config } from '../src/config.js';
 import { createDb, migrateToLatest, type DB } from '../src/db/index.js';
 import { newId } from '../src/lib/ids.js';
@@ -34,7 +34,12 @@ export interface TestApp {
 
 export async function createTestApp(
   env: Record<string, string> = {},
-  options: { mailer?: Mailer; onRoute?: (route: RouteOptions) => void } = {},
+  options: {
+    mailer?: Mailer;
+    onRoute?: (route: RouteOptions) => void;
+    /** Serve the web client from this directory (with server-side rendering from `ssrModule`). */
+    web?: { dir: string; ssrModule?: BuildAppOptions['ssrModule'] };
+  } = {},
 ): Promise<TestApp> {
   // Tests run every APP_ROLE on in-memory SQLite (production needs PostgreSQL for split roles).
   const config = loadConfig(
@@ -43,13 +48,21 @@ export async function createTestApp(
       DATABASE_URL: 'sqlite::memory:',
       SECRET_KEY: 'test-secret-key-that-is-long-enough-1234567890',
       BASE_URL,
+      ...(options.web ? { WEB_DIST_DIR: options.web.dir } : {}),
       ...env,
     },
     { allowSqliteForAnyRole: true },
   );
   const db = await createDb(config);
   await migrateToLatest(db);
-  const app = await buildApp({ config, db, serveWeb: false, mailer: options.mailer, onRoute: options.onRoute });
+  const app = await buildApp({
+    config,
+    db,
+    serveWeb: options.web !== undefined,
+    mailer: options.mailer,
+    onRoute: options.onRoute,
+    ssrModule: options.web?.ssrModule,
+  });
   await app.ready();
   return {
     app,

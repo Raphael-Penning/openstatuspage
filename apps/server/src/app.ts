@@ -10,6 +10,7 @@ import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
 import { registerRoutes } from './routes/index.js';
+import type { RenderModule, SsrPages } from './ssr/pages.js';
 import { webAssetPolicy } from './web-assets.js';
 
 export interface BuildAppOptions {
@@ -23,6 +24,8 @@ export interface BuildAppOptions {
   logStream?: { write(line: string): void };
   /** Called for every registered route, after its plugin scope applied its hooks (tests). */
   onRoute?: (route: RouteOptions) => void;
+  /** Replaces the server-side rendering bundle of the web build (tests render from the web sources). */
+  ssrModule?: () => Promise<RenderModule>;
 }
 
 /** Replaces the value of every `token` query parameter: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1". */
@@ -54,7 +57,7 @@ export function serializeRequest(req: LoggedRequest) {
   };
 }
 
-export async function buildApp({ config, db, serveWeb = true, mailer, logStream, onRoute }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, db, serveWeb = true, mailer, logStream, onRoute, ssrModule }: BuildAppOptions): Promise<FastifyInstance> {
   const loggerBase = {
     level: config.LOG_LEVEL,
     redact: ['req.headers.authorization', 'req.headers.cookie'],
@@ -100,7 +103,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     const path = normalizePath(req.url);
-    if (path === '/admin' || path.startsWith('/admin/') || isApiPath(path)) {
+    const admin = path === '/admin' || path.startsWith('/admin/');
+    if (admin || isApiPath(path)) {
       reply.header('X-Frame-Options', 'DENY');
       reply.header('Content-Security-Policy', "frame-ancestors 'none'");
     }
@@ -125,14 +129,37 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
       index: false,
       allowedPath: (pathname) => web.allows(pathname),
     });
-    // SPA fallback: client routes (GET/HEAD, not /api, no file extension) return the
+    // Public pages are rendered on the server (ssr/pages.ts) where the web build has
+    // the render bundle and the role serves the public web client.
+    let ssr: SsrPages | null = null;
+    if (roleFeatures(config.APP_ROLE).publicWeb) {
+      const [{ SsrPages }, { PublicDocuments }] = await Promise.all([
+        import('./ssr/pages.js'),
+        import('./services/public-documents.js'),
+      ]);
+      if (ssrModule || SsrPages.available(webDir)) {
+        ssr = new SsrPages({
+          webDir,
+          baseUrl: config.PUBLIC_BASE_URL,
+          docs: new PublicDocuments(ctx.db, ctx.mailer),
+          log: app.log,
+          loadModule: ssrModule,
+        });
+      } else {
+        app.log.warn(`The web build in ${webDir} has no server-side rendering bundle; public pages render in the browser only`);
+      }
+    }
+
+    // Client routes (GET/HEAD, not /api, no file extension): public pages are rendered
+    // on the server, the management UI (and a page that failed to render) gets the
     // entry page. Missing assets get a real 404 so stale chunk requests fail cleanly
     // after a deploy. A public instance answers /admin/... with 404.
-    app.setNotFoundHandler((req, reply) => {
+    app.setNotFoundHandler(async (req, reply) => {
       const path = req.url.split('?')[0] ?? '';
       const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
-        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index);
+        if (ssr && !isAdminPath(path) && (await ssr.send(req, reply))) return reply;
+        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index, { cacheControl: false });
       }
       return routeNotFound(reply);
     });
@@ -171,6 +198,11 @@ function normalizePath(url: string): string {
     // keep the raw path
   }
   return path.toLowerCase().replace(/\/{2,}/g, '/');
+}
+
+function isAdminPath(path: string): boolean {
+  const normalized = normalizePath(path);
+  return normalized === '/admin' || normalized.startsWith('/admin/');
 }
 
 function isApiPath(path: string): boolean {
