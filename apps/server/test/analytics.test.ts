@@ -16,6 +16,7 @@ import {
   SCRIPT_TTL_MS,
   ScriptCache,
   SEND_BODY_LIMIT,
+  type Upstream,
 } from '../src/routes/analytics.js';
 import { saveSettings } from '../src/services/settings.js';
 import { adminClient, BASE_URL, createTestApp, data, errors, type TestApp } from './helpers.js';
@@ -216,12 +217,12 @@ describe('ScriptCache', () => {
   it('refetches after the TTL, keeps the old copy while Umami fails and waits before retrying', async () => {
     let calls = 0;
     let fail = false;
-    const fetchFn = (async () => {
+    const upstream: Upstream = async () => {
       calls++;
       if (fail) throw new Error('down');
-      return new Response(`v${calls}`, { headers: { 'content-type': 'application/javascript' } });
-    }) as typeof fetch;
-    const cache = new ScriptCache('http://umami.invalid/script.js', fetchFn, 1000, log);
+      return { status: 200, type: 'application/javascript', body: Buffer.from(`v${calls}`) };
+    };
+    const cache = new ScriptCache('http://umami.invalid/script.js', upstream, 1000, log);
     expect((await cache.get(0))?.body.toString()).toBe('v1');
     expect((await cache.get(SCRIPT_TTL_MS - 1))?.body.toString()).toBe('v1');
     expect(calls).toBe(1);
@@ -241,12 +242,12 @@ describe('ScriptCache', () => {
 
   it('shares one fetch between concurrent first requests', async () => {
     let calls = 0;
-    const fetchFn = (async () => {
+    const upstream: Upstream = async () => {
       calls++;
       await new Promise((r) => setTimeout(r, 10));
-      return new Response(SCRIPT, { headers: { 'content-type': 'text/javascript' } });
-    }) as typeof fetch;
-    const cache = new ScriptCache('http://umami.invalid/script.js', fetchFn, 1000, log);
+      return { status: 200, type: 'text/javascript', body: Buffer.from(SCRIPT) };
+    };
+    const cache = new ScriptCache('http://umami.invalid/script.js', upstream, 1000, log);
     await Promise.all([cache.get(), cache.get(), cache.get()]);
     expect(calls).toBe(1);
   });
@@ -355,6 +356,17 @@ describe('POST /pulse/api/send', () => {
     res = await send(app, event());
     expect(res.statusCode).toBe(204);
     expect(Date.now() - started).toBeLessThan(900);
+
+    // Headers at once, then the answer stalls: cut off at the timeout, never passed on half.
+    umami.send = (_req, reply) => {
+      reply.hijack();
+      reply.raw.writeHead(200, { 'content-type': 'application/json' });
+      reply.raw.write('{"cache":');
+    };
+    const stalled = Date.now();
+    res = await send(app, event());
+    expect(res.statusCode).toBe(204);
+    expect(Date.now() - stalled).toBeLessThan(900);
   });
 
   it('forwards at most a few events at a time', async () => {
