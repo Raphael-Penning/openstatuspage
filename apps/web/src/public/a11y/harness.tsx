@@ -60,6 +60,8 @@ export interface RenderOptions {
 
 export async function renderPublic({ path, lang, theme }: RenderOptions): Promise<Rendered> {
   localStorage.clear();
+  // The cookie is the visitor's choice (the stored one is mirrored into it).
+  document.cookie = `osp-theme=${theme}; Path=/`;
   localStorage.setItem('osp-theme', theme);
   localStorage.setItem('osp-lang-chosen', '1');
   await i18n.changeLanguage(lang);
