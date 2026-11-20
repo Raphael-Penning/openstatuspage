@@ -2,6 +2,7 @@
  * Pure, locale-aware date and time formatting helpers for the public page.
  * Everything is based on Intl so the output follows the current i18n language.
  */
+import { dateTimeFormat, numberFormat, relativeTimeFormat } from './intl';
 
 /** Visitor preference: show times in the browser's time zone or in UTC. */
 export type TimeZoneMode = 'local' | 'utc';
@@ -20,7 +21,7 @@ function toDate(value: string | Date): Date {
 
 /** "Nov 17, 2026, 2:05 PM" (+ " UTC" in UTC mode). */
 export function formatDateTime(value: string | Date, locale: string, mode: TimeZoneMode): string {
-  const text = new Intl.DateTimeFormat(locale, {
+  const text = dateTimeFormat(locale, {
     dateStyle: 'medium',
     timeStyle: 'short',
     timeZone: timeZoneOf(mode),
@@ -30,18 +31,18 @@ export function formatDateTime(value: string | Date, locale: string, mode: TimeZ
 
 /** "Nov 17, 2026". */
 export function formatDate(value: string | Date, locale: string, mode: TimeZoneMode): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: timeZoneOf(mode) }).format(toDate(value));
+  return dateTimeFormat(locale, { dateStyle: 'medium', timeZone: timeZoneOf(mode) }).format(toDate(value));
 }
 
 /** "2:05 PM" (+ " UTC" in UTC mode). */
 export function formatTime(value: string | Date, locale: string, mode: TimeZoneMode): string {
-  const text = new Intl.DateTimeFormat(locale, { timeStyle: 'short', timeZone: timeZoneOf(mode) }).format(toDate(value));
+  const text = dateTimeFormat(locale, { timeStyle: 'short', timeZone: timeZoneOf(mode) }).format(toDate(value));
   return mode === 'utc' ? `${text} UTC` : text;
 }
 
 /** True when both instants fall on the same calendar day in the given mode. */
 export function isSameDay(a: string | Date, b: string | Date, mode: TimeZoneMode): boolean {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
+  const fmt = dateTimeFormat('en-CA', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -56,7 +57,7 @@ export function isSameDay(a: string | Date, b: string | Date, mode: TimeZoneMode
  */
 export function formatRange(start: string | Date, end: string | Date, locale: string, mode: TimeZoneMode): string {
   if (isSameDay(start, end, mode)) {
-    const first = new Intl.DateTimeFormat(locale, {
+    const first = dateTimeFormat(locale, {
       dateStyle: 'medium',
       timeStyle: 'short',
       timeZone: timeZoneOf(mode),
@@ -68,12 +69,12 @@ export function formatRange(start: string | Date, end: string | Date, locale: st
 
 /** Day of a UTC uptime bucket ("YYYY-MM-DD"), e.g. "Nov 17, 2026". Buckets are UTC days. */
 export function formatUtcDay(day: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${day}T00:00:00Z`));
+  return dateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${day}T00:00:00Z`));
 }
 
 /** "November 2026" for a "YYYY-MM" key. */
 export function formatMonth(month: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+  return dateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(`${month}-01T00:00:00Z`),
   );
 }
@@ -98,7 +99,7 @@ export function recentMonths(now: Date, count: number): string[] {
 export function formatRelative(value: string | Date, now: number, locale: string): string {
   const diff = toDate(value).getTime() - now;
   const abs = Math.abs(diff);
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  const rtf = relativeTimeFormat(locale, { numeric: 'auto' });
   if (abs < MINUTE) return rtf.format(0, 'second');
   if (abs < HOUR) return rtf.format(Math.round(diff / MINUTE), 'minute');
   if (abs < DAY) return rtf.format(Math.round(diff / HOUR), 'hour');
@@ -108,7 +109,7 @@ export function formatRelative(value: string | Date, now: number, locale: string
 }
 
 function unit(value: number, name: 'day' | 'hour' | 'minute', locale: string): string {
-  return new Intl.NumberFormat(locale, { style: 'unit', unit: name, unitDisplay: 'short' }).format(value);
+  return numberFormat(locale, { style: 'unit', unit: name, unitDisplay: 'short' }).format(value);
 }
 
 /**
@@ -138,3 +139,4 @@ export function formatDuration(ms: number, locale: string): string {
 export function durationBetween(start: string, end: string | null, now: number): number {
   return (end ? new Date(end).getTime() : now) - new Date(start).getTime();
 }
+

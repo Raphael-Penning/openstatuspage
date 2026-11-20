@@ -2,6 +2,7 @@
  * Pure helpers for the public uptime bars.
  */
 import { SERVICE_STATUS_SEVERITY, type DailyUptime, type ServiceStatus } from '@openstatuspage/shared';
+import { numberFormat } from './intl';
 
 /** Breakpoints (px) and the number of days shown below them. */
 const DAY_STEPS: readonly (readonly [number, number])[] = [
@@ -48,7 +49,7 @@ export function averageUptime(days: readonly DailyUptime[]): number | null {
 
 /** "99.95 %" style, locale aware, at most two fraction digits. */
 export function formatPercent(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
+  return numberFormat(locale, {
     style: 'percent',
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
