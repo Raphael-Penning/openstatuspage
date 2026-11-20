@@ -18,14 +18,14 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `HOST` | `0.0.0.0` | Interface the HTTP server binds to. |
 | `PORT` | `3000` | HTTP port. |
 | `BASE_URL` | `http://localhost:3000` | URL of this instance, without trailing slash: the public URL of the status page, or the admin domain of an `admin` instance. Used for OIDC redirect URIs and ingest URLs, and for feed and email links unless `PUBLIC_BASE_URL` is set. When it starts with `https://` cookies are marked `Secure`. |
-| `PUBLIC_BASE_URL` | `BASE_URL` | Public URL of the status page, used for every link in feeds and emails (incident and maintenance pages, confirm, manage and one-click unsubscribe links). Set it on `admin` and `worker` instances of a [split deployment](#split-deployment), so mails sent from the admin domain still link to the public page. |
+| `PUBLIC_BASE_URL` | `BASE_URL` | Public URL of the status page, used for every link in feeds and emails (incident and maintenance pages, confirm, manage and one-click unsubscribe links). Set it on `admin` and `worker` instances of a [split deployment](#split-deployment), so mails sent from the admin domain still link to the public page. The server-rendered public pages use it for their canonical and language URLs, link previews and JSON-LD, and `robots.txt`, the sitemaps and `llms.txt` for every URL they list. |
 | `TRUST_PROXY` | `false` | Behind a reverse proxy (nginx, Traefik, Caddy, ...) client IPs (rate limiting, session metadata) and the protocol are taken from `X-Forwarded-*` headers. Set the number of proxies in front of the app (`1` for a single proxy; `true` means `1`) or a comma separated list of trusted proxy addresses/CIDRs (e.g. `10.0.0.0/8,127.0.0.1`). Entries further left in `X-Forwarded-For` are set by the client and are never trusted. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
 | `WEB_DIST_DIR` | – | Directory with the built web client. By default the server looks for `apps/web/dist`. |
 
 The Docker image also sets `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=96`,
-`MALLOC_ARENA_MAX=2` and `UV_THREADPOOL_SIZE=2`, which keep an instance below about
-100 MB. Override `NODE_OPTIONS` to give a large history import more heap; see
+`MALLOC_ARENA_MAX=2` and `UV_THREADPOOL_SIZE=2` and starts `node --max-opt=2`, which
+keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large history import more heap; see
 [architecture.md](architecture.md#memory).
 
 ## Security
@@ -184,6 +184,36 @@ are set by `compose.yaml` itself (use `HOST_PORT` for the published port).
 `BASE_URL` must be the public URL of the status page: all links in emails use it.
 Confirmation and unsubscribe links are signed with `SUBSCRIPTION_TOKEN_KEY`
 (default `SECRET_KEY`); changing it invalidates links in emails already sent.
+
+## Search engines and AI agents
+
+Search engines and AI agents need no settings of their own. The only variable is
+`PUBLIC_BASE_URL` (default `BASE_URL`): it is the address of every canonical link,
+alternate language link, sitemap entry, the `Sitemap:` line of `robots.txt`, the
+links of `llms.txt` and the structured data. Set it to the public address of the
+status page, with `https://`, also on the admin and worker instances of a split
+deployment.
+
+Per role the app answers:
+
+- `public` and `all`: `/robots.txt` allows the public pages and the read-only
+  `/api/public/` endpoints and disallows the subscription endpoints, the rest of
+  `/api/`, `/admin`, `/subscription/` and `/preferences/`; `/sitemap.xml` indexes the
+  navigation pages, the incident and maintenance sitemaps and the service sitemaps
+  (`/sitemap-services-N.xml`, at most 5,000 URLs per file); `/llms.txt` and
+  `/llms-full.txt` describe the page for language models.
+- `admin`: `/robots.txt` answers `Disallow: /`, and every page (the management
+  UI and the preview of the public pages) carries `X-Robots-Tag: noindex,
+  nofollow`, so a URL linked from elsewhere is not indexed either. No sitemap is
+  served.
+- Pages of the status page that do not exist (`404`) and the personal
+  subscription links carry `noindex`; filtered, searched and later pages
+  carry `noindex, follow`. Other spellings of a page path (`/SERVICES/`) get a
+  `301` to the canonical one.
+
+Details: [architecture.md](architecture.md#search-engines-and-ai-agents). For
+operators, the guide chapter [Search engines and the public page](guide/en/12-public-page.md)
+explains the sitemap submission and the proxy rules.
 
 ## Rate limits
 

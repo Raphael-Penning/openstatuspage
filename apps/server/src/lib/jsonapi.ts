@@ -125,7 +125,13 @@ export function errorDocument(errors: ErrorObject[]): { jsonapi: typeof JSONAPI_
 }
 
 /** Request path + query as sent by the client (relative URI-reference for `links.self`). */
-export function selfLink(req: FastifyRequest): string {
+/**
+ * The parts of a request the document builders read (`url` with the query string,
+ * parsed `query`). A FastifyRequest is one; server-side rendering passes its own.
+ */
+export type DocumentRequest = Pick<FastifyRequest, 'url' | 'query'>;
+
+export function selfLink(req: Pick<DocumentRequest, 'url'>): string {
   return req.url;
 }
 
@@ -164,7 +170,7 @@ function pageUrl(path: string, query: Record<string, unknown>, number: number, s
 }
 
 /** `self`, `first`, `prev`, `next`, `last` links of a page (prev/next null at the ends). */
-export function paginationLinks(req: FastifyRequest, page: PageParams, total: number): JsonApiLinks {
+export function paginationLinks(req: DocumentRequest, page: PageParams, total: number): JsonApiLinks {
   const path = req.url.split('?')[0] ?? req.url;
   const query = (req.query ?? {}) as Record<string, unknown>;
   const last = Math.max(1, Math.ceil(total / page.size));
@@ -187,7 +193,7 @@ export interface CollectionOptions extends DocumentOptions {
  * Collection document. With `page` + `total`: `meta: { total, page: { number, size } }`
  * and first/prev/next/last links. Without: `meta.total` is the number of resources.
  */
-export function collection(req: FastifyRequest, data: ResourceObject[], options: CollectionOptions = {}): DataDocument<ResourceObject[]> {
+export function collection(req: DocumentRequest, data: ResourceObject[], options: CollectionOptions = {}): DataDocument<ResourceObject[]> {
   const total = options.total ?? data.length;
   const meta: JsonApiMeta = { ...options.meta, total };
   if (options.page) meta.page = { number: options.page.number, size: options.page.size };

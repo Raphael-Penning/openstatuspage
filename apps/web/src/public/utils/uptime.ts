@@ -2,27 +2,7 @@
  * Pure helpers for the public uptime bars.
  */
 import { SERVICE_STATUS_SEVERITY, type DailyUptime, type ServiceStatus } from '@openstatuspage/shared';
-
-/** Breakpoints (px) and the number of days shown below them. */
-const DAY_STEPS: readonly (readonly [number, number])[] = [
-  [640, 30],
-  [1024, 60],
-];
-
-/**
- * Number of days an uptime bar shows for a viewport width: 30 on phones,
- * 60 on tablets, 90 on desktops. Never more than `available`.
- */
-export function barDaysForWidth(width: number, available: number, desktopDays = 90): number {
-  let days = desktopDays;
-  for (const [maxWidth, d] of DAY_STEPS) {
-    if (width < maxWidth) {
-      days = d;
-      break;
-    }
-  }
-  return Math.max(1, Math.min(days, available));
-}
+import { numberFormat } from './intl';
 
 /** The newest `count` buckets (input is oldest first, like the API). */
 export function lastDays(uptime: readonly DailyUptime[], count: number): DailyUptime[] {
@@ -46,9 +26,23 @@ export function averageUptime(days: readonly DailyUptime[]): number | null {
   return Math.round((sum / n) * 100) / 100;
 }
 
+/**
+ * Percentages without Intl (server render and hydration): the decimal separator
+ * and percent sign of the UI languages, at most two fraction digits.
+ */
+const PERCENT_STYLE: Record<string, { decimal: string; suffix: string }> = {
+  de: { decimal: ',', suffix: '\u00a0%' },
+};
+
+export function formatPercentNeutral(value: number, locale: string): string {
+  const style = PERCENT_STYLE[locale.slice(0, 2)] ?? { decimal: '.', suffix: '%' };
+  const text = String(Math.round(value * 100) / 100).replace('.', style.decimal);
+  return `${text}${style.suffix}`;
+}
+
 /** "99.95 %" style, locale aware, at most two fraction digits. */
 export function formatPercent(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
+  return numberFormat(locale, {
     style: 'percent',
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,

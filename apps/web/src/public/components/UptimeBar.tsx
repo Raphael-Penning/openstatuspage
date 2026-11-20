@@ -16,22 +16,29 @@
  *
  * Days corrected afterwards carry a small marker below the segment and say so
  * (with the public notes) in the tooltip.
+ *
+ * Without JavaScript (and before hydration) the bar is a picture with its
+ * summary as label and takes no tab stop; the day details are in the table of
+ * the service page (UptimeDayTable), which needs no JavaScript.
  */
 import type { DailyUptime } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useHydrated } from '../../lib/ssr';
 import { STATUS_BG } from '../../lib/status';
-import { useDismiss } from '../hooks/dom';
+import { useDismiss, useViewportWidth } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
-import { formatUtcDay } from '../utils/time';
-import { averageUptime, dayIndexAt, dayPattern, formatPercent, lastDays, statusMinutes, tooltipAlign } from '../utils/uptime';
+import { averageUptime, dayIndexAt, dayPattern, lastDays, statusMinutes, tooltipAlign } from '../utils/uptime';
 
 interface UptimeBarProps {
   /** All buckets from the API, oldest first. */
   uptime: DailyUptime[];
-  /** Number of newest days to show. */
+  /** Number of newest days to show on wide screens. */
   days: number;
+  /** Days shown below 640 px (default 30) and below 1024 px (default 60); never more than `days`. */
+  phoneDays?: number;
+  tabletDays?: number;
   /** Name of the service, used for the accessible label. */
   label: string;
   /** Uptime over the full API range; when omitted it is computed from the shown days. */
@@ -46,7 +53,17 @@ const PATTERN_CLASS = {
   outline: 'bg-transparent ring-1 ring-status-nodata ring-inset',
 } as const;
 
-export function UptimeBar({ uptime, days, label, percent, size = 'md', className }: UptimeBarProps) {
+/** Media query classes per screen width: phone (< 640 px), tablet (< 1024 px), wide. */
+const ONLY = { phone: 'sm:hidden', tablet: 'max-sm:hidden lg:hidden', wide: 'max-lg:hidden' } as const;
+type Width = keyof typeof ONLY;
+
+/**
+ * How many days a bar shows depends on the screen width. The server cannot know
+ * it, so the bar always renders the days of a wide screen and hides the older
+ * ones with media queries (no JavaScript, nothing moves on hydration); the
+ * pointer and keyboard handling use the days the screen shows.
+ */
+export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label, percent, size = 'md', className }: UptimeBarProps) {
   const { t } = useTranslation('public');
   const f = useFormat();
   const shown = lastDays(uptime, days);
@@ -57,9 +74,27 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
   const [announcement, setAnnouncement] = useState('');
   const tooltipId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const avg = percent !== undefined && shown.length === uptime.length ? percent : averageUptime(shown);
-  const avgText = avg === null ? t('uptime.noData') : t('uptime.percent', { value: formatPercent(avg, f.locale) });
-  const correctedCount = shown.filter((d) => d.corrected).length;
+  const hydrated = useHydrated();
+  const viewport = useViewportWidth();
+
+  const counts: Record<Width, number> = {
+    phone: Math.min(phoneDays, shown.length),
+    tablet: Math.min(tabletDays, shown.length),
+    wide: shown.length,
+  };
+  /** Width class of the current screen (the wide layout until hydration, like the server). */
+  const current: Width = !hydrated ? 'wide' : viewport < 640 ? 'phone' : viewport < 1024 ? 'tablet' : 'wide';
+  const visibleCount = counts[current];
+  /** Index of the oldest day the screen shows. */
+  const first = shown.length - visibleCount;
+
+  const averageText = (count: number) => {
+    const avg = percent !== undefined && count === uptime.length ? percent : averageUptime(shown.slice(shown.length - count));
+    return avg === null ? t('uptime.noData') : t('uptime.percent', { value: f.percent(avg) });
+  };
+  const avgText = averageText(visibleCount);
+  const correctedCount = shown.slice(first).filter((d) => d.corrected).length;
+  const anyCorrected = shown.some((d) => d.corrected);
 
   const hide = useCallback(() => {
     setActive(null);
@@ -70,14 +105,14 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
   useDismiss(active !== null && !dismissed, wrapperRef, dismiss);
 
   if (shown.length === 0) return null;
-  const visible = active !== null && !dismissed ? shown[active] : undefined;
+  const visible = active !== null && !dismissed && active >= first ? shown[active] : undefined;
 
   function describe(day: DailyUptime): string {
-    const parts = [formatUtcDay(day.date, f.locale)];
+    const parts = [f.utcDay(day.date)];
     if (day.status === null) parts.push(t('uptime.noData'));
     else {
       parts.push(t(`common:status.${day.status}`));
-      if (day.uptime !== null) parts.push(t('uptime.percent', { value: formatPercent(day.uptime, f.locale) }));
+      if (day.uptime !== null) parts.push(t('uptime.percent', { value: f.percent(day.uptime) }));
       for (const m of statusMinutes(day)) parts.push(`${t(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`);
     }
     if (day.corrected) parts.push(t('uptime.corrected'), ...(day.correctionNotes ?? []));
@@ -92,11 +127,11 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const last = shown.length - 1;
-    const current = active ?? last;
+    const current = active !== null && active >= first ? active : last;
     let next: number | null = null;
-    if (e.key === 'ArrowLeft') next = Math.max(0, current - 1);
+    if (e.key === 'ArrowLeft') next = Math.max(first, current - 1);
     else if (e.key === 'ArrowRight') next = Math.min(last, current + 1);
-    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'Home') next = first;
     else if (e.key === 'End') next = last;
     if (next !== null) {
       e.preventDefault();
@@ -106,11 +141,18 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
 
   function indexAt(e: { clientX: number; currentTarget: HTMLElement }): number {
     const rect = e.currentTarget.getBoundingClientRect();
-    return dayIndexAt(e.clientX - rect.left, rect.width, shown.length);
+    return first + dayIndexAt(e.clientX - rect.left, rect.width, visibleCount);
   }
 
-  const align = active !== null ? tooltipAlign(active, shown.length) : 'center';
-  const left = active !== null ? ((active + 0.5) / shown.length) * 100 : 50;
+  const align = active !== null ? tooltipAlign(active - first, visibleCount) : 'center';
+  const left = active !== null ? ((active - first + 0.5) / visibleCount) * 100 : 50;
+  /** A text per screen width; only the one for the current width is displayed. */
+  const perWidth = (text: (count: number) => string) =>
+    (Object.keys(ONLY) as Width[]).map((w) => (
+      <span key={w} className={ONLY[w]}>
+        {text(counts[w])}
+      </span>
+    ));
 
   return (
     <div
@@ -121,16 +163,16 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
       }}
     >
       <div
-        tabIndex={0}
+        tabIndex={hydrated ? 0 : undefined}
         role="group"
         aria-roledescription={t('uptime.roleDescription')}
         aria-label={
-          t('uptime.ariaLabel', { name: label, days: shown.length, uptime: avgText }) +
+          t(hydrated ? 'uptime.ariaLabel' : 'uptime.ariaLabelStatic', { name: label, days: visibleCount, uptime: avgText }) +
           (correctedCount > 0 ? ` ${t('uptime.correctedCount', { count: correctedCount })}` : '')
         }
         aria-describedby={visible ? tooltipId : undefined}
         onKeyDown={onKeyDown}
-        onFocus={() => setActive((a) => a ?? shown.length - 1)}
+        onFocus={() => setActive((a) => (a !== null && a >= first ? a : shown.length - 1))}
         onBlur={(e) => {
           if (!wrapperRef.current?.contains(e.relatedTarget as Node | null)) hide();
         }}
@@ -141,23 +183,28 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
         }}
         onClick={(e) => select(indexAt(e), false)}
         className={clsx(
-          'flex w-full cursor-default items-stretch gap-px rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-focus sm:gap-[2px]',
+          'osp-bar flex w-full cursor-default items-stretch gap-px rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-focus sm:gap-[2px]',
           size === 'lg' ? 'h-12' : 'h-8',
         )}
       >
-        {shown.map((d, i) => (
-          <div
-            key={d.date}
-            className={clsx(
-              'relative min-w-0 flex-1 rounded-[2px] motion-safe:transition-opacity',
-              d.status ? STATUS_BG[d.status] : undefined,
-              PATTERN_CLASS[dayPattern(d.status)],
-              visible && active !== i && 'opacity-60',
-            )}
-          >
-            {d.corrected && <span aria-hidden className="absolute inset-x-0 -bottom-1.5 h-[3px] rounded-full bg-fg" />}
-          </div>
-        ))}
+        {shown.map((d, i) => {
+          const age = shown.length - 1 - i;
+          return (
+            // Layout of the segments: .osp-bar in styles.css (up to 90 per bar, every class counts).
+            <div
+              key={d.date}
+              className={clsx(
+                age >= counts.phone && 'max-sm:hidden',
+                age >= counts.tablet && 'max-lg:hidden',
+                d.status ? STATUS_BG[d.status] : undefined,
+                PATTERN_CLASS[dayPattern(d.status)],
+                visible && active !== i && 'opacity-60',
+              )}
+            >
+              {d.corrected && <span aria-hidden className="absolute inset-x-0 -bottom-1.5 h-[3px] rounded-full bg-fg" />}
+            </div>
+          );
+        })}
       </div>
 
       {visible && (
@@ -184,14 +231,14 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
         {announcement}
       </p>
 
-      <div className={clsx('flex items-center justify-between gap-2 text-xs text-muted', correctedCount > 0 ? 'mt-3' : 'mt-1.5')} aria-hidden>
-        <span>{t('uptime.daysAgo', { count: shown.length })}</span>
+      <div className={clsx('flex items-center justify-between gap-2 text-xs text-muted', anyCorrected ? 'mt-3' : 'mt-1.5')} aria-hidden>
+        <span>{perWidth((count) => t('uptime.daysAgo', { count }))}</span>
         <span className="h-px flex-1 bg-border" />
-        <span className="font-medium text-fg">{avgText}</span>
+        <span className="font-medium text-fg">{perWidth(averageText)}</span>
         <span className="h-px flex-1 bg-border" />
         <span>{t('uptime.today')}</span>
       </div>
-      {correctedCount > 0 && (
+      {anyCorrected && (
         <p className="mt-1 flex items-center gap-1.5 text-xs text-muted" aria-hidden>
           <span className="inline-block h-[3px] w-3 rounded-full bg-fg" />
           {t('uptime.correctedLegend')}
@@ -207,7 +254,7 @@ function DayDetails({ day }: { day: DailyUptime }) {
   const minutes = statusMinutes(day);
   return (
     <div aria-live="polite">
-      <p className="font-semibold">{formatUtcDay(day.date, f.locale)}</p>
+      <p className="font-semibold">{f.utcDay(day.date)}</p>
       {day.status === null ? (
         <p className="mt-1 text-muted">{t('uptime.noData')}</p>
       ) : (
@@ -217,7 +264,7 @@ function DayDetails({ day }: { day: DailyUptime }) {
             {t(`common:status.${day.status}`)}
           </p>
           {day.uptime !== null && (
-            <p className="text-muted">{t('uptime.percent', { value: formatPercent(day.uptime, f.locale) })}</p>
+            <p className="text-muted">{t('uptime.percent', { value: f.percent(day.uptime) })}</p>
           )}
           {minutes.length > 0 ? (
             <ul className="mt-1 space-y-0.5 text-muted">
@@ -243,5 +290,65 @@ function DayDetails({ day }: { day: DailyUptime }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Every day of an uptime bar as a table, newest first, in a disclosure: what
+ * the bar's tooltip shows, without JavaScript and without a pointer. Cell
+ * styles are in styles.css (.osp-days), so up to a year of rows stays small.
+ */
+export function UptimeDayTable({ uptime, label }: { uptime: DailyUptime[]; label: string }) {
+  const { t } = useTranslation('public');
+  const f = useFormat();
+  if (uptime.length === 0) return null;
+  const days = [...uptime].reverse();
+  return (
+    <details className="mt-4">
+      <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded text-sm font-medium text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+        {t('uptime.dailyDetails')}
+      </summary>
+      <div className="mt-3 overflow-x-auto rounded-xl border border-border">
+        <table className="osp-days w-full text-sm">
+          <caption className="sr-only">{t('uptime.dailyCaption', { name: label, count: days.length })}</caption>
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th scope="col">{t('uptime.day')}</th>
+              <th scope="col">{t('uptime.status')}</th>
+              <th scope="col">{t('service.uptime')}</th>
+              <th scope="col">{t('uptime.notOperational')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {days.map((day) => {
+              const minutes = statusMinutes(day);
+              const notes = day.corrected ? [t('uptime.corrected'), ...(day.correctionNotes ?? [])].join(': ') : null;
+              return (
+                <tr key={day.date}>
+                  <th scope="row">{f.utcDay(day.date)}</th>
+                  <td>
+                    {day.status === null ? (
+                      t('uptime.noData')
+                    ) : (
+                      <>
+                        <i aria-hidden className={STATUS_BG[day.status]} />
+                        {t(`common:status.${day.status}`)}
+                      </>
+                    )}
+                  </td>
+                  <td>{day.uptime === null ? '–' : f.percent(day.uptime)}</td>
+                  <td>
+                    {minutes.length === 0
+                      ? '–'
+                      : minutes.map((m) => `${t(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`).join(', ')}
+                    {notes && <span>{notes}</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }

@@ -1,56 +1,95 @@
 /**
- * /subscription/manage?id=…#token=…: change language and scope of a
- * subscription or unsubscribe. The token comes from the emails (or the
- * confirmation page) in the URL fragment, so it never reaches the server via
- * the URL, and is sent as X-Subscription-Token header. A token in the query is
- * still accepted for older links.
+ * /subscription/manage?id=…&token=…: change language and scope of a
+ * subscription or unsubscribe.
+ *
+ * The server renders the page for a token in the query (the links of the
+ * emails and of the confirmation), and its forms post to the form handlers
+ * /subscription/manage and /subscription/unsubscribe, so everything works
+ * without JavaScript. The handlers redirect back with a flag the page shows:
+ * ?saved=1, ?confirmed=1, ?unsubscribed=1, ?error=invalid; ?unsubscribe=1 opens
+ * the unsubscribe confirmation. With JavaScript the page uses the JSON:API
+ * (token in the X-Subscription-Token header) and also accepts the token in the
+ * URL fragment of older links.
  */
-import { SubscriptionPreferencesInput, type PublicSubscription, type SubscriptionLocale } from '@openstatuspage/shared';
+import { FORM_PATHS, type PublicSubscription, type SubscriptionLocale } from '@openstatuspage/shared';
 import { CircleCheck, Clock, Loader2, MailMinus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
+import { useHydrated, useServerForm } from '../../lib/ssr';
+import { NoScript } from '../components/NoScript';
 import {
   dangerButton,
+  ErrorSummary,
   InvalidLinkState,
   LocaleSelect,
   NoReferrer,
   primaryButton,
   ResultState,
+  SCOPE_FIELD_ID,
   ScopePicker,
   secondaryButton,
 } from '../components/Subscription';
 import { Card, ErrorState, PageTitle, Skeleton } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
+import { usePageHead } from '../head';
 import { isNotFound, useSummary } from '../hooks/queries';
 import { useDeleteSubscription, useSubscription, useUpdateSubscription } from '../hooks/subscriptions';
 import {
+  formScope,
+  formValue,
   knownServiceIds,
   linkParams,
+  managePath,
+  serverFormErrors,
   serviceSections,
   subscriptionErrors,
+  toSubscriptionLocale,
   type ServiceSection,
   type SubscriptionErrors,
 } from '../utils/subscription';
+import { loadSchemas } from '../utils/schemas';
 
 export function SubscriptionManagePage() {
   const { t } = useTranslation('public');
-  useDocumentTitle(t('subscription.manage.title'));
   const [params] = useSearchParams();
+  const serverForm = useServerForm();
+  const hasErrors = Object.keys(serverFormErrors(serverForm, null)).length > 0;
+  // Personal links: never indexed.
+  usePageHead({
+    title: hasErrors ? t('subscription.errors.titlePrefix', { title: t('subscription.manage.title') }) : t('subscription.manage.title'),
+    robots: 'noindex',
+    canonical: null,
+  });
   const { hash } = useLocation();
-  const link = linkParams(params, hash);
+  const hydrated = useHydrated();
+  // The server sees a token in the query; one in the fragment only after hydration.
+  const link = linkParams(params, hydrated ? hash : '');
+  const waitForFragment = !hydrated && !link && params.has('id');
   return (
     <>
       <NoReferrer />
-      {link ? (
+      {params.get('unsubscribed') === '1' ? (
+        <UnsubscribedState email={null} />
+      ) : params.get('error') === 'invalid' ? (
+        <InvalidLinkState />
+      ) : link ? (
         <Manage
           key={`${link.id}:${link.token}`}
           id={link.id}
           token={link.token}
           // Unsubscribe links in emails add unsubscribe=1: open the confirmation directly.
           startUnsubscribe={params.get('unsubscribe') === '1'}
+          saved={params.get('saved') === '1'}
+          confirmed={params.get('confirmed') === '1'}
         />
+      ) : waitForFragment ? (
+        <>
+          <ManageSkeleton />
+          <NoScript>
+            <p className="mt-6 text-center text-muted">{t('subscription.confirm.needsScript')}</p>
+          </NoScript>
+        </>
       ) : (
         <InvalidLinkState />
       )}
@@ -58,7 +97,19 @@ export function SubscriptionManagePage() {
   );
 }
 
-function Manage({ id, token, startUnsubscribe }: { id: string; token: string; startUnsubscribe: boolean }) {
+function Manage({
+  id,
+  token,
+  startUnsubscribe,
+  saved,
+  confirmed,
+}: {
+  id: string;
+  token: string;
+  startUnsubscribe: boolean;
+  saved: boolean;
+  confirmed: boolean;
+}) {
   const { t } = useTranslation('public');
   const subscription = useSubscription(id, token);
   const summary = useSummary();
@@ -79,11 +130,18 @@ function Manage({ id, token, startUnsubscribe }: { id: string; token: string; st
     <div>
       <PageTitle title={t('subscription.manage.title')} subtitle={t('subscription.manage.subtitle')} />
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
+        {confirmed && (
+          <p role="status" className="flex items-start gap-2 rounded-xl bg-status-operational/12 px-4 py-3 text-sm">
+            <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-status-operational-text" />
+            {t('subscription.manage.confirmed')}
+          </p>
+        )}
         <PreferencesForm
           id={id}
           token={token}
           subscription={subscription.data}
           sections={sections}
+          savedBefore={saved}
           onInvalid={() => setInvalid(true)}
         />
         <UnsubscribeCard
@@ -104,23 +162,31 @@ function PreferencesForm({
   token,
   subscription,
   sections,
+  savedBefore,
   onInvalid,
 }: {
   id: string;
   token: string;
   subscription: PublicSubscription;
   sections: ServiceSection[];
+  /** The form handler saved the preferences and redirected here (?saved=1). */
+  savedBefore: boolean;
   onInvalid: () => void;
 }) {
   const { t } = useTranslation('public');
-  const [locale, setLocale] = useState<SubscriptionLocale>(subscription.locale);
+  // What the server answered to a form sent without JavaScript (values and errors).
+  const serverForm = useServerForm();
+  const [locale, setLocale] = useState<SubscriptionLocale>(() =>
+    serverForm ? toSubscriptionLocale(formValue(serverForm, 'locale')) : subscription.locale,
+  );
   // Services that are no longer public cannot be saved again; drop them up front.
-  const [scope, setScope] = useState(() => ({
-    allServices: subscription.allServices,
-    serviceIds: knownServiceIds(subscription.serviceIds, sections),
-  }));
-  const [errors, setErrors] = useState<SubscriptionErrors>({});
-  const [saved, setSaved] = useState(false);
+  const [scope, setScope] = useState(() =>
+    serverForm
+      ? formScope(serverForm, sections)
+      : { allServices: subscription.allServices, serviceIds: knownServiceIds(subscription.serviceIds, sections) },
+  );
+  const [errors, setErrors] = useState<SubscriptionErrors>(() => serverFormErrors(serverForm, null));
+  const [saved, setSaved] = useState(savedBefore && !serverForm);
   const update = useUpdateSubscription(id, token);
   const scopeRef = useRef<HTMLFieldSetElement>(null);
   // Focus the service selection once its error is rendered (WCAG 3.3.1).
@@ -130,9 +196,14 @@ function PreferencesForm({
     // Only on a new request, not on every change of the errors.
   }, [focusRequest]);
 
-  const submit = (e: FormEvent) => {
+  useEffect(() => {
+    void loadSchemas();
+  }, []);
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSaved(false);
+    const { SubscriptionPreferencesInput } = await loadSchemas();
     const parsed = SubscriptionPreferencesInput.safeParse({
       locale,
       allServices: scope.allServices,
@@ -166,15 +237,21 @@ function PreferencesForm({
     if (saved) setSaved(false);
   };
 
+  const problems = [
+    ...(errors.serviceIds ? [{ message: t(errors.serviceIds), field: SCOPE_FIELD_ID }] : []),
+    ...(errors.form ? [{ message: t(errors.form) }] : []),
+  ];
+
   return (
     <Card>
-      <form onSubmit={submit} noValidate className="flex flex-col gap-6 p-5 sm:p-8">
+      <form method="post" action={FORM_PATHS.manage} onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-6 p-5 sm:p-8">
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="token" value={token} />
+        <ErrorSummary problems={problems} />
         <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 flex-col gap-1.5">
             <span className="text-sm font-medium">{t('subscription.email')}</span>
-            <span className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm break-all">
-              {subscription.email}
-            </span>
+            <span className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm break-all">{subscription.email}</span>
           </div>
           <LocaleSelect
             value={locale}
@@ -204,12 +281,6 @@ function PreferencesForm({
           error={errors.serviceIds && t(errors.serviceIds)}
         />
 
-        {errors.form && (
-          <p role="alert" className="rounded-xl bg-status-major-outage/10 px-4 py-3 text-sm text-status-major-outage-text">
-            {t(errors.form)}
-          </p>
-        )}
-
         <div className="flex flex-wrap items-center justify-end gap-3">
           <p role="status" className="flex items-center gap-1.5 text-sm text-status-operational-text">
             {saved && (
@@ -229,6 +300,11 @@ function PreferencesForm({
   );
 }
 
+/**
+ * Unsubscribing takes two steps: a link opens the confirmation (?unsubscribe=1,
+ * also from the email), whose form posts to /subscription/unsubscribe. With
+ * JavaScript both steps happen in place.
+ */
 function UnsubscribeCard({
   id,
   token,
@@ -252,8 +328,21 @@ function UnsubscribeCard({
   }, [startConfirming]);
   const [failed, setFailed] = useState(false);
   const remove = useDeleteSubscription(id, token);
+  // After a switch in place, the focus goes to the safe choice (opened) or back to the button (cancelled).
+  const cancelRef = useRef<HTMLAnchorElement>(null);
+  const openRef = useRef<HTMLAnchorElement>(null);
+  const switched = useRef(false);
+  useEffect(() => {
+    if (!switched.current) return;
+    (confirming ? cancelRef : openRef).current?.focus();
+  }, [confirming]);
+  const toggle = (next: boolean) => {
+    switched.current = true;
+    setConfirming(next);
+  };
 
-  const unsubscribe = () => {
+  const unsubscribe = (e: FormEvent) => {
+    e.preventDefault();
     setFailed(false);
     remove.mutate(undefined, {
       onSuccess: onRemoved,
@@ -262,30 +351,56 @@ function UnsubscribeCard({
   };
 
   return (
-    <div ref={cardRef}>
+    <div ref={cardRef} id="unsubscribe">
       <Card as="section" className="flex flex-col gap-3 p-5 sm:p-8">
         <h2 className="text-lg font-semibold">{t('subscription.unsubscribe.title')}</h2>
         <p className="text-sm text-muted">{t('subscription.unsubscribe.description')}</p>
         {confirming ? (
-          <div role="group" aria-label={t('subscription.unsubscribe.title')} className="flex flex-col gap-3 rounded-xl border border-status-major-outage/30 bg-status-major-outage/5 p-4">
+          <form
+            method="post"
+            action={FORM_PATHS.unsubscribe}
+            onSubmit={unsubscribe}
+            aria-label={t('subscription.unsubscribe.title')}
+            className="flex flex-col gap-3 rounded-xl border border-status-major-outage/30 bg-status-major-outage/5 p-4"
+          >
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="token" value={token} />
             <p className="text-sm font-medium">{t('subscription.unsubscribe.confirm', { email })}</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={dangerButton} onClick={unsubscribe} disabled={remove.isPending} aria-busy={remove.isPending || undefined}>
+              <button type="submit" className={dangerButton} disabled={remove.isPending} aria-busy={remove.isPending || undefined}>
                 {remove.isPending ? <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" /> : <MailMinus aria-hidden className="size-4" />}
                 {t('subscription.unsubscribe.confirmButton')}
               </button>
-              {/* Focus the safe choice when the confirmation opens. */}
-              <button type="button" className={secondaryButton} onClick={() => setConfirming(false)} disabled={remove.isPending} autoFocus>
+              {/* The safe choice: back to the page without the confirmation. */}
+              <Link
+                ref={cancelRef}
+                to={managePath(id, token)}
+                replace
+                preventScrollReset
+                className={secondaryButton}
+                onClick={(e) => {
+                  e.preventDefault();
+                  toggle(false);
+                }}
+              >
                 {t('subscription.unsubscribe.cancel')}
-              </button>
+              </Link>
             </div>
-          </div>
+          </form>
         ) : (
           <div>
-            <button type="button" className={dangerButton} onClick={() => setConfirming(true)}>
+            <Link
+              ref={openRef}
+              to={`${managePath(id, token, { unsubscribe: true })}#unsubscribe`}
+              className={dangerButton}
+              onClick={(e) => {
+                e.preventDefault();
+                toggle(true);
+              }}
+            >
               <MailMinus aria-hidden className="size-4" />
               {t('subscription.unsubscribe.button')}
-            </button>
+            </Link>
           </div>
         )}
         {failed && (
@@ -298,7 +413,7 @@ function UnsubscribeCard({
   );
 }
 
-function UnsubscribedState({ email }: { email: string }) {
+function UnsubscribedState({ email }: { email: string | null }) {
   const { t } = useTranslation('public');
   return (
     <ResultState
@@ -315,7 +430,7 @@ function UnsubscribedState({ email }: { email: string }) {
         </>
       }
     >
-      <p>{t('subscription.unsubscribe.doneDescription', { email })}</p>
+      <p>{email ? t('subscription.unsubscribe.doneDescription', { email }) : t('subscription.unsubscribe.doneDescriptionGeneric')}</p>
     </ResultState>
   );
 }

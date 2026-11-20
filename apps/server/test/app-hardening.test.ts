@@ -102,13 +102,34 @@ describe('http hardening', () => {
     expect(pub.headers['x-frame-options']).toBeUndefined();
   });
 
+  it('sends a strict content security policy with every page', async () => {
+    const pub = await app.inject({ url: '/' });
+    const csp = String(pub.headers['content-security-policy']);
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).not.toMatch(/unsafe-eval|script-src[^;]*unsafe-inline/);
+    // The public page may be embedded by other sites.
+    expect(csp).not.toContain('frame-ancestors');
+    expect(pub.headers['cross-origin-opener-policy']).toBe('same-origin');
+    expect(pub.headers['permissions-policy']).toContain('camera=()');
+
+    const admin = await app.inject({ url: '/admin/login' });
+    expect(admin.headers['content-security-policy']).toBe(`${csp}; frame-ancestors 'none'`);
+
+    // Other responses only deny framing where it applies.
+    const api = await app.inject({ url: '/api/public/settings' });
+    expect(api.headers['content-security-policy']).toBe("frame-ancestors 'none'");
+    expect(api.headers['cross-origin-opener-policy']).toBeUndefined();
+  });
+
   it('denies framing of case-variant and percent-encoded admin paths', async () => {
     // The SPA fallback serves these, and the client router would match /admin.
     for (const url of ['/ADMIN/x', '/Admin', '/%61dmin/x', '/%41DMIN/x?a=1', '//admin/x']) {
       const res = await app.inject({ url });
       expect(res.statusCode, url).toBe(200);
       expect(res.headers['x-frame-options'], url).toBe('DENY');
-      expect(res.headers['content-security-policy'], url).toBe("frame-ancestors 'none'");
+      expect(res.headers['content-security-policy'], url).toContain("frame-ancestors 'none'");
     }
     // Public client routes stay embeddable.
     for (const url of ['/services/admin', '/%73ervices/foo']) {
@@ -135,6 +156,15 @@ describe('request logging', () => {
     expect(redactUrlTokens('/x?a=1&token=abc&b=2&TOKEN=def')).toBe('/x?a=1&token=[REDACTED]&b=2&TOKEN=[REDACTED]');
     expect(redactUrlTokens('/x?mytoken=keep&token_type=keep')).toBe('/x?mytoken=keep&token_type=keep');
     expect(redactUrlTokens('/token=abc')).toBe('/token=abc');
+  });
+
+  it('redacts tokens nested in encoded parameter values (return paths)', () => {
+    expect(redactUrlTokens('/preferences/language?lang=de&return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3Dabc-123%26saved%3D1')).toBe(
+      '/preferences/language?lang=de&return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3D[REDACTED]%26saved%3D1',
+    );
+    expect(redactUrlTokens('/x?return=%2Fy%3Ftoken%3Dabc')).toBe('/x?return=%2Fy%3Ftoken%3D[REDACTED]');
+    expect(redactUrlTokens('/x?r=%252Fy%253Ftoken%253Dabc%2526a%253D1')).toBe('/x?r=%252Fy%253Ftoken%253D[REDACTED]%2526a%253D1');
+    expect(redactUrlTokens('/x?return=%2Fy%3Fmytoken%3Dkeep')).toBe('/x?return=%2Fy%3Fmytoken%3Dkeep');
   });
 
   it('never writes tokens from the query string to the log', async () => {

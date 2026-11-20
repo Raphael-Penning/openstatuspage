@@ -3,7 +3,7 @@
 ```
 apps/
   server/   Fastify API, status engine, monitoring adapters, background worker
-  web/      React SPA: public status page (/) and management UI (/admin)
+  web/      React: public status page (/, server-rendered and hydrated) and management UI (/admin, SPA)
 packages/
   shared/   zod schemas, API types and status vocabulary used by both apps
 docker/     Dockerfile
@@ -11,7 +11,8 @@ deploy/     compose/ (Docker Compose, release assets) and kubernetes/ manifests
 docs/       documentation
 ```
 
-In production a single Node process serves the API and the built SPA.
+In production a single Node process serves the API, the server-rendered public
+pages and the built management SPA.
 
 ## Privacy model
 
@@ -230,6 +231,215 @@ Instances that migrate run `osp_grant_public_role()` on start
 worker renders them (`NotificationService`). See
 [security-model.md](security-model.md).
 
+## Server-side rendering
+
+The public pages are rendered on the server and hydrated in the browser, so
+they work without JavaScript and search engines get the content in the HTML.
+The management UI (`/admin`) stays a client-rendered SPA and is sent with
+`X-Robots-Tag: noindex, nofollow`.
+
+```
+request /incidents/42 ─▶ app.ts (not-found handler, client route, not /admin)
+  └─ ssr/pages.ts      render cache? ── hit ─▶ 200/404 + ETag
+       └─ dist/.ssr/entry-server.mjs  render()          (imported on first use)
+            ├─ settings → language (?lang=, cookie, Accept-Language, default), theme
+            ├─ handle.prefetch of the matched routes (public/routes.tsx)
+            │    └─ publicQueries.*(get)  ─▶ ssr/source.ts ─▶ PublicDocuments  (in-process)
+            ├─ renderToString(StaticRouterProvider)  + usePageHead() collected
+            └─ dehydrate(QueryClient) ─▶ <script type="application/json" id="osp-state">
+  └─ public.html template: <html lang dir data-theme>, head, markup, state block
+browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(), hydrateRoot()
+```
+
+- **One data path.** `publicQueries` (`apps/web/src/public/hooks/queries.ts`)
+  builds the query options of every public page for a document source: HTTP in
+  the browser, the server's own document builders
+  (`services/public-documents.ts`, which the `/api/public` routes use as well)
+  during rendering. Keys and deserialization are therefore identical, and the
+  dehydrated state is exactly what the hooks expect. "Not found" answers are
+  dehydrated too, so a 404 page hydrates into the same state.
+- **Route loaders.** Each public route lists the queries of its first render in
+  `handle.prefetch` (`public/routes.tsx`, types in `public/loaders.ts`). The
+  settings query always runs first.
+- **Page head.** Every page calls `usePageHead({ title, description, canonical,
+  robots, status, home, breadcrumbs, article })` (`public/head.tsx`). The server writes the result
+  into `<head>` and uses `status` as the HTTP status (404 for unknown pages,
+  services, incidents and maintenance windows); in the browser the same store
+  keeps `document.head` in sync after navigations. URLs are absolute with
+  `PUBLIC_BASE_URL`. See [Search engines and AI agents](#search-engines-and-ai-agents).
+- **Deterministic first render.** The server renders against its render time,
+  in UTC and with ICU-free formatting (`neutral` in `public/utils/time.ts`:
+  ISO dates, 24-hour times, SI-style durations, country codes); the theme comes
+  from the `osp-theme` cookie or the page default. Hydration repeats exactly
+  that (`useHydrated()` and `SsrProvider` in `lib/ssr.tsx`), then the browser
+  switches to the visitor's clock, time zone and localized formats. The
+  interactive world map loads lazily after hydration; until then (and without
+  JavaScript) the static map of the server stands in at the same size.
+  `apps/web/src/ssr.test.tsx` hydrates every page in jsdom and fails on any
+  hydration warning.
+- **Language.** `?lang=` (a language version of a page, as its canonical URL
+  says), then the `osp-lang` cookie (set by the language switcher), then
+  `Accept-Language`, then the page default (`lib/languages.ts`). The browser
+  switches to the server's language before hydrating.
+- **Caching.** A rendered page is kept for 5 s per URL (only the query
+  parameters the pages read: `pageUrl` of the bundle, so `?utm_source=` or a
+  cache-busting parameter share the render), language and theme input
+  (`cacheKey` of the bundle; at most 16 pages and 1 MiB including the compressed
+  copy, one render per key at a time, one render at once with at most 4
+  waiting; a full queue is logged at most every 10 s) and sent
+  with a weak `ETag`, `Vary: Accept-Language, Cookie, Accept-Encoding` and
+  `Cache-Control: public, max-age=10, stale-while-revalidate=60` (`private,
+  no-store` for the personal subscription links). If-None-Match answers 304.
+- **Overload.** An expired page stays in the same bounded cache for a stale
+  window of 10 minutes (the 16-page and 1 MiB limits still apply, oldest
+  first). Within the 5 s a page is fresh it is sent as before; after that a
+  request renders it again when a render slot or waiting place is free. When
+  the queue is full (or the render fails), the last rendered version answers
+  with `X-Cache: STALE`, its own `ETag` (If-None-Match still answers 304) and
+  `Cache-Control: public, max-age=5`. Without such a version a full queue
+  answers `503` with `Retry-After: 5`, `Cache-Control: no-store`,
+  `X-Robots-Tag: noindex` and a small static page in the request's language
+  (`ssr/busy.ts`: `?lang=`, cookie, Accept-Language, else English; no scripts).
+  Personal pages are never kept, so they get the 503 under overload.
+- **Compression.** Each render is gzip-compressed once and kept with the page;
+  clients that accept gzip get that copy. Static files are compressed at build
+  time (Brotli and gzip, `apps/web/tools/precompress.ts`) and sent as they are;
+  hashed files in `/assets/` are cached for a year (`immutable`). See
+  [performance.md](performance.md).
+- **Failure.** A render error or a missing bundle is logged and the plain
+  client-rendered entry page is sent instead (a stale copy of the page, if the
+  cache has one, is preferred); the page still works with JavaScript. A flood
+  of distinct URLs cannot queue without bound: beyond 4 waiting pages see
+  Overload above.
+- **Accent color.** The configured accent and its contrast-safe variants for
+  both themes go into a `<style>` in the head (`public/utils/accent.ts`), so the
+  page has its colors before (and without) hydration.
+- **Build.** `pnpm --filter @openstatuspage/web build` runs `vite build` (the
+  two client entries) and `vite build --ssr src/entry-server.tsx --outDir
+  dist/.ssr`: one self-contained, minified, ASCII-only ES module with every
+  dependency bundled (the image has no `node_modules` for the web client) and
+  `renderToString` only (not the streaming renderer). The public route tree only:
+  `entry-server.tsx` must never import `./admin`. Neither `.vite/` nor `.ssr/`
+  is ever served as a file. The client build also writes `/world-map.svg`, the
+  country shapes of the static map (`apps/web/tools/world-map.ts`).
+
+### Without JavaScript
+
+Every public page is fully usable without JavaScript; scripts only enhance it
+(no page load for a filter, live updates every 60 s, the interactive map, the
+visitor's time zone). The rules:
+
+- **Controls are links and forms.** Every filter, range and toggle lives in the
+  URL, so the server renders its result: history filters are a GET form
+  (`type`, `service`, `location`, `month`) and its pages links (`page`), the
+  service search a GET form (`q`) and the status counters links (`status`),
+  "all upcoming maintenance" a link (`upcoming=all`). Submit buttons that only
+  browsers without JavaScript need are inside `<noscript>` (`NoScript`), so
+  hydration moves nothing; with JavaScript every change applies at once.
+- **Disclosures are `<details>`.** The subscribe menu, the language menu, the
+  collapsible service groups and the daily uptime table open without scripts.
+  With JavaScript the `Disclosure` component also closes them on Escape and on
+  a click outside.
+- **Tooltips have a visible equivalent.** The days of an uptime bar are listed in
+  a table on the service page; the world map's markers are drawn on the server
+  (`StaticWorldMap`: the country shapes of `/world-map.svg` as a CSS mask in the
+  theme color, the markers with the fixed projection of
+  `public/utils/map-projection.ts`); the location list below it has every
+  location with its status.
+- **Preferences.** The theme switcher is a form posting to `/preferences/theme`
+  and the language switcher links to `/preferences/language?lang=…` (on the
+  personal subscription pages it is a form posting there, so the token in their
+  return path never ends up in a URL); both set
+  their cookie and redirect back (`forms/preferences.ts`). The `system` theme
+  follows `prefers-color-scheme` in CSS. Times are in UTC until hydration, so the
+  time zone toggle is a label until then. Every page lists its other languages
+  as `hreflang` alternates (`?lang=xx`, `x-default` without).
+- **Forms post to form handlers** outside `/api` (`apps/server/src/forms/`,
+  `application/x-www-form-urlencoded`, paths in `FORM_PATHS` of
+  `@openstatuspage/shared`): `/subscribe`, `/subscription/confirm`,
+  `/subscription/manage`, `/subscription/unsubscribe`. They use the same
+  subscription flow and rate limits as the JSON:API, and Post/Redirect/Get: a
+  success redirects (`303`) to a page that shows the outcome from a query flag
+  (`?sent=1`, `?saved=1`, `?confirmed=1`, `?unsubscribed=1`, `?error=invalid`).
+  Invalid input is answered with the page itself (`422`, `SsrPages.sendForm`):
+  the server renders it with the submitted values and errors (`SsrFormState`,
+  carried into hydration by the state block), with an error summary and the
+  error in the title. Without the render bundle the answer is a redirect with
+  `?error=<code>`. Requests from other sites are rejected (`Sec-Fetch-Site`,
+  `Origin`; see [security-model.md](security-model.md#html-forms)). With
+  JavaScript the same forms post to the JSON:API instead.
+- **Links in emails carry the token in the query**, so the server can render the
+  confirm and manage pages (the route loader reads the subscription through the
+  in-process source). Confirming takes one click on a form, so a mail scanner
+  that opens the link confirms nothing. Links of older emails with the token in
+  the URL fragment keep working with JavaScript.
+- **No live updates without JavaScript**, and no `<meta http-equiv="refresh">`
+  (it would move the reader's focus and position): the overview says when the
+  status was last updated, a reload shows the current one.
+- `apps/server/test/nojs-pages.test.ts` fetches every page and checks that each
+  control is a link or a form with its action, method and field names, and that
+  no button, field or tab stop depends on a script.
+
+## Search engines and AI agents
+
+The public page describes itself for search engines, link previews and AI
+agents. Everything is built from the page settings and public data only.
+
+- **Page head** (`apps/web/src/public/head.tsx`, `seo.ts`; the element list is
+  `headElements()` in `packages/shared/src/ssr.ts`, used by the server's HTML and
+  the browser's DOM alike):
+  - `<title>` "Page · Site" (the overview: the site name), a description of at
+    most 160 characters (the service description, the latest incident update,
+    the maintenance description, else a generated sentence; the overview uses
+    the page description of the settings),
+  - `robots`: `index, follow`; `noindex` for 404 pages (also a history page
+    beyond the last one) and the subscription links (confirm, manage,
+    unsubscribe), which have no canonical URL either; `noindex, follow` without
+    a canonical URL for variants of a page: a filtered, searched or later
+    history page (`?type=`, `?page=2` ...), a searched or filtered service list,
+    `/?upcoming=all` and the states of the subscribe page (`?sent=1`,
+    `?error=`, the answer to a form),
+  - `canonical`: the path without query, lower case and without a trailing
+    slash (the server answers other spellings of a path with a `301` to this
+    one); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
+    `?lang=xx` for every language and the plain path (language from cookie,
+    `Accept-Language` or the page default) as `x-default`. A service's
+    canonical path is its slug.
+  - Open Graph and Twitter card (`summary`): site name, title, description, URL,
+    `og:locale` (`en_US`, `de_DE`) with the other languages as alternates, and
+    the logo of the settings as image (no image tags without a logo);
+    `theme-color` is the accent color.
+- **JSON-LD** (schema.org), only on indexable pages: `WebSite` and
+  `Organization` (name, URL, logo) on the overview, `BreadcrumbList` on every
+  other page, `Article` on incident and maintenance pages (headline,
+  `datePublished` = start of the incident / creation of the maintenance window,
+  `dateModified`, author and publisher = the organization). No `Event` markup:
+  an outage is not an event anybody attends. Escaped with `scriptJson`.
+- **Discovery files** (`apps/server/src/routes/discovery.ts`, data from
+  `services/site-index.ts`; registered before the web client, never rendered):
+
+  | Path | Roles | Content |
+  | --- | --- | --- |
+  | `/robots.txt` | public, all | `Allow: /` and `/api/public/` (the read-only API llms.txt points to), `Disallow: /api/public/subscriptions`, `/api/`, `/admin`, `/subscription/`, `/preferences/`, `Sitemap:` |
+  | `/robots.txt` | admin | `Disallow: /` (a preview, not the status page) |
+  | `/sitemap.xml` | public, all | sitemap index of the files below |
+  | `/sitemap-pages.xml` | public, all | overview, services, history, locations and subscribe (when switched on) |
+  | `/sitemap-incidents-N.xml` | public, all | public incidents, then public maintenance windows, with `lastmod` |
+  | `/sitemap-services-N.xml` | public, all | public service pages, `lastmod` = last change or status change |
+  | `/llms.txt` | public, all | [llmstxt.org](https://llmstxt.org) summary: pages, JSON:API, feeds |
+  | `/llms-full.txt` | public, all | the current status as Markdown: overall status, active incidents, maintenance, services |
+
+  A sitemap file holds at most 5,000 URLs (`SITEMAP_PAGE_SIZE`, the protocol
+  allows 50,000), which keeps a response well below a megabyte. Responses are
+  cached by clients and proxies (`Cache-Control`: robots 1 h, sitemaps 15 min,
+  llms.txt 5 min, llms-full.txt 1 min). On PostgreSQL a public instance reads
+  them through the `osp_public` views like every other public query. Admin text
+  is XML-escaped in sitemaps and cannot add Markdown headings or links to the
+  llms files (titles are single lines with escaped brackets, messages are block
+  quotes). New form handlers outside `/api/` belong into `DISALLOWED_PATHS`.
+  The web build must not contain files with these names (`@fastify/static`
+  would register the same routes).
+
 ## Memory
 
 Target: less than 100 MB resident memory (RSS) per instance. Measured with
@@ -237,25 +447,65 @@ Target: less than 100 MB resident memory (RSS) per instance. Measured with
 linux/arm64, the production image) against PostgreSQL 17 with the demo seed. The
 script starts the production build once per role, one instance at a time, and
 puts light load on it: a login and the main admin lists (admin, all), 400 public
-requests with 8 in parallel plus three subscriptions (public, admin, all), and a
-monitoring source polled every 10 s from a local fake Uptime Kuma for 40 s
-(worker, all). "After load" is read after 15 s without requests.
+requests with 8 in parallel (server-rendered pages of every kind in both
+languages, the public API, feeds, sitemaps, llms.txt and assets) plus three
+subscriptions through the API and two through the HTML form, one of them invalid
+and answered with the rendered page (public, admin, all), and a monitoring source
+polled every 10 s from a local fake Uptime
+Kuma for 40 s (worker, all). After the light load comes a burst (public, admin,
+all): 64 connections at once, four requests each, pages the render cache cannot
+answer (a new search, a new history page) and the summary API. "After load" is
+read after 15 s without requests.
 
-| Role | After start | Peak under load | After load | Kernel peak (VmHWM) |
-| --- | --- | --- | --- | --- |
-| public | 84 MB | 94 MB | 83 MB | 94 MB |
-| admin | 90 MB | 102 MB | 90 MB | 111 MB |
-| worker | 80 MB | 84 MB | 84 MB | 92 MB |
-| all | 85 MB | 106 MB | 95 MB | 110 MB |
-| all (SQLite) | 95 MB | 101 MB | 101 MB | 116 MB |
+| Role | After start | Peak under load | Peak under burst (64 connections) | After load | Kernel peak (VmHWM) |
+| --- | --- | --- | --- | --- | --- |
+| public | 77 MB | 93 MB | 95–97 MB | 81–83 MB | 97–99 MB |
+| admin | 85 MB | 103 MB | 106 MB | 92 MB | 110 MB |
+| worker | 74 MB | 80 MB | – | 76 MB | 90 MB |
+| all | 81 MB | 100 MB | 106 MB | 97 MB | 113 MB |
 
-What the target covers: `public` and `worker` stay below 100 MB at every
-point, also at their kernel peak. `admin` and `all` stay below it after start and
-at steady state, but exceed it briefly under load: up to 102 MB (admin) and
-106 MB (all) in the samples, 110–116 MB at the kernel peak, mostly while a
+Public: four runs; the range is their spread. One page renders at a time and at
+most four wait; beyond that a request got the client-rendered page when this
+was measured (now the last rendered version from the cache or the small 503
+page, neither renders anything; the cache limits are unchanged). With two
+renders and 32 waiting (the setting before) the same burst took the public
+instance to 110 MB (kernel peak 111 MB), with one render and 8 waiting to 98–99
+MB (kernel peak 100 MB).
+
+These are the numbers with the pages working without JavaScript (forms, static
+map, day tables), the page head for search engines and gzip-compressed pages
+(public: two runs, peak 95.9 and 96.4 MB). The build before the compression,
+measured the same way, had public 76 / 95 / 83 MB (kernel peak 97 MB): the
+compressed copy of a page in the render cache and the compression itself cost
+about 1 MB. The pages working without JavaScript were paid for by moving the
+layout of the uptime bar segments into the stylesheet.
+
+Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
+after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
+render bundle is imported on the first page request, so "after start" does not
+include it.
+
+What the target covers: `worker` stays below 100 MB at every point, also at its
+kernel peak. `public` stays below it under the light load and under bursts of
+up to 64 concurrent connections, also at its kernel peak. More concurrent
+connections cost memory of their own (every connection has buffers, and the
+pages and documents in flight are held until sent): 128 connections took the
+public instance to 106 MB, 200 to 108 MB, and 64 connections to the summary API
+alone (no rendering) to 98 MB. A public instance cannot refuse connections by
+itself, so limit them at the reverse proxy, for example to 32 concurrent
+connections or requests per instance (nginx `limit_conn`, Traefik
+`inFlightReq`, HAProxy `maxconn` on the server line), and let more instances
+share the load. `admin` and `all` stay below it after start and
+at steady state, but exceed it briefly under load: up to 106 MB (admin and
+all) in the samples, 106–108 MB at the kernel peak, mostly while a
 password is checked (see below). Size memory limits for these peaks, not for the
 target: the Kubernetes examples request 128 MiB and limit at 256 MiB, and
 `deploy/compose/compose.split.yaml` sets the same limits.
+
+Before `--max-opt=2` (see the runtime flags below) and without server-side
+rendering the numbers were public 84 / 94 / 83 MB, admin 90 / 102 / 90 MB, worker
+80 / 84 / 84 MB and all 85 / 106 / 95 MB; with server-side rendering but without
+`--max-opt=2` the public instance peaked at 107 MB.
 
 The same build and load before the changes below: public 98 / 118 / 105 MB,
 admin 113 / 133 / 120 MB, worker 105 / 112 / 100 MB and all 108 / 129 / 117 MB
@@ -283,8 +533,18 @@ What keeps it small:
   client (first import job) and mysql2 (Icinga DB import) are loaded on first use.
 - **No ICU on hot paths.** Feeds and mails format dates without `Intl`
   (`formatUtcDateTime` in `lib/time.ts`), the public history sorts without
-  `localeCompare`.
-- **Bounded caches.** There is no response or query cache. The rate limiter
+  `localeCompare`, and server-side rendering formats without `Intl` until
+  hydration (`neutral` in `apps/web/src/public/utils/time.ts`); only i18next's
+  plural rules touch ICU there. The browser reuses its `Intl` formatters
+  (`public/utils/intl.ts`).
+- **A small render bundle, loaded late.** The server-side rendering bundle
+  (about 500 kB, ASCII only, `renderToString` without the streaming renderer,
+  only the `common` and `public` translations) is imported on the first page
+  request, one page renders at a time (at most 4 wait, the rest get the
+  last rendered version or a 503 busy page).
+- **Bounded caches.** The only response cache holds rendered public pages for
+  5 s, and expired ones for another 10 minutes to answer under overload (at
+  most 16 pages and 1 MiB together, as UTF-8 bytes); there is no query cache. The rate limiter
   keeps at most 1000 clients per route (`RATE_LIMIT_KEYS`), the per-source
   limiter of the ingest endpoints 10 000 keys. The web asset policy keeps only
   the file names of the public entry, never file contents.
@@ -295,14 +555,15 @@ What keeps it small:
   | `NODE_OPTIONS` | `--max-semi-space-size=1 --max-old-space-size=96` | A 1 MB young generation (Node's default grows to 16 MB per semi-space) saves about 10 MB at little GC cost for short requests. The old generation cap turns a leak into a restart instead of swapping. |
   | `MALLOC_ARENA_MAX` | `2` | glibc creates a malloc arena per thread; two arenas save several MB of fragmented native memory. |
   | `UV_THREADPOOL_SIZE` | `2` | Every libuv thread that ran an Argon2 hash keeps 2–3 MB; two threads are plenty for file reads, DNS and password checks of a status page. |
+  | `node --max-opt=2` (command) | – | No TurboFan; Ignition, Sparkplug and Maglev still run. TurboFan's optimized code and compiler zones cost 10–15 MB per instance (the public instance with server-side rendering peaked at 107 MB with it), more than a status page gains in speed. NODE_OPTIONS cannot carry this V8 flag, so the image's `CMD` and `pnpm start` pass it. |
 
   The health check of the image uses bash instead of a second node process
   (about 40 MB every 30 s inside the container's memory limit).
 
 Raise the cap for a large history import on an admin instance, e.g.
 `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=256`. Without the
-image, set the same variables yourself to get the numbers above; without them
-every role needs about 10 MB more.
+image, set the same variables and start with `node --max-opt=2` yourself to get
+the numbers above; without them every role needs about 10–20 MB more.
 
 To measure your own build: start a throwaway PostgreSQL, create the roles
 (`deploy/postgres/roles.sql`), `pnpm -r build`, then
@@ -311,7 +572,7 @@ To measure your own build: start a throwaway PostgreSQL, create the roles
 DATABASE_URL=postgres://owner:...@127.0.0.1:5432/osp_memory \
 PUBLIC_DATABASE_URL=postgres://osp_public:...@127.0.0.1:5432/osp_memory \
 MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 \
-pnpm measure:memory --node-args="--max-semi-space-size=1 --max-old-space-size=96"
+pnpm measure:memory --node-args="--max-semi-space-size=1 --max-old-space-size=96 --max-opt=2"
 ```
 
 on an empty database. Use Linux (or the image) for comparable numbers: macOS

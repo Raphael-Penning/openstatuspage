@@ -1,5 +1,6 @@
 import type { HistoryItem, HistoryQuery } from '@openstatuspage/shared';
-import { ChevronDown, ChevronLeft, ChevronRight, RotateCcwClock, X } from 'lucide-react';
+import { clsx } from 'clsx';
+import { ChevronDown, ChevronLeft, ChevronRight, Filter, RotateCcwClock, X } from 'lucide-react';
 import { useId, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
@@ -9,13 +10,14 @@ import {
   MaintenanceIcon,
   MaintenanceStatusBadge,
 } from '../components/Events';
+import { NoScript } from '../components/NoScript';
 import { DateTime } from '../components/Time';
 import { Card, EmptyState, ErrorState, PageTitle, SkeletonList } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { useHistory, useLocations, usePublicSettings, useServices } from '../hooks/queries';
 import { flattenServices, maintenanceEnd, maintenanceStart } from '../utils/status';
-import { formatMonth, monthKey, recentMonths } from '../utils/time';
+import { monthKey, recentMonths } from '../utils/time';
+import { usePageHead, useSiteName, VARIANT_HEAD } from '../head';
 
 const PAGE_SIZE = 20;
 const TYPES = ['all', 'incident', 'maintenance'] as const;
@@ -23,6 +25,23 @@ type HistoryType = (typeof TYPES)[number];
 
 function parseType(value: string | null): HistoryType {
   return TYPES.includes(value as HistoryType) ? (value as HistoryType) : 'all';
+}
+
+/**
+ * Query of the history list from the URL (?type, ?service, ?location, ?month,
+ * ?page). Shared with the route loader so the server prefetches the same key.
+ */
+export function historyQuery(params: URLSearchParams, showLocations: boolean): Partial<HistoryQuery> {
+  const location = showLocations ? (params.get('location') ?? '') : '';
+  const month = /^\d{4}-\d{2}$/.test(params.get('month') ?? '') ? params.get('month')! : '';
+  return {
+    type: parseType(params.get('type')),
+    serviceId: params.get('service') || undefined,
+    locationId: location || undefined,
+    month: month || undefined,
+    page: Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1),
+    pageSize: PAGE_SIZE,
+  };
 }
 
 export function HistoryPage() {
@@ -33,35 +52,43 @@ export function HistoryPage() {
   const showLocations = settings?.showLocations !== false;
   const services = useServices();
   const locations = useLocations(showLocations);
-  useDocumentTitle(t('nav.history'));
+  const site = useSiteName();
 
-  const type = parseType(params.get('type'));
-  const serviceId = params.get('service') ?? '';
-  const locationId = showLocations ? (params.get('location') ?? '') : '';
-  const month = /^\d{4}-\d{2}$/.test(params.get('month') ?? '') ? params.get('month')! : '';
-  const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
-
-  const query: Partial<HistoryQuery> = {
-    type,
-    serviceId: serviceId || undefined,
-    locationId: locationId || undefined,
-    month: month || undefined,
-    page,
-    pageSize: PAGE_SIZE,
-  };
+  const query = historyQuery(params, showLocations);
+  const { type, page } = query as { type: HistoryType; page: number };
+  const serviceId = query.serviceId ?? '';
+  const locationId = query.locationId ?? '';
+  const month = query.month ?? '';
   const { data, isPending, isError, isPlaceholderData, refetch } = useHistory(query);
+  const filtered = type !== 'all' || serviceId || locationId || month;
+  // A page beyond the last one does not exist (no soft 404).
+  const outOfRange = page > 1 && data !== undefined && data.items.length === 0;
+  // Only the unfiltered first page is indexed; filtered and later pages are
+  // followed (their links lead to the incidents) but not indexed.
+  usePageHead({
+    title: t('nav.history'),
+    description: t('seo.history', { site }),
+    breadcrumbs: [{ name: t('nav.history'), path: '/history' }],
+    ...(outOfRange ? { status: 404, robots: 'noindex', canonical: null } : filtered || page > 1 ? VARIANT_HEAD : {}),
+  });
 
-  function update(key: string, value: string) {
+  /** The query string with one filter changed (filters reset the page). */
+  function withFilter(key: string, value: string): URLSearchParams {
     const next = new URLSearchParams(params);
     if (value && !(key === 'type' && value === 'all')) next.set(key, value);
     else next.delete(key);
     if (key !== 'page') next.delete('page');
-    setParams(next, { replace: key !== 'page' });
+    return next;
   }
+  const update = (key: string, value: string) => setParams(withFilter(key, value), { replace: true });
+  const pageHref = (n: number) => {
+    const qs = withFilter('page', n > 1 ? String(n) : '').toString();
+    return qs ? `/history?${qs}` : '/history';
+  };
 
-  const months = useMemo(() => recentMonths(new Date(), 24), []);
+  const currentMonth = monthKey(new Date(f.now));
+  const months = useMemo(() => recentMonths(new Date(`${currentMonth}-01T00:00:00Z`), 24), [currentMonth]);
   const serviceOptions = services.data ? flattenServices(services.data.groups, services.data.ungrouped) : [];
-  const filtered = type !== 'all' || serviceId || locationId || month;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   const sections = useMemo(() => {
@@ -81,13 +108,15 @@ export function HistoryPage() {
 
       <Card as="section" className="p-4 sm:p-5">
         <h2 className="sr-only">{t('history.filters')}</h2>
+        {/* A GET form: without JavaScript "Apply" loads the filtered page; with JavaScript every change applies at once. */}
+        <form method="get" action="/history" onSubmit={(e) => e.preventDefault()}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <FilterSelect label={t('history.type')} value={type} onChange={(v) => update('type', v)}>
+          <FilterSelect name="type" label={t('history.type')} value={type} onChange={(v) => update('type', v)}>
             <option value="all">{t('history.types.all')}</option>
             <option value="incident">{t('history.types.incident')}</option>
             <option value="maintenance">{t('history.types.maintenance')}</option>
           </FilterSelect>
-          <FilterSelect label={t('history.service')} value={serviceId} onChange={(v) => update('service', v)}>
+          <FilterSelect name="service" label={t('history.service')} value={serviceId} onChange={(v) => update('service', v)}>
             <option value="">{t('history.allServices')}</option>
             {serviceOptions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -96,7 +125,7 @@ export function HistoryPage() {
             ))}
           </FilterSelect>
           {showLocations && (
-            <FilterSelect label={t('history.location')} value={locationId} onChange={(v) => update('location', v)}>
+            <FilterSelect name="location" label={t('history.location')} value={locationId} onChange={(v) => update('location', v)}>
               <option value="">{t('history.allLocations')}</option>
               {(locations.data?.locations ?? []).map((l) => (
                 <option key={l.id} value={l.id}>
@@ -105,25 +134,35 @@ export function HistoryPage() {
               ))}
             </FilterSelect>
           )}
-          <FilterSelect label={t('history.month')} value={month} onChange={(v) => update('month', v)}>
+          <FilterSelect name="month" label={t('history.month')} value={month} onChange={(v) => update('month', v)}>
             <option value="">{t('history.allMonths')}</option>
             {months.map((m) => (
               <option key={m} value={m}>
-                {formatMonth(m, f.locale)}
+                {f.month(m)}
               </option>
             ))}
           </FilterSelect>
         </div>
-        {filtered && (
-          <button
-            type="button"
-            onClick={() => setParams(new URLSearchParams(), { replace: true })}
-            className="mt-3 inline-flex items-center gap-1.5 text-sm text-[color:var(--osp-accent-text,var(--accent))] hover:underline"
-          >
-            <X aria-hidden className="size-4" />
-            {t('history.reset')}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <NoScript>
+            <button type="submit" className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-4 py-1.5 text-sm font-medium hover:border-accent">
+              <Filter aria-hidden className="size-4" />
+              {t('history.apply')}
+            </button>
+          </NoScript>
+          {filtered && (
+            <Link
+              to="/history"
+              replace
+              preventScrollReset
+              className="mt-3 inline-flex items-center gap-1.5 text-sm text-[color:var(--osp-accent-text,var(--accent))] hover:underline"
+            >
+              <X aria-hidden className="size-4" />
+              {t('history.reset')}
+            </Link>
+          )}
+        </div>
+        </form>
       </Card>
 
       {isPending ? (
@@ -143,7 +182,7 @@ export function HistoryPage() {
             {sections.map((s) => (
               <section key={s.month} aria-labelledby={`month-${s.month}`}>
                 <h2 id={`month-${s.month}`} className="mb-3 text-sm font-semibold tracking-wide text-muted uppercase">
-                  {formatMonth(s.month, f.locale)}
+                  {f.month(s.month)}
                 </h2>
                 <Card className="overflow-hidden">
                   <ul className="divide-y divide-border">
@@ -158,15 +197,15 @@ export function HistoryPage() {
 
           {totalPages > 1 && (
             <nav aria-label={t('history.pagination')} className="mt-8 flex items-center justify-between gap-3">
-              <PageButton disabled={page <= 1} onClick={() => update('page', String(page - 1))}>
+              <PageLink disabled={page <= 1} to={pageHref(page - 1)} rel="prev">
                 <ChevronLeft aria-hidden className="size-4" />
                 {t('history.previous')}
-              </PageButton>
+              </PageLink>
               <span className="text-sm text-muted">{t('history.pageOf', { page, total: totalPages })}</span>
-              <PageButton disabled={page >= totalPages} onClick={() => update('page', String(page + 1))}>
+              <PageLink disabled={page >= totalPages} to={pageHref(page + 1)} rel="next">
                 {t('history.next')}
                 <ChevronRight aria-hidden className="size-4" />
-              </PageButton>
+              </PageLink>
             </nav>
           )}
         </div>
@@ -176,11 +215,13 @@ export function HistoryPage() {
 }
 
 function FilterSelect({
+  name,
   label,
   value,
   onChange,
   children,
 }: {
+  name: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -195,6 +236,7 @@ function FilterSelect({
       <div className="relative">
         <select
           id={id}
+          name={name}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="min-h-10 w-full cursor-pointer appearance-none rounded-xl border border-border-strong bg-surface-2 py-2 pr-9 pl-3 text-sm focus:border-accent"
@@ -207,19 +249,20 @@ function FilterSelect({
   );
 }
 
-function PageButton({ disabled, onClick, children }: { disabled: boolean; onClick: () => void; children: ReactNode }) {
+/** Link to the previous / next page (works without JavaScript); a dimmed label at the ends. */
+function PageLink({ disabled, to, rel, children }: { disabled: boolean; to: string; rel: 'prev' | 'next'; children: ReactNode }) {
+  const className = 'inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium';
+  if (disabled) {
+    return (
+      <span aria-disabled="true" className={clsx(className, 'opacity-40')}>
+        {children}
+      </span>
+    );
+  }
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => {
-        onClick();
-        window.scrollTo({ top: 0 });
-      }}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium hover:border-accent disabled:pointer-events-none disabled:opacity-40"
-    >
+    <Link to={to} rel={rel} onClick={() => window.scrollTo({ top: 0 })} className={clsx(className, 'hover:border-accent')}>
       {children}
-    </button>
+    </Link>
   );
 }
 

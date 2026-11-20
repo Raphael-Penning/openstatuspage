@@ -6,7 +6,7 @@ import { clsx } from 'clsx';
 import { CircleExclamationPoint, Inbox, RotateCcw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { STATUS_BG } from '../../lib/status';
 
 /** Tinted badge backgrounds per status (text stays text-fg for contrast in both themes). */
@@ -64,8 +64,13 @@ export function SkeletonList({ rows = 3, className }: { rows?: number; className
   );
 }
 
+/**
+ * Error with a retry action: a link that reloads the page (works without
+ * JavaScript); with JavaScript it refetches in place.
+ */
 export function ErrorState({ onRetry, className, message }: { onRetry?: () => void; className?: string; message?: string }) {
   const { t } = useTranslation('public');
+  const { pathname, search } = useLocation();
   return (
     <Card className={clsx('flex flex-col items-center gap-3 px-6 py-10 text-center', className)}>
       <CircleExclamationPoint aria-hidden className="size-8 text-status-major-outage-text" />
@@ -74,14 +79,17 @@ export function ErrorState({ onRetry, className, message }: { onRetry?: () => vo
         <p className="mt-1 text-sm text-muted">{t('error.description')}</p>
       </div>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
+        <a
+          href={pathname + search}
+          onClick={(e) => {
+            e.preventDefault();
+            onRetry();
+          }}
           className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 px-4 py-1.5 text-sm font-medium hover:border-accent focus-visible:outline-2 focus-visible:outline-focus"
         >
           <RotateCcw aria-hidden className="size-4" />
           {t('common:actions.retry')}
-        </button>
+        </a>
       )}
     </Card>
   );

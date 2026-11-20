@@ -1,16 +1,19 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canonicalPath, isPersonalPath, normalizePath } from '@openstatuspage/shared';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
+import { FRAMELESS_PAGE_CSP, PERMISSIONS_POLICY, PUBLIC_PAGE_CSP } from './lib/security-headers.js';
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
 import { registerRoutes } from './routes/index.js';
-import { webAssetPolicy } from './web-assets.js';
+import type { RenderModule, SsrPages } from './ssr/pages.js';
+import { staticCacheControl, webAssetPolicy } from './web-assets.js';
 
 export interface BuildAppOptions {
   config: Config;
@@ -23,13 +26,26 @@ export interface BuildAppOptions {
   logStream?: { write(line: string): void };
   /** Called for every registered route, after its plugin scope applied its hooks (tests). */
   onRoute?: (route: RouteOptions) => void;
+  /** Replaces the server-side rendering bundle of the web build (tests render from the web sources). */
+  ssrModule?: () => Promise<RenderModule>;
 }
 
-/** Replaces the value of every `token` query parameter: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1". */
+/** `?`, `&` and `=` as they appear in a URL-encoded parameter value, also encoded twice or more (`%253D`). */
+const ENC = (hex: string) => `%(?:25)*${hex}`;
+const TOKEN_PARAM = new RegExp(
+  // A parameter of its own, or one inside an encoded value such as return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3Dabc.
+  `((?:[?&]|${ENC('3F')}|${ENC('26')})token(?:=|${ENC('3D')}))(?:(?!${ENC('26')})[^&#])*`,
+  'gi',
+);
+
+/**
+ * Replaces the value of every `token` query parameter, also one nested in an
+ * encoded parameter value: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1".
+ */
 export function redactUrlTokens(url: string): string {
   const query = url.indexOf('?');
   if (query === -1) return url;
-  return url.slice(0, query) + url.slice(query).replace(/([?&]token=)[^&#]*/gi, '$1[REDACTED]');
+  return url.slice(0, query) + url.slice(query).replace(TOKEN_PARAM, '$1[REDACTED]');
 }
 
 interface LoggedRequest {
@@ -54,7 +70,7 @@ export function serializeRequest(req: LoggedRequest) {
   };
 }
 
-export async function buildApp({ config, db, serveWeb = true, mailer, logStream, onRoute }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, db, serveWeb = true, mailer, logStream, onRoute, ssrModule }: BuildAppOptions): Promise<FastifyInstance> {
   const loggerBase = {
     level: config.LOG_LEVEL,
     redact: ['req.headers.authorization', 'req.headers.cookie'],
@@ -94,16 +110,31 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     await app.register(cookie, { secret: config.SECRET_KEY });
   }
 
+  const adminInstance = config.APP_ROLE === 'admin';
   // Basic hardening headers. The public page may be embedded (iframe) by
   // customers; the management UI and the API may not.
   app.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Request path as the client router sees it, so that /ADMIN/... or /%61dmin/...
+    // (served by the SPA fallback) cannot skip the checks below.
     const path = normalizePath(req.url);
-    if (path === '/admin' || path.startsWith('/admin/') || isApiPath(path)) {
-      reply.header('X-Frame-Options', 'DENY');
+    // Subscription pages have a token in their URL: it never leaves as a referrer.
+    reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
+    const admin = path === '/admin' || path.startsWith('/admin/');
+    const framed = !(admin || isApiPath(path));
+    if (!framed) reply.header('X-Frame-Options', 'DENY');
+    // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
+    const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
+    if (html) {
+      reply.header('Content-Security-Policy', framed ? PUBLIC_PAGE_CSP : FRAMELESS_PAGE_CSP);
+      reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+      reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+    } else if (!framed) {
       reply.header('Content-Security-Policy', "frame-ancestors 'none'");
     }
+    // The management UI is never indexed by search engines, nor is any page of an
+    // admin instance (its public pages are a preview; the status page is elsewhere).
+    if (admin || (adminInstance && html)) reply.header('X-Robots-Tag', 'noindex, nofollow');
   });
 
   registerJsonApi(app);
@@ -124,15 +155,54 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
       wildcard: false,
       index: false,
       allowedPath: (pathname) => web.allows(pathname),
+      // Brotli/gzip copies written by the web build: no compression at runtime.
+      preCompressed: true,
+      setHeaders: (reply, path) => {
+        const cacheControl = staticCacheControl(path);
+        if (cacheControl) reply.header('Cache-Control', cacheControl);
+      },
     });
-    // SPA fallback: client routes (GET/HEAD, not /api, no file extension) return the
+    // Public pages are rendered on the server (ssr/pages.ts) where the web build has
+    // the render bundle and the role serves the public web client.
+    let ssr: SsrPages | null = null;
+    if (roleFeatures(config.APP_ROLE).publicWeb) {
+      const [{ SsrPages }, { PublicDocuments }, forms] = await Promise.all([
+        import('./ssr/pages.js'),
+        import('./services/public-documents.js'),
+        import('./forms/index.js'),
+      ]);
+      if (ssrModule || SsrPages.available(webDir)) {
+        ssr = new SsrPages({
+          webDir,
+          baseUrl: config.PUBLIC_BASE_URL,
+          docs: new PublicDocuments(ctx.db, ctx.mailer),
+          subscription: (id, token) => forms.subscriptionDocument(app, id, token),
+          log: app.log,
+          loadModule: ssrModule,
+        });
+      } else {
+        app.log.warn(`The web build in ${webDir} has no server-side rendering bundle; public pages render in the browser only`);
+      }
+      // HTML forms of the public pages (preferences, email subscription): they work without JavaScript.
+      await forms.registerFormRoutes(app, ssr);
+    }
+
+    // Client routes (GET/HEAD, not /api, no file extension): public pages are rendered
+    // on the server, the management UI (and a page that failed to render) gets the
     // entry page. Missing assets get a real 404 so stale chunk requests fail cleanly
     // after a deploy. A public instance answers /admin/... with 404.
-    app.setNotFoundHandler((req, reply) => {
+    app.setNotFoundHandler(async (req, reply) => {
       const path = req.url.split('?')[0] ?? '';
       const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
-        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index);
+        // One URL per page for search engines: /SERVICES/ → 301 /services. Not personal
+        // pages (their token would go into a cacheable redirect; they are never indexed).
+        const preferred = canonicalPath(path);
+        if (preferred !== path && !isAdminPath(path) && !isPersonalPath(path)) {
+          return reply.header('Cache-Control', CANONICAL_REDIRECT_CACHE).redirect(preferred + req.url.slice(path.length), 301);
+        }
+        if (ssr && !isAdminPath(path) && (await ssr.send(req, reply))) return reply;
+        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index, { cacheControl: false });
       }
       return routeNotFound(reply);
     });
@@ -142,6 +212,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
 
   return app;
 }
+
+/** Redirects to the preferred spelling of a page path are kept for a day. */
+const CANONICAL_REDIRECT_CACHE = 'public, max-age=86400';
 
 function routeNotFound(reply: FastifyReply) {
   return reply
@@ -156,21 +229,9 @@ function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((
   return value;
 }
 
-/**
- * Request path as the client router sees it: percent-decoded, lower-cased and
- * with repeated slashes collapsed. Used for the anti-framing check, so that
- * /ADMIN/... or /%61dmin/... (served by the SPA fallback) cannot skip it.
- * Malformed escapes keep the raw path, which the router does not decode either.
- */
-function normalizePath(url: string): string {
-  const raw = url.split('?')[0] ?? '';
-  let path = raw;
-  try {
-    path = decodeURIComponent(raw);
-  } catch {
-    // keep the raw path
-  }
-  return path.toLowerCase().replace(/\/{2,}/g, '/');
+function isAdminPath(path: string): boolean {
+  const normalized = normalizePath(path);
+  return normalized === '/admin' || normalized.startsWith('/admin/');
 }
 
 function isApiPath(path: string): boolean {

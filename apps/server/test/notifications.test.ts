@@ -162,10 +162,10 @@ describe('incident notifications', () => {
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       'Auto-Submitted': 'auto-generated',
     });
-    // Body links carry the valid manage token in the URL fragment.
-    expect(mail.text).toContain(`Manage subscription: ${BASE_URL}/subscription/manage?id=${sub.id}#token=${token}`);
-    expect(mail.text).toContain(`Unsubscribe: ${BASE_URL}/subscription/manage?id=${sub.id}&unsubscribe=1#token=${token}`);
-    expect(mail.html).toContain(`href="${BASE_URL}/subscription/manage?id=${sub.id}&amp;unsubscribe=1#token=${token}"`);
+    // Body links carry the valid manage token.
+    expect(mail.text).toContain(`Manage subscription: ${BASE_URL}/subscription/manage?id=${sub.id}&token=${token}`);
+    expect(mail.text).toContain(`Unsubscribe: ${BASE_URL}/subscription/manage?id=${sub.id}&token=${token}&unsubscribe=1`);
+    expect(mail.html).toContain(`href="${BASE_URL}/subscription/manage?id=${sub.id}&amp;token=${token}&amp;unsubscribe=1"`);
     expect(`${mail.text}${mail.html}`).not.toContain('__OSP_');
 
     // Update moves to another service.
@@ -440,12 +440,12 @@ describe('outbox delivery', () => {
     const confirmMail = byTo.get('pending@example.com')!;
     expect(confirmMail.subject).toBe('[Example Status] Bitte bestätige dein Abonnement');
     const confirmToken = subscriptionToken(t.config.SECRET_KEY, 'confirm', pending, salt(pending));
-    expect(confirmMail.text).toContain(`${BASE_URL}/subscription/confirm?id=${pending}#token=${confirmToken}`);
+    expect(confirmMail.text).toContain(`${BASE_URL}/subscription/confirm?id=${pending}&token=${confirmToken}`);
     expect(confirmMail.headers).toEqual({ 'Auto-Submitted': 'auto-generated' });
 
     const manageMail = byTo.get('confirmed@example.com')!;
     const manageToken = subscriptionToken(t.config.SECRET_KEY, 'manage', confirmed, salt(confirmed));
-    expect(manageMail.text).toContain(`${BASE_URL}/subscription/manage?id=${confirmed}#token=${manageToken}`);
+    expect(manageMail.text).toContain(`${BASE_URL}/subscription/manage?id=${confirmed}&token=${manageToken}`);
     expect(manageMail.text).not.toContain(TOKEN_PLACEHOLDERS.manage);
 
     // The status view keeps the subject the mail was sent with.

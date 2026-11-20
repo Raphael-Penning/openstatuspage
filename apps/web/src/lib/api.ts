@@ -147,6 +147,9 @@ export const api = {
   /** GET with the whole deserialized document (data, meta, links, included). */
   getDocument: async <T>(path: string, query?: Query, options?: RequestOptions): Promise<DeserializedDocument<T>> =>
     deserializeDocument<T>(asDataDocument(path, (await send('GET', path, undefined, query, options)).data)),
+  /** GET of the raw JSON:API data document (deserialized by the caller). */
+  document: async (path: string, query?: Query, options?: RequestOptions): Promise<DataDocument> =>
+    asDataDocument(path, (await send('GET', path, undefined, query, options)).data),
   /** GET of a paginated collection: `{ items, total, page, pageSize }`. */
   getPage: async <T>(path: string, params: ListParams = {}, options?: RequestOptions): Promise<Paginated<T>> =>
     deserializePage<T>(asDataDocument(path, (await send('GET', path, undefined, toQueryParams(params), options)).data)),

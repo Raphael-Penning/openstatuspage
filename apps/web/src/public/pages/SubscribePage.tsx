@@ -1,37 +1,63 @@
 /**
  * /subscribe: email subscription form (double opt-in).
+ *
+ * A plain form posting to /subscribe (form handler of the server): without
+ * JavaScript the server checks the input, answers invalid input with this page
+ * (values, error summary, field errors) and redirects to /subscribe?sent=1 on
+ * success. With JavaScript the page checks the input itself and posts to the
+ * JSON:API instead.
  */
-import { SubscribeInput, type SubscriptionLocale } from '@openstatuspage/shared';
+import { FORM_PATHS, type SubscriptionLocale } from '@openstatuspage/shared';
 import { Loader2, MailCheck, MailX } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
+import { useServerForm } from '../../lib/ssr';
 import {
+  ErrorSummary,
   FieldError,
   fieldClass,
   LocaleSelect,
   primaryButton,
   ResultState,
+  SCOPE_FIELD_ID,
   ScopePicker,
   secondaryButton,
 } from '../components/Subscription';
 import { Card, ErrorState, PageTitle, Skeleton } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
+import { usePageHead, useSiteName, VARIANT_HEAD } from '../head';
 import { useSummary } from '../hooks/queries';
 import { useSubscribe } from '../hooks/subscriptions';
 import {
+  formScope,
+  formValue,
   knownServiceIds,
+  serverFormErrors,
   serviceSections,
   subscriptionErrors,
   toSubscriptionLocale,
   type ServiceSection,
   type SubscriptionErrors,
 } from '../utils/subscription';
+import { loadSchemas } from '../utils/schemas';
+
+const EMAIL_FIELD_ID = 'subscription-email';
 
 export function SubscribePage() {
   const { t } = useTranslation('public');
-  useDocumentTitle(t('subscription.title'));
+  const site = useSiteName();
+  const [params] = useSearchParams();
+  const serverForm = useServerForm();
+  const hasErrors = Object.keys(serverFormErrors(serverForm, params.get('error'))).length > 0;
+  // A page that answers a form with errors says so in its title (read first by screen readers).
+  usePageHead({
+    title: hasErrors ? t('subscription.errors.titlePrefix', { title: t('subscription.title') }) : t('subscription.title'),
+    description: t('seo.subscribe', { site }),
+    breadcrumbs: [{ name: t('subscription.title'), path: '/subscribe' }],
+    // "Sent", an error and the answer to a form are states, not pages of their own.
+    ...(serverForm || params.has('sent') || params.has('error') ? VARIANT_HEAD : {}),
+  });
   const summary = useSummary();
   const [unavailable, setUnavailable] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -43,7 +69,8 @@ export function SubscribePage() {
   if (summary.isPending) return <SubscribeSkeleton />;
   if (summary.isError) return <ErrorState onRetry={() => void summary.refetch()} />;
   if (!summary.data.emailSubscriptions || unavailable) return <UnavailableState />;
-  if (sentTo) return <SentState email={sentTo} />;
+  // Sent with JavaScript (the address is known), or the redirect of the form handler.
+  if (sentTo || params.get('sent') === '1') return <SentState email={sentTo} />;
 
   return (
     <div>
@@ -63,14 +90,19 @@ function SubscribeForm({
   onSent: (email: string) => void;
 }) {
   const { t, i18n } = useTranslation('public');
-  const emailId = useId();
+  const [params] = useSearchParams();
+  // What the server answered to a form sent without JavaScript (values and errors).
+  const serverForm = useServerForm();
+  const errorId = useId();
   const emailRef = useRef<HTMLInputElement>(null);
   const scopeRef = useRef<HTMLFieldSetElement>(null);
-  const [email, setEmail] = useState('');
-  const [locale, setLocale] = useState<SubscriptionLocale>(() => toSubscriptionLocale(i18n.resolvedLanguage));
-  const [scope, setScope] = useState({ allServices: true, serviceIds: [] as string[] });
+  const [email, setEmail] = useState(() => formValue(serverForm, 'email'));
+  const [locale, setLocale] = useState<SubscriptionLocale>(() =>
+    toSubscriptionLocale(formValue(serverForm, 'locale') || i18n.resolvedLanguage),
+  );
+  const [scope, setScope] = useState(() => (serverForm ? formScope(serverForm, sections) : { allServices: true, serviceIds: [] as string[] }));
   const [website, setWebsite] = useState('');
-  const [errors, setErrors] = useState<SubscriptionErrors>({});
+  const [errors, setErrors] = useState<SubscriptionErrors>(() => serverFormErrors(serverForm, params.get('error')));
   const subscribe = useSubscribe();
   // After a failed submit the focus moves to the first invalid field, once its
   // error is rendered, so the error is announced with it (WCAG 3.3.1).
@@ -89,8 +121,13 @@ function SubscribeForm({
       return next;
     });
 
-  const submit = (e: FormEvent) => {
+  useEffect(() => {
+    void loadSchemas();
+  }, []);
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
+    const { SubscribeInput } = await loadSchemas();
     const parsed = SubscribeInput.safeParse({
       email: email.trim(),
       locale,
@@ -119,17 +156,25 @@ function SubscribeForm({
     });
   };
 
+  const problems = [
+    ...(errors.email ? [{ message: t(errors.email), field: EMAIL_FIELD_ID }] : []),
+    ...(errors.serviceIds ? [{ message: t(errors.serviceIds), field: SCOPE_FIELD_ID }] : []),
+    ...(errors.form ? [{ message: t(errors.form) }] : []),
+  ];
+
   return (
     <Card className="mx-auto max-w-2xl">
-      <form onSubmit={submit} noValidate className="relative flex flex-col gap-6 p-5 sm:p-8">
+      <form method="post" action={FORM_PATHS.subscribe} onSubmit={(e) => void submit(e)} noValidate className="relative flex flex-col gap-6 p-5 sm:p-8">
+        <ErrorSummary problems={problems} />
         <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={emailId} className="text-sm font-medium">
+            <label htmlFor={EMAIL_FIELD_ID} className="text-sm font-medium">
               {t('subscription.email')}
             </label>
             <input
               ref={emailRef}
-              id={emailId}
+              id={EMAIL_FIELD_ID}
+              name="email"
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -142,10 +187,10 @@ function SubscribeForm({
                 clearError('email');
               }}
               aria-invalid={errors.email ? true : undefined}
-              aria-describedby={errors.email ? `${emailId}-error` : undefined}
+              aria-describedby={errors.email ? errorId : undefined}
               className={fieldClass}
             />
-            <FieldError id={`${emailId}-error`}>{errors.email && t(errors.email)}</FieldError>
+            <FieldError id={errorId}>{errors.email && t(errors.email)}</FieldError>
           </div>
           <LocaleSelect value={locale} onChange={setLocale} />
         </div>
@@ -171,12 +216,6 @@ function SubscribeForm({
 
         <p className="rounded-xl bg-surface-2 px-4 py-3 text-xs text-muted">{t('subscription.privacy')}</p>
 
-        {errors.form && (
-          <p role="alert" className="rounded-xl bg-status-major-outage/10 px-4 py-3 text-sm text-status-major-outage-text">
-            {t(errors.form)}
-          </p>
-        )}
-
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Link to="/" className={secondaryButton}>
             {t('common:actions.cancel')}
@@ -191,7 +230,7 @@ function SubscribeForm({
   );
 }
 
-function SentState({ email }: { email: string }) {
+function SentState({ email }: { email: string | null }) {
   const { t } = useTranslation('public');
   return (
     <ResultState
@@ -203,7 +242,7 @@ function SentState({ email }: { email: string }) {
         </Link>
       }
     >
-      <p>{t('subscription.sent.description', { email })}</p>
+      <p>{email ? t('subscription.sent.description', { email }) : t('subscription.sent.descriptionGeneric')}</p>
       <p className="text-sm">{t('subscription.sent.hint')}</p>
     </ResultState>
   );

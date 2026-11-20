@@ -235,15 +235,27 @@ nötig.
 
 Eine Instanz braucht im normalen Betrieb etwa 80–100 MB Arbeitsspeicher; eine
 Passwortprüfung oder die erste Abfrage eines Prozesses kommt kurz mit 10–20 MB
-dazu. Ein Speicherlimit von 128 MB pro Container lässt genug Luft. Das
+dazu. Viele gleichzeitige Verbindungen kosten ebenfalls Speicher: Eine
+öffentliche Instanz bleibt bis etwa 64 gleichzeitige Verbindungen unter 100 MB.
+Begrenze sie deshalb am Reverse Proxy (zum Beispiel auf 32 pro Instanz) und
+starte eine weitere öffentliche Instanz, wenn du mehr brauchst. Ein
+Speicherlimit von 128 MB pro Container lässt genug Luft. Das
 Docker-Image setzt dafür die Optionen von Node.js und dem Speicher-Allocator
-(`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`). Ohne das Image setzt
-du sie selbst:
+(`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`) und startet Node.js
+mit `--max-opt=2`. Ohne das Image setzt du sie selbst:
 
 ```sh
 NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
-MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node apps/server/dist/index.js
+MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node --max-opt=2 apps/server/dist/index.js
 ```
+
+Bei Überlast (eine Seite wird gerade gerendert, höchstens vier warten)
+beantwortet eine öffentliche Instanz eine Seite mit der zuletzt gerenderten
+Fassung, auch mit einer abgelaufenen bis zu 10 Minuten alten (Header
+`X-Cache: STALE`). Gibt es keine, antwortet sie mit `503`, `Retry-After: 5`
+und einer kurzen Seite „vorübergehend ausgelastet“; persönliche
+Abo-Links bekommen immer die 503. Siehst du oft `503` oder die Warnung
+„Too many pages waiting“ im Log, starte eine weitere öffentliche Instanz.
 
 Erhöhe `--max-old-space-size` (z. B. auf `256`) auf der Instanz, die einen
 großen Verlaufsimport ausführt. Messwerte pro Rolle:

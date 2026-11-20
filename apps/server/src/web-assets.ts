@@ -7,8 +7,11 @@
  * instance serves public.html for every client route and only the files public.html
  * can reach (static and dynamic imports, CSS, assets), so neither the admin page
  * nor any chunk that only the management UI loads is ever served. Files outside
- * the manifest (favicon.svg, ...) are served as usual. The manifest itself is
- * never served by any role.
+ * the manifest (favicon.svg, ...) are served as usual. The manifest and the
+ * server-side rendering bundle (.ssr/) are never served by any role.
+ *
+ * The build writes Brotli and gzip copies next to the files (apps/web/tools/
+ * precompress.ts); they belong to their file and are denied with it.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -49,7 +52,9 @@ function isAdminRoute(pathname: string): boolean {
   return path === '/admin' || path.startsWith('/admin/');
 }
 
-const isManifestPath = (pathname: string) => pathname === '/.vite' || pathname.startsWith('/.vite/');
+/** Build files only the server reads: the Vite manifest and the server-side rendering bundle. */
+const isServerOnlyPath = (pathname: string) =>
+  ['/.vite', '/.ssr'].some((dir) => pathname === dir || pathname.startsWith(`${dir}/`));
 
 /** Every file (JS, CSS, assets) one manifest chunk and its imports reach. */
 function reachableFiles(manifest: Manifest, entry: string): Set<string> {
@@ -98,13 +103,28 @@ function readManifest(webDir: string): Manifest {
   return manifest;
 }
 
+/** One year: the file names of the build's assets/ change with their content. */
+export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+/** Files without a content hash in their name (favicon.svg, world-map.svg). */
+export const STATIC_CACHE_CONTROL = 'public, max-age=86400';
+
+/**
+ * Cache-Control of a file of the web build (path on disk). Pages (.html) keep
+ * the header their route sets.
+ */
+export function staticCacheControl(path: string): string | null {
+  const file = path.replace(/\\/g, '/').replace(/\.(?:br|gz)$/, '');
+  if (file.endsWith('.html')) return null;
+  return file.includes('/assets/') ? IMMUTABLE_CACHE_CONTROL : STATIC_CACHE_CONTROL;
+}
+
 /** Serving rules of the web client for a role (null: the role serves no web client). */
 export function webAssetPolicy(role: AppRole, webDir: string): WebAssetPolicy | null {
   if (role === 'worker') return null;
   if (role !== 'public') {
     return {
       index: FULL_INDEX,
-      allows: (pathname) => !isManifestPath(pathname),
+      allows: (pathname) => !isServerOnlyPath(pathname),
       servesRoute: () => true,
     };
   }
@@ -112,9 +132,9 @@ export function webAssetPolicy(role: AppRole, webDir: string): WebAssetPolicy | 
   return {
     index: PUBLIC_INDEX,
     allows: (pathname) => {
-      if (isManifestPath(pathname)) return false;
-      const file = pathname.replace(/^\/+/, '');
-      // Source maps of admin chunks are denied with their chunk.
+      if (isServerOnlyPath(pathname)) return false;
+      // Source maps and compressed copies of admin chunks are denied with their chunk.
+      const file = pathname.replace(/^\/+/, '').replace(/\.(?:br|gz)$/, '');
       return !denied.has(file) && !denied.has(file.replace(/\.map$/, ''));
     },
     servesRoute: (pathname) => !isAdminRoute(pathname),

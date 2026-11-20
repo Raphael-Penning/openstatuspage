@@ -214,8 +214,9 @@ dein Kundenportal:
 Verwaltung (`/admin`) und API (`/api/...`) senden
 `X-Frame-Options: DENY` und `Content-Security-Policy: frame-ancestors 'none'`
 und lassen sich nicht einbetten. Soll auch die öffentliche Seite nicht
-eingebettet werden, lass deinen Proxy für alle übrigen Pfade
-`Content-Security-Policy: frame-ancestors 'self'` setzen. Umgekehrt gilt:
+eingebettet werden, lass deinen Proxy für alle übrigen Pfade einen zweiten
+Header `Content-Security-Policy: frame-ancestors 'self'` setzen (Browser
+beachten beide Richtlinien). Umgekehrt gilt:
 Setze im Proxy keinen globalen `X-Frame-Options`-Header, wenn das Einbetten
 funktionieren soll.
 
@@ -224,6 +225,47 @@ Weitere Möglichkeiten, den Status anderswo anzuzeigen:
 - `GET /api/public/status`: kompakter, maschinenlesbarer Status als
   JSON:API-Dokument (Gesamtstatus, öffentliche Services, aktive Vorfälle und Wartungen).
 - `/feed.rss` und `/feed.atom`: Vorfälle und Wartungen als Feed.
+- `/llms.txt` und `/llms-full.txt`: die Seite und ihr aktueller Status als
+  Markdown für KI-Assistenten und -Agenten.
+
+Suchmaschinen finden die öffentlichen Seiten über `/robots.txt` und
+`/sitemap.xml`. Alle Links darin verwenden `PUBLIC_BASE_URL` (oder `BASE_URL`);
+das muss also die Adresse sein, die deine Besucher aufrufen. Leite diese Pfade
+unverändert durch den Proxy und lass den `X-Robots-Tag`-Header stehen, den die
+App für `/admin` sendet.
+
+## Komprimierung, Caching und Sicherheits-Header
+
+Die App komprimiert ihre Antworten bereits: Die Dateien des Web-Clients liegen
+als Brotli- und gzip-Kopien vor, und Seiten werden gzip-komprimiert gesendet.
+Auch die Caching-Header setzt sie (ein Jahr für die Dateien mit Hash im Namen
+unter `/assets/`). Dein Proxy kann all das unverändert durchreichen; nochmal zu
+komprimieren bringt nichts. Seiten tragen eine Content-Security-Policy,
+`Cross-Origin-Opener-Policy` und `Permissions-Policy` (siehe
+[Performance](../../performance.md)). Setz `Strict-Transport-Security` im Proxy,
+sobald die Seite nur noch über HTTPS erreichbar ist.
+
+Behalte diese Header so bei, wie die App sie sendet:
+
+- **`Vary` und `Content-Encoding`.** Die App sendet mit jeder komprimierten Datei
+  `Vary: Accept-Encoding` und mit jeder Seite `Vary: Accept-Language, Cookie,
+  Accept-Encoding`, weil dieselbe Adresse je nach Sprache, Cookie und Kodierung
+  eine andere Antwort liefert. Entferne diese Header nicht, und lass keinen Cache
+  `Vary` ignorieren. Ein Cache, der an einen Client ohne Brotli eine
+  Brotli-Kopie ausliefert, macht die Seite kaputt.
+- **`Accept-Encoding` und `Accept-Language`.** Reiche die Anfrage-Header unverändert
+  an die App weiter. Entferne sie nicht und setz sie nicht leer: Die App wählt
+  daran die vorkomprimierte Kopie und die Sprache aus.
+- **Nicht doppelt komprimieren.** Antworten mit `Content-Encoding` gehen unverändert
+  durch. Ein Kompressionsmodul im Proxy ist für andere Antworten in Ordnung, etwa
+  die JSON:API, muss aber auslassen, was die App bereits komprimiert hat.
+- **Cache-Header.** Behalte das `Cache-Control` der App. Dateien unter `/assets/`
+  werden ein Jahr lang gecacht (`immutable`), andere statische Dateien einen Tag,
+  Seiten 10 Sekunden mit `stale-while-revalidate`. Behalte das `ETag`, damit
+  unveränderte Seiten mit `304 Not Modified` antworten. Setz kein eigenes Caching
+  für `/admin` oder `/api/`. Die persönlichen Abo-Links (`/subscription/`,
+  `/preferences/`) kommen mit `private, no-store`; der Proxy darf sie ebenfalls
+  nicht speichern.
 
 ## Checkliste
 

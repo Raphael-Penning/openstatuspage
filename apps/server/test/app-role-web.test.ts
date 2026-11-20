@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
@@ -37,6 +38,9 @@ function makeWebDir(options: { manifest?: boolean } = {}): string {
     for (const f of [chunk.file, ...('css' in chunk ? chunk.css : []), ...('assets' in chunk ? chunk.assets : [])]) {
       writeFileSync(join(dir, f), `/* ${f} */`);
       writeFileSync(join(dir, `${f}.map`), '{}');
+      // Compressed copies as the web build writes them (tools/precompress.ts).
+      writeFileSync(join(dir, `${f}.br`), brotliCompressSync(`/* ${f} */`));
+      writeFileSync(join(dir, `${f}.gz`), gzipSync(`/* ${f} */`));
     }
   }
   if (options.manifest !== false) {
@@ -97,6 +101,15 @@ describe('web client per APP_ROLE', () => {
     }
   });
 
+  it('marks every page of an admin instance noindex (a preview, not the status page)', async () => {
+    for (const url of ['/', '/history', '/admin']) {
+      expect((await get('admin', url)).headers['x-robots-tag'], url).toBe('noindex, nofollow');
+    }
+    expect((await get('admin', '/favicon.svg')).headers['x-robots-tag']).toBeUndefined();
+    expect((await get('all', '/')).headers['x-robots-tag']).toBeUndefined();
+    expect((await get('public', '/')).headers['x-robots-tag']).toBeUndefined();
+  });
+
   it('serves public.html for client routes on a public instance', async () => {
     for (const url of ['/', '/services/api', '/subscription/manage?id=1', '/administration']) {
       const res = await get('public', url);
@@ -126,9 +139,35 @@ describe('web client per APP_ROLE', () => {
       '/assets/HelpPage.js',
       '/assets/HelpPage.css',
       '/assets/%73ession.js',
+      '/assets/session.js.br',
+      '/assets/session.js.gz',
     ]) {
       expect((await get('public', url)).statusCode, url).toBe(404);
     }
+    const compressed = await apps.public!.inject({ url: '/assets/session.js', headers: { 'accept-encoding': 'br' } });
+    expect(compressed.statusCode).toBe(404);
+  });
+
+  it('sends the compressed copies of the build with long caching for hashed assets', async () => {
+    const br = await apps.public!.inject({ url: '/assets/public.js', headers: { 'accept-encoding': 'gzip, deflate, br' } });
+    expect(br.statusCode).toBe(200);
+    expect(br.headers['content-encoding']).toBe('br');
+    expect(br.headers['content-type']).toMatch(/javascript/);
+    expect(br.headers.vary).toMatch(/accept-encoding/i);
+    expect(br.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+    expect(br.rawPayload.equals(brotliCompressSync('/* assets/public.js */'))).toBe(true);
+
+    const gz = await apps.public!.inject({ url: '/assets/shared.css', headers: { 'accept-encoding': 'gzip' } });
+    expect(gz.headers['content-encoding']).toBe('gzip');
+    expect(gz.headers['content-type']).toMatch(/text\/css/);
+
+    const plain = await apps.public!.inject({ url: '/assets/public.js' });
+    expect(plain.headers['content-encoding']).toBeUndefined();
+    expect(plain.body).toBe('/* assets/public.js */');
+
+    // Files without a hash in their name and pages are not kept for long.
+    expect((await get('public', '/favicon.svg')).headers['cache-control']).toBe('public, max-age=86400');
+    expect((await get('public', '/')).headers['cache-control']).toBe('no-cache');
   });
 
   it('never serves the build manifest', async () => {

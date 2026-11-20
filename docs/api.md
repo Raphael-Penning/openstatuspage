@@ -336,9 +336,13 @@ error documents like everywhere else.
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok", "role": "all", "worker": true }` (`application/json`) for liveness/readiness probes; `role` is the instance's `APP_ROLE`, `worker` whether it runs the background tasks. Exists in every role. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
+| GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
+| GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
+| GET | `/llms.txt`, `/llms-full.txt` | Summary of the status page for language models ([llmstxt.org](https://llmstxt.org)) and the current status as Markdown (`text/plain`). Roles `public` and `all`. |
 | GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | `302` to `/admin` after login, or `/admin/login?error=<code>` |
 | GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | `303` to the manage page with the unsubscribe confirmation (never deletes) |
+| POST/GET | `/subscribe`, `/subscription/*`, `/preferences/*` | HTML form handlers of the public pages, see [HTML forms](#html-forms) |
 
 Examples:
 
@@ -735,7 +739,8 @@ Content-Type: application/vnd.api+json
       "title": "Database upgrade", "description": "PostgreSQL 17", "status": "scheduled",
       "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
       "actualStart": null, "actualEnd": null,
-      "affectedServices": [{"id": "33ea…", "name": "Public API"}]
+      "affectedServices": [{"id": "33ea…", "name": "Public API"}],
+      "createdAt": "2026-11-19T20:10:42.103Z", "updatedAt": "2026-11-19T21:25:01.711Z"
     },
     "relationships": {
       "locations": {"data": []},
@@ -853,19 +858,44 @@ whether an address is subscribed either. At most one confirmation/manage email p
 address every 10 minutes. The endpoints other than subscribe keep working when
 subscriptions are disabled later, so subscribers can always unsubscribe.
 
-Links in emails (web client routes). The token is in the URL fragment, so it never
-reaches the server, proxies or access logs; the web client reads it from the
-fragment and sends it in the request body (confirm) or the `X-Subscription-Token`
-header (manage):
+Links in emails (web client routes). The token is in the query string, so the
+server renders these pages and their forms work without JavaScript (see
+[HTML forms](#html-forms)); with JavaScript the web client sends it in the
+request body (confirm) or the `X-Subscription-Token` header (manage). Links of
+older emails with the token in the URL fragment (`#token=`) still work in the
+browser.
 
-- confirm: `${BASE_URL}/subscription/confirm?id=<id>#token=<confirmToken>`
-- manage: `${BASE_URL}/subscription/manage?id=<id>#token=<manageToken>`
-- unsubscribe (email body): `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>`
+- confirm: `${BASE_URL}/subscription/confirm?id=<id>&token=<confirmToken>`
+- manage: `${BASE_URL}/subscription/manage?id=<id>&token=<manageToken>`
+- unsubscribe (email body): `${BASE_URL}/subscription/manage?id=<id>&token=<manageToken>&unsubscribe=1`
 
-Only the RFC 8058 `List-Unsubscribe` header keeps the token in the query string
-(`/api/public/subscriptions/:id/unsubscribe?token=`), since mail clients post to it
+The RFC 8058 `List-Unsubscribe` header uses
+`/api/public/subscriptions/:id/unsubscribe?token=`, since mail clients post to it
 directly. The server log redacts the value of every `token` query parameter
-(`token=[REDACTED]`).
+(`token=[REDACTED]`); `/subscription/*` pages answer with
+`Referrer-Policy: no-referrer` and `Cache-Control: private, no-store`.
+
+### HTML forms
+
+The public pages also work without JavaScript, so the same steps exist as plain
+HTML form handlers outside `/api` (not JSON:API; paths in `FORM_PATHS` of
+`@openstatuspage/shared`). They take `application/x-www-form-urlencoded`, use the
+same subscription flow and rate limits, and answer with Post/Redirect/Get:
+
+| Method | Path | Fields | Success | Problems |
+| --- | --- | --- | --- | --- |
+| POST | `/subscribe` | `email`, `locale`, `scope` (`all` or `selected`), `service` (repeated), `group` (repeated: every public service of the group), `website` (honeypot) | `303` to `/subscribe?sent=1` | invalid input: `422` with the page and its errors; subscriptions off: `303` to `/subscribe` |
+| POST | `/subscription/confirm` | `id`, `token` (confirm token) | `303` to the manage page with the manage token and `confirmed=1` | wrong link: `303` to `/subscription/confirm?error=invalid` |
+| POST | `/subscription/manage` | `id`, `token` (manage token), `locale`, `scope`, `service`, `group` | `303` to the manage page with `saved=1` | invalid input: `422` with the page; wrong link: `303` to `/subscription/manage?error=invalid` |
+| POST | `/subscription/unsubscribe` | `id`, `token` (manage token) | `303` to `/subscription/manage?unsubscribed=1` | wrong link: `303` to `/subscription/manage?error=invalid` |
+| POST | `/preferences/theme` | `theme` (`system`, `light`, `dark`), `return` (local path) | `303` to `return`, sets the `osp-theme` cookie | – |
+| GET | `/preferences/language?lang=<code>&return=<path>` | – | `303` to `return`, sets the `osp-lang` cookie | – |
+| POST | `/preferences/language` | `lang`, `return` (local path) | the same as the `GET`; personal pages (subscription links) use it so their token never ends up in a URL | – |
+
+A rate-limited form is answered with the page (`429`) and a message. Posts from
+other sites (`Sec-Fetch-Site` other than `same-origin`, or a foreign `Origin`)
+get `403` (the language handler sends them back without setting the cookie). Without the server-side rendering bundle, invalid input redirects to
+the page with `?error=invalid` (or `rate_limited`) instead.
 
 Examples:
 

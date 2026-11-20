@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { contrastRatio, readableOnAll, solidAccent } from '@openstatuspage/shared';
 import { describe, expect, it } from 'vitest';
+import { accentCss, THEME_SURFACES } from './public/utils/accent';
 
 const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
 
@@ -17,6 +18,20 @@ function block(selector: string): Record<string, string> {
 }
 
 const light = block(':root');
+
+it('the server knows the surfaces of both themes (accent color in the page head)', () => {
+  expect(THEME_SURFACES.light).toEqual([light.bg, light.surface, light['surface-2']]);
+  const dark = block("[data-theme='dark']");
+  expect(THEME_SURFACES.dark).toEqual([dark.bg, dark.surface, dark['surface-2']]);
+  // The default accent gives the defaults of styles.css.
+  expect(accentCss(light.accent)).toContain(`--osp-accent-text:${light['osp-accent-text']}`);
+  expect(accentCss(light.accent)).toContain(`html[data-theme='dark']{--osp-accent-text:${dark['osp-accent-text']}}`);
+  expect(accentCss('red;}</style>')).toBe('');
+});
+
+it("the OS dark preference without data-theme uses the dark theme's tokens", () => {
+  expect(block(':root:not([data-theme])')).toEqual(block("[data-theme='dark']"));
+});
 const themes = { light, dark: { ...light, ...block("[data-theme='dark']") } };
 
 const SURFACES = ['bg', 'surface', 'surface-2'] as const;

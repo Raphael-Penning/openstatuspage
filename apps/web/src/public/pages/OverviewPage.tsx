@@ -1,21 +1,24 @@
 import { CalendarClock, CircleCheck } from 'lucide-react';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link, useSearchParams } from 'react-router';
 import { IncidentSummary, MaintenanceSummary } from '../components/Events';
 import { FeedMenu } from '../components/Controls';
 import { ServiceCatalog } from '../components/ServiceList';
 import { StatusHero } from '../components/StatusHero';
 import { EmptyState, ErrorState, PageTitle, SectionHeader, Skeleton, SkeletonList } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useSummary } from '../hooks/queries';
+import { usePageHead, VARIANT_HEAD } from '../head';
 
 const UPCOMING_PREVIEW = 3;
 
 export function OverviewPage() {
   const { t } = useTranslation('public');
   const { data, isPending, isError, refetch } = useSummary();
-  const [allUpcoming, setAllUpcoming] = useState(false);
-  useDocumentTitle(null);
+  // ?upcoming=all lists every upcoming maintenance (a link, so it works without JavaScript).
+  const [params] = useSearchParams();
+  const allUpcoming = params.get('upcoming') === 'all';
+  // The full list of upcoming maintenance is a variant of the overview: followed, not indexed.
+  usePageHead({ home: true, ...(allUpcoming ? VARIANT_HEAD : {}) });
 
   if (isPending) return <OverviewSkeleton />;
   if (isError) return <ErrorState onRetry={() => void refetch()} />;
@@ -80,17 +83,17 @@ export function OverviewPage() {
             ))}
           </div>
           {data.upcomingMaintenances.length > UPCOMING_PREVIEW && (
-            <button
-              type="button"
-              aria-expanded={allUpcoming}
-              onClick={() => setAllUpcoming((v) => !v)}
+            <Link
+              to={allUpcoming ? '/#upcoming-maintenance' : '/?upcoming=all#upcoming-maintenance'}
+              replace
+              preventScrollReset
               className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[color:var(--osp-accent-text,var(--accent))] hover:underline"
             >
               <CalendarClock aria-hidden className="size-4" />
               {allUpcoming
                 ? t('overview.showFewerUpcoming')
                 : t('overview.viewAllUpcoming', { count: data.upcomingMaintenances.length })}
-            </button>
+            </Link>
           )}
         </section>
       )}

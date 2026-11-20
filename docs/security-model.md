@@ -60,6 +60,15 @@ tests) and history imports. The public instance never connects to either.
 
 The views have the same names as the tables, and the public instance connects
 with `search_path=osp_public`, so the public code runs unchanged against them.
+Server-side rendering of the public pages reads through the same code: the
+render bundle gets the documents of `/api/public` in-process
+(`apps/server/src/ssr/source.ts` → `services/public-documents.ts`), so a rendered
+page and its embedded state block contain nothing the public API would not
+return. The render bundle itself (`.ssr/`) is never served as a file. The
+sitemaps and `llms.txt` (`routes/discovery.ts` → `services/site-index.ts`) read
+the same views, with the same `is_public` filters on every other database; they
+list only what the public pages show, and `robots.txt` keeps crawlers away
+from `/api/`, `/admin` and the personal subscription links.
 
 ## What the public role cannot do
 
@@ -198,6 +207,64 @@ credentials and signs the OIDC state cookie of the admin instance); it logs a
 warning when it gets `SECRET_KEY` anyway. When the token key changes, the admin
 and worker instances refresh the stored hashes on their next start (existing
 mail links stop working).
+
+## HTML forms
+
+The public pages work without JavaScript, so the email subscription also runs
+through plain HTML forms (`apps/server/src/forms/`, every instance that serves
+the public pages): `POST /subscribe`, `/subscription/confirm`,
+`/subscription/manage` and `/subscription/unsubscribe` with
+`application/x-www-form-urlencoded` bodies, next to the JSON:API (which they
+leave unchanged). They call the same subscription flow, so a public instance on
+PostgreSQL uses the `osp_public` functions above, and they have the same rate
+limits per client IP (5 subscribe requests, 30 confirm, manage and unsubscribe
+requests per minute; the forms and the API count separately).
+
+- **Cross-site requests.** The forms carry no cookie (the public role sets
+  none), but another site could still make a visitor's browser post one, for
+  example to subscribe an address. Browsers say where a request comes from:
+  a form handler accepts it only with `Sec-Fetch-Site: same-origin`, or, from
+  browsers without that header, with an `Origin` of the request's own origin or
+  of `PUBLIC_BASE_URL`; anything else gets `403`. A request without either header
+  does not come from a browser page and cannot be forged through one. The same
+  check guards the theme form (`POST /preferences/theme`); the language links
+  and form (`/preferences/language`) set no cookie for requests from other sites.
+- **Tokens in links.** For the confirm and manage pages to work without
+  JavaScript, the server has to see the token, so the links in the emails carry
+  it in the query string (`?id=…&token=…`) instead of the URL fragment, and the
+  forms send it in the body. The server's request log redacts every `token=`
+  value (also one inside an encoded parameter such as `return=`),
+  `/subscription/*` in any spelling of the path answers with `Referrer-Policy:
+  no-referrer` and `Cache-Control: private, no-store`, these pages are never kept
+  in the render cache, and their language and theme switchers post the way back
+  in the body instead of linking to a URL that contains it. A reverse proxy that logs full URLs does see the token: keep its
+  access log private or strip query strings from it. A leaked manage token lets
+  someone change or end that one subscription, nothing else; confirming takes a
+  click on a form, so a mail scanner that opens the link confirms nothing.
+- **Open redirects.** The preference handlers redirect only to a path of the
+  site (`/…`, no `//`, no scheme, no control characters), everything else to `/`.
+
+## Browser security headers
+
+Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
+(`no-referrer` for `/subscription/*`). Pages (`text/html`, `apps/server/src/lib/security-headers.ts`) also get:
+
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src
+  'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self';
+  connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'`.
+  No inline script runs: the state block and the JSON-LD of a rendered page are
+  data blocks (`application/json`, `application/ld+json`), which `script-src`
+  does not govern, and they are escaped so they cannot end their element. Inline
+  styles stay allowed (style attributes of the rendered markup, the accent color
+  in the head). Images may come from any HTTPS origin because the logo and
+  favicon of the settings are URLs. zod runs without compiled parsers in the
+  browser, so no `unsafe-eval` is needed.
+- `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns
+  off camera, microphone, geolocation, payment and USB.
+- Framing: public pages may be embedded by other sites; the management UI and
+  the API add `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+
+HSTS is left to the reverse proxy that terminates TLS.
 
 ## Threat model
 

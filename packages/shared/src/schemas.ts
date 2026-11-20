@@ -6,6 +6,7 @@
  * endpoint list.
  */
 import { z } from 'zod';
+import { SUBSCRIPTION_LOCALES, type SubscriptionLocale } from './subscriptions.js';
 import {
   AGGREGATION_MODES,
   CHECK_STATES,
@@ -33,6 +34,11 @@ import {
   type ImpactStatus,
   type OverallStatus,
 } from './status.js';
+
+// In the browser the pages run under a Content-Security-Policy without
+// 'unsafe-eval': no compiled parsers (zod would probe `new Function` and the
+// browser report a violation). Must run before the first schema is created.
+if ('window' in globalThis) z.config({ jitless: true });
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -525,6 +531,9 @@ export interface PublicMaintenance {
   locationIds: string[];
   /** Newest first. */
   updates: MaintenanceUpdateEntry[];
+  /** When the window was entered and last changed (publication dates of the report). */
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AdminMaintenance extends PublicMaintenance {
@@ -541,8 +550,6 @@ export interface AdminMaintenance extends PublicMaintenance {
    * and a window that had already ended is created as completed without any email.
    */
   retroactive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 /** A `maintenance-updates` resource as answered by the admin API, with its maintenance (without the updates). */
@@ -1131,8 +1138,6 @@ export interface AuditLogEntry {
 // Email subscriptions
 // ---------------------------------------------------------------------------
 
-export const SUBSCRIPTION_LOCALES = ['en', 'de'] as const;
-export type SubscriptionLocale = (typeof SUBSCRIPTION_LOCALES)[number];
 export const zSubscriptionLocale = z.enum(SUBSCRIPTION_LOCALES);
 
 const subscriptionScope = {
@@ -1170,8 +1175,6 @@ export type SubscriptionPreferencesInput = z.infer<typeof SubscriptionPreference
 export const SubscriptionConfirmInput = z.object({ token: z.string().min(16).max(256) });
 export type SubscriptionConfirmInput = z.infer<typeof SubscriptionConfirmInput>;
 
-/** Header carrying the manage token for GET/PUT/DELETE /api/public/subscriptions/:id. */
-export const SUBSCRIPTION_TOKEN_HEADER = 'x-subscription-token';
 
 /** GET /api/public/subscriptions/:id (only with a valid manage token). */
 export interface PublicSubscription {

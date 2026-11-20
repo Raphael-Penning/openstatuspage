@@ -3,13 +3,15 @@ import { MapPin } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CounterCards } from '../components/CounterCards';
+import { StaticWorldMap } from '../components/StaticWorldMap';
 import { StatusMarkerIcon } from '../components/StatusMarker';
 import { Card, EmptyState, ErrorState, PageTitle, Skeleton, SkeletonList, StatusPill } from '../components/ui';
+import { useHydrated } from '../../lib/ssr';
 import { useCountryName } from '../hooks/countries';
-import { useDocumentTitle } from '../hooks/dom';
 import { useLocations, usePublicSettings } from '../hooks/queries';
 import { groupByRegion, toCounters } from '../utils/status';
 import { NotFoundState } from './NotFoundState';
+import { usePageHead, useSiteName } from '../head';
 
 const WorldMap = lazy(() => import('../components/WorldMap'));
 
@@ -21,7 +23,13 @@ export function LocationsPage() {
   const { data, isPending, isError, refetch } = useLocations(enabled);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const countryName = useCountryName();
-  useDocumentTitle(t('nav.locations'));
+  const hydrated = useHydrated();
+  const site = useSiteName();
+  usePageHead({
+    title: t('nav.locations'),
+    description: t('seo.locations', { site }),
+    breadcrumbs: [{ name: t('nav.locations'), path: '/locations' }],
+  });
 
   if (settings && !settings.showLocations) return <NotFoundState />;
   if (!settings && settingsError) return <ErrorState onRetry={() => void refetchSettings()} />;
@@ -37,7 +45,7 @@ export function LocationsPage() {
               <Skeleton key={i} className="h-28 rounded-2xl" />
             ))}
           </div>
-          <Skeleton className="aspect-[2/1] w-full rounded-2xl" />
+          <Skeleton className="aspect-[960/418] w-full rounded-2xl" />
           <SkeletonList rows={3} />
         </>
       ) : isError ? (
@@ -50,9 +58,14 @@ export function LocationsPage() {
 
           <Card as="section" className="overflow-hidden p-2 sm:p-4">
             <h2 className="sr-only">{t('locations.map')}</h2>
-            <Suspense fallback={<Skeleton className="aspect-[2/1] w-full rounded-xl" />}>
-              <WorldMap locations={data.locations} selectedId={selectedId} onSelect={setSelectedId} />
-            </Suspense>
+            {/* The server renders the static map (also without JavaScript); the interactive one loads lazily in the browser. */}
+            {hydrated ? (
+              <Suspense fallback={<StaticWorldMap locations={data.locations} />}>
+                <WorldMap locations={data.locations} selectedId={selectedId} onSelect={setSelectedId} />
+              </Suspense>
+            ) : (
+              <StaticWorldMap locations={data.locations} />
+            )}
             <MapLegend />
           </Card>
 
@@ -84,10 +97,10 @@ export function LocationsPage() {
                       );
                       const row = 'flex w-full items-center gap-3 px-4 py-3 text-left sm:px-5';
                       // This list is the text alternative of the map: every location with its status.
-                      // Locations with coordinates can be highlighted on the map.
+                      // Locations with coordinates can be highlighted on the interactive map (with JavaScript).
                       return (
                         <li key={l.id}>
-                          {onMap ? (
+                          {onMap && hydrated ? (
                             <button
                               type="button"
                               aria-pressed={selectedId === l.id}

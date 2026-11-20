@@ -220,15 +220,26 @@ database answers, otherwise an error status. It needs no authentication.
 ## Memory
 
 An instance needs about 80–100 MB of memory in normal use; a password check or
-the first poll of a process briefly adds 10–20 MB. A memory limit of 128 MB per
-container leaves enough room. The Docker image sets the Node.js and allocator
-options for this (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`).
-Without the image, set them yourself:
+the first poll of a process briefly adds 10–20 MB. Many connections at the same
+time cost memory as well: a public instance stays below 100 MB with up to about
+64 concurrent connections, so limit them at the reverse proxy (for example 32
+per instance) and run another public instance when you need more. A memory
+limit of 128 MB per container leaves enough room. The Docker image sets the Node.js and allocator
+options for this (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`) and
+starts Node.js with `--max-opt=2`. Without the image, set them yourself:
 
 ```sh
 NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
-MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node apps/server/dist/index.js
+MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node --max-opt=2 apps/server/dist/index.js
 ```
+
+Under overload (one page renders at a time, at most four wait) a public page
+is answered from the last rendered version, even an expired one up to
+10 minutes old (header `X-Cache: STALE`). Without one the instance answers
+`503` with `Retry-After: 5` and a short "temporarily busy" page; personal
+subscription links always get the 503. Frequent `503`s or
+"Too many pages waiting" warnings in the log mean you should run another
+public instance.
 
 Raise `--max-old-space-size` (e.g. to `256`) on the instance that runs a large
 history import. Measurements per role: [architecture.md](../../architecture.md#memory).

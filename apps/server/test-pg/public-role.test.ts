@@ -10,12 +10,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { DB } from '../src/db/index.js';
 import { MemoryMailer } from '../src/mail/mailer.js';
+import { PublicDocuments } from '../src/services/public-documents.js';
+import type { RenderModule } from '../src/ssr/pages.js';
+import { publicDocumentSource } from '../src/ssr/source.js';
 import { prepareDatabase } from '../src/startup.js';
 import {
   subscriptionToken,
   subscriptionTokenHashes,
   tokenHash,
 } from '../src/services/subscriptions.js';
+import { createWebDir, elements, formHtml, renderFromSource, rootOf } from '../test/web-fixture.js';
 import { BASE_URL, createTestDatabase, TOKEN_KEY, type PgTestDatabase } from './setup.js';
 
 const NOW = new Date().toISOString();
@@ -814,6 +818,74 @@ describe('a public instance', () => {
     expect((await publicApp.inject(`/api/public/services/${ids.service}`)).statusCode).toBe(200);
   });
 
+  it('renders the public pages from the views', async () => {
+    // The web client's render entry from source, with the in-process documents of the public connection.
+    const entry = new URL('../../web/src/entry-server.tsx', import.meta.url).href;
+    const { render } = (await import(/* @vite-ignore */ entry)) as RenderModule;
+    const source = publicDocumentSource(new PublicDocuments(pub, new MemoryMailer()));
+    const pages: [url: string, status: number][] = [
+      ['/', 200],
+      ['/services', 200],
+      [`/services/${ids.service}`, 200],
+      ['/locations', 200],
+      ['/history', 200],
+      [`/incidents/${ids.incident}`, 200],
+      [`/maintenance/${ids.maintenance}`, 200],
+      [`/services/${ids.hiddenService}`, 404],
+      [`/incidents/${ids.hiddenIncident}`, 404],
+      [`/maintenance/${ids.hiddenMaintenance}`, 404],
+    ];
+    for (const [url, status] of pages) {
+      const page = await render({ url, source, baseUrl: BASE_URL });
+      expect(page.status, url).toBe(status);
+      // A requested id is part of the URL (and the query key), not a leak.
+      const secrets = ['Secret message', ids.hiddenService, ids.hiddenIncident, ids.hiddenLocation, 'Internal reason', 'do-not-leak'];
+      for (const secret of secrets.filter((x) => !url.includes(x))) {
+        expect(page.html + page.state, `${url} ${secret}`).not.toContain(secret);
+      }
+    }
+    expect((await render({ url: '/', source, baseUrl: BASE_URL })).html).toContain('Public API');
+  });
+
+  it('serves robots.txt, the sitemaps and llms.txt from the views', async () => {
+    const secrets = ['Secret message', ids.hiddenService, ids.hiddenIncident, ids.hiddenMaintenance, ids.hiddenLocation, 'Hidden backend', 'do-not-leak'];
+    const robots = await publicApp.inject('/robots.txt');
+    expect(robots.statusCode).toBe(200);
+    expect(robots.body).toContain(`Sitemap: ${BASE_URL}/sitemap.xml`);
+
+    const index = await publicApp.inject('/sitemap.xml');
+    expect(index.statusCode).toBe(200);
+    const subs = [...index.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!);
+    expect(subs).toEqual([`${BASE_URL}/sitemap-pages.xml`, `${BASE_URL}/sitemap-incidents-1.xml`, `${BASE_URL}/sitemap-services-1.xml`]);
+    const urls: string[] = [];
+    for (const sub of subs) {
+      const res = await publicApp.inject(sub.slice(BASE_URL.length));
+      expect(res.statusCode, sub).toBe(200);
+      urls.push(...[...res.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!));
+      expect(res.body, sub).toMatch(sub.endsWith('pages.xml') ? /<urlset/ : /<lastmod>\d{4}-\d{2}-\d{2}T/);
+    }
+    expect(urls).toEqual(
+      expect.arrayContaining([
+        `${BASE_URL}/incidents/${ids.incident}`,
+        `${BASE_URL}/maintenance/${ids.maintenance}`,
+        `${BASE_URL}/services/${ids.service}`,
+        `${BASE_URL}/services/${ids.serviceInHiddenGroup}`,
+      ]),
+    );
+
+    for (const url of ['/llms.txt', '/llms-full.txt']) {
+      const res = await publicApp.inject(url);
+      expect(res.statusCode, url).toBe(200);
+      expect(res.body.startsWith('# Example Status'), url).toBe(true);
+    }
+    expect((await publicApp.inject('/llms-full.txt')).body).toContain('Public API');
+
+    for (const url of ['/sitemap-incidents-1.xml', '/sitemap-services-1.xml', '/llms.txt', '/llms-full.txt']) {
+      const body = (await publicApp.inject(url)).body;
+      for (const secret of secrets) expect(body, `${url} ${secret}`).not.toContain(secret);
+    }
+  });
+
   it('runs the whole subscription flow through the database functions', async () => {
     const subscribe = await publicApp.inject({
       method: 'POST',
@@ -827,7 +899,7 @@ describe('a public instance', () => {
     await workerApp.ctx.notifications.deliverDue();
     const mail = mailer.sent.find((m) => m.to === 'flow@example.com');
     expect(mail?.subject).toBe('[Example Status] Confirm your subscription');
-    const match = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)#token=([A-Za-z0-9_-]+)`).exec(mail!.text)!;
+    const match = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)&token=([A-Za-z0-9_-]+)`).exec(mail!.text)!;
     const [, subId, token] = match;
 
     const wrong = await publicApp.inject({
@@ -876,12 +948,91 @@ describe('a public instance', () => {
 
     const redirect = await publicApp.inject({ url: `/api/public/subscriptions/${subId}/unsubscribe?token=${manageToken}` });
     expect(redirect.statusCode).toBe(303);
-    expect(redirect.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${subId}&unsubscribe=1#token=${manageToken}`);
+    expect(redirect.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${subId}&token=${manageToken}&unsubscribe=1`);
 
     const deleted = await publicApp.inject({ method: 'DELETE', url: `/api/public/subscriptions/${subId}`, headers: manageHeaders });
     expect(deleted.statusCode).toBe(204);
     const again = await publicApp.inject({ method: 'DELETE', url: `/api/public/subscriptions/${subId}`, headers: manageHeaders });
     expect(again.statusCode).toBe(404);
     expect(await ownerRows(`select id from subscribers where id = '${subId}'`)).toEqual([]);
+  });
+
+  it('runs the subscription forms (no JavaScript) through the database functions', async () => {
+    const web = createWebDir();
+    const formApp = await buildApp({ config: { ...pgdb.config('public'), WEB_DIST_DIR: web.dir }, db: pub, ssrModule: renderFromSource });
+    try {
+      await formApp.ready();
+      const post = (url: string, fields: [string, string][]) =>
+        formApp.inject({
+          method: 'POST',
+          url,
+          headers: { 'content-type': 'application/x-www-form-urlencoded', 'sec-fetch-site': 'same-origin' },
+          payload: new URLSearchParams(fields).toString(),
+        });
+
+      // The group checkbox selects the public services of the group, read through the views.
+      const subscribed = await post('/subscribe', [
+        ['email', 'form@example.com'],
+        ['scope', 'selected'],
+        ['group', ids.group],
+        ['group', ids.hiddenGroup],
+      ]);
+      expect(subscribed.statusCode).toBe(303);
+      expect(subscribed.headers.location).toBe('/subscribe?sent=1');
+      await formApp.ctx.worker.idle();
+      const invalid = await post('/subscribe', [
+        ['email', 'form@example.com'],
+        ['scope', 'selected'],
+        ['service', ids.hiddenService],
+      ]);
+      expect(invalid.statusCode).toBe(422);
+      expect(rootOf(invalid)).toContain('no longer available');
+
+      await workerApp.ctx.notifications.deliverDue();
+      const mail = mailer.sent.find((m) => m.to === 'form@example.com')!;
+      const [, subId, token] = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)&token=([A-Za-z0-9_-]+)`).exec(mail.text)!;
+      // Only the public service of the public group (the hidden group selects nothing).
+      expect(await ownerRows(`select service_id as id from subscriber_services where subscriber_id = '${subId}'`)).toEqual([{ id: ids.service }]);
+
+      const confirmed = await post('/subscription/confirm', [
+        ['id', subId!],
+        ['token', token!],
+      ]);
+      expect(confirmed.statusCode).toBe(303);
+      const managePage = confirmed.headers.location as string;
+      expect(managePage).toMatch(/^\/subscription\/manage\?id=.+&token=.+&confirmed=1$/);
+      const manageToken = new URL(managePage, BASE_URL).searchParams.get('token')!;
+
+      // The manage page is rendered on the server, its subscription read through subscription_get.
+      const page = await formApp.inject({ url: managePage });
+      expect(page.statusCode).toBe(200);
+      const form = formHtml(rootOf(page), '/subscription/manage')!;
+      expect(form).toContain('form@example.com');
+      expect(elements(form, 'input').find((i) => i.name === 'service' && i.value === ids.service)).toHaveProperty('checked');
+
+      const saved = await post('/subscription/manage', [
+        ['id', subId!],
+        ['token', manageToken],
+        ['locale', 'de'],
+        ['scope', 'all'],
+      ]);
+      expect(saved.headers.location).toBe(`/subscription/manage?id=${subId}&token=${manageToken}&saved=1`);
+      expect(await ownerRows(`select locale, all_services from subscribers where id = '${subId}'`)).toEqual([{ locale: 'de', all_services: 1 }]);
+
+      const wrong = await post('/subscription/unsubscribe', [
+        ['id', subId!],
+        ['token', token!],
+      ]);
+      expect(wrong.headers.location).toBe('/subscription/manage?error=invalid');
+      const gone = await post('/subscription/unsubscribe', [
+        ['id', subId!],
+        ['token', manageToken],
+      ]);
+      expect(gone.headers.location).toBe('/subscription/manage?unsubscribed=1');
+      expect(await ownerRows(`select id from subscribers where id = '${subId}'`)).toEqual([]);
+    } finally {
+      await formApp.close();
+      web.remove();
+    }
   });
 });

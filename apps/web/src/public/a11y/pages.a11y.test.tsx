@@ -22,6 +22,11 @@ const PAGES: [name: string, path: string][] = [
   ['subscription confirm', `/subscription/confirm?id=sub-1#token=${SUBSCRIPTION_TOKEN}`],
   ['subscription manage', `/subscription/manage?id=sub-1#token=${SUBSCRIPTION_TOKEN}`],
   ['subscription invalid link', '/subscription/manage'],
+  ['subscription confirm (query token)', `/subscription/confirm?id=sub-1&token=${SUBSCRIPTION_TOKEN}`],
+  ['subscription unsubscribe step', `/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}&unsubscribe=1&confirmed=1`],
+  ['subscribed', '/subscribe?sent=1'],
+  ['unsubscribed', '/subscription/manage?unsubscribed=1'],
+  ['services filtered', '/services?q=api&status=operational'],
   ['unknown incident', '/incidents/missing'],
   ['not found', '/does-not-exist'],
 ];
@@ -82,15 +87,49 @@ describe('the check itself', () => {
 describe('interactive states', () => {
   it('open subscribe menu', async () => {
     page = await renderPublic({ path: '/', lang: 'en', theme: 'light' });
-    const button = page.container.querySelector<HTMLButtonElement>('main button[aria-expanded]')!;
-    await act(async () => button.focus());
-    await click(button);
-    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    // A disclosure (<details>): it opens without JavaScript, too.
+    const details = page.container.querySelector<HTMLDetailsElement>('main details')!;
+    const summary = details.querySelector('summary')!;
+    await act(async () => summary.focus());
+    await click(summary);
+    expect(details.open).toBe(true);
+    expect(details.querySelectorAll('a[href]').length).toBeGreaterThanOrEqual(3);
     expect(await axeViolations()).toEqual([]);
-    // Escape closes the menu and keeps the focus on its button.
-    await key(button, 'Escape');
-    expect(button?.getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(button);
+    // Escape closes the menu and keeps the focus on its summary.
+    await key(summary, 'Escape');
+    expect(details.open).toBe(false);
+    expect(document.activeElement).toBe(summary);
+  });
+
+  it('open language menu', async () => {
+    page = await renderPublic({ path: '/history?type=incident', lang: 'en', theme: 'dark' });
+    const details = page.container.querySelector<HTMLDetailsElement>('header details')!;
+    await click(details.querySelector('summary'));
+    expect(details.open).toBe(true);
+    const links = [...details.querySelectorAll<HTMLAnchorElement>('a[hreflang]')];
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      '/preferences/language?lang=en&return=%2Fhistory%3Ftype%3Dincident',
+      '/preferences/language?lang=de&return=%2Fhistory%3Ftype%3Dincident',
+    ]);
+    expect(await axeViolations()).toEqual([]);
+    // With JavaScript the language switches in place.
+    await click(links[1]!);
+    expect(document.documentElement.lang).toBe('de');
+    expect(details.open).toBe(false);
+  });
+
+  it('open language menu on a personal page (a form with buttons)', async () => {
+    page = await renderPublic({ path: `/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}`, lang: 'en', theme: 'light' });
+    const details = page.container.querySelector<HTMLDetailsElement>('header details')!;
+    await click(details.querySelector('summary'));
+    expect(details.querySelector('form')?.getAttribute('method')).toBe('post');
+    expect(details.querySelectorAll('a').length).toBe(0);
+    const buttons = [...details.querySelectorAll<HTMLButtonElement>('button[name="lang"]')];
+    expect(buttons.map((b) => b.value)).toEqual(['en', 'de']);
+    expect(await axeViolations()).toEqual([]);
+    await click(buttons[1]!);
+    expect(document.documentElement.lang).toBe('de');
+    expect(details.open).toBe(false);
   });
 
   it('uptime bar with its tooltip, keyboard navigation and Escape', async () => {
@@ -120,6 +159,17 @@ describe('interactive states', () => {
     expect(segments.some((s) => s.className.includes('ring-status-nodata'))).toBe(true);
   });
 
+  it('every day of the uptime bar as a table (no JavaScript or pointer needed)', async () => {
+    page = await renderPublic({ path: '/services/api', lang: 'de', theme: 'dark' });
+    const details = [...page.container.querySelectorAll<HTMLDetailsElement>('main details')].find((d) => d.querySelector('table'))!;
+    expect(details).toBeDefined();
+    await click(details.querySelector('summary'));
+    expect(details.open).toBe(true);
+    const rows = details.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(page.container.querySelector('[aria-roledescription]')!.children.length);
+    expect(await axeViolations()).toEqual([]);
+  });
+
   it('locations: selected location with map tooltip and pan controls', async () => {
     page = await renderPublic({ path: '/locations', lang: 'de', theme: 'light' });
     // Every location is listed with its status as text, also those without coordinates.
@@ -135,7 +185,7 @@ describe('interactive states', () => {
 
   it('subscribe form with errors', async () => {
     page = await renderPublic({ path: '/subscribe', lang: 'de', theme: 'dark' });
-    const form = page.container.querySelector('form')!;
+    const form = page.container.querySelector<HTMLFormElement>('main form')!;
     const email = form.querySelector<HTMLInputElement>('input[type="email"]')!;
     // WCAG 1.3.5: the purpose of the field is machine readable.
     expect(email.getAttribute('autocomplete')).toBe('email');
@@ -153,7 +203,7 @@ describe('interactive states', () => {
 
   it('subscribe success is announced by moving the focus to the result', async () => {
     page = await renderPublic({ path: '/subscribe', lang: 'en', theme: 'light' });
-    const form = page.container.querySelector('form')!;
+    const form = page.container.querySelector<HTMLFormElement>('main form')!;
     const email = form.querySelector<HTMLInputElement>('input[type="email"]')!;
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;

@@ -8,11 +8,12 @@ import { Activity, Earth, LayoutDashboard, RotateCcwClock, Server } from 'lucide
 import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router';
-import { LANGUAGES } from '../lib/i18n';
+import { LANGUAGES } from '../lib/languages';
+import { useSsr } from '../lib/ssr';
 import { ThemeProvider, useAccentColor, useTheme } from '../lib/theme';
 import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle } from './components/Controls';
 import { Skeleton } from './components/ui';
-import { PreferencesProvider } from './hooks/preferences';
+import { PreferencesProvider, usePreferences } from './hooks/preferences';
 import { usePublicSettings } from './hooks/queries';
 import { readableOnAll, solidAccent } from './utils/color';
 
@@ -35,20 +36,25 @@ export function PublicLayout() {
  * outer provider cannot overwrite it.
  */
 function ThemeSync() {
-  const { resolved } = useTheme();
+  const { preference, resolved } = useTheme();
   useEffect(() => {
-    document.documentElement.dataset.theme = resolved;
+    // The OS preference itself, not `resolved`: right after hydration that is still the server's guess.
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const reapply = () => window.setTimeout(() => (document.documentElement.dataset.theme = resolved), 0);
+    const apply = () => {
+      document.documentElement.dataset.theme = preference === 'system' ? (mq.matches ? 'dark' : 'light') : preference;
+    };
+    apply();
+    const reapply = () => window.setTimeout(apply, 0);
     mq.addEventListener('change', reapply);
     return () => mq.removeEventListener('change', reapply);
-  }, [resolved]);
+  }, [preference, resolved]);
   return null;
 }
 
 /** Accent color, favicon, document language and the page default language. */
 function PageEffects({ settings }: { settings: PublicPageSettings | undefined }) {
   const { i18n } = useTranslation();
+  const ssr = useSsr();
   const { resolved } = useTheme();
   useAccentColor(settings?.accentColor);
 
@@ -83,10 +89,11 @@ function PageEffects({ settings }: { settings: PublicPageSettings | undefined })
   }, [settings?.faviconUrl]);
 
   // The page default language applies when the visitor neither picked a
-  // language nor has a browser language we support.
+  // language nor has a browser language we support. A server-rendered page
+  // already is in the language the server picked by the same rules.
   useEffect(() => {
     const fallback = settings?.defaultLocale;
-    if (!fallback || fallback === i18n.resolvedLanguage) return;
+    if (ssr || !fallback || fallback === i18n.resolvedLanguage) return;
     let chosen = false;
     try {
       chosen = localStorage.getItem(LANG_CHOSEN_KEY) === '1';
@@ -97,7 +104,7 @@ function PageEffects({ settings }: { settings: PublicPageSettings | undefined })
     const supported = LANGUAGES.map((l) => l.code as string);
     const browserMatch = navigator.languages.some((l) => supported.includes(l.slice(0, 2).toLowerCase()));
     if (!browserMatch) void i18n.changeLanguage(fallback);
-  }, [settings?.defaultLocale, i18n]);
+  }, [settings?.defaultLocale, i18n, ssr]);
 
   return null;
 }
@@ -222,7 +229,8 @@ function NavTabs({ showLocations }: { showLocations: boolean }) {
 
 function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
-  const year = new Date().getFullYear();
+  // The shared clock: the server's render time until hydration (no mismatch at New Year).
+  const year = new Date(usePreferences().now).getUTCFullYear();
   const linkClass = 'hover:text-fg hover:underline';
   return (
     <footer className="border-t border-border">

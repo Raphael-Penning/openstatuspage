@@ -8,6 +8,8 @@ import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { api, ApiError } from '../lib/api';
+// Before any component below: the admin and help translations.
+import '../lib/i18n-admin';
 import { useAccentColor } from '../lib/theme';
 import { ToastProvider } from './components/Toast';
 import { ErrorState, LoadingState } from './components/ui';

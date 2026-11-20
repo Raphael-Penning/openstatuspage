@@ -52,4 +52,7 @@ EXPOSE 3000
 # Plain bash instead of a second node process (about 40 MB every 30 s).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$PORT && printf 'GET /api/health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
-CMD ["node", "server/dist/index.js"]
+# --max-opt=2: no TurboFan (Maglev still optimizes hot code). Its compiled code and
+# compiler zones cost 10-15 MB per instance, more than a status page gains from it.
+# NODE_OPTIONS cannot carry this V8 flag, so it is part of the command.
+CMD ["node", "--max-opt=2", "server/dist/index.js"]

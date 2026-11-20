@@ -3,25 +3,31 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { IncidentSummary, MaintenanceSummary } from '../components/Events';
 import { RelativeTime } from '../components/Time';
-import { UptimeBar } from '../components/UptimeBar';
+import { UptimeBar, UptimeDayTable } from '../components/UptimeBar';
 import { Card, EmptyState, ErrorState, SectionHeader, Skeleton, SkeletonList, StatusPill } from '../components/ui';
-import { useDocumentTitle, useViewportWidth } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useLocations, usePublicSettings, useService } from '../hooks/queries';
-import { formatUtcDay } from '../utils/time';
-import { averageUptime, correctedDays, formatPercent, lastDays } from '../utils/uptime';
+import { averageUptime, correctedDays, lastDays } from '../utils/uptime';
 import { NotFoundState } from './NotFoundState';
+import { usePageHead, useSiteName } from '../head';
 
 export function ServiceDetailPage() {
   const { slug = '' } = useParams();
   const { t } = useTranslation('public');
   const f = useFormat();
-  const width = useViewportWidth();
   const { data: settings } = usePublicSettings();
   const showLocations = settings?.showLocations !== false;
   const { data, isPending, isError, error, refetch, dataUpdatedAt } = useService(slug);
   const { data: locations } = useLocations(showLocations && (data?.locationIds.length ?? 0) > 0);
-  useDocumentTitle(data?.name ?? t('nav.services'));
+  const site = useSiteName();
+  const path = data ? `/services/${encodeURIComponent(data.slug || data.id)}` : undefined;
+  usePageHead({
+    title: data?.name ?? t('nav.services'),
+    description: data ? data.description || t('seo.service', { name: data.name, site }) : undefined,
+    // A service is reachable by id and by slug: the slug is canonical.
+    canonical: path,
+    breadcrumbs: data && path ? [{ name: t('nav.services'), path: '/services' }, { name: data.name, path }] : undefined,
+  });
 
   if (isPending) {
     return (
@@ -41,7 +47,6 @@ export function ServiceDetailPage() {
     );
   }
 
-  const days = width < 640 ? Math.min(90, data.uptime.length) : data.uptime.length;
   const serviceLocations = (locations?.locations ?? []).filter((l) => data.locationIds.includes(l.id));
   const stats = [7, 30]
     .filter((n) => n < data.uptime.length)
@@ -93,13 +98,23 @@ export function ServiceDetailPage() {
       {settings?.showUptime !== false && data.uptime.length > 0 && (
         <Card as="section" className="p-5 sm:p-6">
           <h2 className="mb-4 font-semibold">{t('service.uptime')}</h2>
-          <UptimeBar uptime={data.uptime} days={days} label={data.name} percent={data.uptimePercent} size="lg" />
+          {/* Every day on wide and medium screens, at most 90 on phones. */}
+          <UptimeBar
+            uptime={data.uptime}
+            days={data.uptime.length}
+            tabletDays={data.uptime.length}
+            phoneDays={90}
+            label={data.name}
+            percent={data.uptimePercent}
+            size="lg"
+          />
+          <UptimeDayTable uptime={data.uptime} label={data.name} />
           <dl className="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
             {stats.map((s) => (
               <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-3 sm:px-4">
                 <dt className="text-xs text-muted">{s.label}</dt>
                 <dd className="mt-0.5 text-base font-semibold tabular-nums sm:text-xl">
-                  {s.value === null ? t('uptime.noData') : formatPercent(s.value, f.locale)}
+                  {s.value === null ? t('uptime.noData') : f.percent(s.value)}
                 </dd>
               </div>
             ))}
@@ -113,7 +128,7 @@ export function ServiceDetailPage() {
               <ul className="mt-3 space-y-2 text-sm">
                 {corrected.map((d) => (
                   <li key={d.date} className="rounded-xl bg-surface-2 px-3 py-2">
-                    <span className="font-medium">{formatUtcDay(d.date, f.locale)}</span>
+                    <span className="font-medium">{f.utcDay(d.date)}</span>
                     {d.correctionNotes && d.correctionNotes.length > 0 ? (
                       d.correctionNotes.map((note) => (
                         <span key={note} className="block text-muted">
