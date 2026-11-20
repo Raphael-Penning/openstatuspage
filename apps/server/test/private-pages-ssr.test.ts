@@ -218,11 +218,31 @@ describe('private page', () => {
     expect(robots.join('\n')).not.toMatch(/\/p\/|private-page/);
   });
 
-  it('limits page views per client', async () => {
+  it('limits page views per client with a small page in the visitor’s language', async () => {
     const token = newPrivatePageToken();
-    let last = 0;
-    for (let i = 0; i < 61; i++) last = (await get(`/p/${token}`)).statusCode;
-    expect(last).toBe(429);
+    let last = await get(`/p/${token}`);
+    for (let i = 0; i < 60; i++) last = await get(`/p/${token}`, { 'accept-language': 'de-DE,de;q=0.9' });
+    expect(last.statusCode).toBe(429);
+    expect(Number(last.headers['retry-after'])).toBeGreaterThan(0);
+    expect(last.headers['cache-control']).toBe('no-store');
+    expect(last.headers['x-robots-tag']).toBe('noindex, nofollow');
+    expect(last.headers['content-type']).toContain('text/html');
+    expect(last.body).toContain('<html lang="de"');
+    expect(last.body).toContain('<h1>Zu viele Anfragen</h1>');
+    expect(last.body).not.toContain(token);
+    const en = await get(`/p/${token}`);
+    expect(en.statusCode).toBe(429);
+    expect(en.body).toContain('<h1>Too many requests</h1>');
+  });
+
+  it('cannot be embedded in another site', async () => {
+    for (const url of [`/p/${page.token}`, `/p/${newPrivatePageToken()}`]) {
+      const res = await get(url);
+      expect(res.headers['x-frame-options'], url).toBe('DENY');
+      expect(res.headers['content-security-policy'], url).toContain("frame-ancestors 'none'");
+    }
+    // The main page may still be embedded.
+    expect((await get('/')).headers['content-security-policy']).not.toContain('frame-ancestors');
   });
 
   it('answers paths with dot segments with a plain, uncached 404 that renders nothing', async () => {
