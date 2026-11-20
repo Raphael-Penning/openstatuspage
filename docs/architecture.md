@@ -465,7 +465,9 @@ read after 15 s without requests.
 | all | 81 MB | 100 MB | 106 MB | 97 MB | 113 MB |
 
 Public: four runs; the range is their spread. One page renders at a time and at
-most four wait; beyond that a request gets the client-rendered page. With two
+most four wait; beyond that a request got the client-rendered page when this
+was measured (now the last rendered version from the cache or the small 503
+page, neither renders anything; the cache limits are unchanged). With two
 renders and 32 waiting (the setting before) the same burst took the public
 instance to 110 MB (kernel peak 111 MB), with one render and 8 waiting to 98–99
 MB (kernel peak 100 MB).
