@@ -7,7 +7,7 @@
  * success. With JavaScript the page checks the input itself and posts to the
  * JSON:API instead.
  */
-import { FORM_PATHS, SubscribeInput, type SubscriptionLocale } from '@openstatuspage/shared';
+import { FORM_PATHS, type SubscriptionLocale } from '@openstatuspage/shared';
 import { Loader2, MailCheck, MailX } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -40,6 +40,7 @@ import {
   type ServiceSection,
   type SubscriptionErrors,
 } from '../utils/subscription';
+import { loadSchemas } from '../utils/schemas';
 
 const EMAIL_FIELD_ID = 'subscription-email';
 
@@ -118,8 +119,13 @@ function SubscribeForm({
       return next;
     });
 
-  const submit = (e: FormEvent) => {
+  useEffect(() => {
+    void loadSchemas();
+  }, []);
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
+    const { SubscribeInput } = await loadSchemas();
     const parsed = SubscribeInput.safeParse({
       email: email.trim(),
       locale,
@@ -156,7 +162,7 @@ function SubscribeForm({
 
   return (
     <Card className="mx-auto max-w-2xl">
-      <form method="post" action={FORM_PATHS.subscribe} onSubmit={submit} noValidate className="relative flex flex-col gap-6 p-5 sm:p-8">
+      <form method="post" action={FORM_PATHS.subscribe} onSubmit={(e) => void submit(e)} noValidate className="relative flex flex-col gap-6 p-5 sm:p-8">
         <ErrorSummary problems={problems} />
         <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="flex flex-col gap-1.5">

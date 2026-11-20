@@ -11,7 +11,7 @@
  * (token in the X-Subscription-Token header) and also accepts the token in the
  * URL fragment of older links.
  */
-import { FORM_PATHS, SubscriptionPreferencesInput, type PublicSubscription, type SubscriptionLocale } from '@openstatuspage/shared';
+import { FORM_PATHS, type PublicSubscription, type SubscriptionLocale } from '@openstatuspage/shared';
 import { CircleCheck, Clock, Loader2, MailMinus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +48,7 @@ import {
   type ServiceSection,
   type SubscriptionErrors,
 } from '../utils/subscription';
+import { loadSchemas } from '../utils/schemas';
 
 export function SubscriptionManagePage() {
   const { t } = useTranslation('public');
@@ -195,9 +196,14 @@ function PreferencesForm({
     // Only on a new request, not on every change of the errors.
   }, [focusRequest]);
 
-  const submit = (e: FormEvent) => {
+  useEffect(() => {
+    void loadSchemas();
+  }, []);
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSaved(false);
+    const { SubscriptionPreferencesInput } = await loadSchemas();
     const parsed = SubscriptionPreferencesInput.safeParse({
       locale,
       allServices: scope.allServices,
@@ -238,7 +244,7 @@ function PreferencesForm({
 
   return (
     <Card>
-      <form method="post" action={FORM_PATHS.manage} onSubmit={submit} noValidate className="flex flex-col gap-6 p-5 sm:p-8">
+      <form method="post" action={FORM_PATHS.manage} onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-6 p-5 sm:p-8">
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="token" value={token} />
         <ErrorSummary problems={problems} />
