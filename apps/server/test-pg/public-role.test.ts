@@ -26,6 +26,8 @@ import { createWebDir, elements, formHtml, renderFromSource, rootOf } from '../t
 import { BASE_URL, createTestDatabase, TOKEN_KEY, type PgTestDatabase } from './setup.js';
 
 const NOW = new Date().toISOString();
+/** Today (UTC), the newest day of the uptime bars. */
+const TODAY = NOW.slice(0, 10);
 const HOUR_AGO = new Date(Date.now() - 3600_000).toISOString();
 
 let pgdb: PgTestDatabase;
@@ -866,6 +868,58 @@ describe('a public instance', () => {
     expect((await publicApp.inject(`/api/public/services/${ids.service}`)).statusCode).toBe(200);
   });
 
+  it('serves the days of the uptime bar from the views, with public data only', async () => {
+    const url = `/api/public/services/${ids.service}/days/${TODAY}`;
+    const res = await publicApp.inject(url);
+    expect(res.statusCode).toBe(200);
+    const day = res.json() as {
+      data: { type: string; attributes: Record<string, unknown>; relationships: Record<string, { data: { id: string }[] }> };
+      included: { type: string; id: string }[];
+    };
+    expect(day.data.type).toBe('service-days');
+    expect(day.data.attributes).toMatchObject({ date: TODAY, status: 'operational', complete: false, nextDate: null });
+    expect(day.data.relationships.incidents!.data.map((r) => r.id)).toEqual([ids.incident]);
+    expect(day.data.relationships.maintenances!.data.map((r) => r.id)).toEqual([ids.maintenance]);
+    expect(day.included.map((r) => r.type)).toContain('services');
+    for (const secret of ['Secret message', ids.hiddenIncident, ids.hiddenMaintenance, ids.hiddenService, 'Internal reason', 'Not meant to be shown', ids.correction]) {
+      expect(res.body, secret).not.toContain(secret);
+    }
+    expect((await publicApp.inject(`/api/public/services/${ids.hiddenService}/days/${TODAY}`)).statusCode).toBe(404);
+    expect((await publicApp.inject(`/api/public/services/${ids.service}/days/2001-01-01`)).statusCode).toBe(404);
+    expect((await publicApp.inject(`/api/public/services/${ids.service}/days/2026-02-30`)).statusCode).toBe(400);
+
+    // A published correction: marked with its public note, never with its reason.
+    await owner
+      .insertInto('status_corrections')
+      .values({
+        id: 'cor-day',
+        starts_at: HOUR_AGO,
+        ends_at: NOW,
+        status: 'degraded',
+        reason: 'Internal reason: day check',
+        show_public: 1,
+        public_note: 'Published note of the day',
+        created_by: ids.user,
+        // Newer than the seeded correction of the same range, so it wins (the newest correction does).
+        created_at: new Date(Date.now() + 1000).toISOString(),
+        updated_at: NOW,
+      })
+      .execute();
+    await owner.insertInto('status_correction_services').values({ correction_id: 'cor-day', service_id: ids.service }).execute();
+    try {
+      const corrected = await publicApp.inject(url);
+      expect(corrected.statusCode).toBe(200);
+      const attributes = (corrected.json() as { data: { attributes: Record<string, unknown> } }).data.attributes;
+      expect(attributes).toMatchObject({ status: 'degraded', corrected: true, correctionNotes: ['Published note of the day'] });
+      expect(attributes.segments).toEqual(expect.arrayContaining([expect.objectContaining({ status: 'degraded', corrected: true })]));
+      expect(corrected.body).not.toContain('Internal reason');
+      expect(corrected.body).not.toContain('cor-day');
+    } finally {
+      await owner.deleteFrom('status_correction_services').where('correction_id', '=', 'cor-day').execute();
+      await owner.deleteFrom('status_corrections').where('id', '=', 'cor-day').execute();
+    }
+  });
+
   it('renders the public pages from the views', async () => {
     // The web client's render entry from source, with the in-process documents of the public connection.
     const entry = new URL('../../web/src/entry-server.tsx', import.meta.url).href;
@@ -879,7 +933,9 @@ describe('a public instance', () => {
       ['/history', 200],
       [`/incidents/${ids.incident}`, 200],
       [`/maintenance/${ids.maintenance}`, 200],
+      [`/services/${ids.service}/days/${TODAY}`, 200],
       [`/services/${ids.hiddenService}`, 404],
+      [`/services/${ids.hiddenService}/days/${TODAY}`, 404],
       [`/incidents/${ids.hiddenIncident}`, 404],
       [`/maintenance/${ids.hiddenMaintenance}`, 404],
     ];
