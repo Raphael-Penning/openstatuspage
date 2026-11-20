@@ -420,8 +420,9 @@ browser: the same queries over HTTP, token in the X-Private-Page-Token header
   is skipped, an overload is a `503` (never a stale copy), `Cache-Control: private,
   no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, meta
   robots `noindex, nofollow`, no canonical URL, no language alternates, no JSON-LD,
-  no Umami tag and no analytics choice in the footer. `robots.txt` disallows `/p/`
-  and the private page API; sitemaps and `llms.txt` never list them. The request
+  no Umami tag and no analytics choice in the footer. Sitemaps and `llms.txt`
+  never list them; `robots.txt` deliberately does not disallow them (a crawler
+  kept out would never see the `noindex` and could still list a leaked link). The request
   log writes `/p/[REDACTED]/…`.
 - **No oracle.** Unknown, disabled, expired and malformed tokens get the same 404
   page and API answer; a token is checked by one indexed lookup of its hash.

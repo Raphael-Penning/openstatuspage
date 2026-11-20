@@ -80,12 +80,11 @@ breaking changes.
   its SHA-256 hash (migration `0009_private_pages`). Visitors' API:
   `/api/public/private-page…` with the token in the `X-Private-Page-Token` header.
   Private pages are `noindex, nofollow` (meta and header), never cached or served
-  stale, carry no Umami tag, send no referrer, are disallowed in `robots.txt` and
-  absent from the sitemaps and `llms.txt`; the request log redacts the link (a
-  reverse proxy's access log may still contain it, so treat the link like a
-  password), 60
-  requests per minute and client, and wrong, disabled and expired links get the
-  same 404. On PostgreSQL the public role holds no privilege on the private page
+  stale, carry no Umami tag, send no referrer, are absent from the sitemaps,
+  `llms.txt` and `robots.txt` (crawlers may fetch them, so they see the
+  `noindex`); the request log redacts the link (a reverse proxy's access log may
+  still contain it, so treat the link like a password), 60 requests per minute
+  and client, and wrong, disabled and expired links get the same 404. On PostgreSQL the public role holds no privilege on the private page
   tables and reads a page only through token-scoped `SECURITY DEFINER` functions
   in `osp_public`. Feeds and email subscriptions of private pages are not part of
   this release.
