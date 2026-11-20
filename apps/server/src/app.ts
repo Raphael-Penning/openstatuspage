@@ -30,11 +30,22 @@ export interface BuildAppOptions {
   ssrModule?: () => Promise<RenderModule>;
 }
 
-/** Replaces the value of every `token` query parameter: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1". */
+/** `?`, `&` and `=` as they appear in a URL-encoded parameter value, also encoded twice or more (`%253D`). */
+const ENC = (hex: string) => `%(?:25)*${hex}`;
+const TOKEN_PARAM = new RegExp(
+  // A parameter of its own, or one inside an encoded value such as return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3Dabc.
+  `((?:[?&]|${ENC('3F')}|${ENC('26')})token(?:=|${ENC('3D')}))(?:(?!${ENC('26')})[^&#])*`,
+  'gi',
+);
+
+/**
+ * Replaces the value of every `token` query parameter, also one nested in an
+ * encoded parameter value: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1".
+ */
 export function redactUrlTokens(url: string): string {
   const query = url.indexOf('?');
   if (query === -1) return url;
-  return url.slice(0, query) + url.slice(query).replace(/([?&]token=)[^&#]*/gi, '$1[REDACTED]');
+  return url.slice(0, query) + url.slice(query).replace(TOKEN_PARAM, '$1[REDACTED]');
 }
 
 interface LoggedRequest {

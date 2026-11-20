@@ -158,6 +158,15 @@ describe('request logging', () => {
     expect(redactUrlTokens('/token=abc')).toBe('/token=abc');
   });
 
+  it('redacts tokens nested in encoded parameter values (return paths)', () => {
+    expect(redactUrlTokens('/preferences/language?lang=de&return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3Dabc-123%26saved%3D1')).toBe(
+      '/preferences/language?lang=de&return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3D[REDACTED]%26saved%3D1',
+    );
+    expect(redactUrlTokens('/x?return=%2Fy%3Ftoken%3Dabc')).toBe('/x?return=%2Fy%3Ftoken%3D[REDACTED]');
+    expect(redactUrlTokens('/x?r=%252Fy%253Ftoken%253Dabc%2526a%253D1')).toBe('/x?r=%252Fy%253Ftoken%253D[REDACTED]%2526a%253D1');
+    expect(redactUrlTokens('/x?return=%2Fy%3Fmytoken%3Dkeep')).toBe('/x?return=%2Fy%3Fmytoken%3Dkeep');
+  });
+
   it('never writes tokens from the query string to the log', async () => {
     const lines: string[] = [];
     const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'sqlite::memory:', LOG_LEVEL: 'info' });
