@@ -13,6 +13,7 @@ import type {
   PublicMaintenance,
   PublicPageSettings,
   PublicService,
+  PublicServiceDay,
   PublicServiceGroup,
   PublicSubscription,
   PublicSummary,
@@ -23,6 +24,7 @@ import {
   incidentDocument,
   locationsDocument,
   maintenanceDocument,
+  serviceDayDocument,
   serviceDocument,
   servicesDocument,
   settingsDocument,
@@ -259,6 +261,48 @@ export const subscription: PublicSubscription = {
 
 export const SUBSCRIPTION_TOKEN = 'token-0123456789abcdef';
 
+/**
+ * A day of the API in detail (GET /api/public/services/api/days/:date): any day
+ * of its bar answers, the oldest without data, every other one with an outage
+ * at noon that a public correction shortened, and today with an incident and a
+ * running maintenance window.
+ */
+export function apiDay(date: string): PublicServiceDay | null {
+  const index = (api.uptime ?? []).findIndex((d) => d.date === date);
+  if (index < 0) return null;
+  const bucket = api.uptime![index]!;
+  const start = Date.parse(`${date}T00:00:00.000Z`);
+  const at = (h: number) => new Date(start + h * 3_600_000).toISOString();
+  const today = index === api.uptime!.length - 1;
+  const segments: PublicServiceDay['segments'] =
+    bucket.status === null
+      ? []
+      : today
+        ? [{ status: 'operational', startedAt: at(0), endedAt: null }]
+        : [
+            { status: 'operational', startedAt: at(0), endedAt: at(11) },
+            { status: 'operational', startedAt: at(11), endedAt: at(12), corrected: true },
+            { status: 'major_outage', startedAt: at(12), endedAt: at(12.6) },
+            { status: 'degraded', startedAt: at(12.6), endedAt: at(13) },
+            { status: 'operational', startedAt: at(13), endedAt: at(24) },
+          ];
+  return {
+    id: `api:${date}`,
+    ...bucket,
+    ...(bucket.status !== null && !today ? { corrected: true as const, correctionNotes: ['False alarm of the monitoring.'] } : {}),
+    startsAt: at(0),
+    endsAt: at(24),
+    complete: !today,
+    segments,
+    previousDate: index > 0 ? api.uptime![index - 1]!.date : null,
+    nextDate: today ? null : api.uptime![index + 1]!.date,
+  };
+}
+
+/** The newest day of the API's bar (today) and the one before. */
+export const API_TODAY = api.uptime![api.uptime!.length - 1]!.date;
+export const API_YESTERDAY = api.uptime![api.uptime!.length - 2]!.date;
+
 /** Response of the fake API for a request, or null for "not found". */
 export function respond(method: string, path: string): { status: number; body: unknown } {
   const ok = (body: unknown) => ({ status: 200, body });
@@ -267,6 +311,14 @@ export function respond(method: string, path: string): { status: number; body: u
     if (path === '/api/public/summary') return ok(summaryDocument(summary));
     if (path === '/api/public/services') return ok(servicesDocument(groups, ungrouped, counts));
     if (path === '/api/public/services/api') return ok(serviceDocument(api, [incident, resolvedIncident], [maintenance]));
+    const day = /^\/api\/public\/services\/api\/days\/([^/]+)$/.exec(path);
+    if (day) {
+      const detail = apiDay(decodeURIComponent(day[1]!));
+      if (detail) {
+        const today = detail.nextDate === null;
+        return ok(serviceDayDocument(detail, api, today ? [incident] : [resolvedIncident], today ? [maintenance] : []));
+      }
+    }
     if (path === '/api/public/locations') return ok(locationsDocument(locations.locations, locations.counts));
     if (path === '/api/public/incidents/inc-1') return ok(incidentDocument(incident));
     if (path === '/api/public/maintenances/m-1') return ok(maintenanceDocument(maintenance));
