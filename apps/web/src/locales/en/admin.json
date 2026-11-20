@@ -690,7 +690,8 @@
       "legal": "Legal links",
       "brand": "Copyright and attribution",
       "infoLink": "Info link",
-      "utm": "Link tracking (UTM)"
+      "utm": "Link tracking (UTM)",
+      "analytics": "Analytics (Umami)"
     },
     "fields": {
       "siteName": "Site name",
@@ -721,7 +722,12 @@
       "utmEnabled": "Append UTM parameters to outbound links",
       "utmSource": "utm_source",
       "utmMedium": "utm_medium",
-      "utmCampaign": "utm_campaign"
+      "utmCampaign": "utm_campaign",
+      "analyticsEnabled": "Count page views with Umami",
+      "analyticsWebsiteId": "Website ID",
+      "analyticsDomains": "Only on these domains",
+      "analyticsRespectDnt": "Respect Do Not Track and Global Privacy Control",
+      "analyticsForwardIp": "Pass visitors' IP addresses to Umami"
     },
     "supportUrlHelp": "Optional link to your support or contact page.",
     "pickColor": "Pick accent color",
@@ -749,6 +755,11 @@
     "infoLinkHelp": "Optional extra entry in the navigation, e.g. \"What does the status mean?\". An http(s) URL or a path on this site starting with a single / (like /about).",
     "infoLinkLabelHelp": "Optional. Empty: \"{{label}}\" in the visitor's language.",
     "utmHelp": "Adds these parameters to the links you configured that lead to other websites (footer, info link, service websites). Links on this site, mailto: links and links that already carry utm_ parameters stay unchanged.",
+    "analyticsHelp": "Loads the Umami tracker on the public pages through this server (/pulse/), never from the Umami server itself. It only runs when the instance that serves the public pages has UMAMI_URL set. Visitors can turn it off in the footer; subscription links are never tracked.",
+    "analyticsWebsiteIdHelp": "The UUID Umami shows for the website (Settings → Websites). Required when analytics is on.",
+    "analyticsDomainsHelp": "Host names separated by commas, e.g. status.example.com. Empty: every host name the page is opened under.",
+    "analyticsRespectDntHelp": "Sends nothing for visitors whose browser asks not to be tracked.",
+    "analyticsForwardIpHelp": "Off by default: Umami then sees this server instead of the visitor, so it shows no visitor locations and counts visitors with the same browser version as one. Turn it on only if your privacy policy covers it.",
     "defaultLabels": {
       "imprint": "Imprint",
       "privacy": "Privacy policy",
