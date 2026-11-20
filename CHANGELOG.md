@@ -188,6 +188,36 @@ breaking changes.
   in Google Search Console, the noindex rules and using the status page without
   JavaScript. The reverse proxy chapter explains which headers a proxy must keep
   (`Vary`, `Content-Encoding`, `Accept-Encoding`, cache headers).
+- **Footer legal links, copyright notice, info link and UTM parameters**
+  (Administration → Settings): links to your imprint, privacy policy and
+  accessibility statement (external pages, optional labels) in a "Legal"
+  navigation of the footer; a plain-text copyright notice with a `{year}`
+  placeholder and an optional brand link (also the Organization `sameAs` in
+  JSON-LD); a switch for the "Powered by OpenStatusPage" line; an optional info
+  link in the page navigation (an http(s) URL or a path on this site); and
+  `utm_source`, `utm_medium`, `utm_campaign` appended to every configured
+  outbound link (also support URL, footer links and service websites) when
+  switched on. Server render and browser use the same helper, links on the
+  page's own origin and links with `utm_` parameters stay unchanged. Outbound
+  links announce that they open a new tab. New attributes of `settings/site`:
+  see [docs/api.md](docs/api.md).
+- **Page view statistics with Umami** (optional, off by default): set
+  `UMAMI_URL` on the instances that serve the status page and switch it on with
+  the website ID in Administration → Settings → Analytics (Umami). The status
+  page proxies the tracker (`/pulse/p.js`, cached in memory) and its events
+  (`/pulse/api/send`: JSON only, size, rate and concurrency limits, timeouts, no
+  redirects, no cookies, the visitor's IP address only when allowed), so the
+  CSP stays `'self'` and browsers never contact Umami. The tracker is rendered
+  on the server, deferred, never on subscription links or the management UI;
+  tokens (with their subscription ID) and fragments are stripped from tracked
+  URLs and events keep only the tracker's fields; Do Not Track and Global
+  Privacy Control are respected by default. Visitors turn statistics off (and
+  on) in the footer, also without JavaScript (cookie `osp-analytics`, which
+  Umami's `localStorage` switch always follows); rendered pages are cached per
+  choice. The settings page warns when the server has no `UMAMI_URL`
+  (`analyticsAvailable`). Needs Umami 2.0 or later. `robots.txt` disallows
+  `/pulse/`. See
+  [docs/configuration.md](docs/configuration.md#analytics).
 
 ### Changed
 

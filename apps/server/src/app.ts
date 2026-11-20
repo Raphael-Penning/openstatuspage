@@ -175,7 +175,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         ssr = new SsrPages({
           webDir,
           baseUrl: config.PUBLIC_BASE_URL,
-          docs: new PublicDocuments(ctx.db, ctx.mailer),
+          docs: new PublicDocuments(ctx.db, ctx.mailer, { analytics: Boolean(config.UMAMI_URL) }),
           subscription: (id, token) => forms.subscriptionDocument(app, id, token),
           log: app.log,
           loadModule: ssrModule,

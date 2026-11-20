@@ -76,6 +76,60 @@ export const zHttpUrlOrPath = z
   .max(500)
   .refine((v) => (v.startsWith('/') && !v.startsWith('//')) || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path');
 
+/**
+ * Path on this site for links (`/about`): a single leading slash, no `//` or
+ * backslash (browsers read both as another host), no whitespace or control
+ * characters (the URL parser drops tabs and newlines), so it never leaves the site.
+ */
+export const zSitePath = z
+  .string()
+  .max(500)
+  .regex(/^\/(?![/\\])[^\s\\\u0000-\u001f\u007f]*$/, 'must be a path on this site starting with a single /');
+/**
+ * Link target: an http(s) URL or a path on this site ({@link zSitePath}).
+ * Leading and trailing whitespace is trimmed, like the http(s) URL fields.
+ */
+export const zLinkTarget = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((v) => zSitePath.safeParse(v).success || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path starting with /');
+/** Optional single-line label; empty means the translated default. */
+const zLinkLabel = z
+  .string()
+  .max(60)
+  .regex(/^[^\u0000-\u001f\u007f]*$/, 'single line')
+  .default('');
+/** Value of a UTM parameter (plain text, no control characters). */
+const zUtmValue = z
+  .string()
+  .max(100)
+  .regex(/^[^\u0000-\u001f\u007f]*$/, 'single line')
+  .default('');
+
+/** Umami website ID (a UUID, as Umami shows it under Settings → Websites). */
+export const zUmamiWebsiteId = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'must be a UUID');
+/**
+ * Host names the analytics script tracks on (Umami `data-domains`), separated by
+ * commas: `status.example.com, status.example.org`. Empty: every host.
+ */
+export const zAnalyticsDomains = z
+  .string()
+  .max(500)
+  .transform((v) =>
+    v
+      .split(',')
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean)
+      .join(','),
+  )
+  .refine(
+    (v) => v === '' || v.split(',').every((d) => /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/.test(d)),
+    'must be host names separated by commas',
+  );
+
 /** Value the server returns in place of stored secrets. Sending it back keeps the stored value. */
 export const SECRET_MASK = '••••••••';
 
@@ -112,9 +166,58 @@ export const SettingsInput = z.object({
   emailSubscriptionsEnabled: z.boolean().default(false),
   /** Hours before a scheduled maintenance to remind subscribers; 0 disables reminders. */
   maintenanceReminderHours: z.number().int().min(0).max(168).default(24),
+
+  // Legal links in the footer (external pages only); hidden without URL. Empty label: translated default.
+  imprintUrl: zHttpUrl.nullish(),
+  imprintLabel: zLinkLabel,
+  privacyUrl: zHttpUrl.nullish(),
+  privacyLabel: zLinkLabel,
+  accessibilityUrl: zHttpUrl.nullish(),
+  accessibilityLabel: zLinkLabel,
+  /** Copyright / brand notice as plain text; `{year}` becomes the current year. Empty: "© <year> <site name>". */
+  copyrightText: z
+    .string()
+    .max(200)
+    .regex(/^[^\u0000-\u001f\u007f]*$/, 'single line')
+    .default(''),
+  /** Optional link of the copyright notice (the organisation's website). */
+  brandUrl: zHttpUrl.nullish(),
+  /** Show the "Powered by OpenStatusPage" line in the footer. */
+  showPoweredBy: z.boolean().default(true),
+  /** Extra link in the header navigation ("What does the status mean?"); hidden without URL. */
+  infoLinkUrl: zLinkTarget.nullish(),
+  infoLinkLabel: zLinkLabel,
+  /** Append UTM parameters to the outbound links the admin configured (see outboundHref). */
+  utmEnabled: z.boolean().default(false),
+  utmSource: zUtmValue,
+  utmMedium: zUtmValue,
+  utmCampaign: zUtmValue,
+
+  // Umami analytics (docs/configuration.md#analytics). The Umami server itself is
+  // UMAMI_URL on the instance (never a setting: no admin can point the server at
+  // another host); analytics only runs when both are set.
+  /** Load the analytics script on the public pages. */
+  analyticsEnabled: z.boolean().default(false),
+  /** Website ID in Umami; required when analytics is enabled. */
+  analyticsWebsiteId: zUmamiWebsiteId.nullish(),
+  /** Only track on these host names (comma separated); empty: every host. */
+  analyticsDomains: zAnalyticsDomains.default(''),
+  /** Send nothing for visitors with Do Not Track or Global Privacy Control. */
+  analyticsRespectDnt: z.boolean().default(true),
+  /** Pass the visitor's IP address to Umami (X-Forwarded-For) for its location and visitor counts. */
+  analyticsForwardIp: z.boolean().default(false),
+}).superRefine((s, ctx) => {
+  if (s.analyticsEnabled && !s.analyticsWebsiteId) {
+    ctx.addIssue({ code: 'custom', path: ['analyticsWebsiteId'], message: 'required when analytics is enabled' });
+  }
 });
 export type SettingsInput = z.infer<typeof SettingsInput>;
 export type PublicPageSettings = SettingsInput;
+/** `settings/site` of the management API: the page settings plus read-only facts of the instance. */
+export type AdminPageSettings = PublicPageSettings & {
+  /** The instance has UMAMI_URL: analytics can run (read-only, ignored when sent). */
+  analyticsAvailable: boolean;
+};
 
 // ---------------------------------------------------------------------------
 // Auth & users

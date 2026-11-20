@@ -26,6 +26,10 @@ The core promise: **customers see services, never infrastructure.**
   and masked in admin responses.
 - Ingest tokens and session/API tokens are stored as SHA-256 hashes only.
 - Subscription tokens are not stored at all (HMAC of `SUBSCRIPTION_TOKEN_KEY`, default `SECRET_KEY`, and a salt).
+- Optional page view statistics (Umami, off by default) go through the app's own
+  proxy: no third-party request from the visitor's browser, no IP address
+  forwarded unless the settings say so, no tracker on subscription links, and a
+  visitor opt-out that works without JavaScript ([configuration.md](configuration.md#analytics)).
 
 ## Status model
 
@@ -547,7 +551,22 @@ What keeps it small:
   most 16 pages and 1 MiB together, as UTF-8 bytes); there is no query cache. The rate limiter
   keeps at most 1000 clients per route (`RATE_LIMIT_KEYS`), the per-source
   limiter of the ingest endpoints 10 000 keys. The web asset policy keeps only
-  the file names of the public entry, never file contents.
+  the file names of the public entry, never file contents. The analytics proxy
+  (only with `UMAMI_URL`, `routes/analytics.ts`) keeps one copy of Umami's
+  tracker script (at most 64 KiB plus its gzip copy, refreshed hourly) and
+  forwards at most 8 events at a time, 2 per client address (bodies up to
+  16 KiB, answers up to 8 KiB); further events are dropped at once, not
+  queued, so they never hold memory or delay the pages.
+- **No fetch for outbound requests of the public instance.** The analytics
+  proxy talks to Umami through `node:http`, so undici and its WebAssembly
+  parser (several MB, see above) are never loaded on a public instance.
+  Measured on macOS (arm64, the production build against PostgreSQL 17, four
+  runs per mode): 400 page and API requests followed by 3,000 events and 300
+  script requests over 64 connections cost the public instance 1.5–3.5 MB more
+  peak RSS than the same requests without `UMAMI_URL` (with 16 events in flight
+  it was about 3.5 MB, with 4 about 2 MB); the spread between runs of the same
+  mode is about 2.5 MB. macOS RSS is about 20 MB higher than Linux for the
+  same build, so only the difference carries over to the table above.
 - **Runtime flags** in the image (`docker/Dockerfile`):
 
   | Setting | Value | Why |

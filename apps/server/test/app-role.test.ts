@@ -84,10 +84,10 @@ describe('APP_ROLE configuration', () => {
   });
 });
 
-async function routesOf(role: string): Promise<string[]> {
+async function routesOf(role: string, env: Record<string, string> = {}): Promise<string[]> {
   const routes: string[] = [];
   const t = await createTestApp(
-    { APP_ROLE: role },
+    { APP_ROLE: role, ...env },
     {
       onRoute: (r) => {
         for (const m of [r.method].flat()) if (m !== 'HEAD') routes.push(`${m} ${r.url}`);
@@ -128,6 +128,16 @@ describe('APP_ROLE route availability', () => {
 
   it('serves only the health check with worker', async () => {
     expect(await routesOf('worker')).toEqual(['GET /api/health']);
+  });
+
+  it('serves the analytics proxy where public pages are served, and only with UMAMI_URL', async () => {
+    const proxy = ['GET /pulse/p.js', 'POST /pulse/api/send'];
+    const env = { UMAMI_URL: 'https://umami.example.com' };
+    for (const role of ['all', 'admin', 'public']) {
+      expect(await routesOf(role, env), role).toEqual(expect.arrayContaining(proxy));
+    }
+    expect(all.some((r) => r.includes('/pulse/'))).toBe(false);
+    expect(await routesOf('worker', env)).toEqual(['GET /api/health']);
   });
 });
 

@@ -143,6 +143,18 @@ const EnvSchema = z.object({
   SMTP_FROM: z.string().max(320).optional(),
   /** Verify the SMTP server certificate. Only disable for testing with self-signed certificates. */
   SMTP_TLS_REJECT_UNAUTHORIZED: bool.default(true),
+
+  /**
+   * Base URL of the Umami server (https://umami.is) for the analytics of the public
+   * pages, e.g. `https://umami.example.com`. The instances that serve public pages
+   * proxy its script and events under /pulse/ (docs/configuration.md#analytics).
+   * Unset: no analytics, whatever the settings say. An instance setting on purpose:
+   * the management UI only chooses the website ID, never where the server connects.
+   */
+  UMAMI_URL: z
+    .url({ protocol: /^https?$/, error: 'expected an http(s) URL' })
+    .refine((v) => !/[?#]/.test(v), 'expected a base URL without query or fragment')
+    .optional(),
 });
 
 export type Config = Omit<
@@ -289,5 +301,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     database,
     MAIL_TRANSPORT: mailTransport,
     SESSION_MAX_AGE_HOURS: sessionMaxAgeHours,
+    UMAMI_URL: c.UMAMI_URL?.replace(/\/+$/, ''),
   };
 }

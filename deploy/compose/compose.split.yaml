@@ -78,6 +78,8 @@ services:
       # Subscriptions are offered when mails are configured; the worker sends them.
       MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # Optional Umami analytics: the public pages proxy its script and events.
+      UMAMI_URL: ${UMAMI_URL:-}
       # Only the key of the subscription links, never SECRET_KEY (it decrypts the
       # monitoring credentials and signs the admin cookies).
       SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}

@@ -33,6 +33,7 @@ wichtigsten Variablen:
 | `APP_ROLE` | `all` | `all`, oder mit PostgreSQL `public`, `admin` bzw. `worker`, wenn du Statusseite und Verwaltung als getrennte Instanzen betreibst. Siehe [Getrennter Betrieb](../../configuration.md#split-deployment). |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL-Login der `public`-Instanz. Sie darf nur öffentliche Daten lesen und Abonnements über geprüfte Funktionen verwalten. Lege die Rolle mit `deploy/postgres/roles.sql` an; siehe [Sicherheitsmodell](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` bei `APP_ROLE=admin`) | Hintergrundaufgaben; mit PostgreSQL dürfen mehrere Instanzen sie ausführen (Abstimmung über die Datenbank). |
+| `UMAMI_URL` | – | Dein Umami-Server für Statistiken über Seitenaufrufe, siehe [Statistik mit Umami](#statistik-mit-umami). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | E-Mail-Versand, siehe [E-Mail-Abonnements](07-email-subscriptions.md#mailserver). |
 
 Für alle Variablen gilt:
@@ -72,9 +73,15 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 | Anzeige | Verfügbarkeit anzeigen | Zeigt Verfügbarkeitsbalken und Prozentwerte. |
 | Anzeige | Tage der Verfügbarkeit | Tage in den Verfügbarkeitsbalken (7–180, Standard 90). |
 | Anzeige | Tage für kürzliche Vorfälle | Wie lange behobene Vorfälle in der Übersicht bleiben (1–90, Standard 7). |
-| Footer-Links | – | Bis zu 10 Links im Footer (z. B. Impressum, Datenschutzerklärung). |
+| Footer-Links | – | Bis zu 10 weitere Links im Footer. |
 | E-Mail-Abonnements | E-Mail-Abonnements anbieten | Bietet Abonnements auf der öffentlichen Seite an (setzt einen konfigurierten Mailserver voraus). Standard: aus. |
 | E-Mail-Abonnements | Wartungserinnerung (Stunden) | Stunden vor einer geplanten Wartung, zu denen Abonnenten erinnert werden (0–168, 0 = aus, Standard 24). |
+| Rechtliche Links | Impressum, Datenschutz, Erklärung zur Barrierefreiheit | `https://`-Links zu diesen Seiten auf deiner Website, jeweils mit optionaler Bezeichnung; erscheinen im Footer unter „Rechtliches“, ohne URL ausgeblendet. |
+| Copyright und Hinweis | Copyright-Hinweis | Reiner Text wie `© {year} Beispiel GmbH`; `{year}` wird zum aktuellen Jahr. Leer: `© <Jahr> <Seitenname>`. |
+| Copyright und Hinweis | URL des Marken-Links | Optional; macht den Hinweis zu einem Link auf deine Website. |
+| Copyright und Hinweis | „Betrieben mit OpenStatusPage“ anzeigen | Zeigt den Hinweis auf die Software. Standard: an. |
+| Info-Link | Bezeichnung, URL oder Pfad | Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine `https://`-URL oder ein Pfad auf dieser Seite wie `/about`. |
+| Link-Tracking (UTM) | UTM-Parameter anhängen, utm_source, utm_medium, utm_campaign | Hängt die Parameter an die Links oben an, die zu anderen Websites führen, siehe [unten](#utm-parameter). Standard: aus. |
 
 Die E-Mail-Einstellungen und den Kasten **E-Mail-Versand** darunter erklärt
 [E-Mail-Abonnements](07-email-subscriptions.md).
@@ -102,6 +109,87 @@ Texte zu Vorfällen und Wartungen in der Sprache der meisten Besucher.
 
 Sprache und Darstellung der Verwaltung stellt jeder Benutzer selbst im
 Benutzermenü (unten links) ein.
+
+### Rechtliche Links und Info-Link
+
+Die rechtlichen Links zeigen auf Seiten deiner eigenen Website; die Statusseite
+hat keinen Editor dafür. Jede öffentliche Seite zeigt sie im Footer, auch ohne
+JavaScript. Links zu anderen Websites öffnen sich in einem neuen Tab, und
+Screenreader sagen das an. Der Info-Link kann auch ein Pfad auf dieser Seite
+sein (`/about`), etwa eine Seite, die dein Reverse Proxy ausliefert; so ein Pfad
+muss mit einem einzelnen `/` beginnen, damit der Link nie zu einem anderen Host
+führen kann.
+
+### UTM-Parameter
+
+Ist **UTM-Parameter an ausgehende Links anhängen** eingeschaltet, hängt die
+Seite `utm_source`, `utm_medium` und `utm_campaign` (die, die du ausgefüllt
+hast) an jeden von dir eingetragenen Link zu einer anderen Website an:
+rechtliche Links, Marken-Link, Info-Link, Support-URL, Footer-Links und die
+Websites der Services. Deine Webanalyse sieht dann, dass Besuche von der
+Statusseite kamen. Links auf die Adresse der Statusseite selbst und Links, die
+schon einen `utm_`-Parameter enthalten, bleiben unverändert. Den Rest einer
+Link-Adresse lässt die Seite in Ruhe: Sie hängt die UTM-Parameter nur hinten an
+die Query an, vor einem `#Fragment`.
+
+Ihre eigene Adresse kennt die Seite aus `PUBLIC_BASE_URL` (oder `BASE_URL`, wenn
+das nicht gesetzt ist). Hinter einem Reverse Proxy muss das die Adresse sein,
+die Besucher wirklich aufrufen. Stimmt sie nicht, gelten Links auf die
+Statusseite selbst als Links zu einer anderen Website: Sie bekommen
+UTM-Parameter, öffnen sich in einem neuen Tab und werden so angekündigt.
+
+### Statistik mit Umami
+
+Die Statusseite kann Seitenaufrufe mit [Umami](https://umami.is) zählen, einem
+Analyse-Server, den du selbst betreibst und der keine Cookies setzt. Du
+brauchst Umami 2.0 oder neuer. Zwei Schritte:
+
+1. Setze `UMAMI_URL` auf die Adresse deines Umami-Servers (zum Beispiel
+   `https://umami.example.com` oder `http://umami:3000` in einem
+   Docker-Netzwerk) auf jeder Instanz, die die Statusseite ausliefert, und
+   starte sie neu. Bei getrennten Instanzen ist das die `public`-Instanz (und
+   die `admin`-Instanz für ihre Vorschau).
+2. Lege in Umami eine Website an und kopiere ihre **Website ID**. Schalte unter
+   **Einstellungen → Statistik (Umami)** **Seitenaufrufe mit Umami zählen** ein
+   und füge die ID ein. Hat der Server, den du gerade verwaltest, keine
+   `UMAMI_URL`, warnt dich die Karte, dass der Schalter dort nichts bewirkt.
+
+Die Browser der Besucher sprechen nie mit Umami. Die Statusseite liefert den
+Tracker als `/pulse/p.js` aus und gibt die Ereignisse von `/pulse/api/send` an
+Umami weiter. Dein Umami-Server kann also intern bleiben, und die Seite braucht
+keine Ausnahme in ihrer Sicherheitsrichtlinie. Die Adresse des Umami-Servers ist
+absichtlich eine Umgebungsvariable und keine Einstellung: Wer nur Zugriff auf die
+Verwaltung hat, kann den Server nicht anderswohin verbinden lassen.
+
+Was Besucher und deine Statistik bekommen:
+
+- Jede öffentliche Seite hat im Footer neben der Datenschutzerklärung
+  **Statistik deaktivieren**. Das funktioniert ohne JavaScript und speichert die
+  Wahl ein Jahr lang im Cookie `osp-analytics`; danach steht dort „Statistik ist
+  deaktiviert.“ mit **Statistik aktivieren**. Dieses Cookie entscheidet immer:
+  Läuft es ab oder wird es gelöscht, zählt die Seite wieder und zeigt das auch
+  im Footer.
+- Abo-Links aus E-Mails werden nie gezählt, und Tokens (mit der Abo-ID daneben)
+  und `#Fragmente` werden aus jeder Adresse entfernt, bevor sie Umami erreicht. Die Verwaltung wird nie gezählt.
+- **Do Not Track und Global Privacy Control beachten** (standardmäßig an) sendet
+  nichts für Browser, die darum bitten, nicht erfasst zu werden.
+- **IP-Adressen der Besucher an Umami weitergeben** ist standardmäßig aus. Umami
+  sieht dann nur deinen Statusseiten-Server: Es zeigt keine Standorte der
+  Besucher (oder den des Servers) und zählt Besucher mit derselben
+  Browserversion als einen; die Besucherzahlen sind dann zu niedrig, die
+  Seitenaufrufe stimmen. Schalte es nur ein, wenn deine Datenschutzerklärung das
+  abdeckt, und setze hinter einem Reverse Proxy `TRUST_PROXY` (siehe
+  [Reverse Proxy](03-reverse-proxy.md#trust_proxy)), sonst bekommt Umami die
+  Adresse des Proxys.
+- **Nur auf diesen Domains** beschränkt das Zählen auf die Hostnamen, die du
+  einträgst, etwa um eine Testkopie auszunehmen.
+
+Ist Umami nicht erreichbar oder langsam, funktionieren die Seiten ohne Fehler
+weiter; der Statistik fehlen dann nur diese Aufrufe. Die Website ID steht in
+jeder Seite, daher könnte jeder erfundene Aufrufe senden, wie bei jeder
+Umami-Installation; nimm die Zahlen als Trend, nicht als genaue Zählung. Erwähne die Statistik in deiner
+Datenschutzerklärung. Details und Grenzen:
+[configuration.md](../../configuration.md#analytics).
 
 ## Die wirksame Konfiguration prüfen
 

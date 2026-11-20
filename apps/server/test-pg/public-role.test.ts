@@ -3,6 +3,8 @@
  * docs/security-model.md). Every query of the "public" connection runs AS that role,
  * with search_path=osp_public like a public instance.
  */
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { JSONAPI_MEDIA_TYPE, toRequestDocument } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
@@ -11,6 +13,7 @@ import { buildApp } from '../src/app.js';
 import type { DB } from '../src/db/index.js';
 import { MemoryMailer } from '../src/mail/mailer.js';
 import { PublicDocuments } from '../src/services/public-documents.js';
+import { getSettings } from '../src/services/settings.js';
 import type { RenderModule } from '../src/ssr/pages.js';
 import { publicDocumentSource } from '../src/ssr/source.js';
 import { prepareDatabase } from '../src/startup.js';
@@ -452,6 +455,51 @@ describe('views of the public role', () => {
 
   it('return only the page settings', async () => {
     expect((await rows('select key from settings')).map((r) => r.key)).toEqual(['page']);
+  });
+
+  it('read the footer, info link and UTM settings and the service website, and no other column', async () => {
+    const page = {
+      siteName: 'Example Status',
+      emailSubscriptionsEnabled: true,
+      imprintUrl: 'https://www.example.com/imprint',
+      privacyUrl: 'https://www.example.com/privacy',
+      accessibilityUrl: 'https://www.example.com/accessibility',
+      copyrightText: '© {year} Example GmbH',
+      brandUrl: 'https://www.example.com/',
+      showPoweredBy: false,
+      infoLinkUrl: '/about',
+      infoLinkLabel: 'What does the status mean?',
+      utmEnabled: true,
+      utmSource: 'status',
+      utmMedium: 'referral',
+      utmCampaign: 'statuspage',
+    };
+    const site = 'https://www.example.com';
+    await owner.updateTable('settings').set({ value: JSON.stringify(page) }).where('key', '=', 'page').execute();
+    await owner.updateTable('services').set({ kind: 'site', url: site }).where('id', '=', ids.service).execute();
+    try {
+      // The settings are one JSON document of the page key: the new options need no new column.
+      expect(await getSettings(pub)).toMatchObject(page);
+      expect(await rows(`select url from services where id = '${ids.service}'`)).toEqual([{ url: site }]);
+      const privileges = await rows<{ table_name: string; column_name: string }>(
+        `select table_name, column_name from information_schema.column_privileges
+         where grantee = current_user and privilege_type = 'SELECT' and table_schema = 'public'
+           and table_name in ('settings', 'services') order by table_name, column_name`,
+      );
+      const columns = (table: string) => privileges.filter((p) => p.table_name === table).map((p) => p.column_name);
+      expect(columns('settings')).toEqual(['key', 'updated_at', 'value']);
+      expect(columns('services')).toEqual(
+        ['created_at', 'current_status', 'description', 'id', 'is_public', 'kind', 'name', 'slug', 'sort_order', 'status_changed_at', 'updated_at', 'url'],
+      );
+      await expect(rows('select status_mode from public.services')).rejects.toMatchObject({ code: '42501' });
+    } finally {
+      await owner
+        .updateTable('settings')
+        .set({ value: JSON.stringify({ siteName: 'Example Status', emailSubscriptionsEnabled: true }) })
+        .where('key', '=', 'page')
+        .execute();
+      await owner.updateTable('services').set({ kind: 'service', url: null }).where('id', '=', ids.service).execute();
+    }
   });
 });
 
@@ -1033,6 +1081,56 @@ describe('a public instance', () => {
     } finally {
       await formApp.close();
       web.remove();
+    }
+  });
+
+  it('runs the analytics proxy and the script tag with the settings read through the views', async () => {
+    const websiteId = '4f3c2b1a-1234-4abc-8def-0123456789ab';
+    const received: { url: string; body: string; headers: Record<string, unknown> }[] = [];
+    // A fake Umami server.
+    const umami = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        received.push({ url: req.url ?? '', body, headers: { ...req.headers } });
+        if (req.url === '/script.js') res.writeHead(200, { 'content-type': 'application/javascript' }).end('/* tracker */');
+        else res.writeHead(200, { 'content-type': 'application/json' }).end('{"cache":"a.b.c"}');
+      });
+    });
+    await new Promise<void>((resolve) => umami.listen(0, '127.0.0.1', resolve));
+    const { port } = umami.address() as AddressInfo;
+    const web = createWebDir();
+    const config = { ...pgdb.config('public', { UMAMI_URL: `http://127.0.0.1:${port}` }), WEB_DIST_DIR: web.dir };
+    const app = await buildApp({ config, db: pub, ssrModule: renderFromSource });
+    const page = { siteName: 'Example Status', emailSubscriptionsEnabled: true, analyticsEnabled: true, analyticsWebsiteId: websiteId };
+    await owner.updateTable('settings').set({ value: JSON.stringify(page) }).where('key', '=', 'page').execute();
+    try {
+      await app.ready();
+      expect(await getSettings(pub)).toMatchObject({ analyticsEnabled: true, analyticsWebsiteId: websiteId, analyticsRespectDnt: true });
+      const html = (await app.inject({ url: '/' })).body;
+      expect(html).toContain(`<script defer src="/pulse/p.js" data-website-id="${websiteId}" data-host-url="/pulse"`);
+      expect((await app.inject({ url: '/', headers: { cookie: 'osp-analytics=off' } })).body).not.toContain('/pulse/');
+      expect((await app.inject({ url: '/pulse/p.js' })).body).toBe('/* tracker */');
+      const sent = await app.inject({
+        method: 'POST',
+        url: '/pulse/api/send',
+        headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0', cookie: 'osp-theme=dark' },
+        payload: JSON.stringify({ type: 'event', payload: { website: websiteId, url: '/history?token=x', hostname: 'status.example.com' } }),
+      });
+      expect(sent.statusCode).toBe(200);
+      const event = received.find((r) => r.url === '/api/send')!;
+      expect(JSON.parse(event.body)).toMatchObject({ payload: { url: '/history' } });
+      expect(event.headers.cookie).toBeUndefined();
+      expect(event.headers['x-forwarded-for']).toBeUndefined();
+    } finally {
+      await owner
+        .updateTable('settings')
+        .set({ value: JSON.stringify({ siteName: 'Example Status', emailSubscriptionsEnabled: true }) })
+        .where('key', '=', 'page')
+        .execute();
+      await app.close();
+      web.remove();
+      await new Promise((resolve) => umami.close(resolve));
     }
   });
 });

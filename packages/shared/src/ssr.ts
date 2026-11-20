@@ -5,6 +5,7 @@
  * bundle never talks HTTP to its own server but reads the public JSON:API
  * documents through the `source` the server passes in.
  */
+import type { AnalyticsTag } from './analytics.js';
 import type { DataDocument } from './jsonapi.js';
 
 /** Visitor theme preference (cookie `osp-theme`, falls back to the page default). */
@@ -160,6 +161,8 @@ export const FORM_PATHS = {
    * URL): lang=<code>, return=<path>; sets the language cookie (see LanguageSwitcher).
    */
   language: '/preferences/language',
+  /** POST: analytics=off|on, return=<path>; sets or clears the analytics opt-out cookie (osp-analytics). */
+  analytics: '/preferences/analytics',
   /** POST: email, locale, scope=all|selected, service=<id>…, group=<id>…, website (honeypot). */
   subscribe: '/subscribe',
   /** POST: id, token (the confirm token). */
@@ -231,6 +234,8 @@ export interface SsrRenderResult {
   state: string;
   /** CSS for the page head (the configured accent color). */
   css?: string;
+  /** The analytics script tag of the page (see analyticsTag); omitted: none. */
+  analytics?: AnalyticsTag;
 }
 
 /** Module interface of the SSR bundle. */

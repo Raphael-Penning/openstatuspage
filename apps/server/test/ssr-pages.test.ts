@@ -238,6 +238,61 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     expect((await get('/', { cookie: 'osp-theme=dark' })).body).toContain('<html lang="en" dir="ltr" data-theme="dark">');
   });
 
+  it('renders the footer legal links, copyright notice and info link with UTM parameters', async () => {
+    const admin = await adminClient(seeder, 'footer@example.com');
+    const saved = await admin.patch('/api/admin/settings', {
+      imprintUrl: 'https://www.example.com/imprint',
+      privacyUrl: 'https://www.example.com/privacy?lang=en',
+      privacyLabel: 'Data protection',
+      accessibilityUrl: 'https://www.example.com/a11y?utm_source=kept',
+      copyrightText: '© {year} Example <GmbH>',
+      brandUrl: 'https://www.example.com/',
+      showPoweredBy: false,
+      infoLinkUrl: '/about',
+      infoLinkLabel: 'What does the status mean?',
+      supportUrl: `${BASE_URL}/help`,
+      utmEnabled: true,
+      utmSource: 'status',
+      utmMedium: 'referral',
+      utmCampaign: 'statuspage',
+    });
+    expect(saved.statusCode).toBe(200);
+    const utm = 'utm_source=status&amp;utm_medium=referral&amp;utm_campaign=statuspage';
+    const res = await get('/');
+    const root = rootOf(res);
+    const footer = /<footer[\s\S]*<\/footer>/.exec(root)?.[0] ?? '';
+    // The legal links in their own navigation landmark, in a new tab and said so.
+    expect(footer).toMatch(/<nav aria-label="Legal">/);
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    /** An outbound link: new tab, rel, the text, and the screen reader hint. */
+    const outbound = (href: string, text: string) =>
+      new RegExp(`<a href="${esc(href)}"[^>]* target="_blank" rel="noopener noreferrer">${esc(text)}<svg[^]*?\\(opens in a new tab\\)</span></a>`);
+    expect(footer).toMatch(outbound(`https://www.example.com/imprint?${utm}`, 'Imprint'));
+    expect(footer).toMatch(outbound(`https://www.example.com/privacy?lang=en&amp;${utm}`, 'Data protection'));
+    // Existing utm_ parameters are never overwritten or mixed.
+    expect(footer).toMatch(outbound('https://www.example.com/a11y?utm_source=kept', 'Accessibility statement'));
+    // Same-origin links get no UTM parameters and stay in the tab.
+    expect(footer).toMatch(new RegExp(`<a href="${esc(BASE_URL)}/help" class="[^"]*">Support</a>`));
+    // The notice as plain text with the year of the render, linked to the brand.
+    expect(footer).toMatch(new RegExp(`<a href="${esc(`https://www.example.com/?${utm}`)}"[^>]* target="_blank" rel="noopener noreferrer">©`));
+    expect(footer).toContain(`© ${new Date().getUTCFullYear()} Example &lt;GmbH&gt;`);
+    expect(footer).not.toContain('Powered by OpenStatusPage');
+    // The info link in the page navigation: a plain link to the path, no UTM, same tab.
+    const nav = /<nav aria-label="Status page sections"[\s\S]*?<\/nav>/.exec(root)?.[0] ?? '';
+    expect(nav).toMatch(/<a href="\/about" class="[^"]*">.*What does the status mean\?<\/a>/);
+    // Service websites are outbound links as well.
+    expect(root).toContain(`href="https://www.example.com/?${utm}" target="_blank"`);
+    // JSON-LD: the brand link is the organization's sameAs (without UTM parameters).
+    expect(res.body).toContain('"sameAs":["https://www.example.com/"]');
+  });
+
+  it('renders no legal navigation and the attribution by default', async () => {
+    const root = rootOf(await get('/'));
+    expect(root).not.toContain('aria-label="Legal"');
+    expect(root).toContain('Powered by OpenStatusPage');
+    expect(root).not.toContain('utm_');
+  });
+
   it('caches briefly with an ETag', async () => {
     const first = await get('/');
     expect(first.headers['cache-control']).toBe('public, max-age=10, stale-while-revalidate=60');

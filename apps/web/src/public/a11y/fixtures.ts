@@ -51,6 +51,28 @@ export const settings: PublicPageSettings = {
   recentIncidentDays: 7,
   emailSubscriptionsEnabled: true,
   maintenanceReminderHours: 24,
+  // Every footer and navigation link is shown, so every page checks them.
+  imprintUrl: 'https://example.com/imprint',
+  imprintLabel: '',
+  privacyUrl: 'https://example.com/privacy',
+  privacyLabel: 'Privacy',
+  accessibilityUrl: 'https://example.com/accessibility',
+  accessibilityLabel: '',
+  copyrightText: '© {year} Example GmbH',
+  brandUrl: 'https://example.com/',
+  showPoweredBy: true,
+  infoLinkUrl: '/about',
+  infoLinkLabel: 'What does the status mean?',
+  utmEnabled: true,
+  utmSource: 'status',
+  utmMedium: 'referral',
+  utmCampaign: 'statuspage',
+  // Analytics runs, so every page also checks the statistics choice of the footer.
+  analyticsEnabled: true,
+  analyticsWebsiteId: '4f3c2b1a-1234-4abc-8def-0123456789ab',
+  analyticsDomains: '',
+  analyticsRespectDnt: true,
+  analyticsForwardIp: false,
 };
 
 function uptime(pattern: (i: number) => ServiceStatus | null): DailyUptime[] {

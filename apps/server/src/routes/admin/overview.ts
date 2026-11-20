@@ -71,6 +71,7 @@ export async function registerOverviewRoutes(app: FastifyInstance): Promise<void
 async function registerOverviewScope(app: FastifyInstance): Promise<void> {
   useJsonApi(app);
   const { db } = app.ctx;
+  const instance = { analyticsAvailable: Boolean(app.ctx.config.UMAMI_URL) };
 
   app.get('/api/admin/overview', editor, async (req) => {
     const now = new Date().toISOString();
@@ -162,7 +163,7 @@ async function registerOverviewScope(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/admin/settings', editor, async (req) =>
-    document(adminSettingsResource(await getSettings(db)), { links: { self: selfLink(req) } }),
+    document(adminSettingsResource(await getSettings(db), instance), { links: { self: selfLink(req) } }),
   );
 
   // Partial update: missing attributes keep their current value.
@@ -171,7 +172,7 @@ async function registerOverviewScope(app: FastifyInstance): Promise<void> {
     const input = parse(SettingsInput, { ...current, ...(req.body as object) });
     const saved = await saveSettings(db, input);
     await auditRequest(db, req, 'settings.update', 'settings', null, { siteName: input.siteName });
-    return document(adminSettingsResource(saved));
+    return document(adminSettingsResource(saved, instance));
   });
 
   app.get('/api/admin/audit-log', admin, async (req) => {

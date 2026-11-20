@@ -230,6 +230,53 @@ describe('settings', () => {
     expect((await admin.put('/api/admin/settings', { siteName: 'X' })).statusCode).toBe(404);
     expect(data<{ siteName: string }>(await t.app.inject({ method: 'GET', url: '/api/public/settings' })).siteName).toBe('Example Status');
   });
+
+  it('stores footer, info link and UTM settings and publishes them', async () => {
+    const links = {
+      imprintUrl: 'https://www.example.com/imprint',
+      imprintLabel: 'Legal notice',
+      privacyUrl: 'https://www.example.com/privacy',
+      accessibilityUrl: 'https://www.example.com/accessibility',
+      copyrightText: '© {year} Example GmbH',
+      brandUrl: 'https://www.example.com',
+      showPoweredBy: false,
+      infoLinkUrl: '/about',
+      infoLinkLabel: 'What does the status mean?',
+      utmEnabled: true,
+      utmSource: 'status',
+      utmMedium: 'referral',
+      utmCampaign: 'statuspage',
+    };
+    const res = await admin.patch('/api/admin/settings', { siteName: 'Example Status', ...links });
+    expect(res.statusCode).toBe(200);
+    expect(data(res)).toMatchObject(links);
+    expect(data(await t.app.inject({ method: 'GET', url: '/api/public/settings' }))).toMatchObject(links);
+    // Defaults of an instance that never saved them: everything hidden, attribution shown.
+    const fresh = data(await admin.patch('/api/admin/settings', { imprintUrl: null, infoLinkUrl: null }));
+    expect(fresh).toMatchObject({ imprintUrl: null, infoLinkUrl: null, privacyUrl: links.privacyUrl });
+  });
+
+  it('rejects script, data and foreign-host targets for the configured links', async () => {
+    const cases: [field: string, value: string][] = [
+      ['imprintUrl', 'javascript:alert(1)'],
+      ['privacyUrl', 'data:text/html,<script>alert(1)</script>'],
+      ['accessibilityUrl', '/accessibility'],
+      ['brandUrl', '//evil.example'],
+      ['infoLinkUrl', '//evil.example'],
+      ['infoLinkUrl', '/\\evil.example'],
+      ['infoLinkUrl', '/\t/evil.example'],
+      ['infoLinkUrl', 'javascript:alert(1)'],
+      ['infoLinkUrl', 'about'],
+      ['imprintLabel', 'Two\nlines'],
+      ['utmSource', 'x'.repeat(101)],
+    ];
+    for (const [field, value] of cases) {
+      const res = await admin.patch('/api/admin/settings', { [field]: value });
+      expect(res.statusCode, `${field}=${JSON.stringify(value)}`).toBe(400);
+      expect(errors(res)[0]).toMatchObject({ source: { pointer: `/data/attributes/${field}` } });
+    }
+    expect(data<{ infoLinkUrl?: string }>(await admin.get('/api/admin/settings')).infoLinkUrl ?? null).toBeNull();
+  });
 });
 
 describe('monitoring sources', () => {

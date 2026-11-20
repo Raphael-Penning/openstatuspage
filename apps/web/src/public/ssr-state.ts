@@ -19,6 +19,8 @@ export interface SsrState {
   queries: DehydratedState;
   /** Form state of a page that answers a form submission. */
   form?: SsrFormState;
+  /** The visitor turned analytics off (the page was rendered without the analytics script). */
+  analyticsOff?: boolean;
 }
 
 interface EncodedApiError {

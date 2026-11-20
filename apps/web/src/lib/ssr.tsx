@@ -6,7 +6,7 @@
  * must not read browser-only state (localStorage, window size, the URL fragment,
  * Date.now()) during the first render; they use these hooks instead.
  */
-import type { SsrFormState, ThemePreference } from '@openstatuspage/shared';
+import { analyticsOptedOut, type SsrFormState, type ThemePreference } from '@openstatuspage/shared';
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 
@@ -19,6 +19,8 @@ export interface SsrInfo {
   baseUrl: string;
   /** The page answers a form submission (values and errors the server checked). */
   form?: SsrFormState;
+  /** The visitor turned analytics off (cookie osp-analytics=off). */
+  analyticsOff?: boolean;
 }
 
 const SsrContext = createContext<SsrInfo | null>(null);
@@ -41,6 +43,16 @@ export function useServerForm(): SsrFormState | null {
   const ssr = useSsr();
   const { key } = useLocation();
   return ssr?.form && key === 'default' ? ssr.form : null;
+}
+
+/**
+ * Whether the visitor turned analytics off: as the server rendered the page,
+ * or from the cookie in a client-only render.
+ */
+export function useAnalyticsOff(): boolean {
+  const ssr = useSsr();
+  if (ssr) return ssr.analyticsOff === true;
+  return typeof document !== 'undefined' && analyticsOptedOut(document.cookie);
 }
 
 const subscribe = () => () => {};

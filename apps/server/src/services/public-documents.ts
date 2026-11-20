@@ -9,7 +9,7 @@
  * (see public-catalog.ts, incidents.ts, maintenances.ts, serializers/public.ts).
  * Nothing about monitoring sources or checks is ever exposed here.
  */
-import { overallStatus, zId, type DataDocument, type PublicIncident, type PublicMaintenance, type ResourceObject } from '@openstatuspage/shared';
+import { overallStatus, zId, type DataDocument, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type ResourceObject } from '@openstatuspage/shared';
 import { z } from 'zod';
 import type { DB } from '../db/index.js';
 import { notFound } from '../lib/errors.js';
@@ -112,16 +112,31 @@ function monthRange(month: string): [string, string] {
 
 // --- Documents -------------------------------------------------------------------
 
+export interface PublicDocumentsOptions {
+  /** The instance has an analytics upstream (UMAMI_URL). Without it `analyticsEnabled` is always false. */
+  analytics?: boolean;
+}
+
 /** Builds the documents of the public read API (one instance per app). */
 export class PublicDocuments {
   constructor(
     private readonly db: DB,
     private readonly mailer: Mailer,
+    private readonly options: PublicDocumentsOptions = {},
   ) {}
+
+  /**
+   * The settings as the public pages use them: `analyticsEnabled` says whether
+   * analytics actually runs (the setting and UMAMI_URL on this instance).
+   */
+  private publicSettings(settings: PublicPageSettings): PublicPageSettings {
+    const analyticsEnabled = settings.analyticsEnabled && Boolean(this.options.analytics);
+    return analyticsEnabled === settings.analyticsEnabled ? settings : { ...settings, analyticsEnabled };
+  }
 
   /** GET /api/public/settings */
   async settings(req: DocumentRequest): Promise<DataDocument> {
-    return document(settingsResource(await getSettings(this.db)), { links: { self: selfLink(req) } });
+    return document(settingsResource(this.publicSettings(await getSettings(this.db))), { links: { self: selfLink(req) } });
   }
 
   /** GET /api/public/summary: everything the overview page shows. */
@@ -137,7 +152,7 @@ export class PublicDocuments {
       activeMaintenanceIds(this.db).then((ids) => publicMaintenances(this.db, ids)),
       upcomingMaintenanceIds(this.db, nowIso).then((ids) => publicMaintenances(this.db, ids)),
     ]);
-    const included = new Included().add(settingsResource(settings));
+    const included = new Included().add(settingsResource(this.publicSettings(settings)));
     included.add(...catalog.groups.map((g) => groupResource(g, included)));
     included.add(...catalog.ungrouped.map((s) => serviceResource(s)));
     for (const inc of [...active, ...recent]) included.add(incidentResource(inc, included));

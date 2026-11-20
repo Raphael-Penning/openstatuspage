@@ -15,7 +15,8 @@
     "overview": "Overview",
     "services": "Services & Sites",
     "locations": "Locations",
-    "history": "History"
+    "history": "History",
+    "info": "About this page"
   },
   "feeds": {
     "subscribe": "Subscribe to updates",
@@ -29,7 +30,14 @@
     "statusApi": "Status API",
     "support": "Support",
     "copyright": "© {{year}} {{name}}",
-    "poweredBy": "Powered by OpenStatusPage"
+    "poweredBy": "Powered by OpenStatusPage",
+    "legal": "Legal",
+    "imprint": "Imprint",
+    "privacy": "Privacy policy",
+    "accessibility": "Accessibility statement",
+    "analyticsDisable": "Disable statistics",
+    "analyticsEnable": "Enable statistics",
+    "analyticsDisabled": "Statistics are disabled."
   },
   "error": {
     "title": "The status could not be loaded.",
@@ -312,5 +320,8 @@
     "subscribe": "Get an email when {{site}} publishes incidents or maintenance.",
     "incident": "Incident report of {{site}}: {{title}}.",
     "maintenance": "Maintenance of {{site}}: {{title}}."
+  },
+  "link": {
+    "newTab": "(opens in a new tab)"
   }
 }

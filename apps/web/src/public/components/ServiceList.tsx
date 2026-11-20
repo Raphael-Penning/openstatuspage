@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { usePublicSettings } from '../hooks/queries';
 import { Card, StatusPill } from './ui';
+import { useOutboundHref } from './OutboundLink';
 import { UptimeBar } from './UptimeBar';
 
 /**
@@ -22,6 +23,7 @@ export function useBarDays(): number {
 export function ServiceRow({ service, days }: { service: PublicService; days: number }) {
   const { t } = useTranslation('public');
   const { data: settings } = usePublicSettings();
+  const outbound = useOutboundHref();
   const showUptime = settings?.showUptime !== false && (service.uptime?.length ?? 0) > 0;
   return (
     <li className="px-4 py-3.5 sm:px-5">
@@ -32,7 +34,7 @@ export function ServiceRow({ service, days }: { service: PublicService; days: nu
           </Link>
           {service.kind === 'site' && service.url && (
             <a
-              href={service.url}
+              href={outbound(service.url)}
               target="_blank"
               rel="noopener noreferrer"
               aria-label={t('services.openSite', { name: service.name })}

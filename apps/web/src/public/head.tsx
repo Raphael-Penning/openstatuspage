@@ -145,6 +145,7 @@ export function usePageHead(input: PageHeadInput): void {
     baseUrl,
     lang,
     ...(settings?.logoUrl ? { logo: absoluteUrl(settings.logoUrl, baseUrl) } : {}),
+    ...(settings?.brandUrl ? { sameAs: [settings.brandUrl] } : {}),
     ...(settings?.description ? { description: summarize(settings.description) } : {}),
   };
 

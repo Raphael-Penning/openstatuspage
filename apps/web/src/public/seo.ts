@@ -55,6 +55,8 @@ export interface SiteInfo {
   name: string;
   /** Effective public base URL without trailing slash. */
   baseUrl: string;
+  /** Website of the organisation (the brand link of the settings), as Organization sameAs. */
+  sameAs?: string[];
   /** Absolute logo URL, if the settings have one. */
   logo?: string;
   description?: string;
@@ -74,6 +76,7 @@ export function organizationLd(site: SiteInfo): Record<string, unknown> {
     name: site.name,
     url: homeUrl(site),
     ...(site.logo ? { logo: site.logo } : {}),
+    ...(site.sameAs?.length ? { sameAs: site.sameAs } : {}),
   };
 }
 

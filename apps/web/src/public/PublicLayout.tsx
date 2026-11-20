@@ -2,16 +2,24 @@
  * Shared shell of all public pages: header with branding and visitor
  * preferences, pill navigation, content outlet and footer.
  */
-import type { PublicPageSettings } from '@openstatuspage/shared';
+import {
+  analyticsActive,
+  FORM_PATHS,
+  formatCopyright,
+  RETURN_QUERY,
+  UMAMI_DISABLED_KEY,
+  type PublicPageSettings,
+} from '@openstatuspage/shared';
 import { clsx } from 'clsx';
-import { Activity, Earth, LayoutDashboard, RotateCcwClock, Server } from 'lucide-react';
+import { Activity, Earth, Info, LayoutDashboard, RotateCcwClock, Server } from 'lucide-react';
 import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router';
 import { LANGUAGES } from '../lib/languages';
-import { useSsr } from '../lib/ssr';
+import { useAnalyticsOff, useSsr } from '../lib/ssr';
 import { ThemeProvider, useAccentColor, useTheme } from '../lib/theme';
-import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle } from './components/Controls';
+import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle, useReturnPath } from './components/Controls';
+import { OutboundLink } from './components/OutboundLink';
 import { Skeleton } from './components/ui';
 import { PreferencesProvider, usePreferences } from './hooks/preferences';
 import { usePublicSettings } from './hooks/queries';
@@ -127,7 +135,10 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
       </a>
 
       <Header settings={settings} />
-      <NavTabs showLocations={settings?.showLocations !== false} />
+      <NavTabs
+        showLocations={settings?.showLocations !== false}
+        info={settings ? { url: settings.infoLinkUrl, label: settings.infoLinkLabel } : undefined}
+      />
 
       <main ref={mainRef} id="main" tabIndex={-1} className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-8 pb-16 focus:outline-none sm:px-6">
         <Outlet />
@@ -184,7 +195,7 @@ function Header({ settings }: { settings: PublicPageSettings | undefined }) {
   );
 }
 
-function NavTabs({ showLocations }: { showLocations: boolean }) {
+function NavTabs({ showLocations, info }: { showLocations: boolean; info?: { url?: string | null; label: string } }) {
   const { t } = useTranslation('public');
   const { pathname } = useLocation();
   const items = [
@@ -221,58 +232,172 @@ function NavTabs({ showLocations }: { showLocations: boolean }) {
               </Link>
             </li>
           ))}
+          {/* The configured info link (an external page or a path on this site); hidden without URL. */}
+          {info?.url && (
+            <li className="shrink-0">
+              <OutboundLink
+                href={info.url}
+                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-muted hover:text-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+              >
+                <Info aria-hidden className="size-4" />
+                {info.label || t('nav.info')}
+              </OutboundLink>
+            </li>
+          )}
         </ul>
       </div>
     </nav>
   );
 }
 
+/** Legal pages of the footer, in this order; hidden without URL. */
+const LEGAL_LINKS = [
+  ['imprint', 'imprintUrl', 'imprintLabel'],
+  ['privacy', 'privacyUrl', 'privacyLabel'],
+  ['accessibility', 'accessibilityUrl', 'accessibilityLabel'],
+] as const;
+
+const linkClass = 'rounded-sm underline-offset-2 hover:text-fg hover:underline';
+
 function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
   // The shared clock: the server's render time until hydration (no mismatch at New Year).
   const year = new Date(usePreferences().now).getUTCFullYear();
-  const linkClass = 'hover:text-fg hover:underline';
+  const copyright = settings?.copyrightText
+    ? formatCopyright(settings.copyrightText, year)
+    : t('footer.copyright', { year, name: settings?.siteName ?? t('fallbackSiteName') });
+  const analytics = analyticsActive(settings);
+  const legal = LEGAL_LINKS.flatMap(([key, urlKey, labelKey]) => {
+    const url = settings?.[urlKey];
+    return url ? [{ key, url, label: settings[labelKey] || t(`footer.${key}`) }] : [];
+  });
+  // The statistics choice comes right after the privacy policy (or where it would be).
+  const analyticsAt = legal.filter((l) => l.key === 'imprint' || l.key === 'privacy').length;
   return (
     <footer className="border-t border-border">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-4 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <nav aria-label={t('footer.label')}>
-          <ul className="flex flex-wrap gap-x-5 gap-y-2">
-            <li>
-              <a href="/api/public/status" className={linkClass}>
-                {t('footer.statusApi')}
-              </a>
-            </li>
-            <li>
-              <a href="/feed.rss" className={linkClass}>
-                {t('feeds.rss')}
-              </a>
-            </li>
-            <li>
-              <a href="/feed.atom" className={linkClass}>
-                {t('feeds.atom')}
-              </a>
-            </li>
-            {settings?.supportUrl && (
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-4 py-8 text-sm text-muted sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <nav aria-label={t('footer.label')}>
+            <ul className="flex flex-wrap gap-x-5 gap-y-2">
               <li>
-                <a href={settings.supportUrl} className={linkClass} rel="noopener noreferrer" target="_blank">
-                  {t('footer.support')}
+                <a href="/api/public/status" className={linkClass}>
+                  {t('footer.statusApi')}
                 </a>
               </li>
+              <li>
+                <a href="/feed.rss" className={linkClass}>
+                  {t('feeds.rss')}
+                </a>
+              </li>
+              <li>
+                <a href="/feed.atom" className={linkClass}>
+                  {t('feeds.atom')}
+                </a>
+              </li>
+              {settings?.supportUrl && (
+                <li>
+                  <OutboundLink href={settings.supportUrl} className={linkClass}>
+                    {t('footer.support')}
+                  </OutboundLink>
+                </li>
+              )}
+              {settings?.footerLinks.map((l) => (
+                <li key={`${l.label}-${l.url}`}>
+                  <OutboundLink href={l.url} className={linkClass}>
+                    {l.label}
+                  </OutboundLink>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          {/* Legal pages (external links) and, when analytics runs, the visitor's statistics choice. */}
+          {(legal.length > 0 || analytics) && (
+            <nav aria-label={t('footer.legal')}>
+              <ul className="flex flex-wrap gap-x-5 gap-y-2 sm:justify-end">
+                {legal.slice(0, analyticsAt).map((l) => (
+                  <LegalLink key={l.key} url={l.url} label={l.label} />
+                ))}
+                {analytics && (
+                  <li>
+                    <AnalyticsChoice />
+                  </li>
+                )}
+                {legal.slice(analyticsAt).map((l) => (
+                  <LegalLink key={l.key} url={l.url} label={l.label} />
+                ))}
+              </ul>
+            </nav>
+          )}
+        </div>
+        <p className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-5">
+          <span>
+            {settings?.brandUrl ? (
+              <OutboundLink href={settings.brandUrl} className={linkClass} icon={false}>
+                {copyright}
+              </OutboundLink>
+            ) : (
+              copyright
             )}
-            {settings?.footerLinks.map((l) => (
-              <li key={`${l.label}-${l.url}`}>
-                <a href={l.url} className={linkClass} rel="noopener noreferrer" target="_blank">
-                  {l.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <p className="flex flex-col gap-0.5 sm:items-end">
-          <span>{t('footer.copyright', { year, name: settings?.siteName ?? t('fallbackSiteName') })}</span>
-          <span className="text-xs">{t('footer.poweredBy')}</span>
+          </span>
+          {settings?.showPoweredBy !== false && <span className="text-xs">{t('footer.poweredBy')}</span>}
         </p>
       </div>
     </footer>
+  );
+}
+
+function LegalLink({ url, label }: { url: string; label: string }) {
+  return (
+    <li>
+      <OutboundLink href={url} className={linkClass}>
+        {label}
+      </OutboundLink>
+    </li>
+  );
+}
+
+/**
+ * Turns the analytics of this browser off or on again: a form posting to the
+ * preference handler, which sets (or removes) the opt-out cookie and comes back
+ * here, so it works without JavaScript; the page then renders without (or with)
+ * the analytics script. With JavaScript the tracker of the current page is
+ * stopped at once through Umami's own switch (localStorage `umami.disabled`),
+ * which otherwise always mirrors the cookie.
+ */
+function AnalyticsChoice() {
+  const { t } = useTranslation('public');
+  const off = useAnalyticsOff();
+  const back = useReturnPath();
+
+  // The cookie (as the server rendered the page) is the only source of truth:
+  // Umami's switch follows it, so a lost cookie or a choice made without
+  // JavaScript never leaves the tracker silently off (or on) against the footer.
+  useEffect(() => {
+    try {
+      if (off) localStorage.setItem(UMAMI_DISABLED_KEY, '1');
+      else localStorage.removeItem(UMAMI_DISABLED_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [off]);
+
+  const remember = () => {
+    try {
+      if (off) localStorage.removeItem(UMAMI_DISABLED_KEY);
+      else localStorage.setItem(UMAMI_DISABLED_KEY, '1');
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  return (
+    <form method="post" action={FORM_PATHS.analytics} onSubmit={remember}>
+      <input type="hidden" name={RETURN_QUERY} value={back} />
+      <input type="hidden" name="analytics" value={off ? 'on' : 'off'} />
+      {off && <span>{t('footer.analyticsDisabled')} </span>}
+      <button type="submit" className={clsx(linkClass, 'cursor-pointer text-start')}>
+        {off ? t('footer.analyticsEnable') : t('footer.analyticsDisable')}
+      </button>
+    </form>
   );
 }
