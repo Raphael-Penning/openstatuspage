@@ -25,7 +25,7 @@ import { PostgresAdapter, sql, type Kysely } from 'kysely';
  */
 
 /** Columns of the services a private page shows (the public columns of the services view, without the group). */
-const SERVICE_COLUMNS = 'id text, slug text, name text, description text, kind text, url text, current_status text, position integer';
+const SERVICE_COLUMNS = 'id text, slug text, name text, description text, kind text, url text, current_status text, display_order integer';
 
 const ident = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
