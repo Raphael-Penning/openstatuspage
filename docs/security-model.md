@@ -242,6 +242,28 @@ requests per minute; the forms and the API count separately).
 - **Open redirects.** The preference handlers redirect only to a path of the
   site (`/…`, no `//`, no scheme, no control characters), everything else to `/`.
 
+## Browser security headers
+
+Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
+(`no-referrer` for `/subscription/*`). Pages (`text/html`, `apps/server/src/lib/security-headers.ts`) also get:
+
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src
+  'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self';
+  connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'`.
+  No inline script runs: the state block and the JSON-LD of a rendered page are
+  data blocks (`application/json`, `application/ld+json`), which `script-src`
+  does not govern, and they are escaped so they cannot end their element. Inline
+  styles stay allowed (style attributes of the rendered markup, the accent color
+  in the head). Images may come from any HTTPS origin because the logo and
+  favicon of the settings are URLs. zod runs without compiled parsers in the
+  browser, so no `unsafe-eval` is needed.
+- `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns
+  off camera, microphone, geolocation, payment and USB.
+- Framing: public pages may be embedded by other sites; the management UI and
+  the API add `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+
+HSTS is left to the reverse proxy that terminates TLS.
+
 ## Threat model
 
 ### A compromised public instance
