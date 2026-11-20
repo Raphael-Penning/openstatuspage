@@ -245,6 +245,21 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     expect((await get('/subscription/manage?id=x')).headers['cache-control']).toBe('private, no-store');
   });
 
+  it('redirects other spellings of a page path to the preferred one (301)', async () => {
+    for (const [url, location] of [
+      ['/SERVICES', '/services'],
+      ['/services/', '/services'],
+      ['/History/?type=incident&page=2', '/history?type=incident&page=2'],
+      ['//services//web', '/services/web'],
+    ]) {
+      const res = await get(url!);
+      expect(res.statusCode, url).toBe(301);
+      expect(res.headers.location, url).toBe(location);
+    }
+    expect((await get('/services')).statusCode).toBe(200);
+    expect((await get('/')).statusCode).toBe(200);
+  });
+
   it('never caches personal pages in another spelling of the path', async () => {
     // The router matches routes case-insensitively: these render the manage and confirm pages.
     for (const url of ['/SUBSCRIPTION/manage?id=x&token=y', '/Subscription/Confirm?id=x&token=y', '//subscription//manage?id=x']) {

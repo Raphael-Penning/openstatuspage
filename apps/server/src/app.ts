@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isPersonalPath, normalizePath } from '@openstatuspage/shared';
+import { canonicalPath, isPersonalPath, normalizePath } from '@openstatuspage/shared';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -192,6 +192,12 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
       const path = req.url.split('?')[0] ?? '';
       const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
+        // One URL per page for search engines: /SERVICES/ → 301 /services. Not personal
+        // pages (their token would go into a cacheable redirect; they are never indexed).
+        const preferred = canonicalPath(path);
+        if (preferred !== path && !isAdminPath(path) && !isPersonalPath(path)) {
+          return reply.header('Cache-Control', CANONICAL_REDIRECT_CACHE).redirect(preferred + req.url.slice(path.length), 301);
+        }
         if (ssr && !isAdminPath(path) && (await ssr.send(req, reply))) return reply;
         return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index, { cacheControl: false });
       }
@@ -203,6 +209,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
 
   return app;
 }
+
+/** Redirects to the preferred spelling of a page path are kept for a day. */
+const CANONICAL_REDIRECT_CACHE = 'public, max-age=86400';
 
 function routeNotFound(reply: FastifyReply) {
   return reply
