@@ -213,6 +213,6 @@ Wer die E-Mail bekommt, hängt von den betroffenen Services ab, siehe
 ## Rollen
 
 Redakteure dürfen Vorfälle, Wartungen und Korrekturen anlegen und ändern und
-alles andere lesen. Services, Gruppen, Standorte, Monitoring, Einstellungen, Benutzer und
-API-Tokens verwalten Administratoren; siehe
+alles andere lesen. Services, Gruppen, Standorte, Monitoring, Einstellungen, Benutzer,
+API-Tokens und [private Seiten](12-public-page.md#private-seiten) verwalten Administratoren; siehe
 [Benutzer und Zugriff](08-users-and-access.md).

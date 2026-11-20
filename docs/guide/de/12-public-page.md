@@ -64,10 +64,13 @@ User-agent: *
 Allow: /
 Allow: /api/public/
 Disallow: /api/public/subscriptions
+Disallow: /api/public/private-page
 Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
+Disallow: /p/
 Disallow: /preferences/
+Disallow: /pulse/
 
 Sitemap: https://status.example.com/sitemap.xml
 ```
@@ -142,6 +145,7 @@ Index. Prüfe dann, ob der Proxy `/sitemap.xml` unverändert durchreicht und ob
 | Tagesseiten der Verfügbarkeitsbalken (`/services/<dienst>/days/<datum>`) | nein | `noindex, follow`: eine dünne Seite pro Dienst und Tag. In keiner Sitemap. |
 | Nicht gefunden (404), auch eine Verlaufsseite hinter der letzten | nein | `noindex`. |
 | Bestätigen-, Verwalten- und Abmelden-Links | nein | `noindex`, nicht in einer Sitemap, in der `robots.txt` ausgeschlossen. |
+| Private Seiten (`/p/<link>`) | nein | `noindex, nofollow` (Meta-Tag und Header), keine kanonische Adresse, weder in einer Sitemap noch in `llms.txt`, in der `robots.txt` ausgeschlossen. Siehe [Private Seiten](#private-seiten). |
 | `/admin` auf einer Instanz, die sie ausliefert | nein | Die Antwort trägt `X-Robots-Tag: noindex, nofollow`. |
 | Alle Seiten einer Instanz `admin` | nein | `Disallow: /` in der `robots.txt` und `X-Robots-Tag: noindex, nofollow`. |
 
@@ -206,6 +210,44 @@ Skripte machen die Seite nur bequemer. Ohne sie gilt:
 Ohne JavaScript fehlen nur: die Live-Aktualisierung des Status alle 60 Sekunden,
 die interaktive Karte, die Umstellung der Zeitzone und das Schließen der Menüs per
 Klick außerhalb oder mit der Escape-Taste.
+
+## Private Seiten
+
+Eine private Seite ist eine Statusseite mit einem geheimen Link, zum Beispiel für
+einen Kunden oder Partner. Sie zeigt die Dienste, die du auswählst, auch solche,
+die auf der öffentlichen Seite verborgen sind, und sieht aus wie die öffentliche
+Seite: Gesamtstatus, Verfügbarkeitsbalken mit ihren Tagesseiten, eine Seite pro
+Dienst, aktuelle Vorfälle sowie laufende und geplante Wartungen dieser Dienste.
+
+**Leg eine an** unter *Administration → Private Seiten* (nur Admins): Gib ihr
+einen Namen und optional eine Beschreibung, wähle die Dienste, optional ein
+Ablaufdatum, und speichere. Danach zeigt der Dialog den vollständigen Link
+(`https://status.example.com/p/<link>`, gebildet aus `PUBLIC_BASE_URL`) mit einem
+Kopieren-Knopf. **Der Link wird nur dieses eine Mal angezeigt**: Gespeichert wird
+nur ein Hash davon. Geht er verloren oder soll er nicht mehr funktionieren, wähle
+*Neuer Link*: Der alte Link funktioniert sofort nicht mehr, und der Dialog zeigt
+den neuen. Um eine Seite zu schließen, deaktiviere sie, lass sie ablaufen oder
+lösche sie; alle drei antworten wie ein Link, den es nie gab.
+
+Was du wissen solltest:
+
+- Jeder, der den Link hat, kann die Seite ohne Anmeldung sehen. Gib ihn nur an
+  die Personen weiter, für die er gedacht ist, so wie ein Passwort.
+- Vorfälle und Wartungen erscheinen auf einer privaten Seite nur, wenn sie
+  öffentlich sind, mit ihrem öffentlichen Text. Von den betroffenen Diensten zeigt
+  die Seite nur ihre eigenen. Die Titel führen zur Vorfall- oder Wartungsseite der
+  öffentlichen Statusseite.
+- Private Seiten werden nie indexiert (`noindex, nofollow`), nie zwischengespeichert,
+  stehen weder in den Sitemaps noch in `llms.txt`, laden nie das Statistik-Skript
+  und senden keinen Referrer an andere Seiten. Das Server-Log schreibt
+  `/p/[REDACTED]` statt des Links.
+- Jeder Client darf 60 private Seiten pro Minute öffnen; ein falscher Link ist
+  einfach „nicht gefunden“.
+- Für private Seiten gibt es keine Feeds und keine E-Mail-Abos.
+- In einer geteilten Installation liest die öffentliche Instanz eine private Seite
+  nur über Datenbankfunktionen, die ihren Link brauchen; sie kann weder private
+  Seiten noch verborgene Dienste auflisten (siehe das
+  [Sicherheitsmodell](../../security-model.md)).
 
 ## Fehlersuche
 
