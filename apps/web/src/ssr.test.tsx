@@ -122,6 +122,8 @@ describe('server rendering', () => {
         expect(links.length, url).toBeGreaterThan(30);
         for (const link of links) {
           expect(link, url).toMatch(/href="\/services\/[a-z0-9-]+\/days\/\d{4}-\d{2}-\d{2}"/);
+          // Day pages are noindex: crawlers need not follow up to 90 links per bar.
+          expect(link, url).toContain('rel="nofollow"');
           // Date, status and uptime in the name of the link.
           expect(link, url).toMatch(/aria-label="\d{4}-\d{2}-\d{2}, [^"]+"/);
         }
@@ -133,7 +135,7 @@ describe('server rendering', () => {
     // The day table of the service page links every day, too.
     const detail = (await serverRender('/services/api')).html;
     const table = /<table class="osp-days[\s\S]*?<\/table>/.exec(detail)?.[0] ?? '';
-    expect(table).toContain(`<a href="/services/api/days/${API_YESTERDAY}">${API_YESTERDAY}</a>`);
+    expect(table).toContain(`<a href="/services/api/days/${API_YESTERDAY}" rel="nofollow">${API_YESTERDAY}</a>`);
   });
 
   it('renders the day page with its periods, corrections, incidents and neighbours, not indexed', async () => {
@@ -142,7 +144,7 @@ describe('server rendering', () => {
     expect(result.head).toMatchObject({
       title: `API on ${API_YESTERDAY} · ${settings.siteName}`,
       robots: 'noindex, follow',
-      canonical: `${BASE_URL}/services/api/days/${API_YESTERDAY}`,
+      canonical: null,
     });
     expect(result.head.description).toContain('API');
     expect(result.head.jsonLd).toBeUndefined();

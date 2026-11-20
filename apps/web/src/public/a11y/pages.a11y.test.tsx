@@ -256,6 +256,23 @@ describe('interactive states', () => {
     expect(page.container.querySelector('h1 time')?.getAttribute('datetime')).toBe(API_YESTERDAY);
   });
 
+  it('uptime bar with a screen reader: activating the focused day opens it at once', async () => {
+    page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'light' });
+    const bar = page.container.querySelector<HTMLElement>('[aria-roledescription="uptime bar"]')!;
+    const day = bar.children[bar.children.length - 2] as HTMLAnchorElement;
+    // VoiceOver / TalkBack move the focus to the link, a double tap sends a touch press and a click.
+    await act(async () => day.focus());
+    await settle();
+    await act(async () => {
+      const down = new MouseEvent('pointerdown', { bubbles: true });
+      Object.defineProperty(down, 'pointerType', { value: 'touch' });
+      day.dispatchEvent(down);
+      day.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    await settle();
+    expect(page.container.querySelector('h1 time')?.getAttribute('datetime')).toBe(API_YESTERDAY);
+  });
+
   it('days that were not fully operational are not marked by color alone', async () => {
     page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'light' });
     const bar = page.container.querySelector('[aria-roledescription="uptime bar"]')!;

@@ -219,7 +219,7 @@ describe('public pages without JavaScript', () => {
   it('service detail: every day of the uptime bar is in a table', async () => {
     const { root } = await page(`/services/${ids.slug}`);
     expect(root).toMatch(/<details[^>]*><summary[^>]*>Show every day<\/summary>[\s\S]*<table/);
-    expect(root).toMatch(/<th scope="row"[^>]*><a href="\/services\/[^/"]+\/days\/\d{4}-\d{2}-\d{2}">\d{4}-\d{2}-\d{2}<\/a><\/th>/);
+    expect(root).toMatch(/<th scope="row"[^>]*><a href="\/services\/[^/"]+\/days\/\d{4}-\d{2}-\d{2}" rel="nofollow">\d{4}-\d{2}-\d{2}<\/a><\/th>/);
   });
 
   it('uptime bars: every day is a link to its page, one tab stop per bar', async () => {
@@ -245,7 +245,8 @@ describe('public pages without JavaScript', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['cache-control']).toBe('public, max-age=10, stale-while-revalidate=60');
     expect(res.body).toContain('<meta name="robots" content="noindex, follow"');
-    expect(res.body).toContain(`<link rel="canonical" href="${BASE_URL}/services/${ids.slug}/days/${today}"`);
+    // No canonical URL on a noindex page (it would contradict the noindex).
+    expect(res.body).not.toContain('rel="canonical"');
     expect(res.body).not.toContain('application/ld+json');
     const root = rootOf(res);
     expect(root).toContain('Public API');
