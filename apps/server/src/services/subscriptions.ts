@@ -134,9 +134,9 @@ export function fillTokens(text: string, tokens: SubscriptionTokens): string {
 }
 
 export interface SubscriberLinkSet {
-  /** Confirm page of the web client; the token is in the URL fragment. */
+  /** Confirm page of the web client (token in the query). */
   confirmUrl: string;
-  /** Manage page of the web client; the token is in the URL fragment. */
+  /** Manage page of the web client (token in the query). */
   manageUrl: string;
   /** Unsubscribe link for the mail body (manage page with unsubscribe=1). */
   unsubscribeUrl: string;
@@ -145,17 +145,20 @@ export interface SubscriberLinkSet {
 }
 
 /**
- * Links of a subscriber. Web client links carry the token in the URL fragment
- * (`#token=`), so it never reaches the server, proxies or access logs. Mails that
- * go through the outbox are built with TOKEN_PLACEHOLDERS.
+ * Links of a subscriber. Web client links carry the token in the query string,
+ * so the server renders the confirm and manage pages and their forms work
+ * without JavaScript (docs/security-model.md: the server log redacts `token=`,
+ * the pages send no referrer and are never cached). Older mails carried it in
+ * the URL fragment; the pages still accept that. Mails that go through the
+ * outbox are built with TOKEN_PLACEHOLDERS.
  */
 export function subscriberLinks(config: Config, subscriberId: string, tokens: SubscriptionTokens): SubscriberLinkSet {
   const id = encodeURIComponent(subscriberId);
-  const managePage = `${config.PUBLIC_BASE_URL}/subscription/manage?id=${id}`;
+  const managePage = `${config.PUBLIC_BASE_URL}/subscription/manage?id=${id}&token=${tokens.manage}`;
   return {
-    confirmUrl: `${config.PUBLIC_BASE_URL}/subscription/confirm?id=${id}#token=${tokens.confirm}`,
-    manageUrl: `${managePage}#token=${tokens.manage}`,
-    unsubscribeUrl: `${managePage}&unsubscribe=1#token=${tokens.manage}`,
+    confirmUrl: `${config.PUBLIC_BASE_URL}/subscription/confirm?id=${id}&token=${tokens.confirm}`,
+    manageUrl: managePage,
+    unsubscribeUrl: `${managePage}&unsubscribe=1`,
     oneClickUrl: `${config.PUBLIC_BASE_URL}/api/public/subscriptions/${id}/unsubscribe?token=${tokens.manage}`,
   };
 }

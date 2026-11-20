@@ -111,12 +111,12 @@ describe('subscriber links', () => {
     BASE_URL: 'https://status.example.com',
   });
 
-  it('puts tokens into the URL fragment, except for the one-click endpoint', () => {
+  it('puts the tokens into the query, so the pages work without JavaScript', () => {
     const links = subscriberLinks(config, 'sub-1', { confirm: 'ct', manage: 'mt' });
     expect(links).toEqual({
-      confirmUrl: 'https://status.example.com/subscription/confirm?id=sub-1#token=ct',
-      manageUrl: 'https://status.example.com/subscription/manage?id=sub-1#token=mt',
-      unsubscribeUrl: 'https://status.example.com/subscription/manage?id=sub-1&unsubscribe=1#token=mt',
+      confirmUrl: 'https://status.example.com/subscription/confirm?id=sub-1&token=ct',
+      manageUrl: 'https://status.example.com/subscription/manage?id=sub-1&token=mt',
+      unsubscribeUrl: 'https://status.example.com/subscription/manage?id=sub-1&token=mt&unsubscribe=1',
       oneClickUrl: 'https://status.example.com/api/public/subscriptions/sub-1/unsubscribe?token=mt',
     });
   });
@@ -145,7 +145,7 @@ describe('subscriber links', () => {
     );
     // Placeholders survive HTML escaping in the templates.
     const mail = confirmationMail(site, 'en', queued.confirmUrl);
-    expect(fillTokens(mail.html, tokens)).toContain(`href="${real.confirmUrl}"`);
+    expect(fillTokens(mail.html, tokens)).toContain(`href="${real.confirmUrl.replaceAll('&', '&amp;')}"`);
   });
 });
 

@@ -77,7 +77,7 @@ async function deliver(): Promise<MailMessage[]> {
 }
 
 function linkParams(mail: MailMessage, path: 'confirm' | 'manage') {
-  const match = new RegExp(`${BASE_URL}/subscription/${path}\\?id=([^&#\\s]+)#token=([A-Za-z0-9_-]+)`).exec(mail.text);
+  const match = new RegExp(`${BASE_URL}/subscription/${path}\\?id=([^&#\\s]+)&token=([A-Za-z0-9_-]+)`).exec(mail.text);
   if (!match) throw new Error(`no ${path} link in mail:\n${mail.text}`);
   return { id: decodeURIComponent(match[1]!), token: match[2]! };
 }
@@ -119,9 +119,7 @@ describe('subscribe and confirm', () => {
     const { id, token } = linkParams(mail!, 'confirm');
     expect(id).toBe(row.id);
     expect(token).toBe(confirmToken);
-    expect(mail!.html).toContain(`href="${BASE_URL}/subscription/confirm?id=${id}#token=${token}"`);
-    // The token is only in the URL fragment, never in a query string.
-    expect(mail!.text).not.toMatch(/[?&]token=/);
+    expect(mail!.html).toContain(`href="${BASE_URL}/subscription/confirm?id=${id}&amp;token=${token}"`);
 
     const confirmed = await confirm(id, token);
     expect(confirmed.statusCode).toBe(200);
@@ -361,7 +359,7 @@ describe('manage and unsubscribe', () => {
     // A browser GET only redirects to the manage page.
     const get = await t.app.inject({ method: 'GET', url });
     expect(get.statusCode).toBe(303);
-    expect(get.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${id}&unsubscribe=1#token=${manageToken}`);
+    expect(get.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${id}&token=${manageToken}&unsubscribe=1`);
     expect(await t.db.selectFrom('subscribers').selectAll().execute()).toHaveLength(1);
 
     const wrong = await t.app.inject({

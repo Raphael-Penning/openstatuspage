@@ -69,7 +69,7 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
       const { token } = parse(TokenQuery, req.query);
       // Checks the token (404 otherwise); valid means it is the subscriber's manage token.
       const sub = await getManaged(ctx, id, token);
-      // The manage page reads the token from the URL fragment.
+      // The manage page (rendered by the server) opens its unsubscribe confirmation.
       const links = subscriberLinks(ctx.config, sub.id, { confirm: '', manage: token! });
       return reply.redirect(links.unsubscribeUrl, 303);
     });

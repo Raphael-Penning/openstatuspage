@@ -101,8 +101,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   // customers; the management UI and the API may not.
   app.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     const path = normalizePath(req.url);
+    // Subscription pages have a token in their URL: it never leaves as a referrer.
+    reply.header('Referrer-Policy', path.startsWith('/subscription/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
     const admin = path === '/admin' || path.startsWith('/admin/');
     if (admin || isApiPath(path)) {
       reply.header('X-Frame-Options', 'DENY');

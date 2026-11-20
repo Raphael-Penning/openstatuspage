@@ -56,7 +56,7 @@ describe('POST /preferences/theme', () => {
   });
 
   it('rejects posts from other sites', async () => {
-    for (const headers of [
+    for (const headers of <Record<string, string>[]>[
       { 'sec-fetch-site': 'cross-site' },
       { 'sec-fetch-site': 'same-site' },
       { origin: 'https://evil.example' },

@@ -859,7 +859,7 @@ describe('a public instance', () => {
     await workerApp.ctx.notifications.deliverDue();
     const mail = mailer.sent.find((m) => m.to === 'flow@example.com');
     expect(mail?.subject).toBe('[Example Status] Confirm your subscription');
-    const match = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)#token=([A-Za-z0-9_-]+)`).exec(mail!.text)!;
+    const match = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)&token=([A-Za-z0-9_-]+)`).exec(mail!.text)!;
     const [, subId, token] = match;
 
     const wrong = await publicApp.inject({
@@ -908,7 +908,7 @@ describe('a public instance', () => {
 
     const redirect = await publicApp.inject({ url: `/api/public/subscriptions/${subId}/unsubscribe?token=${manageToken}` });
     expect(redirect.statusCode).toBe(303);
-    expect(redirect.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${subId}&unsubscribe=1#token=${manageToken}`);
+    expect(redirect.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${subId}&token=${manageToken}&unsubscribe=1`);
 
     const deleted = await publicApp.inject({ method: 'DELETE', url: `/api/public/subscriptions/${subId}`, headers: manageHeaders });
     expect(deleted.statusCode).toBe(204);
