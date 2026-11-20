@@ -58,8 +58,11 @@ export function ThemeProvider({ children, defaultPreference = 'system' }: { chil
   const resolved: Resolved = preference === 'system' ? system : preference;
 
   useEffect(() => {
-    document.documentElement.dataset.theme = resolved;
-  }, [resolved]);
+    // Read the OS preference here rather than `system`: right after hydration it
+    // still holds the server's guess, and writing that would flash the wrong theme
+    // over what the stylesheet already shows (prefers-color-scheme).
+    document.documentElement.dataset.theme = preference === 'system' ? systemTheme() : preference;
+  }, [preference, system]);
 
   const setPreference = useCallback((p: ThemePreference) => {
     try {

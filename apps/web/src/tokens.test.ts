@@ -17,6 +17,10 @@ function block(selector: string): Record<string, string> {
 }
 
 const light = block(':root');
+
+it("the OS dark preference without data-theme uses the dark theme's tokens", () => {
+  expect(block(':root:not([data-theme])')).toEqual(block("[data-theme='dark']"));
+});
 const themes = { light, dark: { ...light, ...block("[data-theme='dark']") } };
 
 const SURFACES = ['bg', 'surface', 'surface-2'] as const;

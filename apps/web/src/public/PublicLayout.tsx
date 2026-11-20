@@ -36,14 +36,18 @@ export function PublicLayout() {
  * outer provider cannot overwrite it.
  */
 function ThemeSync() {
-  const { resolved } = useTheme();
+  const { preference, resolved } = useTheme();
   useEffect(() => {
-    document.documentElement.dataset.theme = resolved;
+    // The OS preference itself, not `resolved`: right after hydration that is still the server's guess.
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const reapply = () => window.setTimeout(() => (document.documentElement.dataset.theme = resolved), 0);
+    const apply = () => {
+      document.documentElement.dataset.theme = preference === 'system' ? (mq.matches ? 'dark' : 'light') : preference;
+    };
+    apply();
+    const reapply = () => window.setTimeout(apply, 0);
     mq.addEventListener('change', reapply);
     return () => mq.removeEventListener('change', reapply);
-  }, [resolved]);
+  }, [preference, resolved]);
   return null;
 }
 
