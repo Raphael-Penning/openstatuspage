@@ -129,7 +129,13 @@
     "corrected": "Corrected afterwards",
     "correctedLegend": "Marked days were corrected afterwards",
     "correctedCount_one": "{{count}} day was corrected afterwards.",
-    "correctedCount_other": "{{count}} days were corrected afterwards."
+    "correctedCount_other": "{{count}} days were corrected afterwards.",
+    "ariaLabelStatic": "{{name}}, last {{days}} days: {{uptime}}.",
+    "dailyDetails": "Show every day",
+    "dailyCaption": "Uptime of {{name}} per day, last {{count}} days, newest first",
+    "day": "Day (UTC)",
+    "status": "Status",
+    "notOperational": "Not operational"
   },
   "locations": {
     "title": "Locations",

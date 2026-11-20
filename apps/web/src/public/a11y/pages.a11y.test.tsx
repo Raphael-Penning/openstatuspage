@@ -140,6 +140,17 @@ describe('interactive states', () => {
     expect(segments.some((s) => s.className.includes('ring-status-nodata'))).toBe(true);
   });
 
+  it('every day of the uptime bar as a table (no JavaScript or pointer needed)', async () => {
+    page = await renderPublic({ path: '/services/api', lang: 'de', theme: 'dark' });
+    const details = [...page.container.querySelectorAll<HTMLDetailsElement>('main details')].find((d) => d.querySelector('table'))!;
+    expect(details).toBeDefined();
+    await click(details.querySelector('summary'));
+    expect(details.open).toBe(true);
+    const rows = details.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(page.container.querySelector('[aria-roledescription]')!.children.length);
+    expect(await axeViolations()).toEqual([]);
+  });
+
   it('locations: selected location with map tooltip and pan controls', async () => {
     page = await renderPublic({ path: '/locations', lang: 'de', theme: 'light' });
     // Every location is listed with its status as text, also those without coordinates.

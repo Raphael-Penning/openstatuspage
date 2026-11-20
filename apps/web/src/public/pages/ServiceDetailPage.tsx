@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { IncidentSummary, MaintenanceSummary } from '../components/Events';
 import { RelativeTime } from '../components/Time';
-import { UptimeBar } from '../components/UptimeBar';
+import { UptimeBar, UptimeDayTable } from '../components/UptimeBar';
 import { Card, EmptyState, ErrorState, SectionHeader, Skeleton, SkeletonList, StatusPill } from '../components/ui';
 import { useViewportWidth } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
@@ -94,6 +94,7 @@ export function ServiceDetailPage() {
         <Card as="section" className="p-5 sm:p-6">
           <h2 className="mb-4 font-semibold">{t('service.uptime')}</h2>
           <UptimeBar uptime={data.uptime} days={days} label={data.name} percent={data.uptimePercent} size="lg" />
+          <UptimeDayTable uptime={data.uptime} label={data.name} />
           <dl className="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
             {stats.map((s) => (
               <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-3 sm:px-4">

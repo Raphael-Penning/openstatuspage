@@ -129,7 +129,13 @@
     "corrected": "Nachträglich korrigiert",
     "correctedLegend": "Markierte Tage wurden nachträglich korrigiert",
     "correctedCount_one": "{{count}} Tag wurde nachträglich korrigiert.",
-    "correctedCount_other": "{{count}} Tage wurden nachträglich korrigiert."
+    "correctedCount_other": "{{count}} Tage wurden nachträglich korrigiert.",
+    "ariaLabelStatic": "{{name}}, letzte {{days}} Tage: {{uptime}}.",
+    "dailyDetails": "Alle Tage anzeigen",
+    "dailyCaption": "Verfügbarkeit von {{name}} pro Tag, letzte {{count}} Tage, neueste zuerst",
+    "day": "Tag (UTC)",
+    "status": "Status",
+    "notOperational": "Nicht betriebsbereit"
   },
   "locations": {
     "title": "Standorte",

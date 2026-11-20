@@ -16,11 +16,16 @@
  *
  * Days corrected afterwards carry a small marker below the segment and say so
  * (with the public notes) in the tooltip.
+ *
+ * Without JavaScript (and before hydration) the bar is a picture with its
+ * summary as label and takes no tab stop; the day details are in the table of
+ * the service page (UptimeDayTable), which needs no JavaScript.
  */
 import type { DailyUptime } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useHydrated } from '../../lib/ssr';
 import { STATUS_BG } from '../../lib/status';
 import { useDismiss } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
@@ -56,6 +61,7 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
   const [announcement, setAnnouncement] = useState('');
   const tooltipId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const hydrated = useHydrated();
   const avg = percent !== undefined && shown.length === uptime.length ? percent : averageUptime(shown);
   const avgText = avg === null ? t('uptime.noData') : t('uptime.percent', { value: f.percent(avg) });
   const correctedCount = shown.filter((d) => d.corrected).length;
@@ -120,11 +126,11 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
       }}
     >
       <div
-        tabIndex={0}
+        tabIndex={hydrated ? 0 : undefined}
         role="group"
         aria-roledescription={t('uptime.roleDescription')}
         aria-label={
-          t('uptime.ariaLabel', { name: label, days: shown.length, uptime: avgText }) +
+          t(hydrated ? 'uptime.ariaLabel' : 'uptime.ariaLabelStatic', { name: label, days: shown.length, uptime: avgText }) +
           (correctedCount > 0 ? ` ${t('uptime.correctedCount', { count: correctedCount })}` : '')
         }
         aria-describedby={visible ? tooltipId : undefined}
@@ -242,5 +248,76 @@ function DayDetails({ day }: { day: DailyUptime }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Every day of an uptime bar as a table, newest first, in a disclosure: what
+ * the bar's tooltip shows, without JavaScript and without a pointer.
+ */
+export function UptimeDayTable({ uptime, label }: { uptime: DailyUptime[]; label: string }) {
+  const { t } = useTranslation('public');
+  const f = useFormat();
+  if (uptime.length === 0) return null;
+  const days = [...uptime].reverse();
+  const cell = 'px-3 py-1.5 text-left align-top';
+  return (
+    <details className="mt-4">
+      <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded text-sm font-medium text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+        {t('uptime.dailyDetails')}
+      </summary>
+      <div className="mt-3 overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm">
+          <caption className="sr-only">{t('uptime.dailyCaption', { name: label, count: days.length })}</caption>
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th scope="col" className={cell}>
+                {t('uptime.day')}
+              </th>
+              <th scope="col" className={cell}>
+                {t('uptime.status')}
+              </th>
+              <th scope="col" className={clsx(cell, 'text-right')}>
+                {t('service.uptime')}
+              </th>
+              <th scope="col" className={cell}>
+                {t('uptime.notOperational')}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {days.map((day) => {
+              const minutes = statusMinutes(day);
+              return (
+                <tr key={day.date}>
+                  <th scope="row" className={clsx(cell, 'font-medium whitespace-nowrap tabular-nums')}>
+                    {f.utcDay(day.date)}
+                  </th>
+                  <td className={cell}>
+                    {day.status === null ? (
+                      <span className="text-muted">{t('uptime.noData')}</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span aria-hidden className={clsx('size-2 shrink-0 rounded-full', STATUS_BG[day.status])} />
+                        {t(`common:status.${day.status}`)}
+                      </span>
+                    )}
+                  </td>
+                  <td className={clsx(cell, 'text-right tabular-nums')}>{day.uptime === null ? '–' : f.percent(day.uptime)}</td>
+                  <td className={clsx(cell, 'text-muted')}>
+                    {minutes.length === 0
+                      ? '–'
+                      : minutes.map((m) => `${t(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`).join(', ')}
+                    {day.corrected && (
+                      <span className="block">{[t('uptime.corrected'), ...(day.correctionNotes ?? [])].join(': ')}</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }
