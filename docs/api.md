@@ -1216,9 +1216,14 @@ Footer, navigation and link settings (attributes of `settings/site`, all optiona
 With `utmEnabled`, the pages add `utm_source`, `utm_medium` and `utm_campaign` to
 every configured link to another site (legal links, brand link, info link, support
 URL, footer links, service websites) on the server and in the browser alike
-(`outboundHref` in `packages/shared`). Links on the page's own origin, relative
-paths, `mailto:` and links that already carry any `utm_` parameter stay unchanged.
-The API returns the stored URLs, without UTM parameters.
+(`outboundHref` in `packages/shared`). Links on the page's own origin (taken from
+`PUBLIC_BASE_URL`, falling back to `BASE_URL`, so it must match the address
+visitors use), paths on this site and links that already carry any `utm_`
+parameter stay unchanged. The existing query string is kept exactly as entered
+(bare flags, `%20`, `;` and `~` are not re-encoded, so signed URLs keep working);
+the UTM pairs are appended percent-encoded before the fragment. `infoLinkUrl` is
+stored trimmed, like the http(s) URL attributes. The API returns the stored URLs,
+without UTM parameters.
 
 Examples:
 
