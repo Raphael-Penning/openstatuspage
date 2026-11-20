@@ -258,7 +258,9 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   styles stay allowed (style attributes of the rendered markup, the accent color
   in the head). Images may come from any HTTPS origin because the logo and
   favicon of the settings are URLs. zod runs without compiled parsers in the
-  browser, so no `unsafe-eval` is needed.
+  browser, so no `unsafe-eval` is needed. The optional Umami tracker is served
+  from the page's own origin (`/pulse/p.js`) and sends to it (`/pulse/api/send`),
+  so analytics needs no exception either.
 - `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns
   off camera, microphone, geolocation, payment and USB.
 - Framing: public pages may be embedded by other sites; the management UI and
@@ -320,6 +322,13 @@ account) or obtains an API token.
   from the internet when the admin host is internal. Whatever the attacker makes
   public flows out only through the views, i.e. as public status page content;
   there is no path to make the public instance hand out private tables.
+- **No server-side requests chosen by an admin**: the only outbound requests of
+  a public instance go to the Umami server of `UMAMI_URL` (analytics, optional),
+  an instance variable. The settings only pick the website ID and the rules;
+  the proxy never follows redirects and forwards events only for that website
+  ID. An admin account therefore cannot make the public instance request
+  internal hosts (no SSRF through the settings). Admin-chosen URLs (logo,
+  links) are only ever loaded by visitors' browsers.
 - Keep the admin host off the internet (VPN, IP allow list), use OIDC with
   group mapping, and review the audit log.
 
