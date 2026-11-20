@@ -3,7 +3,7 @@
  * windows) and their admin serialization. See history-corrections.ts for how
  * they are applied.
  */
-import type { AdminCorrection } from '@openstatuspage/shared';
+import type { AdminCorrection, ServiceStatus } from '@openstatuspage/shared';
 import type { DB } from '../db/index.js';
 import type { CorrectionLayer } from './history-corrections.js';
 
@@ -23,17 +23,7 @@ export async function loadCorrectionLayers(
   from: string,
   to: string,
 ): Promise<Map<string, ServiceCorrections>> {
-  const result = new Map<string, ServiceCorrections>();
-  if (serviceIds.length === 0) return result;
-  const entry = (id: string) => {
-    let e = result.get(id);
-    if (!e) {
-      e = { layers: [], publicNotes: new Map() };
-      result.set(id, e);
-    }
-    return e;
-  };
-
+  if (serviceIds.length === 0) return new Map();
   const [corrections, maintenances] = await Promise.all([
     db
       .selectFrom('status_corrections')
@@ -73,6 +63,51 @@ export async function loadCorrectionLayers(
       .where('maintenances.scheduled_start', '<', to)
       .execute(),
   ]);
+  return buildCorrectionLayers(corrections, maintenances, from);
+}
+
+/** A correction of one service (a row of status_corrections joined with its services). */
+export interface CorrectionRow {
+  service_id: string;
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  status: ServiceStatus;
+  show_public: number;
+  public_note: string | null;
+  created_at: string;
+}
+
+/** A public retroactive maintenance window of one service. */
+export interface RetroactiveMaintenanceRow {
+  service_id: string;
+  id: string;
+  status: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  actual_start: string | null;
+  actual_end: string | null;
+  created_at: string;
+}
+
+/**
+ * The correction layers per service from already loaded rows (overlapping the
+ * range that starts at `from`). Services without any get no entry.
+ */
+export function buildCorrectionLayers(
+  corrections: readonly CorrectionRow[],
+  maintenances: readonly RetroactiveMaintenanceRow[],
+  from: string,
+): Map<string, ServiceCorrections> {
+  const result = new Map<string, ServiceCorrections>();
+  const entry = (id: string) => {
+    let e = result.get(id);
+    if (!e) {
+      e = { layers: [], publicNotes: new Map() };
+      result.set(id, e);
+    }
+    return e;
+  };
 
   for (const c of corrections) {
     const e = entry(c.service_id);
