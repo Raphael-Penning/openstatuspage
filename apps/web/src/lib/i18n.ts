@@ -6,8 +6,8 @@
  *   help    help of the management UI } UI loads (not part of the public pages' bundle)
  * Add a language by adding src/locales/<lng>/*.json and listing it in lib/languages.ts.
  *
- * The language is detected like on the server (lib/languages.ts): the `osp-lang`
- * cookie, `?lang=`, then the stored and the browser language. A server-rendered
+ * The language is detected like on the server (lib/languages.ts): `?lang=`, the
+ * `osp-lang` cookie, then the stored and the browser language. A server-rendered
  * page switches to the language it was rendered in before hydrating (main-public.tsx).
  */
 import { LANG_COOKIE, LANG_QUERY } from '@openstatuspage/shared';
@@ -50,7 +50,7 @@ export const i18nReady = i18n
     defaultNS: 'common',
     interpolation: { escapeValue: false },
     detection: {
-      order: ['cookie', 'querystring', 'localStorage', 'navigator'],
+      order: ['querystring', 'cookie', 'localStorage', 'navigator'],
       lookupCookie: LANG_COOKIE,
       lookupQuerystring: LANG_QUERY,
       lookupLocalStorage: 'osp-lang',

@@ -242,7 +242,7 @@ The management UI (`/admin`) stays a client-rendered SPA and is sent with
 request /incidents/42 ─▶ app.ts (not-found handler, client route, not /admin)
   └─ ssr/pages.ts      render cache? ── hit ─▶ 200/404 + ETag
        └─ dist/.ssr/entry-server.mjs  render()          (imported on first use)
-            ├─ settings → language (cookie, ?lang=, Accept-Language, default), theme
+            ├─ settings → language (?lang=, cookie, Accept-Language, default), theme
             ├─ handle.prefetch of the matched routes (public/routes.tsx)
             │    └─ publicQueries.*(get)  ─▶ ssr/source.ts ─▶ PublicDocuments  (in-process)
             ├─ renderToString(StaticRouterProvider)  + usePageHead() collected
@@ -277,8 +277,9 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   JavaScript) the static map of the server stands in at the same size.
   `apps/web/src/ssr.test.tsx` hydrates every page in jsdom and fails on any
   hydration warning.
-- **Language.** `osp-lang` cookie (set by the language switcher), then `?lang=`,
-  then `Accept-Language`, then the page default (`lib/languages.ts`). The browser
+- **Language.** `?lang=` (a language version of a page, as its canonical URL
+  says), then the `osp-lang` cookie (set by the language switcher), then
+  `Accept-Language`, then the page default (`lib/languages.ts`). The browser
   switches to the server's language before hydrating.
 - **Caching.** A rendered page is kept for 5 s per URL, language and theme input
   (`cacheKey` of the bundle; at most 16 pages and 1 MiB including the compressed

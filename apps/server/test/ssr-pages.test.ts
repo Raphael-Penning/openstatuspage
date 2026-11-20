@@ -225,8 +225,10 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     expect(de.body).toContain('<html lang="de" dir="ltr">');
     expect(stateOf(de).lang).toBe('de');
     expect((await get('/services?lang=de')).body).toContain('<html lang="de"');
+    // An explicit ?lang= is that language version, whatever the cookie says.
     const cookie = await get('/services?lang=de', { cookie: 'osp-lang=en' });
-    expect(cookie.body).toContain('<html lang="en"');
+    expect(cookie.body).toContain('<html lang="de"');
+    expect((await get('/services', { cookie: 'osp-lang=de' })).body).toContain('<html lang="de"');
     expect(cookie.headers.vary).toBe('Accept-Language, Cookie, Accept-Encoding');
   });
 

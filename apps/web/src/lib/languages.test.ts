@@ -17,8 +17,9 @@ describe('languages', () => {
     expect(readCookie(undefined, 'osp-lang')).toBeNull();
   });
 
-  it('resolves cookie, then ?lang=, then Accept-Language, then the page default', () => {
-    expect(resolveLanguage({ cookie: 'osp-lang=de', query: 'en', acceptLanguage: 'en' })).toBe('de');
+  it('resolves ?lang=, then the cookie, then Accept-Language, then the page default', () => {
+    expect(resolveLanguage({ cookie: 'osp-lang=de', query: 'en', acceptLanguage: 'en' })).toBe('en');
+    expect(resolveLanguage({ cookie: 'osp-lang=de', query: 'xx', acceptLanguage: 'en' })).toBe('de');
     expect(resolveLanguage({ cookie: 'osp-lang=xx', query: 'de', acceptLanguage: 'en' })).toBe('de');
     expect(resolveLanguage({ query: 'xx', acceptLanguage: 'de-AT', fallback: 'en' })).toBe('de');
     expect(resolveLanguage({ acceptLanguage: 'fr', fallback: 'de' })).toBe('de');

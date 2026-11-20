@@ -4,7 +4,7 @@
  * ssr/ directory). Public route tree only: never import ./admin here.
  *
  * render():
- *   1. loads the page settings and resolves language and theme (cookie, ?lang=,
+ *   1. loads the page settings and resolves language and theme (?lang=, cookie,
  *      Accept-Language, page default),
  *   2. prefetches the queries of the matched routes (`handle.prefetch` in
  *      public/routes.tsx) from the in-process document source,

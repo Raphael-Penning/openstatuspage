@@ -3,9 +3,10 @@
  * here: the server-side rendering bundle and the public entry import this
  * without the admin and help namespaces.
  *
- * Order (server render and hydration alike): the `osp-lang` cookie (an explicit
- * choice in the language switcher), then `?lang=`, then Accept-Language, then
- * the page default language from the settings.
+ * Order (server render and hydration alike): `?lang=` (a language version of
+ * the page: what its canonical URL and hreflang say it is), then the `osp-lang`
+ * cookie (an explicit choice in the language switcher), then Accept-Language,
+ * then the page default language from the settings.
  */
 import { LANG_COOKIE } from '@openstatuspage/shared';
 
@@ -67,9 +68,9 @@ export interface LanguageInputs {
 }
 
 export function resolveLanguage({ cookie, query, acceptLanguage, fallback }: LanguageInputs): LanguageCode {
+  if (isLanguage(query)) return query;
   const fromCookie = readCookie(cookie, LANG_COOKIE);
   if (isLanguage(fromCookie)) return fromCookie;
-  if (isLanguage(query)) return query;
   return fromAcceptLanguage(acceptLanguage) ?? (isLanguage(fallback) ? fallback : DEFAULT_LANGUAGE);
 }
 

@@ -121,10 +121,11 @@ describe('server rendering', () => {
     expect(detail.html).toMatch(/ UTC</);
   });
 
-  it('picks the language from cookie, ?lang=, Accept-Language, then the page default', async () => {
+  it('picks the language from ?lang=, the cookie, Accept-Language, then the page default', async () => {
     expect((await serverRender('/', { cookie: 'a=1; osp-lang=de', acceptLanguage: 'en' })).lang).toBe('de');
     expect((await serverRender('/?lang=de')).lang).toBe('de');
-    expect((await serverRender('/?lang=de', { cookie: 'osp-lang=en' })).lang).toBe('en');
+    // The language version the canonical URL and hreflang name, whatever the cookie says.
+    expect((await serverRender('/?lang=de', { cookie: 'osp-lang=en' })).lang).toBe('de');
     expect((await serverRender('/', { acceptLanguage: 'fr-CH, de;q=0.8, en;q=0.5' })).lang).toBe('de');
     expect((await serverRender('/', { acceptLanguage: 'fr' })).lang).toBe(settings.defaultLocale);
     expect((await serverRender('/?lang=de')).html).toContain('lang="de"');

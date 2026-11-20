@@ -12,7 +12,7 @@ import { clsx } from 'clsx';
 import { Braces, ChevronDown, Clock, Globe, Mail, Monitor, Moon, Rss, Sun } from 'lucide-react';
 import { useCallback, useRef, useState, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useSearchParams } from 'react-router';
 import { LANGUAGES, writePreferenceCookie } from '../../lib/languages';
 import { useHydrated } from '../../lib/ssr';
 import { useTheme, type ThemePreference } from '../../lib/theme';
@@ -132,6 +132,7 @@ export function LanguageSwitcher() {
   const { t, i18n } = useTranslation('public');
   const back = useReturnPath();
   const personal = isPersonalPath(useLocation().pathname);
+  const [params, setParams] = useSearchParams();
   const current = i18n.resolvedLanguage ?? 'en';
   const currentLabel = LANGUAGES.find((l) => l.code === current)?.label ?? current;
 
@@ -144,6 +145,12 @@ export function LanguageSwitcher() {
     }
     // Server-rendered pages read the choice from the cookie.
     writePreferenceCookie(LANG_COOKIE, code);
+    // ?lang= would win over the choice on the next load: the URL becomes the plain page.
+    if (params.has(LANG_QUERY)) {
+      const next = new URLSearchParams(params);
+      next.delete(LANG_QUERY);
+      setParams(next, { replace: true, preventScrollReset: true });
+    }
     void i18n.changeLanguage(code);
     close();
   };
