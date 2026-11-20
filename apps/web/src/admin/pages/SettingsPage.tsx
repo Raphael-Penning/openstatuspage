@@ -1,6 +1,6 @@
-import { SettingsInput, type PublicPageSettings } from '@openstatuspage/shared';
+import { SettingsInput, type AdminPageSettings, type PublicPageSettings } from '@openstatuspage/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Plus, TriangleAlert, X } from 'lucide-react';
 import type { CSSProperties, FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../lib/api';
@@ -117,13 +117,13 @@ export default function SettingsPage() {
   );
 }
 
-function SettingsForm({ settings }: { settings: PublicPageSettings }) {
+function SettingsForm({ settings }: { settings: AdminPageSettings }) {
   const { t } = useTranslation('admin');
   const queryClient = useQueryClient();
   const form = useForm<Values>(() => toValues(settings));
   const v = form.values;
 
-  const save = useAdminMutation((body: SettingsInput) => api.patch<PublicPageSettings>('/api/admin/settings', body, { type: 'settings', id: 'site' }), {
+  const save = useAdminMutation((body: SettingsInput) => api.patch<AdminPageSettings>('/api/admin/settings', body, { type: 'settings', id: 'site' }), {
     success: t('settings.saved'),
     onSuccess: async (saved) => {
       form.setValues(toValues(saved));
@@ -518,6 +518,13 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
             checked={v.analyticsEnabled}
             onChecked={(x) => form.set('analyticsEnabled', x)}
           />
+          {/* The (possibly unsaved) switch is on, but this instance cannot forward anything. */}
+          {v.analyticsEnabled && !settings.analyticsAvailable && (
+            <p role="alert" className="flex items-start gap-2 rounded-lg bg-status-degraded/12 px-3 py-2 text-sm text-fg md:col-span-2">
+              <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-status-degraded-text" />
+              <span>{t('settings.analyticsUnavailable')}</span>
+            </p>
+          )}
           <TextField
             label={t('settings.fields.analyticsWebsiteId')}
             value={v.analyticsWebsiteId}

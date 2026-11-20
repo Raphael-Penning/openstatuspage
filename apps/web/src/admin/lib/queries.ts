@@ -12,6 +12,7 @@ import type {
   AdminMaintenance,
   AdminMonitorCheck,
   AdminMonitorSource,
+  AdminPageSettings,
   AdminService,
   AdminServiceGroup,
   AdminServiceHistory,
@@ -24,7 +25,6 @@ import type {
   ConfigurableSourceType,
   NotificationStatus,
   Paginated,
-  PublicPageSettings,
   ServiceStatus,
   SessionInfo,
   SubscriberListQuery,
@@ -199,7 +199,7 @@ export const useBundleCandidates = (type: ConfigurableSourceType | '') =>
     '/api/admin/check-bundles/candidates',
     toQueryParams({ filter: { sourceType: type || undefined } }),
   );
-export const useSettings = () => useAdminQuery<PublicPageSettings>(keys.settings, '/api/admin/settings');
+export const useSettings = () => useAdminQuery<AdminPageSettings>(keys.settings, '/api/admin/settings');
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
 export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
