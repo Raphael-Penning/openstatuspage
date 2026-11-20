@@ -218,3 +218,47 @@ html {
 .osp-scope:has(.osp-scope-all:checked) .osp-scope-services {
   display: none;
 }
+
+/*
+ * Uptime bars (UptimeBar.tsx): the layout of the day segments lives here, not
+ * in classes on each of the up to 90 segments of every bar, and the day table
+ * of the service page likewise. Keeps the server-rendered pages small.
+ */
+.osp-bar > div {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 0%;
+  border-radius: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .osp-bar > div {
+    transition: opacity 150ms;
+  }
+}
+.osp-days :is(th, td) {
+  padding: 0.375rem 0.75rem;
+  text-align: start;
+  vertical-align: top;
+}
+.osp-days tbody th {
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.osp-days td:nth-child(3) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.osp-days td:last-child {
+  color: var(--muted);
+}
+.osp-days td:last-child span {
+  display: block;
+}
+.osp-days i {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-end: 0.375rem;
+  border-radius: 9999px;
+}

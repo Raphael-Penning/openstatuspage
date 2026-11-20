@@ -183,17 +183,17 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
         }}
         onClick={(e) => select(indexAt(e), false)}
         className={clsx(
-          'flex w-full cursor-default items-stretch gap-px rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-focus sm:gap-[2px]',
+          'osp-bar flex w-full cursor-default items-stretch gap-px rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-focus sm:gap-[2px]',
           size === 'lg' ? 'h-12' : 'h-8',
         )}
       >
         {shown.map((d, i) => {
           const age = shown.length - 1 - i;
           return (
+            // Layout of the segments: .osp-bar in styles.css (up to 90 per bar, every class counts).
             <div
               key={d.date}
               className={clsx(
-                'relative min-w-0 flex-1 rounded-[2px] motion-safe:transition-opacity',
                 age >= counts.phone && 'max-sm:hidden',
                 age >= counts.tablet && 'max-lg:hidden',
                 d.status ? STATUS_BG[d.status] : undefined,
@@ -295,64 +295,53 @@ function DayDetails({ day }: { day: DailyUptime }) {
 
 /**
  * Every day of an uptime bar as a table, newest first, in a disclosure: what
- * the bar's tooltip shows, without JavaScript and without a pointer.
+ * the bar's tooltip shows, without JavaScript and without a pointer. Cell
+ * styles are in styles.css (.osp-days), so up to a year of rows stays small.
  */
 export function UptimeDayTable({ uptime, label }: { uptime: DailyUptime[]; label: string }) {
   const { t } = useTranslation('public');
   const f = useFormat();
   if (uptime.length === 0) return null;
   const days = [...uptime].reverse();
-  const cell = 'px-3 py-1.5 text-left align-top';
   return (
     <details className="mt-4">
       <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded text-sm font-medium text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
         {t('uptime.dailyDetails')}
       </summary>
       <div className="mt-3 overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
+        <table className="osp-days w-full text-sm">
           <caption className="sr-only">{t('uptime.dailyCaption', { name: label, count: days.length })}</caption>
           <thead className="bg-surface-2 text-xs text-muted">
             <tr>
-              <th scope="col" className={cell}>
-                {t('uptime.day')}
-              </th>
-              <th scope="col" className={cell}>
-                {t('uptime.status')}
-              </th>
-              <th scope="col" className={clsx(cell, 'text-right')}>
-                {t('service.uptime')}
-              </th>
-              <th scope="col" className={cell}>
-                {t('uptime.notOperational')}
-              </th>
+              <th scope="col">{t('uptime.day')}</th>
+              <th scope="col">{t('uptime.status')}</th>
+              <th scope="col">{t('service.uptime')}</th>
+              <th scope="col">{t('uptime.notOperational')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {days.map((day) => {
               const minutes = statusMinutes(day);
+              const notes = day.corrected ? [t('uptime.corrected'), ...(day.correctionNotes ?? [])].join(': ') : null;
               return (
                 <tr key={day.date}>
-                  <th scope="row" className={clsx(cell, 'font-medium whitespace-nowrap tabular-nums')}>
-                    {f.utcDay(day.date)}
-                  </th>
-                  <td className={cell}>
+                  <th scope="row">{f.utcDay(day.date)}</th>
+                  <td>
                     {day.status === null ? (
-                      <span className="text-muted">{t('uptime.noData')}</span>
+                      t('uptime.noData')
                     ) : (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span aria-hidden className={clsx('size-2 shrink-0 rounded-full', STATUS_BG[day.status])} />
+                      <>
+                        <i aria-hidden className={STATUS_BG[day.status]} />
                         {t(`common:status.${day.status}`)}
-                      </span>
+                      </>
                     )}
                   </td>
-                  <td className={clsx(cell, 'text-right tabular-nums')}>{day.uptime === null ? '–' : f.percent(day.uptime)}</td>
-                  <td className={clsx(cell, 'text-muted')}>
+                  <td>{day.uptime === null ? '–' : f.percent(day.uptime)}</td>
+                  <td>
                     {minutes.length === 0
                       ? '–'
                       : minutes.map((m) => `${t(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`).join(', ')}
-                    {day.corrected && (
-                      <span className="block">{[t('uptime.corrected'), ...(day.correctionNotes ?? [])].join(': ')}</span>
-                    )}
+                    {notes && <span>{notes}</span>}
                   </td>
                 </tr>
               );
