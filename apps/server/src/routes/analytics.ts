@@ -347,8 +347,15 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, options: Uma
           timeoutMs: sendTimeout,
           maxBytes: SEND_RESPONSE_MAX_BYTES,
         });
-        if (res.status !== 200 || res.type !== 'application/json') return dropped(reply);
-        return reply.status(200).header('Cache-Control', 'no-store').type('application/json').send(res.body);
+        if (res.status !== 200) return dropped(reply);
+        if (res.type === 'application/json') {
+          return reply.status(200).header('Cache-Control', 'no-store').type('application/json').send(res.body);
+        }
+        // Older Umami 2.x answer the session token as plain text: passed on only
+        // when it has the shape of a token, so no other text reaches the page.
+        const token = res.type === 'text/plain' ? res.body.toString('utf8').trim() : '';
+        if (!UMAMI_CACHE.test(token)) return dropped(reply);
+        return reply.status(200).header('Cache-Control', 'no-store').type('text/plain; charset=utf-8').send(token);
       } catch {
         return dropped(reply);
       } finally {
