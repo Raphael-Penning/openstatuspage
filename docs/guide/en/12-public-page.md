@@ -135,7 +135,7 @@ accepts the same address.
 | Overview, services, service, history, incident, maintenance, locations | yes | Listed in the sitemaps. |
 | Subscribe | yes, when email subscriptions are offered | Listed in the pages sitemap. |
 | Filtered, searched or later pages, "sent" and error states of the subscribe page | no | `noindex, follow`, no canonical address. |
-| Day pages of the uptime bars (`/services/<service>/days/<date>`) | no | `noindex, follow`: one thin page per service and day. Not in a sitemap. |
+| Day pages of the uptime bars (`/services/<service>/days/<date>`) | no | `noindex, follow`, no canonical address: one thin page per service and day. Not in a sitemap; the bars link them with `rel="nofollow"`. |
 | Not found (404), also a history page beyond the last one | no | `noindex`. |
 | Confirm, manage, unsubscribe links | no | `noindex`, not in a sitemap, disallowed in `robots.txt`. |
 | Private pages (`/p/<link>`) | no | `noindex, nofollow` (meta tag and header), no canonical address, not in a sitemap or `llms.txt`. Not disallowed in `robots.txt`, on purpose: a crawler has to fetch the page to see `noindex`. See [Private pages](#private-pages). |
