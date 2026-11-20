@@ -899,6 +899,8 @@ token in the URL or query is never read.
 | GET | `/api/public/private-page` | the page (`private-pages`) |
 | GET | `/api/public/private-page/services/{idOrSlug}` | a service of the page (`services`) with `incidents` and `maintenances` |
 | GET | `/api/public/private-page/services/{idOrSlug}/days/{date}` | a day of a service of the page (`service-days`) |
+| GET | `/api/public/private-page/incidents/{id}` | an incident the page shows (`incidents`) |
+| GET | `/api/public/private-page/maintenances/{id}` | a maintenance window the page shows (`maintenances`) |
 
 - `private-pages` attributes: `name`, `description`, `overall`, `counts`,
   `generatedAt`; relationships `services` (with their uptime bars), `activeIncidents`,
@@ -909,10 +911,14 @@ token in the URL or query is never read.
   invalid_date` for a malformed date), limited to the services of the page. Their
   `links.self` point below `/api/public/private-page`.
 - Incidents and maintenance windows are the public ones (`isPublic`) that affect a
-  service of the page; `affectedServices` lists only services of the page.
-- A missing, wrong, disabled or expired token, a service that is not on the page
-  and a day outside the uptime range are the same `404 not_found`, so the answer
-  never tells which it was.
+  service of the page; `affectedServices` lists only services of the page. The
+  incident and maintenance documents have the shape of `GET /api/public/incidents/{id}`
+  and `GET /api/public/maintenances/{id}` (`include=updates` by default) and answer
+  what the page links to: unresolved or upcoming ones, and those of the last 90
+  days or the uptime range, whichever is longer.
+- A missing, wrong, disabled or expired token, a service, incident or maintenance
+  window that is not on the page and a day outside the uptime range are the same
+  `404 not_found`, so the answer never tells which it was.
 - Answers carry `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`.
   60 requests per minute and client (`429` beyond, like the HTML pages at `/p/`).
 - Feeds and email subscriptions of a private page do not exist.
