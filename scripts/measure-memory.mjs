@@ -10,7 +10,8 @@
  *   after    RSS once the load is over and the process settled
  *
  * Light load: the demo seed, a few hundred requests to the server-rendered public
- * pages (both languages), API and feeds (public, admin, all), a login and the main
+ * pages (both languages), API and feeds, subscriptions through the API and the
+ * HTML form (public, admin, all), a login and the main
  * admin lists plus a monitoring source that is polled from a local fake Uptime Kuma
  * (admin, all), and at least one polling cycle of that source (worker, all).
  *
@@ -187,7 +188,8 @@ async function publicLoad(base, count) {
   const paths = ['/', '/api/public/status', '/api/public/summary', '/api/public/services', '/api/public/locations',
     '/api/public/history', '/api/public/settings', '/feed.rss', '/feed.atom'];
   // Server-rendered pages, in both languages (a rendered page is cached for a few seconds per URL and language).
-  for (const page of ['/services', '/locations', '/history', '/history?type=incident', '/subscribe', '/does-not-exist']) {
+  for (const page of ['/services', '/services?q=a&status=operational', '/locations', '/history', '/history?type=incident',
+    '/subscribe', '/does-not-exist']) {
     paths.push(page, `${page}${page.includes('?') ? '&' : '?'}lang=de`);
   }
   const services = await request(base, '/api/public/services');
@@ -223,6 +225,15 @@ async function publicLoad(base, count) {
       body: JSON.stringify(body),
     });
     statuses[`subscribe ${res.status}`] = (statuses[`subscribe ${res.status}`] ?? 0) + 1;
+  }
+  // The HTML forms (no JavaScript): a subscription (303) and invalid input, answered with the rendered page (422).
+  for (const email of [`reader-form-${Date.now()}@example.com`, 'not-an-email']) {
+    const res = await request(base, '/subscribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'sec-fetch-site': 'same-origin' },
+      body: new URLSearchParams({ email, scope: 'all' }).toString(),
+    });
+    statuses[`form ${res.status}`] = (statuses[`form ${res.status}`] ?? 0) + 1;
   }
   return statuses;
 }
