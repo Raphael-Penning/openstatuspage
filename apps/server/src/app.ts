@@ -11,7 +11,7 @@ import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
 import { registerRoutes } from './routes/index.js';
 import type { RenderModule, SsrPages } from './ssr/pages.js';
-import { webAssetPolicy } from './web-assets.js';
+import { staticCacheControl, webAssetPolicy } from './web-assets.js';
 
 export interface BuildAppOptions {
   config: Config;
@@ -131,6 +131,12 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
       wildcard: false,
       index: false,
       allowedPath: (pathname) => web.allows(pathname),
+      // Brotli/gzip copies written by the web build: no compression at runtime.
+      preCompressed: true,
+      setHeaders: (reply, path) => {
+        const cacheControl = staticCacheControl(path);
+        if (cacheControl) reply.header('Cache-Control', cacheControl);
+      },
     });
     // Public pages are rendered on the server (ssr/pages.ts) where the web build has
     // the render bundle and the role serves the public web client.

@@ -9,6 +9,9 @@
  * nor any chunk that only the management UI loads is ever served. Files outside
  * the manifest (favicon.svg, ...) are served as usual. The manifest and the
  * server-side rendering bundle (.ssr/) are never served by any role.
+ *
+ * The build writes Brotli and gzip copies next to the files (apps/web/tools/
+ * precompress.ts); they belong to their file and are denied with it.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -100,6 +103,21 @@ function readManifest(webDir: string): Manifest {
   return manifest;
 }
 
+/** One year: the file names of the build's assets/ change with their content. */
+export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+/** Files without a content hash in their name (favicon.svg, world-map.svg). */
+export const STATIC_CACHE_CONTROL = 'public, max-age=86400';
+
+/**
+ * Cache-Control of a file of the web build (path on disk). Pages (.html) keep
+ * the header their route sets.
+ */
+export function staticCacheControl(path: string): string | null {
+  const file = path.replace(/\\/g, '/').replace(/\.(?:br|gz)$/, '');
+  if (file.endsWith('.html')) return null;
+  return file.includes('/assets/') ? IMMUTABLE_CACHE_CONTROL : STATIC_CACHE_CONTROL;
+}
+
 /** Serving rules of the web client for a role (null: the role serves no web client). */
 export function webAssetPolicy(role: AppRole, webDir: string): WebAssetPolicy | null {
   if (role === 'worker') return null;
@@ -115,8 +133,8 @@ export function webAssetPolicy(role: AppRole, webDir: string): WebAssetPolicy | 
     index: PUBLIC_INDEX,
     allows: (pathname) => {
       if (isServerOnlyPath(pathname)) return false;
-      const file = pathname.replace(/^\/+/, '');
-      // Source maps of admin chunks are denied with their chunk.
+      // Source maps and compressed copies of admin chunks are denied with their chunk.
+      const file = pathname.replace(/^\/+/, '').replace(/\.(?:br|gz)$/, '');
       return !denied.has(file) && !denied.has(file.replace(/\.map$/, ''));
     },
     servesRoute: (pathname) => !isAdminRoute(pathname),
