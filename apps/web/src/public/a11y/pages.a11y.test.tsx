@@ -35,6 +35,8 @@ const PAGES: [name: string, path: string][] = [
   ['private page', `/p/${PRIVATE_TOKEN}`],
   ['private service', `/p/${PRIVATE_TOKEN}/services/backend`],
   ['private service day', `/p/${PRIVATE_TOKEN}/services/api/days/${API_YESTERDAY}`],
+  ['private incident', `/p/${PRIVATE_TOKEN}/incidents/inc-1`],
+  ['private maintenance', `/p/${PRIVATE_TOKEN}/maintenance/m-1`],
   ['private page (wrong link)', '/p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
 ];
 
@@ -355,6 +357,22 @@ describe('private pages', () => {
     expect(page.container.querySelector('main h1')?.textContent).toBe('Partner backend');
     expect(page.container.querySelector(`main a[href="${base}"]`)).not.toBeNull();
     expect(page.container.querySelector('main a[href^="/history"]')).toBeNull();
+  });
+
+  it('incidents and maintenance windows open below the private page and lead back to it', async () => {
+    page = await renderPublic({ path: base, lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main a[href^="/incidents/"], main a[href^="/maintenance/"]')).toBeNull();
+    expect(page.container.querySelector(`main a[href="${base}/incidents/inc-1"]`)).not.toBeNull();
+    expect(page.container.querySelector(`main a[href="${base}/maintenance/m-1"]`)).not.toBeNull();
+
+    for (const path of [`${base}/incidents/inc-1`, `${base}/maintenance/m-1`]) {
+      page.unmount();
+      page = await renderPublic({ path, lang: 'en', theme: 'light' });
+      expect(page.container.querySelector('main h1')?.textContent, path).not.toBe('Page not found');
+      expect(page.container.querySelector(`main a[href="${base}"]`), path).not.toBeNull();
+      expect(page.container.querySelector('main a[href^="/history"], main a[href^="/services/"]'), path).toBeNull();
+      expect(page.container.querySelector(`main a[href="${base}/services/api"]`), path).not.toBeNull();
+    }
   });
 
   it('a wrong link is "not found"', async () => {

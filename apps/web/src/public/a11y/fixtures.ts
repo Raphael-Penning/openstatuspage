@@ -330,6 +330,8 @@ export function respond(method: string, path: string, headers: Headers = new Hea
   if (method === 'GET' && path.startsWith('/api/public/private-page') && headers.get('x-private-page-token') === PRIVATE_TOKEN) {
     if (path === '/api/public/private-page') return ok(privatePageDocument(privatePage));
     if (path === '/api/public/private-page/services/backend') return ok(serviceDocument(backend, [incident], []));
+    if (path === '/api/public/private-page/incidents/inc-1') return ok(incidentDocument(incident));
+    if (path === '/api/public/private-page/maintenances/m-1') return ok(maintenanceDocument(maintenance));
     const day = /^\/api\/public\/private-page\/services\/api\/days\/([^/]+)$/.exec(path);
     const detail = day ? apiDay(decodeURIComponent(day[1]!)) : null;
     if (detail) return ok(serviceDayDocument(detail, api, [resolvedIncident], []));
