@@ -4,6 +4,7 @@
  * analytics or leaked through the referrer; wrong links are a plain 404 that
  * looks the same whatever the reason.
  */
+import { request, type IncomingHttpHeaders } from 'node:http';
 import { shiftUptimeDay, uptimeDayOf } from '@openstatuspage/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { newPrivatePageToken } from '../src/services/private-pages.js';
@@ -25,6 +26,25 @@ let page: { id: string; token: string };
 let ids: { hidden: string; hiddenSlug: string; other: string };
 
 const get = (url: string, headers: Record<string, string> = {}) => t.app.inject({ method: 'GET', url, headers });
+
+/**
+ * GET with the path exactly as given (like `curl --path-as-is`): inject() and
+ * fetch() resolve dot segments before sending, a hand-made request does not.
+ */
+async function getAsIs(path: string): Promise<{ statusCode: number; headers: IncomingHttpHeaders; body: string }> {
+  const address = t.app.server.listening ? null : await t.app.listen({ host: '127.0.0.1', port: 0 });
+  const port = address ? Number(new URL(address).port) : (t.app.server.address() as { port: number }).port;
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, method: 'GET' }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => (body += chunk));
+      res.on('end', () => resolve({ statusCode: res.statusCode ?? 0, headers: res.headers, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 const today = () => uptimeDayOf(Date.now());
 
 beforeEach(async () => {
@@ -143,5 +163,29 @@ describe('private page', () => {
     let last = 0;
     for (let i = 0; i < 61; i++) last = (await get(`/p/${token}`)).statusCode;
     expect(last).toBe(429);
+  });
+
+  it('answers paths with dot segments with a plain, uncached 404 that renders nothing', async () => {
+    const paths = [`/./p/${page.token}`, `/a/../p/${page.token}`, `/%2e/p/${page.token}`, `/x/%2E%2E/p/${page.token}/services/${ids.hiddenSlug}`];
+    for (const path of paths) {
+      const res = await getAsIs(path);
+      expect(res.statusCode, path).toBe(404);
+      expect(res.body, path).not.toContain('Partner backend');
+      expect(res.body, path).not.toContain('ACME status');
+      expect(res.headers['cache-control'], path).toBe('no-store');
+      expect(res.headers['referrer-policy'], path).toBe('no-referrer');
+      expect(res.headers['x-robots-tag'], path).toBe('noindex, nofollow');
+    }
+    // Nothing of them ends up in the render cache: the real page still renders per request.
+    await admin.patch(`/api/admin/private-pages/${page.id}`, { enabled: false });
+    expect((await get(`/p/${page.token}`)).statusCode).toBe(404);
+  });
+
+  it('counts every spelling of a private path against the same limit', async () => {
+    const token = newPrivatePageToken();
+    for (let i = 0; i < 60; i++) await get(`/P/${token}`);
+    expect((await get(`/p/${token}`)).statusCode).toBe(429);
+    // A dot-segment path never reaches the page (and so cannot be used to guess either).
+    expect((await getAsIs(`/./p/${token}`)).statusCode).toBe(404);
   });
 });

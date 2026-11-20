@@ -4,6 +4,7 @@
  * page's services, also hidden ones), the 404s that never tell why, headers,
  * rate limits and log redaction. Server rendering: private-pages-ssr.test.ts.
  */
+import { request } from 'node:http';
 import { deserializeDocument, PRIVATE_PAGE_TOKEN_HEADER, shiftUptimeDay, uptimeDayOf } from '@openstatuspage/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { redactPrivatePagePath, serializeRequest } from '../src/app.js';
@@ -216,6 +217,9 @@ describe('log redaction', () => {
     expect(redactPrivatePagePath('/p')).toBe('/p');
     expect(redactPrivatePagePath('/pages/abc')).toBe('/pages/abc');
     expect(redactPrivatePagePath('/history?return=/p/abc')).toBe('/history?return=/p/abc');
+    expect(redactPrivatePagePath('/./p/abc?lang=de')).toBe('/p/[REDACTED]?lang=de');
+    expect(redactPrivatePagePath('/a/../P/abc/services/web')).toBe('/p/[REDACTED]/services/web');
+    expect(redactPrivatePagePath('/%2e/p/abc')).toBe('/p/[REDACTED]');
     expect(serializeRequest({ method: 'GET', url: '/p/abcdefghijklmnopqrstuvwxyz234567/services/x?token=1' }).url).toBe(
       '/p/[REDACTED]/services/x?token=[REDACTED]',
     );
@@ -226,6 +230,14 @@ describe('log redaction', () => {
     const app = await createTestAppWithLog(lines);
     const token = newPrivatePageToken();
     await app.app.inject({ method: 'GET', url: `/p/${token}/services/web` });
+    // Paths as-is, with dot segments (inject() would resolve them).
+    const { port } = new URL(await app.app.listen({ host: '127.0.0.1', port: 0 }));
+    for (const path of [`/x/../p/${token}`, `/./p/${token}`, `/%2e/p/${token}`]) {
+      await new Promise<void>((resolve, reject) => {
+        const req = request({ host: '127.0.0.1', port, path }, (res) => res.resume().on('end', resolve));
+        req.on('error', reject).end();
+      });
+    }
     await app.close();
     expect(lines.join('\n')).toContain('/p/[REDACTED]/services/web');
     expect(lines.join('\n')).not.toContain(token);
