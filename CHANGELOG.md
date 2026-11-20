@@ -201,6 +201,19 @@ breaking changes.
   page's own origin and links with `utm_` parameters stay unchanged. Outbound
   links announce that they open a new tab. New attributes of `settings/site`:
   see [docs/api.md](docs/api.md).
+- **Page view statistics with Umami** (optional, off by default): set
+  `UMAMI_URL` on the instances that serve the status page and switch it on with
+  the website ID in Administration → Settings → Analytics (Umami). The status
+  page proxies the tracker (`/pulse/p.js`, cached in memory) and its events
+  (`/pulse/api/send`: JSON only, size, rate and concurrency limits, timeouts, no
+  redirects, no cookies, the visitor's IP address only when allowed), so the
+  CSP stays `'self'` and browsers never contact Umami. The tracker is rendered
+  on the server, deferred, never on subscription links or the management UI;
+  tokens are stripped from tracked URLs; Do Not Track and Global Privacy
+  Control are respected by default. Visitors turn statistics off (and on) in
+  the footer, also without JavaScript (cookie `osp-analytics`); rendered pages
+  are cached per choice. `robots.txt` disallows `/pulse/`. See
+  [docs/configuration.md](docs/configuration.md#analytics).
 
 ### Changed
 
