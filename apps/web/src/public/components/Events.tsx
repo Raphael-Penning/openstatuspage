@@ -14,6 +14,7 @@ import { CalendarClock, TriangleExclamationPoint, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { STATUS_TEXT } from '../../lib/status';
+import { useServicePaths } from '../hooks/links';
 import { useFormat } from '../hooks/preferences';
 import { incidentTone, isAutoMessage, latestUpdate, maintenanceTone } from '../utils/status';
 import { DateTime, RelativeTime, TimeRange } from './Time';
@@ -53,8 +54,10 @@ export function MaintenanceIcon({ status, className }: { status: MaintenanceStat
   return <Icon aria-hidden className={clsx('size-5 shrink-0', tone ? STATUS_TEXT[tone] : 'text-muted', className)} />;
 }
 
-/** Chips of affected services, linking to the service pages. */
+/** Chips of affected services, linking to the service pages (below the current link base). */
 export function AffectedServices({ services, className }: { services: { id: string; name: string }[]; className?: string }) {
+  // Below the link base: on a private page the chips stay on it.
+  const paths = useServicePaths();
   const { t } = useTranslation('public');
   if (services.length === 0) return null;
   return (
@@ -64,7 +67,7 @@ export function AffectedServices({ services, className }: { services: { id: stri
         {services.map((s) => (
           <li key={s.id}>
             <Link
-              to={`/services/${s.id}`}
+              to={paths.service({ id: s.id })}
               className="inline-flex min-h-6 items-center rounded-full border border-border bg-surface-2 px-2 py-0.5 text-xs hover:border-accent"
             >
               {s.name}

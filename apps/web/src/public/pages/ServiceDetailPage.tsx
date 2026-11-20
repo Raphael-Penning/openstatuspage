@@ -12,6 +12,7 @@ import { NotFoundState } from './NotFoundState';
 import { usePageHead, useSiteName } from '../head';
 import { useOutboundHref } from '../components/OutboundLink';
 import { useServicePaths } from '../hooks/links';
+import { usePrivatePageToken } from '../hooks/private-page';
 
 export function ServiceDetailPage() {
   const { slug = '' } = useParams();
@@ -19,7 +20,9 @@ export function ServiceDetailPage() {
   const f = useFormat();
   const { data: settings } = usePublicSettings();
   const outbound = useOutboundHref();
-  const showLocations = settings?.showLocations !== false;
+  // On a private page (/p/<token>) the service links back to it; the main pages' history and locations stay out.
+  const isPrivate = usePrivatePageToken() !== null;
+  const showLocations = settings?.showLocations !== false && !isPrivate;
   const { data, isPending, isError, error, refetch, dataUpdatedAt } = useService(slug);
   const { data: locations } = useLocations(showLocations && (data?.locationIds.length ?? 0) > 0);
   const site = useSiteName();
@@ -62,9 +65,9 @@ export function ServiceDetailPage() {
   return (
     <div className="space-y-10">
       <div>
-        <Link to="/services" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+        <Link to={isPrivate ? paths.home : '/services'} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
           <ArrowLeft aria-hidden className="size-4" />
-          {t('service.back')}
+          {isPrivate ? t('private.back') : t('service.back')}
         </Link>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0">
@@ -170,7 +173,7 @@ export function ServiceDetailPage() {
         <SectionHeader
           id="service-incidents"
           title={t('service.incidents')}
-          to={`/history?service=${encodeURIComponent(data.id)}`}
+          to={isPrivate ? undefined : `/history?service=${encodeURIComponent(data.id)}`}
           linkLabel={t('service.fullHistory')}
         />
         {data.incidents.length > 0 ? (
