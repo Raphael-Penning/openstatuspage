@@ -31,7 +31,7 @@ what has to be checked by hand before a release, and the known limitations.
 | Brand color | 1.4.3, 1.4.11 | Any accent color can be configured. The page derives a text/focus variant that reaches 4.5:1 on every background of the current theme and a button variant with readable text (white or dark). Emails do the same for their button. |
 | Resize and reflow | 1.4.4, 1.4.10 | Relative font sizes; the navigation wraps instead of scrolling sideways; long names wrap instead of being cut off. No horizontal scrolling at 320 CSS px. |
 | Text spacing | 1.4.12 | Controls use minimum heights instead of fixed heights. |
-| Hover and focus content | 1.4.13 | Uptime bar and map tooltips can be hovered without disappearing, stay until the pointer or focus leaves, and **Escape** hides them. On touch screens, the first tap on a day shows its details (with a link to the day), a second tap opens the day. Every day is also a link to its own page (`/services/<slug>/days/<date>`), and the service page lists every day of the bar in a table ("Show every day") with the same links, so no detail needs a pointer, a tooltip or JavaScript. |
+| Hover and focus content | 1.4.13 | Uptime bar and map tooltips can be hovered without disappearing, stay until the pointer or focus leaves, and **Escape** hides them. On touch screens, the first tap on a day shows its details (with a link to the day), a second tap opens the day; a day link that already has the focus (a screen reader's double tap) opens at once. Every day is also a link to its own page (`/services/<slug>/days/<date>`), and the service page lists every day of the bar in a table ("Show every day") with the same links, so no detail needs a pointer, a tooltip or JavaScript. |
 | Keyboard | 2.1.1, 2.1.2 | Everything works with the keyboard: uptime bars are one tab stop each (a roving tabindex over the day links: arrow keys, Home, End move the focus, Enter opens the day), map markers are buttons, the map has zoom and pan buttons, menus close with Escape and return focus. No keyboard traps. |
 | Skip link, titles, focus | 2.4.1, 2.4.2, 2.4.3 | "Skip to content" link; every page has a title "Page · Site name"; after a client-side navigation the focus moves to the main content; after a form error the focus moves to the first invalid field. |
 | Focus visible | 2.4.7, 2.4.11 | A 2 px focus outline in the contrast-safe accent on every interactive element. There is no sticky header that could cover the focus. |
@@ -105,7 +105,8 @@ macOS/iOS):
 - [ ] Status pills, counters and the hero are read with their status text.
 - [ ] Uptime bar: each day link is read with its date, status and uptime; the
   bar's name, number of days and uptime are read when entering it; nothing
-  repeats while the page refreshes.
+  repeats while the page refreshes. On iOS (VoiceOver) and Android (TalkBack) a
+  double tap on a day opens it at once, not after a second activation.
 - [ ] The location list below the map is read with every location and status.
 - [ ] Subscribing announces the confirmation; the manage page announces "saved".
 
