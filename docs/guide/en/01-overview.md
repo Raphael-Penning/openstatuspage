@@ -113,6 +113,8 @@ The core promise is: **customers see services, never infrastructure.**
 2. Put it [behind a reverse proxy with HTTPS](03-reverse-proxy.md).
 3. Review the [configuration](04-configuration.md) and the settings page.
 4. Connect your [monitoring](05-monitoring.md) and create services.
-5. Learn the [daily work](06-daily-work.md) with incidents and maintenance.
+5. Learn the [daily work](06-daily-work.md) with incidents and maintenance, and
+   how the [public page](12-public-page.md) reaches search engines and visitors
+   without JavaScript.
 6. Plan [backups, upgrades and monitoring](09-operations.md) of the status page
    itself, and go through the [security checklist](11-security-checklist.md).
