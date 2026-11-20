@@ -99,7 +99,8 @@
     "ungrouped": "Other services",
     "openSite": "Open {{name}} in a new tab",
     "empty": "No services have been published yet.",
-    "noMatches": "No services match your search."
+    "noMatches": "No services match your search.",
+    "groupToggle": "Show or hide the services of {{name}}"
   },
   "service": {
     "back": "All services",

@@ -199,3 +199,14 @@ html {
     color-mix(in srgb, var(--surface) 45%, transparent) 3px 5px
   );
 }
+
+/*
+ * Collapsible service groups (ServiceList.tsx): the chevron and the hover state
+ * follow the <details> disclosure, also without JavaScript.
+ */
+.osp-group:not(:has(> details[open])) .osp-chevron {
+  rotate: -90deg;
+}
+.osp-group:has(> details > summary:hover) .osp-group-head {
+  background: var(--surface-2);
+}

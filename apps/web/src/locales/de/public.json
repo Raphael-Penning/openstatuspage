@@ -99,7 +99,8 @@
     "ungrouped": "Weitere Dienste",
     "openSite": "{{name}} in neuem Tab öffnen",
     "empty": "Es wurden noch keine Dienste veröffentlicht.",
-    "noMatches": "Keine Dienste passen zu deiner Suche."
+    "noMatches": "Keine Dienste passen zu deiner Suche.",
+    "groupToggle": "Dienste von {{name}} ein- oder ausblenden"
   },
   "service": {
     "back": "Alle Dienste",
