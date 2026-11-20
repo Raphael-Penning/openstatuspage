@@ -30,9 +30,12 @@ Every public page describes itself:
   "Page · Site". The description is taken from the page content (a service's
   description, the latest incident update, a maintenance description), at most
   160 characters.
-- **Canonical link and languages.** Each page names its canonical address. The
-  language versions (`?lang=de`, `?lang=en`) are pages of their own and list each
-  other as alternates; the plain address is the `x-default` version.
+- **Canonical link and languages.** Each page names its canonical address, in
+  lower case and without a trailing slash; other spellings such as `/Services/`
+  are redirected to it (`301`). The language versions (`?lang=de`, `?lang=en`)
+  are pages of their own and list each other as alternates; the plain address is
+  the `x-default` version. `?lang=` always shows that language, whatever the
+  visitor chose before.
 - **Structured data (JSON-LD).** The overview describes the site and its
   organization. Other pages have breadcrumbs. Incident and maintenance pages are
   described as articles with their start and last update.
@@ -42,7 +45,10 @@ Every public page describes itself:
 
 Pages that do not exist (`404`) and the personal subscription links (confirm,
 manage and unsubscribe) carry `noindex`. Subscription links are personal and
-have no canonical address, so they are never listed in a sitemap.
+have no canonical address, so they are never listed in a sitemap. Filtered,
+searched and later pages (for example `/history?type=incident` or
+`/history?page=2`) carry `noindex, follow`: search engines follow their links to
+the incidents but list only the plain page.
 
 ## robots.txt
 
@@ -53,6 +59,8 @@ reads like this (with your own host name):
 # Public status page. A summary for language models: https://status.example.com/llms.txt
 User-agent: *
 Allow: /
+Allow: /api/public/
+Disallow: /api/public/subscriptions
 Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
@@ -61,10 +69,12 @@ Disallow: /preferences/
 Sitemap: https://status.example.com/sitemap.xml
 ```
 
-- The API, the management UI and the personal subscription links are not
-  crawled. The public pages, feeds and the files for AI agents are.
+- The management UI, the personal subscription links and the API are not
+  crawled, except the read-only public API that `llms.txt` points agents to.
+  The public pages, feeds and the files for AI agents are crawled.
 - An instance with `APP_ROLE=admin` (the management side of a split deployment)
-  answers with `Disallow: /`, so search engines leave it alone. That is the
+  answers with `Disallow: /` and marks every page `noindex`, so search engines
+  leave it alone. That is the
   right behavior: the admin domain is not the status page.
 - `Disallow` stops crawling, not necessarily indexing. The `noindex` header and
   meta tag are what keep a page out of search results, which is why the pages
@@ -120,10 +130,11 @@ accepts the same address.
 | --- | --- | --- |
 | Overview, services, service, history, incident, maintenance, locations | yes | Listed in the sitemaps. |
 | Subscribe | yes, when email subscriptions are offered | Listed in the pages sitemap. |
-| Not found (404) | no | `noindex`. |
+| Filtered, searched or later pages, "sent" and error states of the subscribe page | no | `noindex, follow`, no canonical address. |
+| Not found (404), also a history page beyond the last one | no | `noindex`. |
 | Confirm, manage, unsubscribe links | no | `noindex`, not in a sitemap, disallowed in `robots.txt`. |
 | `/admin` on an instance that serves it | no | The response carries `X-Robots-Tag: noindex, nofollow`. |
-| Every page of an `admin` instance | no | `Disallow: /` in `robots.txt`. |
+| Every page of an `admin` instance | no | `Disallow: /` in `robots.txt` and `X-Robots-Tag: noindex, nofollow`. |
 
 You do not need to set any of this. Hidden services and internal checks are
 never published, so they cannot appear in a search result.
@@ -159,7 +170,8 @@ more comfortable. Without them:
   month) are a form with an **Apply** button, and its pages are links. The
   service search and the status filter are a form and links as well.
 - **Language and theme are links and forms.** The language menu links to the
-  page in each language; the theme choice is a form. `system` follows the
+  page in each language (on the personal subscription pages it is a form, so
+  their link never ends up in a log); the theme choice is a form. `system` follows the
   dark-mode setting of the device.
 - **Disclosures open with a click.** The subscribe menu, the language menu and
   the service groups open and close on their own, without scripts.

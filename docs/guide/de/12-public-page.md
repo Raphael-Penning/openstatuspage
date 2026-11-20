@@ -33,9 +33,12 @@ Jede öffentliche Seite beschreibt sich selbst:
   „Seite · Seitenname“. Die Beschreibung stammt aus dem Inhalt der Seite (die
   Beschreibung eines Dienstes, die letzte Vorfall-Meldung, die Beschreibung einer
   Wartung), höchstens 160 Zeichen.
-- **Canonical-Link und Sprachen.** Jede Seite nennt ihre kanonische Adresse. Die
-  Sprachfassungen (`?lang=de`, `?lang=en`) sind eigene Seiten und verweisen
-  aufeinander; die einfache Adresse gilt als `x-default`.
+- **Canonical-Link und Sprachen.** Jede Seite nennt ihre kanonische Adresse, klein
+  geschrieben und ohne Schrägstrich am Ende; andere Schreibweisen wie
+  `/Services/` werden dorthin umgeleitet (`301`). Die Sprachfassungen
+  (`?lang=de`, `?lang=en`) sind eigene Seiten und verweisen aufeinander; die
+  einfache Adresse gilt als `x-default`. `?lang=` zeigt immer diese Sprache, egal
+  was Besucher vorher gewählt haben.
 - **Strukturierte Daten (JSON-LD).** Die Übersicht beschreibt die Seite und die
   Organisation dahinter. Die anderen Seiten haben Breadcrumbs. Vorfall- und
   Wartungsseiten werden als Artikel mit Beginn und letzter Änderung beschrieben.
@@ -45,7 +48,10 @@ Jede öffentliche Seite beschreibt sich selbst:
 
 Seiten, die es nicht gibt (`404`), und die persönlichen Abo-Links (Bestätigen,
 Verwalten und Abmelden) tragen `noindex`. Abo-Links sind persönlich und haben
-keine kanonische Adresse; deshalb stehen sie auch in keiner Sitemap.
+keine kanonische Adresse; deshalb stehen sie auch in keiner Sitemap. Gefilterte,
+durchsuchte und weitere Seiten (zum Beispiel `/history?type=incident` oder
+`/history?page=2`) tragen `noindex, follow`: Suchmaschinen folgen ihren Links zu
+den Vorfällen, nehmen aber nur die einfache Seite auf.
 
 ## robots.txt
 
@@ -56,6 +62,8 @@ Die Datei `/robots.txt` wird erzeugt; du bearbeitest sie nicht selbst. Auf der
 # Public status page. A summary for language models: https://status.example.com/llms.txt
 User-agent: *
 Allow: /
+Allow: /api/public/
+Disallow: /api/public/subscriptions
 Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
@@ -64,11 +72,13 @@ Disallow: /preferences/
 Sitemap: https://status.example.com/sitemap.xml
 ```
 
-- Die API, die Verwaltungsoberfläche und die persönlichen Abo-Links werden nicht
-  durchsucht. Die öffentlichen Seiten, die Feeds und die Dateien für KI-Agenten
-  schon.
+- Die Verwaltungsoberfläche, die persönlichen Abo-Links und die API werden nicht
+  durchsucht, außer der lesenden öffentlichen API, auf die `llms.txt` Agenten
+  verweist. Die öffentlichen Seiten, die Feeds und die Dateien für KI-Agenten
+  werden durchsucht.
 - Eine Instanz mit `APP_ROLE=admin` (die Verwaltungsseite einer geteilten
-  Installation) antwortet mit `Disallow: /`, damit Suchmaschinen sie auslassen.
+  Installation) antwortet mit `Disallow: /` und markiert jede Seite mit
+  `noindex`, damit Suchmaschinen sie auslassen.
   Das ist richtig so: Die Admin-Domain ist nicht die Statusseite.
 - `Disallow` verhindert das Abrufen, nicht unbedingt die Aufnahme in den Index.
   Der Header und das Meta-Tag `noindex` halten eine Seite aus den
@@ -128,10 +138,11 @@ Index. Prüfe dann, ob der Proxy `/sitemap.xml` unverändert durchreicht und ob
 | --- | --- | --- |
 | Übersicht, Dienste, Dienst, Verlauf, Vorfall, Wartung, Standorte | ja | In den Sitemaps aufgeführt. |
 | Abonnieren | ja, wenn E-Mail-Abos angeboten werden | In der Sitemap der Seiten aufgeführt. |
-| Nicht gefunden (404) | nein | `noindex`. |
+| Gefilterte, durchsuchte oder weitere Seiten, Zustände „gesendet“ und Fehler der Abo-Seite | nein | `noindex, follow`, keine kanonische Adresse. |
+| Nicht gefunden (404), auch eine Verlaufsseite hinter der letzten | nein | `noindex`. |
 | Bestätigen-, Verwalten- und Abmelden-Links | nein | `noindex`, nicht in einer Sitemap, in der `robots.txt` ausgeschlossen. |
 | `/admin` auf einer Instanz, die sie ausliefert | nein | Die Antwort trägt `X-Robots-Tag: noindex, nofollow`. |
-| Alle Seiten einer Instanz `admin` | nein | `Disallow: /` in der `robots.txt`. |
+| Alle Seiten einer Instanz `admin` | nein | `Disallow: /` in der `robots.txt` und `X-Robots-Tag: noindex, nofollow`. |
 
 Du musst davon nichts einstellen. Versteckte Dienste und interne Checks werden
 nie veröffentlicht und können deshalb auch nicht in einem Suchergebnis
@@ -172,7 +183,8 @@ Skripte machen die Seite nur bequemer. Ohne sie gilt:
   sind Links. Auch die Dienstsuche und der Statusfilter sind ein Formular
   beziehungsweise Links.
 - **Sprache und Design sind Links und Formulare.** Das Sprachmenü verlinkt die
-  Seite in jeder Sprache; die Designwahl ist ein Formular. `System` folgt der
+  Seite in jeder Sprache (auf den persönlichen Abo-Seiten ist es ein Formular,
+  damit ihr Link in keinem Log landet); die Designwahl ist ein Formular. `System` folgt der
   Einstellung für den dunklen Modus deines Geräts.
 - **Aufklappbare Bereiche öffnest du per Klick.** Das Abo-Menü, das Sprachmenü und
   die Dienstgruppen öffnen und schließen sich ohne Skripte.
