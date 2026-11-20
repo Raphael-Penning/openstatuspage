@@ -10,6 +10,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   cleanEvent,
   MAX_IN_FLIGHT,
+  MAX_IN_FLIGHT_PER_CLIENT,
   registerAnalyticsRoutes,
   SCRIPT_MAX_BYTES,
   SCRIPT_RETRY_MS,
@@ -109,10 +110,11 @@ async function proxyApp(page: () => PublicPageSettings, options: { sendTimeoutMs
   return app;
 }
 
-const send = (app: FastifyInstance, body: unknown, headers: Record<string, string> = {}) =>
+const send = (app: FastifyInstance, body: unknown, headers: Record<string, string> = {}, remoteAddress?: string) =>
   app.inject({
     method: 'POST',
     url: ANALYTICS_PATHS.send,
+    ...(remoteAddress ? { remoteAddress } : {}),
     headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0 Test', ...headers },
     payload: typeof body === 'string' ? body : JSON.stringify(body),
   });
@@ -386,7 +388,7 @@ describe('POST /pulse/api/send', () => {
     expect(Date.now() - stalled).toBeLessThan(900);
   });
 
-  it('forwards at most a few events at a time', async () => {
+  it('forwards at most a few events at a time, and fewer per client', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => {
       release = r;
@@ -396,14 +398,23 @@ describe('POST /pulse/api/send', () => {
       return reply.send({});
     };
     const slow = await proxyApp(() => page, { sendTimeoutMs: 5000 });
+    const held = async (n: number) => {
+      for (let i = 0; i < 100 && umami.received.length < n; i++) await new Promise((r) => setTimeout(r, 10));
+    };
     try {
-      const pending = Array.from({ length: MAX_IN_FLIGHT }, () => send(slow, event()));
-      // Wait until Umami holds every forwarded event.
-      for (let i = 0; i < 100 && umami.received.length < MAX_IN_FLIGHT; i++) await new Promise((r) => setTimeout(r, 10));
-      expect((await send(slow, event())).statusCode).toBe(204);
+      // One client: its excess events are dropped at once, without waiting for Umami.
+      const own = Array.from({ length: MAX_IN_FLIGHT_PER_CLIENT }, () => send(slow, event(), {}, '198.51.100.1'));
+      await held(MAX_IN_FLIGHT_PER_CLIENT);
+      expect((await send(slow, event(), {}, '198.51.100.1')).statusCode).toBe(204);
+      // Other clients still get through, up to the limit of the instance.
+      const others = Array.from({ length: MAX_IN_FLIGHT - MAX_IN_FLIGHT_PER_CLIENT }, (_, i) => send(slow, event(), {}, `198.51.100.${10 + i}`));
+      await held(MAX_IN_FLIGHT);
+      expect((await send(slow, event(), {}, '198.51.100.99')).statusCode).toBe(204);
       release();
-      expect((await Promise.all(pending)).map((r) => r.statusCode)).toEqual(Array(MAX_IN_FLIGHT).fill(200));
+      expect((await Promise.all([...own, ...others])).map((r) => r.statusCode)).toEqual(Array(MAX_IN_FLIGHT).fill(200));
       expect(umami.hits('/api/send')).toBe(MAX_IN_FLIGHT);
+      // The slots are free again.
+      expect((await send(slow, event(), {}, '198.51.100.1')).statusCode).toBe(200);
     } finally {
       release();
       await slow.close();
