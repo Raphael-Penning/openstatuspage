@@ -16,7 +16,20 @@ pnpm dev                        # API on :3000, web on :5173 (proxies /api)
 ```
 
 Open http://localhost:5173 for the status page and http://localhost:5173/admin for the
-management UI.
+management UI. The Vite dev server renders everything in the browser (with hot
+reload); the server-side rendering of the public pages runs in the production
+build only. To check it, build and start that:
+
+```bash
+pnpm build
+pnpm start                      # http://localhost:3000: public pages rendered on the server
+curl -s http://localhost:3000/ | head -c 2000
+```
+
+Server-side rendering and hydration are covered by `apps/web/src/ssr.test.tsx`
+(every public page hydrates without warnings) and
+`apps/server/test/ssr-pages.test.ts` (status codes, head, caching, fallback).
+See [docs/architecture.md](docs/architecture.md#server-side-rendering).
 
 ## Checks
 

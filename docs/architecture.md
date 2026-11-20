@@ -3,7 +3,7 @@
 ```
 apps/
   server/   Fastify API, status engine, monitoring adapters, background worker
-  web/      React SPA: public status page (/) and management UI (/admin)
+  web/      React: public status page (/, server-rendered and hydrated) and management UI (/admin, SPA)
 packages/
   shared/   zod schemas, API types and status vocabulary used by both apps
 docker/     Dockerfile
@@ -11,7 +11,8 @@ deploy/     compose/ (Docker Compose, release assets) and kubernetes/ manifests
 docs/       documentation
 ```
 
-In production a single Node process serves the API and the built SPA.
+In production a single Node process serves the API, the server-rendered public
+pages and the built management SPA.
 
 ## Privacy model
 
@@ -230,6 +231,70 @@ Instances that migrate run `osp_grant_public_role()` on start
 worker renders them (`NotificationService`). See
 [security-model.md](security-model.md).
 
+## Server-side rendering
+
+The public pages are rendered on the server and hydrated in the browser, so
+they work without JavaScript and search engines get the content in the HTML.
+The management UI (`/admin`) stays a client-rendered SPA and is sent with
+`X-Robots-Tag: noindex, nofollow`.
+
+```
+request /incidents/42 ─▶ app.ts (not-found handler, client route, not /admin)
+  └─ ssr/pages.ts      render cache? ── hit ─▶ 200/404 + ETag
+       └─ dist/.ssr/entry-server.mjs  render()          (imported on first use)
+            ├─ settings → language (cookie, ?lang=, Accept-Language, default), theme
+            ├─ handle.prefetch of the matched routes (public/routes.tsx)
+            │    └─ publicQueries.*(get)  ─▶ ssr/source.ts ─▶ PublicDocuments  (in-process)
+            ├─ renderToString(StaticRouterProvider)  + usePageHead() collected
+            └─ dehydrate(QueryClient) ─▶ <script type="application/json" id="osp-state">
+  └─ public.html template: <html lang dir data-theme>, head, markup, state block
+browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(), hydrateRoot()
+```
+
+- **One data path.** `publicQueries` (`apps/web/src/public/hooks/queries.ts`)
+  builds the query options of every public page for a document source: HTTP in
+  the browser, the server's own document builders
+  (`services/public-documents.ts`, which the `/api/public` routes use as well)
+  during rendering. Keys and deserialization are therefore identical, and the
+  dehydrated state is exactly what the hooks expect. "Not found" answers are
+  dehydrated too, so a 404 page hydrates into the same state.
+- **Route loaders.** Each public route lists the queries of its first render in
+  `handle.prefetch` (`public/routes.tsx`, types in `public/loaders.ts`). The
+  settings query always runs first.
+- **Page head.** Every page calls `usePageHead({ title, description, canonical,
+  robots, jsonLd, status })` (`public/head.tsx`). The server writes the result
+  into `<head>` and uses `status` as the HTTP status (404 for unknown pages,
+  services, incidents and maintenance windows); in the browser the same store
+  keeps `document.head` in sync after navigations. Canonical paths become
+  absolute with `PUBLIC_BASE_URL`.
+- **Deterministic first render.** The server renders against its render time,
+  in UTC and with ICU-free formatting (`neutral` in `public/utils/time.ts`:
+  ISO dates, 24-hour times, SI-style durations, country codes); the theme comes
+  from the `osp-theme` cookie or the page default. Hydration repeats exactly
+  that (`useHydrated()` and `SsrProvider` in `lib/ssr.tsx`), then the browser
+  switches to the visitor's clock, time zone and localized formats. Pages that
+  depend on the URL fragment (subscription links) or load the world map lazily
+  render their placeholder until hydration finished. `apps/web/src/ssr.test.tsx`
+  hydrates every page in jsdom and fails on any hydration warning.
+- **Language.** `osp-lang` cookie (set by the language switcher), then `?lang=`,
+  then `Accept-Language`, then the page default (`lib/languages.ts`). The browser
+  switches to the server's language before hydrating.
+- **Caching.** A rendered page is kept for 5 s per URL, language and theme input
+  (`cacheKey` of the bundle; at most 16 pages and 1 MiB, one render per key at a
+  time, at most two renders at once) and sent with a weak `ETag`, `Vary:
+  Accept-Language, Cookie` and `Cache-Control: public, max-age=10,
+  stale-while-revalidate=60` (`private, no-store` for the personal subscription
+  links). If-None-Match answers 304.
+- **Failure.** A render error or a missing bundle is logged and the plain
+  client-rendered entry page is sent instead; the page still works.
+- **Build.** `pnpm --filter @openstatuspage/web build` runs `vite build` (the
+  two client entries) and `vite build --ssr src/entry-server.tsx --outDir
+  dist/.ssr`: one self-contained, minified, ASCII-only ES module with every
+  dependency bundled (the image has no `node_modules` for the web client) and
+  `renderToString` only (not the streaming renderer). The public route tree only:
+  `entry-server.tsx` must never import `./admin`. Neither `.vite/` nor `.ssr/`
+  is ever served as a file.
+
 ## Memory
 
 Target: less than 100 MB resident memory (RSS) per instance. Measured with
@@ -237,25 +302,35 @@ Target: less than 100 MB resident memory (RSS) per instance. Measured with
 linux/arm64, the production image) against PostgreSQL 17 with the demo seed. The
 script starts the production build once per role, one instance at a time, and
 puts light load on it: a login and the main admin lists (admin, all), 400 public
-requests with 8 in parallel plus three subscriptions (public, admin, all), and a
-monitoring source polled every 10 s from a local fake Uptime Kuma for 40 s
-(worker, all). "After load" is read after 15 s without requests.
+requests with 8 in parallel (server-rendered pages of every kind in both
+languages, the public API, feeds and assets) plus three subscriptions (public,
+admin, all), and a monitoring source polled every 10 s from a local fake Uptime
+Kuma for 40 s (worker, all). "After load" is read after 15 s without requests.
 
 | Role | After start | Peak under load | After load | Kernel peak (VmHWM) |
 | --- | --- | --- | --- | --- |
-| public | 84 MB | 94 MB | 83 MB | 94 MB |
-| admin | 90 MB | 102 MB | 90 MB | 111 MB |
-| worker | 80 MB | 84 MB | 84 MB | 92 MB |
-| all | 85 MB | 106 MB | 95 MB | 110 MB |
-| all (SQLite) | 95 MB | 101 MB | 101 MB | 116 MB |
+| public | 76 MB | 94 MB | 80 MB | 94 MB |
+| admin | 83 MB | 101 MB | 90 MB | 104 MB |
+| worker | 74 MB | 93 MB | 78 MB | 93 MB |
+| all | 78 MB | 100 MB | 93 MB | 111 MB |
+
+Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
+after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
+render bundle is imported on the first page request, so "after start" does not
+include it.
 
 What the target covers: `public` and `worker` stay below 100 MB at every
 point, also at their kernel peak. `admin` and `all` stay below it after start and
-at steady state, but exceed it briefly under load: up to 102 MB (admin) and
-106 MB (all) in the samples, 110–116 MB at the kernel peak, mostly while a
+at steady state, but exceed it briefly under load: up to 101 MB (admin) and
+100 MB (all) in the samples, 104–111 MB at the kernel peak, mostly while a
 password is checked (see below). Size memory limits for these peaks, not for the
 target: the Kubernetes examples request 128 MiB and limit at 256 MiB, and
 `deploy/compose/compose.split.yaml` sets the same limits.
+
+Before `--max-opt=2` (see the runtime flags below) and without server-side
+rendering the numbers were public 84 / 94 / 83 MB, admin 90 / 102 / 90 MB, worker
+80 / 84 / 84 MB and all 85 / 106 / 95 MB; with server-side rendering but without
+`--max-opt=2` the public instance peaked at 107 MB.
 
 The same build and load before the changes below: public 98 / 118 / 105 MB,
 admin 113 / 133 / 120 MB, worker 105 / 112 / 100 MB and all 108 / 129 / 117 MB
@@ -283,8 +358,16 @@ What keeps it small:
   client (first import job) and mysql2 (Icinga DB import) are loaded on first use.
 - **No ICU on hot paths.** Feeds and mails format dates without `Intl`
   (`formatUtcDateTime` in `lib/time.ts`), the public history sorts without
-  `localeCompare`.
-- **Bounded caches.** There is no response or query cache. The rate limiter
+  `localeCompare`, and server-side rendering formats without `Intl` until
+  hydration (`neutral` in `apps/web/src/public/utils/time.ts`); only i18next's
+  plural rules touch ICU there. The browser reuses its `Intl` formatters
+  (`public/utils/intl.ts`).
+- **A small render bundle, loaded late.** The server-side rendering bundle
+  (about 500 kB, ASCII only, `renderToString` without the streaming renderer,
+  only the `common` and `public` translations) is imported on the first page
+  request, at most two pages render at once.
+- **Bounded caches.** The only response cache holds rendered public pages for
+  5 s (at most 16 pages and 1 MiB, as UTF-8 bytes); there is no query cache. The rate limiter
   keeps at most 1000 clients per route (`RATE_LIMIT_KEYS`), the per-source
   limiter of the ingest endpoints 10 000 keys. The web asset policy keeps only
   the file names of the public entry, never file contents.
@@ -295,14 +378,15 @@ What keeps it small:
   | `NODE_OPTIONS` | `--max-semi-space-size=1 --max-old-space-size=96` | A 1 MB young generation (Node's default grows to 16 MB per semi-space) saves about 10 MB at little GC cost for short requests. The old generation cap turns a leak into a restart instead of swapping. |
   | `MALLOC_ARENA_MAX` | `2` | glibc creates a malloc arena per thread; two arenas save several MB of fragmented native memory. |
   | `UV_THREADPOOL_SIZE` | `2` | Every libuv thread that ran an Argon2 hash keeps 2–3 MB; two threads are plenty for file reads, DNS and password checks of a status page. |
+  | `node --max-opt=2` (command) | – | No TurboFan; Ignition, Sparkplug and Maglev still run. TurboFan's optimized code and compiler zones cost 10–15 MB per instance (the public instance with server-side rendering peaked at 107 MB with it), more than a status page gains in speed. NODE_OPTIONS cannot carry this V8 flag, so the image's `CMD` and `pnpm start` pass it. |
 
   The health check of the image uses bash instead of a second node process
   (about 40 MB every 30 s inside the container's memory limit).
 
 Raise the cap for a large history import on an admin instance, e.g.
 `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=256`. Without the
-image, set the same variables yourself to get the numbers above; without them
-every role needs about 10 MB more.
+image, set the same variables and start with `node --max-opt=2` yourself to get
+the numbers above; without them every role needs about 10–20 MB more.
 
 To measure your own build: start a throwaway PostgreSQL, create the roles
 (`deploy/postgres/roles.sql`), `pnpm -r build`, then
@@ -311,7 +395,7 @@ To measure your own build: start a throwaway PostgreSQL, create the roles
 DATABASE_URL=postgres://owner:...@127.0.0.1:5432/osp_memory \
 PUBLIC_DATABASE_URL=postgres://osp_public:...@127.0.0.1:5432/osp_memory \
 MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 \
-pnpm measure:memory --node-args="--max-semi-space-size=1 --max-old-space-size=96"
+pnpm measure:memory --node-args="--max-semi-space-size=1 --max-old-space-size=96 --max-opt=2"
 ```
 
 on an empty database. Use Linux (or the image) for comparable numbers: macOS
