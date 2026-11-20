@@ -154,6 +154,12 @@ plain text view.
   icon and a text for screen readers ("opens in a new tab"); their label is
   yours. The legal links have their own navigation landmark ("Legal"). An info
   link to a path on this site opens in the same tab.
+- **The statistics choice** (only when analytics runs) sits in the "Legal"
+  navigation after the privacy policy: a button styled like the links, inside a
+  form that works without JavaScript. Once statistics are off, the same place
+  says so in text ("Statistics are disabled.") next to the button that turns
+  them on again. It is checked by axe in both states
+  (`apps/web/src/public/a11y/pages.a11y.test.tsx`).
 - **Color contrast** of the page is verified for the design tokens, not for
   every rendered pixel (jsdom has no layout); the in-browser check of the manual
   checklist covers the rest.
