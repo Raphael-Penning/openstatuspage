@@ -8,11 +8,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import { Limiter, RenderQueueFull, type RenderModule } from '../src/ssr/pages.js';
+import { acceptsGzip, Limiter, RenderQueueFull, type RenderModule } from '../src/ssr/pages.js';
 import { adminClient, BASE_URL, createTestApp, seedChecks, type TestApp } from './helpers.js';
 
 /** The web client's render entry, from source (a URL, so the server's typecheck does not compile the web sources). */
@@ -226,7 +227,7 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     expect((await get('/services?lang=de')).body).toContain('<html lang="de"');
     const cookie = await get('/services?lang=de', { cookie: 'osp-lang=en' });
     expect(cookie.body).toContain('<html lang="en"');
-    expect(cookie.headers.vary).toBe('Accept-Language, Cookie');
+    expect(cookie.headers.vary).toBe('Accept-Language, Cookie, Accept-Encoding');
   });
 
   it('puts an explicit theme on <html>', async () => {
@@ -242,6 +243,17 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     expect(again.statusCode).toBe(304);
     expect(again.body).toBe('');
     expect((await get('/subscription/manage?id=x')).headers['cache-control']).toBe('private, no-store');
+  });
+
+  it('sends the page gzip-compressed to clients that accept it', async () => {
+    const plain = await get('/services');
+    expect(plain.headers['content-encoding']).toBeUndefined();
+    const gzip = await get('/services', { 'accept-encoding': 'gzip, deflate, br' });
+    expect(gzip.headers['content-encoding']).toBe('gzip');
+    expect(gzip.headers.etag).toBe(plain.headers.etag);
+    const body = gunzipSync(gzip.rawPayload);
+    expect(body.toString('utf8')).toBe(plain.body);
+    expect(gzip.rawPayload.length).toBeLessThan(body.length / 3);
   });
 
   it('serves no rendered page for API paths and files, and never the render bundle', async () => {
@@ -315,6 +327,18 @@ async function publicApp(other: TestApp) {
   await app.ready();
   return app;
 }
+
+describe('accepted encodings', () => {
+  it('accepts gzip unless its quality is zero', () => {
+    expect(acceptsGzip('gzip, deflate, br, zstd')).toBe(true);
+    expect(acceptsGzip('br;q=1.0, gzip;q=0.8')).toBe(true);
+    expect(acceptsGzip('*')).toBe(true);
+    expect(acceptsGzip('gzip;q=0, *')).toBe(false);
+    expect(acceptsGzip('br')).toBe(false);
+    expect(acceptsGzip('identity')).toBe(false);
+    expect(acceptsGzip(undefined)).toBe(false);
+  });
+});
 
 describe('render limits', () => {
   it('runs at most `limit` renders at once and refuses beyond the queue', async () => {

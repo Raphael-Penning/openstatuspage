@@ -16,11 +16,17 @@
  * entries and bytes; concurrent requests for the same key share one render) and
  * is sent with an ETag and a short shared Cache-Control. Any error is logged and
  * the caller sends the plain client-rendered page instead.
+ *
+ * Pages are sent gzip-compressed to clients that accept it (a page shrinks to
+ * about a sixth). The page is compressed once per render, kept with the page,
+ * so a cached page costs no CPU per request; Brotli would compress better but
+ * costs several times the memory while compressing.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import {
   headElements,
   SSR_STATE_ID,
@@ -68,6 +74,8 @@ interface RenderedPage {
   status: number;
   /** UTF-8: half the memory of a JavaScript string with non-ASCII characters. */
   body: Buffer;
+  /** The body gzip-compressed. */
+  gzip: Buffer;
   etag: string;
   expires: number;
 }
@@ -153,6 +161,24 @@ export function composePage(template: PageTemplate, page: SsrRenderResult): stri
     `</div><script type="application/json" id="${SSR_STATE_ID}">${page.state}</script>` +
     template.end.replace(/^<\/div>/, '')
   );
+}
+
+/** Level 6: nearly the size of level 9 at a fraction of the time. */
+const GZIP_LEVEL = 6;
+
+/** Whether the client accepts a gzip-compressed response (Accept-Encoding, q > 0). */
+export function acceptsGzip(header: string | string[] | undefined): boolean {
+  const value = Array.isArray(header) ? header.join(',') : (header ?? '');
+  let gzip: boolean | undefined;
+  let any = false;
+  for (const part of value.split(',')) {
+    const [coding = '', ...params] = part.trim().toLowerCase().split(';');
+    const q = params.map((p) => p.trim()).find((p) => p.startsWith('q='));
+    const accepted = q === undefined || Number(q.slice(2)) > 0;
+    if (coding.trim() === 'gzip' || coding.trim() === 'x-gzip') gzip = accepted;
+    else if (coding.trim() === '*') any = accepted;
+  }
+  return gzip ?? any;
 }
 
 const etagOf = (body: Buffer) => `W/"${createHash('sha1').update(body).digest('base64url')}"`;
@@ -251,13 +277,13 @@ export class SsrPages {
     reply
       .header('Cache-Control', personal ? PRIVATE_CACHE_CONTROL : PAGE_CACHE_CONTROL)
       // Language and theme come from these headers.
-      .header('Vary', 'Accept-Language, Cookie')
+      .header('Vary', 'Accept-Language, Cookie, Accept-Encoding')
       .header('ETag', page.etag);
     if (!personal && page.status === 200 && req.headers['if-none-match'] === page.etag) {
       await reply.status(304).send();
       return true;
     }
-    await reply.status(page.status).type('text/html; charset=utf-8').send(page.body);
+    await sendPage(req, reply.status(page.status), page);
     return true;
   }
 
@@ -277,12 +303,11 @@ export class SsrPages {
       else req.log.error({ err }, 'Server-side rendering of a form answer failed');
       return false;
     }
-    await reply
+    reply
       .status(page.status)
       .header('Cache-Control', PRIVATE_CACHE_CONTROL)
-      .header('Vary', 'Accept-Language, Cookie')
-      .type('text/html; charset=utf-8')
-      .send(rendered.body);
+      .header('Vary', 'Accept-Language, Cookie, Accept-Encoding');
+    await sendPage(req, reply, rendered);
     return true;
   }
 
@@ -307,7 +332,8 @@ export class SsrPages {
   private async renderPage(module: RenderModule, input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptLanguage' | 'form'>): Promise<RenderedPage> {
     const result = await module.render({ ...input, source: this.source, baseUrl: this.options.baseUrl, now: Date.now() });
     const body = Buffer.from(composePage(this.loadTemplate(), result));
-    return { status: result.status, body, etag: etagOf(body), expires: Date.now() + this.ttlMs };
+    const gzip = gzipSync(body, { level: GZIP_LEVEL });
+    return { status: result.status, body, gzip, etag: etagOf(body), expires: Date.now() + this.ttlMs };
   }
 
   private async render(req: FastifyRequest): Promise<RenderedPage> {
@@ -337,10 +363,10 @@ export class SsrPages {
   }
 
   private remember(key: string, page: RenderedPage): void {
-    if (this.ttlMs <= 0 || page.body.length > this.maxBytes) return;
+    if (this.ttlMs <= 0 || pageBytes(page) > this.maxBytes) return;
     this.evict(key);
     this.cache.set(key, page);
-    this.cachedBytes += page.body.length;
+    this.cachedBytes += pageBytes(page);
     // Oldest first: drop beyond the limits.
     while (this.cache.size > this.maxEntries || this.cachedBytes > this.maxBytes) this.evict(this.cache.keys().next().value!);
     // Expired pages do not wait for the next request of their key.
@@ -353,6 +379,18 @@ export class SsrPages {
     const page = this.cache.get(key);
     if (!page) return;
     this.cache.delete(key);
-    this.cachedBytes -= page.body.length;
+    this.cachedBytes -= pageBytes(page);
+  }
+}
+
+const pageBytes = (page: RenderedPage) => page.body.length + page.gzip.length;
+
+/** Sends a rendered page, gzip-compressed when the client accepts it. */
+async function sendPage(req: FastifyRequest, reply: FastifyReply, page: RenderedPage): Promise<void> {
+  reply.type('text/html; charset=utf-8');
+  if (acceptsGzip(req.headers['accept-encoding'])) {
+    await reply.header('Content-Encoding', 'gzip').send(page.gzip);
+  } else {
+    await reply.send(page.body);
   }
 }
