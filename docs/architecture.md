@@ -272,10 +272,11 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   ISO dates, 24-hour times, SI-style durations, country codes); the theme comes
   from the `osp-theme` cookie or the page default. Hydration repeats exactly
   that (`useHydrated()` and `SsrProvider` in `lib/ssr.tsx`), then the browser
-  switches to the visitor's clock, time zone and localized formats. Pages that
-  depend on the URL fragment (subscription links) or load the world map lazily
-  render their placeholder until hydration finished. `apps/web/src/ssr.test.tsx`
-  hydrates every page in jsdom and fails on any hydration warning.
+  switches to the visitor's clock, time zone and localized formats. The
+  interactive world map loads lazily after hydration; until then (and without
+  JavaScript) the static map of the server stands in at the same size.
+  `apps/web/src/ssr.test.tsx` hydrates every page in jsdom and fails on any
+  hydration warning.
 - **Language.** `osp-lang` cookie (set by the language switcher), then `?lang=`,
   then `Accept-Language`, then the page default (`lib/languages.ts`). The browser
   switches to the server's language before hydrating.
@@ -289,13 +290,72 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   client-rendered entry page is sent instead; the page still works. The same
   happens at once when more than 32 pages wait for a render (a flood of distinct
   URLs cannot queue without bound).
+- **Accent color.** The configured accent and its contrast-safe variants for
+  both themes go into a `<style>` in the head (`public/utils/accent.ts`), so the
+  page has its colors before (and without) hydration.
 - **Build.** `pnpm --filter @openstatuspage/web build` runs `vite build` (the
   two client entries) and `vite build --ssr src/entry-server.tsx --outDir
   dist/.ssr`: one self-contained, minified, ASCII-only ES module with every
   dependency bundled (the image has no `node_modules` for the web client) and
   `renderToString` only (not the streaming renderer). The public route tree only:
   `entry-server.tsx` must never import `./admin`. Neither `.vite/` nor `.ssr/`
-  is ever served as a file.
+  is ever served as a file. The client build also writes `/world-map.svg`, the
+  country shapes of the static map (`apps/web/tools/world-map.ts`).
+
+### Without JavaScript
+
+Every public page is fully usable without JavaScript; scripts only enhance it
+(no page load for a filter, live updates every 60 s, the interactive map, the
+visitor's time zone). The rules:
+
+- **Controls are links and forms.** Every filter, range and toggle lives in the
+  URL, so the server renders its result: history filters are a GET form
+  (`type`, `service`, `location`, `month`) and its pages links (`page`), the
+  service search a GET form (`q`) and the status counters links (`status`),
+  "all upcoming maintenance" a link (`upcoming=all`). Submit buttons that only
+  browsers without JavaScript need are inside `<noscript>` (`NoScript`), so
+  hydration moves nothing; with JavaScript every change applies at once.
+- **Disclosures are `<details>`.** The subscribe menu, the language menu, the
+  collapsible service groups and the daily uptime table open without scripts.
+  With JavaScript the `Disclosure` component also closes them on Escape and on
+  a click outside.
+- **Tooltips have a visible equivalent.** The days of an uptime bar are listed in
+  a table on the service page; the world map's markers are drawn on the server
+  (`StaticWorldMap`: the country shapes of `/world-map.svg` as a CSS mask in the
+  theme color, the markers with the fixed projection of
+  `public/utils/map-projection.ts`); the location list below it has every
+  location with its status.
+- **Preferences.** The theme switcher is a form posting to `/preferences/theme`
+  and the language switcher links to `/preferences/language?lang=…`; both set
+  their cookie and redirect back (`forms/preferences.ts`). The `system` theme
+  follows `prefers-color-scheme` in CSS. Times are in UTC until hydration, so the
+  time zone toggle is a label until then. Every page lists its other languages
+  as `hreflang` alternates (`?lang=xx`, `x-default` without).
+- **Forms post to form handlers** outside `/api` (`apps/server/src/forms/`,
+  `application/x-www-form-urlencoded`, paths in `FORM_PATHS` of
+  `@openstatuspage/shared`): `/subscribe`, `/subscription/confirm`,
+  `/subscription/manage`, `/subscription/unsubscribe`. They use the same
+  subscription flow and rate limits as the JSON:API, and Post/Redirect/Get: a
+  success redirects (`303`) to a page that shows the outcome from a query flag
+  (`?sent=1`, `?saved=1`, `?confirmed=1`, `?unsubscribed=1`, `?error=invalid`).
+  Invalid input is answered with the page itself (`422`, `SsrPages.sendForm`):
+  the server renders it with the submitted values and errors (`SsrFormState`,
+  carried into hydration by the state block), with an error summary and the
+  error in the title. Without the render bundle the answer is a redirect with
+  `?error=<code>`. Requests from other sites are rejected (`Sec-Fetch-Site`,
+  `Origin`; see [security-model.md](security-model.md#html-forms)). With
+  JavaScript the same forms post to the JSON:API instead.
+- **Links in emails carry the token in the query**, so the server can render the
+  confirm and manage pages (the route loader reads the subscription through the
+  in-process source). Confirming takes one click on a form, so a mail scanner
+  that opens the link confirms nothing. Links of older emails with the token in
+  the URL fragment keep working with JavaScript.
+- **No live updates without JavaScript**, and no `<meta http-equiv="refresh">`
+  (it would move the reader's focus and position): the overview says when the
+  status was last updated, a reload shows the current one.
+- `apps/server/test/nojs-pages.test.ts` fetches every page and checks that each
+  control is a link or a form with its action, method and field names, and that
+  no button, field or tab stop depends on a script.
 
 ## Memory
 
