@@ -26,6 +26,7 @@ import {
   type PublicMaintenance,
   type PublicPageSettings,
   type PublicService,
+  type PublicServiceDay,
   type PublicServiceGroup,
   type PublicSummary,
   type ServiceStatus,
@@ -43,6 +44,13 @@ export interface PublicServicesResponse {
 
 export type PublicServiceDetail = PublicService & {
   uptime: DailyUptime[];
+  incidents: PublicIncident[];
+  maintenances: PublicMaintenance[];
+};
+
+/** A day of a service (GET /api/public/services/{idOrSlug}/days/{date}) with what it includes by default. */
+export type PublicServiceDayDetail = PublicServiceDay & {
+  service: PublicService;
   incidents: PublicIncident[];
   maintenances: PublicMaintenance[];
 };
@@ -131,6 +139,15 @@ export const publicQueries = {
       queryFn: () => one<PublicServiceDetail>(get, `/api/public/services/${encodeURIComponent(idOrSlug)}`),
       ...common,
     }),
+  serviceDay: (idOrSlug: string, date: string, get: GetDocument = httpDocuments) =>
+    queryOptions({
+      queryKey: ['public', 'service-day', idOrSlug, date],
+      queryFn: () =>
+        one<PublicServiceDayDetail>(get, `/api/public/services/${encodeURIComponent(idOrSlug)}/days/${encodeURIComponent(date)}`),
+      ...common,
+      // A past day does not change any more (unless corrected); today does.
+      refetchInterval: (query) => (query.state.data?.complete ? false : REFRESH_INTERVAL),
+    }),
   locations: (get: GetDocument = httpDocuments) =>
     queryOptions({ queryKey: ['public', 'locations'], queryFn: () => fetchLocations(get), ...common }),
   incident: (id: string, get: GetDocument = httpDocuments) =>
@@ -168,6 +185,11 @@ export function useServices() {
 
 export function useService(idOrSlug: string) {
   return useQuery(publicQueries.service(idOrSlug));
+}
+
+/** A day of a service; disabled for a malformed date (the page shows "not found" without asking). */
+export function useServiceDay(idOrSlug: string, date: string, enabled = true) {
+  return useQuery({ ...publicQueries.serviceDay(idOrSlug, date), enabled });
 }
 
 export function useLocations(enabled = true) {
