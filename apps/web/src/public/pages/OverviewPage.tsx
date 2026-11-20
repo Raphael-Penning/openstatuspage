@@ -1,6 +1,6 @@
 import { CalendarClock, CircleCheck } from 'lucide-react';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link, useSearchParams } from 'react-router';
 import { IncidentSummary, MaintenanceSummary } from '../components/Events';
 import { FeedMenu } from '../components/Controls';
 import { ServiceCatalog } from '../components/ServiceList';
@@ -14,7 +14,9 @@ const UPCOMING_PREVIEW = 3;
 export function OverviewPage() {
   const { t } = useTranslation('public');
   const { data, isPending, isError, refetch } = useSummary();
-  const [allUpcoming, setAllUpcoming] = useState(false);
+  // ?upcoming=all lists every upcoming maintenance (a link, so it works without JavaScript).
+  const [params] = useSearchParams();
+  const allUpcoming = params.get('upcoming') === 'all';
   usePageHead({});
 
   if (isPending) return <OverviewSkeleton />;
@@ -80,17 +82,17 @@ export function OverviewPage() {
             ))}
           </div>
           {data.upcomingMaintenances.length > UPCOMING_PREVIEW && (
-            <button
-              type="button"
-              aria-expanded={allUpcoming}
-              onClick={() => setAllUpcoming((v) => !v)}
+            <Link
+              to={allUpcoming ? '/#upcoming-maintenance' : '/?upcoming=all#upcoming-maintenance'}
+              replace
+              preventScrollReset
               className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[color:var(--osp-accent-text,var(--accent))] hover:underline"
             >
               <CalendarClock aria-hidden className="size-4" />
               {allUpcoming
                 ? t('overview.showFewerUpcoming')
                 : t('overview.viewAllUpcoming', { count: data.upcomingMaintenances.length })}
-            </button>
+            </Link>
           )}
         </section>
       )}
