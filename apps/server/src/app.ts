@@ -6,6 +6,7 @@ import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
+import { FRAMELESS_PAGE_CSP, PERMISSIONS_POLICY, PUBLIC_PAGE_CSP } from './lib/security-headers.js';
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
@@ -105,8 +106,14 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // Subscription pages have a token in their URL: it never leaves as a referrer.
     reply.header('Referrer-Policy', path.startsWith('/subscription/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
     const admin = path === '/admin' || path.startsWith('/admin/');
-    if (admin || isApiPath(path)) {
-      reply.header('X-Frame-Options', 'DENY');
+    const framed = !(admin || isApiPath(path));
+    if (!framed) reply.header('X-Frame-Options', 'DENY');
+    // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
+    if (String(reply.getHeader('content-type') ?? '').startsWith('text/html')) {
+      reply.header('Content-Security-Policy', framed ? PUBLIC_PAGE_CSP : FRAMELESS_PAGE_CSP);
+      reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+      reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+    } else if (!framed) {
       reply.header('Content-Security-Policy', "frame-ancestors 'none'");
     }
     // The management UI is never indexed by search engines.
