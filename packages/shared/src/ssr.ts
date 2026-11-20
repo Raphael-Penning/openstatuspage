@@ -131,6 +131,8 @@ export interface SsrRenderResult {
   theme: ThemePreference;
   /** Dehydrated state, JSON escaped for embedding in `<script type="application/json">`. */
   state: string;
+  /** CSS for the page head (the configured accent color). */
+  css?: string;
 }
 
 /** Module interface of the SSR bundle. */

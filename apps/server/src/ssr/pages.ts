@@ -142,6 +142,8 @@ export function composePage(template: PageTemplate, page: SsrRenderResult): stri
     `${template.beforeHtml}<html lang="${escapeHtml(page.lang)}" dir="${page.dir}"${theme}>` +
     template.headStart +
     headTags(page.head, page.hoisted) +
+    // The accent color before the stylesheet (it is more specific); never a way out of <style>.
+    (page.css ? `<style>${page.css.replace(/</g, '')}</style>` : '') +
     template.headRestAndBodyStart +
     page.html +
     // Data, not code: type=application/json is never executed.

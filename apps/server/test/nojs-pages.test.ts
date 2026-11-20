@@ -131,6 +131,8 @@ describe('public pages without JavaScript', () => {
     // Search engines get the page in every language.
     expect(body).toContain(`<link rel="alternate" hrefLang="de" href="${BASE_URL}/history?lang=de"/>`);
     expect(body).toContain(`<link rel="alternate" hrefLang="x-default" href="${BASE_URL}/history"/>`);
+    // The configured accent color is in the head, before the stylesheet.
+    expect(body).toMatch(/<style>html:root\{--accent:#7c6cf2;[^<]*<\/style>[\s\S]*rel="stylesheet"/);
   });
 
   it('a theme chosen without JavaScript is rendered by the server', async () => {
