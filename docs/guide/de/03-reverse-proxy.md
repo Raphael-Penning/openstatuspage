@@ -245,6 +245,28 @@ komprimieren bringt nichts. Seiten tragen eine Content-Security-Policy,
 [Performance](../../performance.md)). Setz `Strict-Transport-Security` im Proxy,
 sobald die Seite nur noch über HTTPS erreichbar ist.
 
+Behalte diese Header so bei, wie die App sie sendet:
+
+- **`Vary` und `Content-Encoding`.** Die App sendet mit jeder komprimierten Datei
+  `Vary: Accept-Encoding` und mit jeder Seite `Vary: Accept-Language, Cookie,
+  Accept-Encoding`, weil dieselbe Adresse je nach Sprache, Cookie und Kodierung
+  eine andere Antwort liefert. Entferne diese Header nicht, und lass keinen Cache
+  `Vary` ignorieren. Ein Cache, der an einen Client ohne Brotli eine
+  Brotli-Kopie ausliefert, macht die Seite kaputt.
+- **`Accept-Encoding` und `Accept-Language`.** Reiche die Anfrage-Header unverändert
+  an die App weiter. Entferne sie nicht und setz sie nicht leer: Die App wählt
+  daran die vorkomprimierte Kopie und die Sprache aus.
+- **Nicht doppelt komprimieren.** Antworten mit `Content-Encoding` gehen unverändert
+  durch. Ein Kompressionsmodul im Proxy ist für andere Antworten in Ordnung, etwa
+  die JSON:API, muss aber auslassen, was die App bereits komprimiert hat.
+- **Cache-Header.** Behalte das `Cache-Control` der App. Dateien unter `/assets/`
+  werden ein Jahr lang gecacht (`immutable`), andere statische Dateien einen Tag,
+  Seiten 10 Sekunden mit `stale-while-revalidate`. Behalte das `ETag`, damit
+  unveränderte Seiten mit `304 Not Modified` antworten. Setz kein eigenes Caching
+  für `/admin` oder `/api/`. Die persönlichen Abo-Links (`/subscription/`,
+  `/preferences/`) kommen mit `private, no-store`; der Proxy darf sie ebenfalls
+  nicht speichern.
+
 ## Checkliste
 
 - [ ] HTTPS funktioniert und HTTP leitet auf HTTPS um.
