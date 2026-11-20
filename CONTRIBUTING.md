@@ -26,6 +26,10 @@ pnpm start                      # http://localhost:3000: public pages rendered o
 curl -s http://localhost:3000/ | head -c 2000
 ```
 
+To check the Lighthouse scores of the public pages, run `scripts/lighthouse.mjs`
+against that instance (it needs a Chrome binary in `CHROME_PATH`; see
+[docs/performance.md](docs/performance.md#measuring)).
+
 Server-side rendering and hydration are covered by `apps/web/src/ssr.test.tsx`
 (every public page hydrates without warnings) and
 `apps/server/test/ssr-pages.test.ts` (status codes, head, caching, fallback).

@@ -281,11 +281,16 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   then `Accept-Language`, then the page default (`lib/languages.ts`). The browser
   switches to the server's language before hydrating.
 - **Caching.** A rendered page is kept for 5 s per URL, language and theme input
-  (`cacheKey` of the bundle; at most 16 pages and 1 MiB, one render per key at a
-  time, at most two renders at once) and sent with a weak `ETag`, `Vary:
-  Accept-Language, Cookie` and `Cache-Control: public, max-age=10,
-  stale-while-revalidate=60` (`private, no-store` for the personal subscription
-  links). If-None-Match answers 304.
+  (`cacheKey` of the bundle; at most 16 pages and 1 MiB including the compressed
+  copy, one render per key at a time, at most two renders at once) and sent
+  with a weak `ETag`, `Vary: Accept-Language, Cookie, Accept-Encoding` and
+  `Cache-Control: public, max-age=10, stale-while-revalidate=60` (`private,
+  no-store` for the personal subscription links). If-None-Match answers 304.
+- **Compression.** Each render is gzip-compressed once and kept with the page;
+  clients that accept gzip get that copy. Static files are compressed at build
+  time (Brotli and gzip, `apps/web/tools/precompress.ts`) and sent as they are;
+  hashed files in `/assets/` are cached for a year (`immutable`). See
+  [performance.md](performance.md).
 - **Failure.** A render error or a missing bundle is logged and the plain
   client-rendered entry page is sent instead; the page still works. The same
   happens at once when more than 32 pages wait for a render (a flood of distinct
@@ -427,15 +432,18 @@ Kuma for 40 s (worker, all). "After load" is read after 15 s without requests.
 
 | Role | After start | Peak under load | After load | Kernel peak (VmHWM) |
 | --- | --- | --- | --- | --- |
-| public | 76 MB | 95 MB | 83 MB | 97 MB |
-| admin | 84 MB | 105 MB | 92 MB | 107 MB |
+| public | 78 MB | 96 MB | 83–85 MB | 97 MB |
+| admin | 85 MB | 106 MB | 92 MB | 106 MB |
 | worker | 75 MB | 76 MB | 76 MB | 90 MB |
-| all | 78 MB | 104 MB | 97 MB | 108 MB |
+| all | 80 MB | 106 MB | 99 MB | 108 MB |
 
 These are the numbers with the pages working without JavaScript (forms, static
-map, day tables). The build before that, measured the same way on the same day,
-had public 76 / 97 / 83 MB (kernel peak 97 MB): the extra markup was paid for by
-moving the layout of the uptime bar segments into the stylesheet.
+map, day tables), the page head for search engines and gzip-compressed pages
+(public: two runs, peak 95.9 and 96.4 MB). The build before the compression,
+measured the same way, had public 76 / 95 / 83 MB (kernel peak 97 MB): the
+compressed copy of a page in the render cache and the compression itself cost
+about 1 MB. The pages working without JavaScript were paid for by moving the
+layout of the uptime bar segments into the stylesheet.
 
 Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
 after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
@@ -444,8 +452,8 @@ include it.
 
 What the target covers: `public` and `worker` stay below 100 MB at every
 point, also at their kernel peak. `admin` and `all` stay below it after start and
-at steady state, but exceed it briefly under load: up to 105 MB (admin) and
-104 MB (all) in the samples, 107–108 MB at the kernel peak, mostly while a
+at steady state, but exceed it briefly under load: up to 106 MB (admin and
+all) in the samples, 106–108 MB at the kernel peak, mostly while a
 password is checked (see below). Size memory limits for these peaks, not for the
 target: the Kubernetes examples request 128 MiB and limit at 256 MiB, and
 `deploy/compose/compose.split.yaml` sets the same limits.
