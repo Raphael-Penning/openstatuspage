@@ -342,20 +342,22 @@ async function measureRole(role, kumaUrl) {
     const features = { public: ['public'], admin: ['admin', 'public'], worker: ['poll'], all: ['admin', 'public', 'poll'] }[role];
     if (features.includes('admin')) await adminLoad(base, kumaUrl);
     if (features.includes('public')) load.public = await publicLoad(base, requests);
-    const lightPeak = peak;
+    let lightPeak = peak;
     let burstPeak = NaN;
     if (features.includes('public') && burst > 0) {
       // Let the light load settle first, so the burst peak is its own.
       await sleep(3000);
+      lightPeak = peak;
       peak = memoryOf(child.pid).rss;
       load.burst = await burstLoad(base, burst);
       burstPeak = peak;
-      peak = lightPeak;
     }
     if (features.includes('poll')) await sleep(pollSeconds * 1000);
     await sleep(settleSeconds * 1000);
     const mem = memoryOf(child.pid);
-    return { role, startup, peak: Math.max(peak, mem.rss), burst: burstPeak, after: mem.rss, hwm: mem.hwm, startupAnon: started.anon, anon: mem.anon, load };
+    // Without a burst the light load's peak runs until the end (polls, settling).
+    const loadPeak = Number.isNaN(burstPeak) ? Math.max(peak, mem.rss) : lightPeak;
+    return { role, startup, peak: loadPeak, burst: burstPeak, after: mem.rss, hwm: mem.hwm, startupAnon: started.anon, anon: mem.anon, load };
   } catch (err) {
     throw new Error(`${role}: ${err.message}\n${stderr}`);
   } finally {
