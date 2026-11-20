@@ -150,7 +150,7 @@ a past time range:
 | Start / End | The time range. The end must not be in the future. |
 | Status | *Operational* for a false alarm (e.g. the monitoring host lost its network). An outage status records an outage the monitoring missed. |
 | Reason | Required. Internal only: never shown publicly, recorded in the audit log. |
-| Show a note on the public page | Per correction: days containing it are marked *Corrected afterwards* on the public page (in the uptime bar tooltip and on the service page). |
+| Show a note on the public page | Per correction: days containing it are marked *Corrected afterwards* on the public page (in the uptime bar tooltip, on the service page and on the day page, where the corrected period is marked too). |
 | Public note | Optional text shown with the marker, e.g. "False alarm of the monitoring system." |
 
 Without the public note option, the corrected uptime is shown without any

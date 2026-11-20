@@ -131,6 +131,7 @@ accepts the same address.
 | Overview, services, service, history, incident, maintenance, locations | yes | Listed in the sitemaps. |
 | Subscribe | yes, when email subscriptions are offered | Listed in the pages sitemap. |
 | Filtered, searched or later pages, "sent" and error states of the subscribe page | no | `noindex, follow`, no canonical address. |
+| Day pages of the uptime bars (`/services/<service>/days/<date>`) | no | `noindex, follow`: one thin page per service and day. Not in a sitemap. |
 | Not found (404), also a history page beyond the last one | no | `noindex`. |
 | Confirm, manage, unsubscribe links | no | `noindex`, not in a sitemap, disallowed in `robots.txt`. |
 | `/admin` on an instance that serves it | no | The response carries `X-Robots-Tag: noindex, nofollow`. |
@@ -178,6 +179,10 @@ more comfortable. Without them:
 - **Maps and bars have text equivalents.** The world map is drawn by the server
   as a picture of the countries with its markers. The day-by-day uptime bars have
   a table with the same days on the service page.
+- **Every day of an uptime bar is a link.** It opens the day page: status and
+  uptime of that day, when the service was down, degraded or in maintenance,
+  the incidents and maintenance windows of the day, corrections with their
+  public notes, and links to the previous and next day.
 - **Times are in UTC.** The server shows times in UTC. A browser with JavaScript
   switches them to the visitor's own time zone and local format after loading.
 - **Subscriptions work with forms.** Subscribing, confirming and managing
