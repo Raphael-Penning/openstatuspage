@@ -73,6 +73,11 @@ export interface SsrRenderResult {
   status: number;
   /** Markup of the app (the content of `<div id="root">`). */
   html: string;
+  /**
+   * Elements React hoists into the document head (`<link rel="alternate">`,
+   * `<meta name="referrer">`, ...) that the pages render; they belong into `<head>`.
+   */
+  hoisted: string;
   /** Head data of the page, canonical already absolute. */
   head: PageHead;
   /** UI language of the page (`<html lang>`). */
