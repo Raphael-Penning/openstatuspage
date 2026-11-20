@@ -27,7 +27,9 @@ export const ANALYTICS_COOKIE = 'osp-analytics';
 export const ANALYTICS_OFF = 'off';
 /**
  * localStorage key Umami's tracker checks before sending anything. The footer
- * sets it as well when JavaScript runs, so the tracker of the current page stops at once.
+ * keeps it in line with {@link ANALYTICS_COOKIE} when JavaScript runs (set when
+ * opted out, removed otherwise), so the tracker of the current page stops at
+ * once and the cookie stays the single source of truth.
  */
 export const UMAMI_DISABLED_KEY = 'umami.disabled';
 

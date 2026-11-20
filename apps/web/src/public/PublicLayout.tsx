@@ -361,18 +361,21 @@ function LegalLink({ url, label }: { url: string; label: string }) {
  * preference handler, which sets (or removes) the opt-out cookie and comes back
  * here, so it works without JavaScript; the page then renders without (or with)
  * the analytics script. With JavaScript the tracker of the current page is
- * stopped at once through Umami's own switch (localStorage `umami.disabled`).
+ * stopped at once through Umami's own switch (localStorage `umami.disabled`),
+ * which otherwise always mirrors the cookie.
  */
 function AnalyticsChoice() {
   const { t } = useTranslation('public');
   const off = useAnalyticsOff();
   const back = useReturnPath();
 
-  // A page rendered for a visitor who opted out keeps Umami's switch set as well.
+  // The cookie (as the server rendered the page) is the only source of truth:
+  // Umami's switch follows it, so a lost cookie or a choice made without
+  // JavaScript never leaves the tracker silently off (or on) against the footer.
   useEffect(() => {
-    if (!off) return;
     try {
-      localStorage.setItem(UMAMI_DISABLED_KEY, '1');
+      if (off) localStorage.setItem(UMAMI_DISABLED_KEY, '1');
+      else localStorage.removeItem(UMAMI_DISABLED_KEY);
     } catch {
       /* storage unavailable */
     }
