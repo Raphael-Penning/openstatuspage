@@ -9,11 +9,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import type { LightMyRequestResponse } from 'fastify';
+import Fastify, { type FastifyInstance, type LightMyRequestResponse } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import { acceptsGzip, Limiter, RenderQueueFull, type RenderModule } from '../src/ssr/pages.js';
+import type { PublicDocuments } from '../src/services/public-documents.js';
+import { busyLanguage } from '../src/ssr/busy.js';
+import { acceptsGzip, Limiter, RenderQueueFull, SsrPages, type RenderModule, type SsrPagesOptions } from '../src/ssr/pages.js';
 import { adminClient, BASE_URL, createTestApp, seedChecks, type TestApp } from './helpers.js';
 
 /** The web client's render entry, from source (a URL, so the server's typecheck does not compile the web sources). */
@@ -463,5 +465,170 @@ describe('render limits', () => {
     }
     expect(warnings).toEqual([{ requests: 1, stale: 0 }]);
     await t.close();
+  });
+});
+
+describe('overload: stale pages and 503', () => {
+  /** Render bundle stand-in: the page shows its URL and a version; `/block` holds the only render slot. */
+  let version: number;
+  let failing: boolean;
+  let release: () => void;
+  let blocked: Promise<void>;
+  const module: RenderModule = {
+    cacheKey: (input) => input.url,
+    pageUrl: (url) => url,
+    render: async (input) => {
+      if (input.url === '/block') await blocked;
+      if (failing) throw new Error('boom');
+      return {
+        status: 200,
+        html: `<main>${input.url} v${version}</main>`,
+        hoisted: '',
+        head: { title: 'Page' },
+        lang: 'en',
+        dir: 'ltr',
+        theme: 'system',
+        state: '{}',
+      };
+    },
+  };
+
+  let app: FastifyInstance;
+  let ssr: SsrPages;
+  let blocker: Promise<unknown> | null;
+
+  async function start(options: Partial<SsrPagesOptions> = {}) {
+    app = Fastify();
+    ssr = new SsrPages({
+      webDir,
+      baseUrl: BASE_URL,
+      docs: {} as PublicDocuments,
+      log: app.log,
+      loadModule: async () => module,
+      concurrency: 1,
+      maxWaiting: 0,
+      cacheSeconds: 0.05,
+      ...options,
+    });
+    app.get('/*', async (req, reply) => ((await ssr.send(req, reply)) ? reply : reply.type('text/html').send('plain page')));
+    await app.ready();
+  }
+
+  const page = (url: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url, headers });
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  /** Occupies the only render slot (no waiting places): every other render is refused. */
+  async function overload() {
+    blocker = page('/block');
+    await sleep(10);
+  }
+
+  beforeEach(() => {
+    version = 1;
+    failing = false;
+    blocked = new Promise<void>((resolve) => (release = resolve));
+    blocker = null;
+  });
+  afterEach(async () => {
+    release();
+    await blocker;
+    await app.close();
+  });
+
+  it('sends the expired page, marked stale, when no render slot is free', async () => {
+    await start();
+    const first = await page('/a');
+    expect(first.headers['x-cache']).toBeUndefined();
+    await sleep(80);
+    version = 2;
+    await overload();
+    const stale = await page('/a');
+    expect(stale.statusCode).toBe(200);
+    expect(stale.body).toContain('/a v1');
+    expect(stale.headers['x-cache']).toBe('STALE');
+    expect(stale.headers['cache-control']).toBe('public, max-age=5');
+    expect(stale.headers.etag).toBe(first.headers.etag);
+    const notModified = await page('/a', { 'if-none-match': first.headers.etag as string });
+    expect(notModified.statusCode).toBe(304);
+    expect(notModified.headers['x-cache']).toBe('STALE');
+    // With a free slot again, the page is rendered fresh.
+    release();
+    await blocker;
+    const fresh = await page('/a');
+    expect(fresh.body).toContain('/a v2');
+    expect(fresh.headers['x-cache']).toBeUndefined();
+    expect(fresh.headers['cache-control']).toBe('public, max-age=10, stale-while-revalidate=60');
+    expect(fresh.headers.etag).not.toBe(first.headers.etag);
+  });
+
+  it('answers 503 with Retry-After when there is no earlier version', async () => {
+    await start();
+    await overload();
+    const res = await page('/b', { 'accept-language': 'de-DE,de;q=0.9' });
+    expect(res.statusCode).toBe(503);
+    expect(res.headers['retry-after']).toBe('5');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['x-robots-tag']).toBe('noindex');
+    expect(res.body).toContain('<html lang="de"');
+    expect(res.body).toContain('<h1>Vorübergehend ausgelastet</h1>');
+  });
+
+  it('answers 503 once the stale window is over', async () => {
+    await start({ staleSeconds: 0.05 });
+    await page('/a');
+    await sleep(150);
+    expect(ssr.cacheSize.entries).toBe(0);
+    await overload();
+    expect((await page('/a')).statusCode).toBe(503);
+  });
+
+  it('prefers the stale page to the plain page when rendering fails', async () => {
+    await start();
+    await page('/a');
+    await sleep(80);
+    failing = true;
+    const stale = await page('/a');
+    expect(stale.body).toContain('/a v1');
+    expect(stale.headers['x-cache']).toBe('STALE');
+    // Without an earlier version, a render error still gets the plain page.
+    expect((await page('/c')).body).toBe('plain page');
+  });
+
+  it('never keeps or answers personal pages stale', async () => {
+    await start();
+    const url = '/subscription/manage?id=x&token=y';
+    expect((await page(url)).headers['cache-control']).toBe('private, no-store');
+    expect(ssr.cacheSize.entries).toBe(0);
+    await overload();
+    const res = await page(url);
+    expect(res.statusCode).toBe(503);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body).not.toContain('token=y');
+  });
+
+  it('keeps stale pages within the byte limit, dropping the oldest', async () => {
+    await start();
+    await page('/p0');
+    const perPage = ssr.cacheSize.bytes;
+    await app.close();
+    const cacheBytes = Math.floor(perPage * 2.5);
+    await start({ cacheBytes });
+    for (let i = 0; i < 5; i++) await page(`/p${i}`);
+    await sleep(80);
+    expect(ssr.cacheSize).toEqual({ entries: 2, bytes: expect.any(Number) });
+    expect(ssr.cacheSize.bytes).toBeLessThanOrEqual(cacheBytes);
+    await overload();
+    expect((await page('/p4')).headers['x-cache']).toBe('STALE');
+    expect((await page('/p3')).headers['x-cache']).toBe('STALE');
+    expect((await page('/p0')).statusCode).toBe(503);
+  });
+});
+
+describe('busy page language', () => {
+  it('follows ?lang=, the language cookie and Accept-Language, else English', () => {
+    expect(busyLanguage('/?lang=de', undefined, 'en')).toBe('de');
+    expect(busyLanguage('/', 'a=1; osp-lang=de', 'en')).toBe('de');
+    expect(busyLanguage('/', undefined, 'fr-FR, de;q=0.8')).toBe('de');
+    expect(busyLanguage('/', undefined, 'de;q=0, en')).toBe('en');
+    expect(busyLanguage('/?lang=xx', 'osp-lang=fr', 'fr')).toBe('en');
   });
 });
