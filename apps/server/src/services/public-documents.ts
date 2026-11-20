@@ -309,9 +309,10 @@ export class PublicDocuments {
    * uptime is not shown at all.
    */
   async serviceDay(req: DocumentRequest, idOrSlug: string, date: string): Promise<DataDocument> {
+    // The query first, like every other route: a bad `include` is reported whatever the path says.
+    const include = parseInclude(req.query as Record<string, unknown>, DAY_INCLUDES, DAY_INCLUDES);
     const dayStart = uptimeDayStart(date);
     if (dayStart === null) throw invalidDay();
-    const include = parseInclude(req.query as Record<string, unknown>, DAY_INCLUDES, DAY_INCLUDES);
     const now = new Date();
     const settings = await getSettings(this.db);
     if (!settings.showUptime) throw notFound('Day');
