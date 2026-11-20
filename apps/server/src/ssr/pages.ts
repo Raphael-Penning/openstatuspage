@@ -29,6 +29,7 @@ import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import {
   headElements,
+  isPersonalPath,
   SSR_STATE_ID,
   type DataDocument,
   type PageHead,
@@ -87,9 +88,6 @@ const MAX_URL = 2048;
 export const PAGE_CACHE_CONTROL = 'public, max-age=10, stale-while-revalidate=60';
 /** Personal links (subscription confirm/manage) and answers to forms: never stored. */
 const PRIVATE_CACHE_CONTROL = 'private, no-store';
-
-/** Pages with a personal link token in the URL: rendered for every request, never kept. */
-const isPersonal = (url: string) => (url.split('?')[0] ?? '').startsWith('/subscription/');
 
 /** A page answering a form submission (see sendForm). */
 export interface FormPage {
@@ -273,7 +271,7 @@ export class SsrPages {
       return false;
     }
 
-    const personal = isPersonal(req.url);
+    const personal = isPersonalPath(req.url);
     reply
       .header('Cache-Control', personal ? PRIVATE_CACHE_CONTROL : PAGE_CACHE_CONTROL)
       // Language and theme come from these headers.
@@ -339,8 +337,9 @@ export class SsrPages {
   private async render(req: FastifyRequest): Promise<RenderedPage> {
     const module = await this.module_();
     const input = this.inputOf(req);
-    // Personal pages (a token in the URL) are neither kept nor shared between requests.
-    if (isPersonal(input.url)) return this.limiter.run(() => this.renderPage(module, input));
+    // Personal pages (a token in the URL) are neither kept nor shared between requests,
+    // in any spelling of the path (the router matches /SUBSCRIPTION/manage as well).
+    if (isPersonalPath(input.url)) return this.limiter.run(() => this.renderPage(module, input));
     const key = module.cacheKey(input);
     const now = Date.now();
 

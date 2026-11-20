@@ -245,6 +245,15 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     expect((await get('/subscription/manage?id=x')).headers['cache-control']).toBe('private, no-store');
   });
 
+  it('never caches personal pages in another spelling of the path', async () => {
+    // The router matches routes case-insensitively: these render the manage and confirm pages.
+    for (const url of ['/SUBSCRIPTION/manage?id=x&token=y', '/Subscription/Confirm?id=x&token=y', '//subscription//manage?id=x']) {
+      const res = await get(url);
+      expect(res.headers['cache-control'], url).toBe('private, no-store');
+      expect(res.headers['referrer-policy'], url).toBe('no-referrer');
+    }
+  });
+
   it('sends the page gzip-compressed to clients that accept it', async () => {
     const plain = await get('/services');
     expect(plain.headers['content-encoding']).toBeUndefined();

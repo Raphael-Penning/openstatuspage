@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HEAD_ATTR, headElements, scriptJson } from './ssr.js';
+import { HEAD_ATTR, headElements, isPersonalPath, normalizePath, scriptJson } from './ssr.js';
 
 describe('scriptJson', () => {
   it('cannot close the script element or open a comment, and parses back', () => {
@@ -63,5 +63,22 @@ describe('headElements', () => {
   it('omits what the page does not have (no image, no canonical, no description)', () => {
     const els = headElements({ title: 'Not found · Example', robots: 'noindex', canonical: null });
     expect(els.map(key)).toEqual(['meta robots', 'meta og:type', 'meta og:title', 'meta twitter:card', 'meta twitter:title']);
+  });
+});
+
+describe('normalizePath / isPersonalPath', () => {
+  it('decodes, lower-cases and collapses slashes like the client router', () => {
+    expect(normalizePath('/SERVICES//Web?q=1')).toBe('/services/web');
+    expect(normalizePath('/%61dmin/x')).toBe('/admin/x');
+    expect(normalizePath('/bad%E0%A4%A')).toBe('/bad%e0%a4%a');
+  });
+
+  it('detects personal pages in any spelling', () => {
+    for (const url of ['/subscription/manage?id=1&token=x', '/SUBSCRIPTION/manage', '/Subscription/Confirm', '//subscription//manage', '/%73ubscription/manage']) {
+      expect(isPersonalPath(url), url).toBe(true);
+    }
+    for (const url of ['/', '/subscribe', '/subscriptions', '/history?return=/subscription/manage']) {
+      expect(isPersonalPath(url), url).toBe(false);
+    }
   });
 });

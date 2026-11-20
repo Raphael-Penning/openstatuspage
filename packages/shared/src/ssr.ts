@@ -18,6 +18,31 @@ export const THEME_COOKIE = 'osp-theme';
 export const PAGE_LANGUAGES = ['en', 'de'] as const;
 /** Query parameter that selects the language of a page (`?lang=de`). */
 export const LANG_QUERY = 'lang';
+/**
+ * Request path as the client router sees it: percent-decoded, lower-cased and
+ * with repeated slashes collapsed (react-router matches routes case-insensitively).
+ * Malformed escapes keep the raw path, which the router does not decode either.
+ */
+export function normalizePath(url: string): string {
+  const raw = url.split(/[?#]/)[0] ?? '';
+  let path = raw;
+  try {
+    path = decodeURIComponent(raw);
+  } catch {
+    // keep the raw path
+  }
+  return path.toLowerCase().replace(/\/{2,}/g, '/');
+}
+
+/**
+ * Pages with a personal link token in their URL (subscription confirm and
+ * manage), in any spelling of the path: never cached, never indexed, and their
+ * query never copied into other URLs.
+ */
+export function isPersonalPath(url: string): boolean {
+  return normalizePath(url).startsWith('/subscription/');
+}
+
 /** Id of the non-executable JSON block with the dehydrated state (`<script type="application/json">`). */
 export const SSR_STATE_ID = 'osp-state';
 
@@ -120,7 +145,10 @@ export interface PublicDocumentSource {
 export const FORM_PATHS = {
   /** POST: theme=system|light|dark, return=<path>; sets the theme cookie. */
   theme: '/preferences/theme',
-  /** GET: lang=<code>, return=<path>; sets the language cookie (a link, see LanguageSwitcher). */
+  /**
+   * GET (a link) or POST (the form on personal pages, so their token never ends up in a
+   * URL): lang=<code>, return=<path>; sets the language cookie (see LanguageSwitcher).
+   */
   language: '/preferences/language',
   /** POST: email, locale, scope=all|selected, service=<id>…, group=<id>…, website (honeypot). */
   subscribe: '/subscribe',

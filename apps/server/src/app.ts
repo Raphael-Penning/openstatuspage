@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isPersonalPath, normalizePath } from '@openstatuspage/shared';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -102,9 +103,11 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   // customers; the management UI and the API may not.
   app.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
+    // Request path as the client router sees it, so that /ADMIN/... or /%61dmin/...
+    // (served by the SPA fallback) cannot skip the checks below.
     const path = normalizePath(req.url);
     // Subscription pages have a token in their URL: it never leaves as a referrer.
-    reply.header('Referrer-Policy', path.startsWith('/subscription/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
+    reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
     const admin = path === '/admin' || path.startsWith('/admin/');
     const framed = !(admin || isApiPath(path));
     if (!framed) reply.header('X-Frame-Options', 'DENY');
@@ -201,23 +204,6 @@ function routeNotFound(reply: FastifyReply) {
 function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((addr: string, hop: number) => boolean) {
   if (typeof value === 'number') return (_addr, hop) => hop < value;
   return value;
-}
-
-/**
- * Request path as the client router sees it: percent-decoded, lower-cased and
- * with repeated slashes collapsed. Used for the anti-framing check, so that
- * /ADMIN/... or /%61dmin/... (served by the SPA fallback) cannot skip it.
- * Malformed escapes keep the raw path, which the router does not decode either.
- */
-function normalizePath(url: string): string {
-  const raw = url.split('?')[0] ?? '';
-  let path = raw;
-  try {
-    path = decodeURIComponent(raw);
-  } catch {
-    // keep the raw path
-  }
-  return path.toLowerCase().replace(/\/{2,}/g, '/');
 }
 
 function isAdminPath(path: string): boolean {
