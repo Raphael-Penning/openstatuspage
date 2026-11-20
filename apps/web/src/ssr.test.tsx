@@ -10,7 +10,7 @@ import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cacheKey, pageUrl, render } from './entry-server';
 import { hydratePublic } from './hydrate';
-import { incident, respond, settings, SUBSCRIPTION_TOKEN } from './public/a11y/fixtures';
+import { API_TODAY, API_YESTERDAY, incident, resolvedIncident, respond, settings, SUBSCRIPTION_TOKEN } from './public/a11y/fixtures';
 import { installBrowserStubs, settle } from './public/a11y/harness';
 import type { SsrState } from './public/ssr-state';
 
@@ -29,6 +29,11 @@ const PAGES: [name: string, url: string, status: number][] = [
   ['services', '/services', 200],
   ['service detail', '/services/api', 200],
   ['unknown service', '/services/missing', 404],
+  ['service day', `/services/api/days/${API_YESTERDAY}`, 200],
+  ['service day (today)', `/services/api/days/${API_TODAY}`, 200],
+  ['service day outside the uptime range', '/services/api/days/2001-01-01', 404],
+  ['service day with a malformed date', '/services/api/days/2026-02-30', 404],
+  ['service day of an unknown service', `/services/missing/days/${API_TODAY}`, 404],
   ['locations', '/locations', 200],
   ['history', '/history?type=incident', 200],
   ['incident', '/incidents/inc-1', 200],
@@ -99,12 +104,65 @@ describe('server rendering', () => {
 
   it('renders the uptime bars of every screen width, narrow ones by media query', async () => {
     const services = await serverRender('/services');
-    const bar = /aria-roledescription="uptime bar"[^>]*>([\s\S]*?)<\/div><\/div>/.exec(services.html)?.[1] ?? '';
-    const segments = bar.match(/<div class="[^"]*"/g) ?? [];
+    const bar = /aria-roledescription="uptime bar"[^>]*>([\s\S]*?)<\/div>/.exec(services.html)?.[1] ?? '';
+    const segments = bar.match(/<a [^>]*>/g) ?? [];
     expect(segments.length).toBeGreaterThan(30);
     // The newest 30 days show on phones, the newest 60 on tablets: no re-render after hydration.
     expect(segments.filter((s) => !s.includes('max-sm:hidden'))).toHaveLength(30);
     expect(segments.filter((s) => !s.includes('max-lg:hidden')).length).toBe(Math.min(60, segments.length));
+  });
+
+  it('links every day of the uptime bars to its page, without JavaScript and with one tab stop per bar', async () => {
+    for (const url of ['/', '/services', '/services/api']) {
+      const html = (await serverRender(url)).html;
+      const bars = [...html.matchAll(/aria-roledescription="uptime bar"[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1]!);
+      expect(bars.length, url).toBeGreaterThan(0);
+      for (const bar of bars) {
+        const links = bar.match(/<a [^>]*>/g) ?? [];
+        expect(links.length, url).toBeGreaterThan(30);
+        for (const link of links) {
+          expect(link, url).toMatch(/href="\/services\/[a-z0-9-]+\/days\/\d{4}-\d{2}-\d{2}"/);
+          // Date, status and uptime in the name of the link.
+          expect(link, url).toMatch(/aria-label="\d{4}-\d{2}-\d{2}, [^"]+"/);
+        }
+        // Roving tabindex: only the newest day is in the tab order.
+        expect(links.filter((l) => l.includes('tabindex="0"')), url).toHaveLength(1);
+        expect(links.at(-1)).toContain('tabindex="0"');
+      }
+    }
+    // The day table of the service page links every day, too.
+    const detail = (await serverRender('/services/api')).html;
+    const table = /<table class="osp-days[\s\S]*?<\/table>/.exec(detail)?.[0] ?? '';
+    expect(table).toContain(`<a href="/services/api/days/${API_YESTERDAY}">${API_YESTERDAY}</a>`);
+  });
+
+  it('renders the day page with its periods, corrections, incidents and neighbours, not indexed', async () => {
+    const result = await serverRender(`/services/api/days/${API_YESTERDAY}`);
+    expect(result.status).toBe(200);
+    expect(result.head).toMatchObject({
+      title: `API on ${API_YESTERDAY} · ${settings.siteName}`,
+      robots: 'noindex, follow',
+      canonical: `${BASE_URL}/services/api/days/${API_YESTERDAY}`,
+    });
+    expect(result.head.description).toContain('API');
+    expect(result.head.jsonLd).toBeUndefined();
+    expect(result.head.alternates).toBeUndefined();
+    expect(result.html).toContain(`<time dateTime="${API_YESTERDAY}">${API_YESTERDAY}</time>`);
+    expect(result.html).toContain('False alarm of the monitoring.');
+    expect(result.html).toContain('Major outage');
+    expect(result.html).toContain(`href="/incidents/${resolvedIncident.id}"`);
+    const links = result.html.match(/<a [^>]*>/g) ?? [];
+    expect(links.find((a) => a.includes('rel="next"'))).toContain(`href="/services/api/days/${API_TODAY}"`);
+    expect(links.find((a) => a.includes('rel="prev"'))).toMatch(/href="\/services\/api\/days\/\d{4}-\d{2}-\d{2}"/);
+    expect(result.html).toContain('href="/services/api"');
+
+    const today = await serverRender(`/services/api/days/${API_TODAY}`);
+    expect(today.html).toContain(incident.title);
+    expect(today.html).toContain('not over yet');
+    expect(today.html).not.toContain('rel="next"');
+
+    const missing = await serverRender('/services/api/days/2001-01-01');
+    expect(missing.head).toMatchObject({ status: 404, robots: 'noindex', canonical: null });
   });
 
   it('moves hoisted elements to the head', async () => {
