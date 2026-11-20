@@ -134,7 +134,8 @@ website: they get UTM parameters, open in a new tab and are announced as such.
 ### Statistics with Umami
 
 The status page can count page views with [Umami](https://umami.is), an
-analytics server you run yourself and that sets no cookies. Two steps:
+analytics server you run yourself and that sets no cookies. You need Umami 2.0
+or later. Two steps:
 
 1. Set `UMAMI_URL` to the address of your Umami server (for example
    `https://umami.example.com`, or `http://umami:3000` inside a Docker network)
@@ -143,6 +144,8 @@ analytics server you run yourself and that sets no cookies. Two steps:
    preview).
 2. In Umami, add a website and copy its **Website ID**. In **Settings →
    Analytics (Umami)** switch on **Count page views with Umami** and paste the ID.
+   If the server you are managing has no `UMAMI_URL`, the card warns you that
+   the switch has no effect there.
 
 Visitors' browsers never contact Umami. The status page delivers the tracker as
 `/pulse/p.js` and passes the events of `/pulse/api/send` on to Umami, so your
@@ -156,9 +159,11 @@ What visitors and your statistics get:
 - Every public page has **Disable statistics** in the footer, next to the
   privacy policy. It works without JavaScript and stores the choice in the
   cookie `osp-analytics` for a year; afterwards the page says "Statistics are
-  disabled." and offers **Enable statistics**.
-- Subscription links from emails are never counted, and tokens are removed
-  from every address before it reaches Umami. The management UI is never
+  disabled." and offers **Enable statistics**. That cookie always decides: if
+  it expires or is deleted, the page counts again and says so in the footer.
+- Subscription links from emails are never counted, and tokens (with the
+  subscription ID next to them) and `#fragments` are removed from every
+  address before it reaches Umami. The management UI is never
   counted.
 - **Respect Do Not Track and Global Privacy Control** (on by default) sends
   nothing for browsers that ask not to be tracked.
@@ -172,8 +177,10 @@ What visitors and your statistics get:
 - **Only on these domains** limits counting to the host names you list, for
   example to leave out a staging copy.
 
-If Umami is down, the pages keep working without errors; the statistics simply
-miss those page views. Mention the statistics in your privacy policy. Details
+If Umami is down or slow, the pages keep working without errors; the
+statistics simply miss those page views. The website ID is visible in every
+page, so anyone could send made-up page views, as with any Umami setup; treat
+the numbers as a trend, not as an exact count. Mention the statistics in your privacy policy. Details
 and limits: [configuration.md](../../configuration.md#analytics).
 
 ## Checking the effective configuration
