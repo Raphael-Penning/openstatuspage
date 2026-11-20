@@ -67,6 +67,12 @@ export const settings: PublicPageSettings = {
   utmSource: 'status',
   utmMedium: 'referral',
   utmCampaign: 'statuspage',
+  // Analytics runs, so every page also checks the statistics choice of the footer.
+  analyticsEnabled: true,
+  analyticsWebsiteId: '4f3c2b1a-1234-4abc-8def-0123456789ab',
+  analyticsDomains: '',
+  analyticsRespectDnt: true,
+  analyticsForwardIp: false,
 };
 
 function uptime(pattern: (i: number) => ServiceStatus | null): DailyUptime[] {
