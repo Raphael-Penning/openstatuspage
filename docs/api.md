@@ -735,7 +735,8 @@ Content-Type: application/vnd.api+json
       "title": "Database upgrade", "description": "PostgreSQL 17", "status": "scheduled",
       "scheduledStart": "2026-11-20T21:25:01.707Z", "scheduledEnd": "2026-11-20T22:25:01.707Z",
       "actualStart": null, "actualEnd": null,
-      "affectedServices": [{"id": "33ea…", "name": "Public API"}]
+      "affectedServices": [{"id": "33ea…", "name": "Public API"}],
+      "createdAt": "2026-11-19T20:10:42.103Z", "updatedAt": "2026-11-19T21:25:01.711Z"
     },
     "relationships": {
       "locations": {"data": []},
