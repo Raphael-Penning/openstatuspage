@@ -223,6 +223,16 @@ describe('hydration', () => {
     expect(localStorage.getItem('umami.disabled')).toBe('1');
   });
 
+  it("clears Umami's switch left over when the opt-out cookie is gone", async () => {
+    // The cookie expired or the visitor opted in again on a page without JavaScript.
+    localStorage.setItem('umami.disabled', '1');
+    const result = await serverRender('/services');
+    expect(result.html).toContain('Disable statistics');
+    const { problems } = await hydrateResult('/services', result);
+    expect(problems).toEqual([]);
+    expect(localStorage.getItem('umami.disabled')).toBeNull();
+  });
+
   it('mirrors a theme stored before the cookie existed into the cookie', async () => {
     document.cookie = 'osp-theme=; Max-Age=0; Path=/';
     localStorage.setItem('osp-theme', 'dark');
