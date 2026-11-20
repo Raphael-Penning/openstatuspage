@@ -4,7 +4,7 @@
  * same document builders as the HTTP routes (services/public-documents.ts),
  * without serializing a request or a response.
  */
-import type { DataDocument, PublicDocumentSource, SourceError } from '@openstatuspage/shared';
+import { normalizePrivatePageToken, type DataDocument, type PublicDocumentSource, type SourceError } from '@openstatuspage/shared';
 import { HttpError } from '../lib/errors.js';
 import type { DocumentRequest } from '../lib/jsonapi.js';
 import type { PrivatePageDocuments } from '../services/private-page-documents.js';
@@ -51,10 +51,11 @@ async function privatePageDocument(
 ): Promise<DataDocument | undefined> {
   if (path !== PRIVATE_PAGE_PATH && !path.startsWith(`${PRIVATE_PAGE_PATH}/`)) return undefined;
   // The token never becomes part of the request URL (self links, logs).
-  const { token = '', ...rest } = query;
+  const { token: raw = '', ...rest } = query;
   const qs = new URLSearchParams(rest).toString();
   const req: DocumentRequest = { url: qs ? `${path}?${qs}` : path, query: rest };
-  if (token.length > 64) throw sourceError(404, 'Not found');
+  if (raw.length > 64) throw sourceError(404, 'Not found');
+  const token = normalizePrivatePageToken(raw);
   if (path === PRIVATE_PAGE_PATH) return docs.page(req, token);
   const day = PRIVATE_DAY_PATH.exec(path);
   if (day) {
