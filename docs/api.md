@@ -1237,6 +1237,9 @@ Analytics settings (attributes of `settings/site`, all optional; see
 | `analyticsForwardIp` | boolean, default `false` | Pass the visitor's IP address to Umami (`X-Forwarded-For`) for its locations and visitor counts. |
 
 The Umami server itself is never a setting: it is the instance variable `UMAMI_URL`.
+`GET` and `PATCH /api/admin/settings` also answer the read-only
+`analyticsAvailable` (boolean): whether the instance that answers has
+`UMAMI_URL`. It is ignored when sent and missing from `GET /api/public/settings`.
 
 Examples:
 
