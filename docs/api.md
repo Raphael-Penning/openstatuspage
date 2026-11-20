@@ -1199,6 +1199,27 @@ HTTP/1.1 204 No Content
 | PATCH | `/api/admin/settings` | `settings` (`SettingsInput`, partial) | `settings/site` | admin |
 | GET | `/api/admin/audit-log` | `page[number]`, `page[size]`, `filter[entityType]` | paginated `audit-entries` (`AuditLogEntry`, newest first); relationship `user` (the acting user, `null` for API tokens and deleted users; `userName` stays an attribute) | admin |
 
+Footer, navigation and link settings (attributes of `settings/site`, all optional):
+
+| Attribute | Type | Meaning |
+| --- | --- | --- |
+| `imprintUrl`, `privacyUrl`, `accessibilityUrl` | http(s) URL or `null` | Legal links in the footer (navigation "Legal"); hidden when `null`. |
+| `imprintLabel`, `privacyLabel`, `accessibilityLabel` | string (≤ 60), default `""` | Custom link text; empty: the translated default ("Imprint", "Privacy policy", "Accessibility statement"). |
+| `copyrightText` | string (≤ 200, one line), default `""` | Plain-text notice; `{year}` becomes the year of the render. Empty: `© <year> <siteName>`. |
+| `brandUrl` | http(s) URL or `null` | Links the notice to your website; also `sameAs` of the Organization JSON-LD. |
+| `showPoweredBy` | boolean, default `true` | Shows the "Powered by OpenStatusPage" line. |
+| `infoLinkUrl` | http(s) URL, a path on this site (`/about`: one leading `/`, no `//`, backslash or whitespace) or `null` | Extra entry of the page navigation; hidden when `null`. |
+| `infoLinkLabel` | string (≤ 60), default `""` | Its text; empty: "About this page" (translated). |
+| `utmEnabled` | boolean, default `false` | Append UTM parameters to the configured outbound links. |
+| `utmSource`, `utmMedium`, `utmCampaign` | string (≤ 100), default `""` | The values; empty ones are left out. |
+
+With `utmEnabled`, the pages add `utm_source`, `utm_medium` and `utm_campaign` to
+every configured link to another site (legal links, brand link, info link, support
+URL, footer links, service websites) on the server and in the browser alike
+(`outboundHref` in `packages/shared`). Links on the page's own origin, relative
+paths, `mailto:` and links that already carry any `utm_` parameter stay unchanged.
+The API returns the stored URLs, without UTM parameters.
+
 Examples:
 
 <details>
