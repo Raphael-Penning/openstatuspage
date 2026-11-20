@@ -172,6 +172,13 @@ breaking changes.
   Kustomize overlay [`deploy/kubernetes/split/`](deploy/kubernetes/split/). See the
   [split deployment guide](docs/guide/en/02-installation.md#split-deployment).
 
+- **User guide**: new chapter 12, *Search engines, AI agents and the public
+  page* (English and German): `PUBLIC_BASE_URL` for canonical links and sitemaps,
+  robots.txt, the sitemap index and sub-sitemaps, `llms.txt`, submitting the sitemap
+  in Google Search Console, the noindex rules and using the status page without
+  JavaScript. The reverse proxy chapter explains which headers a proxy must keep
+  (`Vary`, `Content-Encoding`, `Accept-Encoding`, cache headers).
+
 ### Changed
 
 - **Links in subscription emails carry the token in the query string**
