@@ -29,18 +29,13 @@ import { SITEMAP_PAGE_SIZE, SiteIndex, type CurrentStatus, type SitemapKind, typ
  * subscription links (confirm, manage, unsubscribe). Form handlers outside
  * /api/ belong here as well, and the analytics proxy (crawlers neither need the
  * script nor should they count as visitors).
+ *
+ * Private pages (/p/<token>, their API) are deliberately not listed: a crawler
+ * that is kept out never sees their `X-Robots-Tag: noindex, nofollow` and may
+ * still list a leaked link as a bare URL; the line would also tell everyone
+ * where the private pages live.
  */
-export const DISALLOWED_PATHS = [
-  '/api/public/subscriptions',
-  '/api/public/private-page',
-  '/api/',
-  '/admin',
-  '/subscription/',
-  // Private pages: never in search engines, whoever got the link.
-  '/p/',
-  '/preferences/',
-  '/pulse/',
-];
+export const DISALLOWED_PATHS = ['/api/public/subscriptions', '/api/', '/admin', '/subscription/', '/preferences/', '/pulse/'];
 
 /**
  * Exceptions inside the disallowed paths: the read-only public API that

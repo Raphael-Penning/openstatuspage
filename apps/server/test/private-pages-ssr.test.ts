@@ -154,8 +154,8 @@ describe('private page', () => {
     }
     expect((await get(`/services/${ids.hiddenSlug}`)).statusCode).toBe(404);
     const robots = (await get('/robots.txt')).body.split('\n');
-    expect(robots).toContain('Disallow: /p/');
-    expect(robots).toContain('Disallow: /api/public/private-page');
+    // Crawlers may fetch private links (and then see noindex); robots.txt does not point to them.
+    expect(robots.join('\n')).not.toMatch(/\/p\/|private-page/);
   });
 
   it('limits page views per client', async () => {
