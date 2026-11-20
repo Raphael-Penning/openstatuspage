@@ -126,8 +126,16 @@ Seite `utm_source`, `utm_medium` und `utm_campaign` (die, die du ausgefüllt
 hast) an jeden von dir eingetragenen Link zu einer anderen Website an:
 rechtliche Links, Marken-Link, Info-Link, Support-URL, Footer-Links und die
 Websites der Services. Deine Webanalyse sieht dann, dass Besuche von der
-Statusseite kamen. Links auf die Adresse der Statusseite selbst, `mailto:`-Links
-und Links, die schon einen `utm_`-Parameter enthalten, bleiben unverändert.
+Statusseite kamen. Links auf die Adresse der Statusseite selbst und Links, die
+schon einen `utm_`-Parameter enthalten, bleiben unverändert. Den Rest einer
+Link-Adresse lässt die Seite in Ruhe: Sie hängt die UTM-Parameter nur hinten an
+die Query an, vor einem `#Fragment`.
+
+Ihre eigene Adresse kennt die Seite aus `PUBLIC_BASE_URL` (oder `BASE_URL`, wenn
+das nicht gesetzt ist). Hinter einem Reverse Proxy muss das die Adresse sein,
+die Besucher wirklich aufrufen. Stimmt sie nicht, gelten Links auf die
+Statusseite selbst als Links zu einer anderen Website: Sie bekommen
+UTM-Parameter, öffnen sich in einem neuen Tab und werden so angekündigt.
 
 ## Die wirksame Konfiguration prüfen
 
