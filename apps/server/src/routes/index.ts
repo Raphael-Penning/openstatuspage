@@ -21,6 +21,7 @@ export const RATE_LIMIT_KEYS = 1000;
  *   /api/ingest/*        push endpoints for monitoring systems (source token)
  *   /feed.rss, /feed.atom
  *   /robots.txt, /sitemap*.xml, /llms.txt, /llms-full.txt  (discovery.ts)
+ *   /pulse/p.js, /pulse/api/send  Umami analytics proxy, only with UMAMI_URL (analytics.ts)
  *
  * Which modules exist depends on APP_ROLE (see role.ts): `public` has no
  * auth/admin/ingest routes at all (404), `worker` only has /api/health.
@@ -63,6 +64,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   if (features.publicWeb) {
     const { registerDiscoveryRoutes } = await import('./discovery.js');
     await registerDiscoveryRoutes(app);
+    if (config.UMAMI_URL) {
+      const { registerAnalyticsRoutes } = await import('./analytics.js');
+      await registerAnalyticsRoutes(app, { upstream: config.UMAMI_URL, baseUrl: config.PUBLIC_BASE_URL });
+    }
   }
 
   if (features.adminApi) {
