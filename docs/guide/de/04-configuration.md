@@ -141,8 +141,8 @@ UTM-Parameter, öffnen sich in einem neuen Tab und werden so angekündigt.
 ### Statistik mit Umami
 
 Die Statusseite kann Seitenaufrufe mit [Umami](https://umami.is) zählen, einem
-Analyse-Server, den du selbst betreibst und der keine Cookies setzt. Zwei
-Schritte:
+Analyse-Server, den du selbst betreibst und der keine Cookies setzt. Du
+brauchst Umami 2.0 oder neuer. Zwei Schritte:
 
 1. Setze `UMAMI_URL` auf die Adresse deines Umami-Servers (zum Beispiel
    `https://umami.example.com` oder `http://umami:3000` in einem
@@ -151,7 +151,8 @@ Schritte:
    die `admin`-Instanz für ihre Vorschau).
 2. Lege in Umami eine Website an und kopiere ihre **Website ID**. Schalte unter
    **Einstellungen → Statistik (Umami)** **Seitenaufrufe mit Umami zählen** ein
-   und füge die ID ein.
+   und füge die ID ein. Hat der Server, den du gerade verwaltest, keine
+   `UMAMI_URL`, warnt dich die Karte, dass der Schalter dort nichts bewirkt.
 
 Die Browser der Besucher sprechen nie mit Umami. Die Statusseite liefert den
 Tracker als `/pulse/p.js` aus und gibt die Ereignisse von `/pulse/api/send` an
@@ -165,9 +166,11 @@ Was Besucher und deine Statistik bekommen:
 - Jede öffentliche Seite hat im Footer neben der Datenschutzerklärung
   **Statistik deaktivieren**. Das funktioniert ohne JavaScript und speichert die
   Wahl ein Jahr lang im Cookie `osp-analytics`; danach steht dort „Statistik ist
-  deaktiviert.“ mit **Statistik aktivieren**.
-- Abo-Links aus E-Mails werden nie gezählt, und Tokens werden aus jeder Adresse
-  entfernt, bevor sie Umami erreicht. Die Verwaltung wird nie gezählt.
+  deaktiviert.“ mit **Statistik aktivieren**. Dieses Cookie entscheidet immer:
+  Läuft es ab oder wird es gelöscht, zählt die Seite wieder und zeigt das auch
+  im Footer.
+- Abo-Links aus E-Mails werden nie gezählt, und Tokens (mit der Abo-ID daneben)
+  und `#Fragmente` werden aus jeder Adresse entfernt, bevor sie Umami erreicht. Die Verwaltung wird nie gezählt.
 - **Do Not Track und Global Privacy Control beachten** (standardmäßig an) sendet
   nichts für Browser, die darum bitten, nicht erfasst zu werden.
 - **IP-Adressen der Besucher an Umami weitergeben** ist standardmäßig aus. Umami
@@ -181,8 +184,10 @@ Was Besucher und deine Statistik bekommen:
 - **Nur auf diesen Domains** beschränkt das Zählen auf die Hostnamen, die du
   einträgst, etwa um eine Testkopie auszunehmen.
 
-Ist Umami nicht erreichbar, funktionieren die Seiten ohne Fehler weiter; der
-Statistik fehlen dann nur diese Aufrufe. Erwähne die Statistik in deiner
+Ist Umami nicht erreichbar oder langsam, funktionieren die Seiten ohne Fehler
+weiter; der Statistik fehlen dann nur diese Aufrufe. Die Website ID steht in
+jeder Seite, daher könnte jeder erfundene Aufrufe senden, wie bei jeder
+Umami-Installation; nimm die Zahlen als Trend, nicht als genaue Zählung. Erwähne die Statistik in deiner
 Datenschutzerklärung. Details und Grenzen:
 [configuration.md](../../configuration.md#analytics).
 
