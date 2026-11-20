@@ -7,14 +7,22 @@ import { Card, ErrorState } from '../components/ui';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useMaintenance } from '../hooks/queries';
 import { NotFoundState } from './NotFoundState';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 
 export function MaintenancePage() {
   const { id = '' } = useParams();
   const { t } = useTranslation('public');
   const f = useFormat();
   const { data, isPending, isError, error, refetch } = useMaintenance(id);
-  usePageHead({ title: data?.title ?? t('maintenance.title') });
+  const site = useSiteName();
+  usePageHead({
+    title: data?.title ?? t('maintenance.title'),
+    description: data ? data.description || data.updates[0]?.message || t('seo.maintenance', { site, title: data.title }) : undefined,
+    article: data ? { datePublished: data.createdAt, dateModified: data.updatedAt } : undefined,
+    breadcrumbs: data
+      ? [{ name: t('nav.history'), path: '/history' }, { name: data.title, path: `/maintenance/${encodeURIComponent(data.id)}` }]
+      : undefined,
+  });
 
   if (isPending) return <DetailSkeleton />;
   if (isError) {

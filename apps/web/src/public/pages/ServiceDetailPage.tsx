@@ -10,7 +10,7 @@ import { useFormat } from '../hooks/preferences';
 import { isNotFound, useLocations, usePublicSettings, useService } from '../hooks/queries';
 import { averageUptime, correctedDays, lastDays } from '../utils/uptime';
 import { NotFoundState } from './NotFoundState';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 
 export function ServiceDetailPage() {
   const { slug = '' } = useParams();
@@ -21,7 +21,15 @@ export function ServiceDetailPage() {
   const showLocations = settings?.showLocations !== false;
   const { data, isPending, isError, error, refetch, dataUpdatedAt } = useService(slug);
   const { data: locations } = useLocations(showLocations && (data?.locationIds.length ?? 0) > 0);
-  usePageHead({ title: data?.name ?? t('nav.services') });
+  const site = useSiteName();
+  const path = data ? `/services/${encodeURIComponent(data.slug || data.id)}` : undefined;
+  usePageHead({
+    title: data?.name ?? t('nav.services'),
+    description: data ? data.description || t('seo.service', { name: data.name, site }) : undefined,
+    // A service is reachable by id and by slug: the slug is canonical.
+    canonical: path,
+    breadcrumbs: data && path ? [{ name: t('nav.services'), path: '/services' }, { name: data.name, path }] : undefined,
+  });
 
   if (isPending) {
     return (

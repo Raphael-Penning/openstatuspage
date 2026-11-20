@@ -15,7 +15,7 @@ import { useFormat } from '../hooks/preferences';
 import { useHistory, useLocations, usePublicSettings, useServices } from '../hooks/queries';
 import { flattenServices, maintenanceEnd, maintenanceStart } from '../utils/status';
 import { monthKey, recentMonths } from '../utils/time';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 
 const PAGE_SIZE = 20;
 const TYPES = ['all', 'incident', 'maintenance'] as const;
@@ -50,7 +50,13 @@ export function HistoryPage() {
   const showLocations = settings?.showLocations !== false;
   const services = useServices();
   const locations = useLocations(showLocations);
-  usePageHead({ title: t('nav.history') });
+  const site = useSiteName();
+  // Filtered and paged views have the unfiltered history as their canonical page.
+  usePageHead({
+    title: t('nav.history'),
+    description: t('seo.history', { site }),
+    breadcrumbs: [{ name: t('nav.history'), path: '/history' }],
+  });
 
   const query = historyQuery(params, showLocations);
   const { type, page } = query as { type: HistoryType; page: number };

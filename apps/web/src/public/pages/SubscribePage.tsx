@@ -27,11 +27,16 @@ import {
   type ServiceSection,
   type SubscriptionErrors,
 } from '../utils/subscription';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 
 export function SubscribePage() {
   const { t } = useTranslation('public');
-  usePageHead({ title: t('subscription.title') });
+  const site = useSiteName();
+  usePageHead({
+    title: t('subscription.title'),
+    description: t('seo.subscribe', { site }),
+    breadcrumbs: [{ name: t('subscription.title'), path: '/subscribe' }],
+  });
   const summary = useSummary();
   const [unavailable, setUnavailable] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);

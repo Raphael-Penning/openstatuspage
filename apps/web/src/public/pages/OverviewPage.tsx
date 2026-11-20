@@ -15,7 +15,7 @@ export function OverviewPage() {
   const { t } = useTranslation('public');
   const { data, isPending, isError, refetch } = useSummary();
   const [allUpcoming, setAllUpcoming] = useState(false);
-  usePageHead({});
+  usePageHead({ home: true });
 
   if (isPending) return <OverviewSkeleton />;
   if (isError) return <ErrorState onRetry={() => void refetch()} />;

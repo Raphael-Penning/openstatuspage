@@ -10,7 +10,7 @@ import { useCountryName } from '../hooks/countries';
 import { useLocations, usePublicSettings } from '../hooks/queries';
 import { groupByRegion, toCounters } from '../utils/status';
 import { NotFoundState } from './NotFoundState';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 
 const WorldMap = lazy(() => import('../components/WorldMap'));
 
@@ -24,7 +24,12 @@ export function LocationsPage() {
   const countryName = useCountryName();
   const hydrated = useHydrated();
   const mapPlaceholder = <Skeleton className="aspect-[2/1] w-full rounded-xl" />;
-  usePageHead({ title: t('nav.locations') });
+  const site = useSiteName();
+  usePageHead({
+    title: t('nav.locations'),
+    description: t('seo.locations', { site }),
+    breadcrumbs: [{ name: t('nav.locations'), path: '/locations' }],
+  });
 
   if (settings && !settings.showLocations) return <NotFoundState />;
   if (!settings && settingsError) return <ErrorState onRetry={() => void refetchSettings()} />;
