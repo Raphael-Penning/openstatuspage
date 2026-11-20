@@ -9,10 +9,12 @@
  * <html lang/dir/data-theme>, the head data of the page, the markup and the
  * state block are filled in.
  *
- * Responses are cached for a few seconds per URL and language/theme input (a
- * small bounded map, concurrent requests for the same key share one render) and
- * carry an ETag and a short shared Cache-Control. Any error is logged and the
- * caller sends the plain client-rendered page instead.
+ * Memory (public instances stay below 100 MB, docs/architecture.md#memory): at
+ * most two pages render at a time, the others wait. A rendered page is kept for a
+ * few seconds per URL and language/theme input as UTF-8 bytes (a bounded map:
+ * entries and bytes; concurrent requests for the same key share one render) and
+ * is sent with an ETag and a short shared Cache-Control. Any error is logged and
+ * the caller sends the plain client-rendered page instead.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -47,13 +49,18 @@ export interface SsrPagesOptions {
   loadModule?: () => Promise<RenderModule>;
   /** Seconds a rendered page is reused (default 5). */
   cacheSeconds?: number;
-  /** Rendered pages kept at most (default 32). */
+  /** Rendered pages kept at most (default 16). */
   cacheEntries?: number;
+  /** Bytes of rendered pages kept at most (default 1 MiB). */
+  cacheBytes?: number;
+  /** Pages rendered at the same time (default 2). */
+  concurrency?: number;
 }
 
 interface RenderedPage {
   status: number;
-  body: string;
+  /** UTF-8: half the memory of a JavaScript string with non-ASCII characters. */
+  body: Buffer;
   etag: string;
   expires: number;
 }
@@ -124,23 +131,47 @@ export function composePage(template: PageTemplate, page: SsrRenderResult): stri
   );
 }
 
-const etagOf = (body: string) => `W/"${createHash('sha1').update(body).digest('base64url')}"`;
+const etagOf = (body: Buffer) => `W/"${createHash('sha1').update(body).digest('base64url')}"`;
+
+/** Counting semaphore: at most `limit` holders, the others wait in order. */
+class Limiter {
+  private active = 0;
+  private readonly waiting: (() => void)[] = [];
+
+  constructor(private readonly limit: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
+    this.active++;
+    try {
+      return await fn();
+    } finally {
+      this.active--;
+      this.waiting.shift()?.();
+    }
+  }
+}
 
 export class SsrPages {
   private module: Promise<RenderModule> | null = null;
   private template: PageTemplate | null = null;
   private readonly cache = new Map<string, RenderedPage>();
+  private cachedBytes = 0;
   private readonly inFlight = new Map<string, Promise<RenderedPage>>();
   private readonly source;
   private readonly ttlMs: number;
   private readonly maxEntries: number;
+  private readonly maxBytes: number;
+  private readonly limiter: Limiter;
   /** Set when the bundle cannot be loaded: every page is the plain one, logged once. */
   private unavailable = false;
 
   constructor(private readonly options: SsrPagesOptions) {
     this.source = publicDocumentSource(options.docs);
     this.ttlMs = (options.cacheSeconds ?? 5) * 1000;
-    this.maxEntries = options.cacheEntries ?? 32;
+    this.maxEntries = options.cacheEntries ?? 16;
+    this.maxBytes = options.cacheBytes ?? 1024 * 1024;
+    this.limiter = new Limiter(options.concurrency ?? 2);
   }
 
   /** Whether the web build has a render bundle at all. */
@@ -208,23 +239,43 @@ export class SsrPages {
 
     const cached = this.cache.get(key);
     if (cached && cached.expires > now) return cached;
-    if (cached) this.cache.delete(key);
+    if (cached) this.evict(key);
 
     let pending = this.inFlight.get(key);
     if (!pending) {
-      pending = (async () => {
-        const result = await module.render({ ...input, source: this.source, baseUrl: this.options.baseUrl, now });
-        const body = composePage(this.loadTemplate(), result);
-        const page: RenderedPage = { status: result.status, body, etag: etagOf(body), expires: Date.now() + this.ttlMs };
-        if (this.ttlMs > 0) {
-          this.cache.set(key, page);
-          // Oldest first: drop beyond the limit.
-          while (this.cache.size > this.maxEntries) this.cache.delete(this.cache.keys().next().value!);
-        }
-        return page;
-      })().finally(() => this.inFlight.delete(key));
+      pending = this.limiter
+        .run(async () => {
+          const result = await module.render({ ...input, source: this.source, baseUrl: this.options.baseUrl, now: Date.now() });
+          const body = Buffer.from(composePage(this.loadTemplate(), result));
+          return { status: result.status, body, etag: etagOf(body), expires: Date.now() + this.ttlMs };
+        })
+        .then((page) => {
+          this.remember(key, page);
+          return page;
+        })
+        .finally(() => this.inFlight.delete(key));
       this.inFlight.set(key, pending);
     }
     return pending;
+  }
+
+  private remember(key: string, page: RenderedPage): void {
+    if (this.ttlMs <= 0 || page.body.length > this.maxBytes) return;
+    this.evict(key);
+    this.cache.set(key, page);
+    this.cachedBytes += page.body.length;
+    // Oldest first: drop beyond the limits.
+    while (this.cache.size > this.maxEntries || this.cachedBytes > this.maxBytes) this.evict(this.cache.keys().next().value!);
+    // Expired pages do not wait for the next request of their key.
+    setTimeout(() => {
+      if (this.cache.get(key) === page) this.evict(key);
+    }, this.ttlMs).unref();
+  }
+
+  private evict(key: string): void {
+    const page = this.cache.get(key);
+    if (!page) return;
+    this.cache.delete(key);
+    this.cachedBytes -= page.body.length;
   }
 }
