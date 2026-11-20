@@ -51,7 +51,11 @@ export function ThemeProvider({ children, defaultPreference = 'system' }: { chil
   const [system, setSystem] = useState<Resolved>(() => (ssr ? 'light' : systemTheme()));
 
   useEffect(() => {
-    setPref(readStored() ?? defaultPreference);
+    const stored = readStored();
+    // A choice made before the cookie existed lives in localStorage only: mirror
+    // it, so the server renders it from the next page load on (no flash).
+    if (stored && !isThemePreference(readCookie(document.cookie, THEME_COOKIE))) writePreferenceCookie(THEME_COOKIE, stored);
+    setPref(stored ?? defaultPreference);
   }, [defaultPreference]);
 
   useEffect(() => {

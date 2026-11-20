@@ -201,6 +201,17 @@ describe('hydration', () => {
     expect(confirm.html).toContain('action="/subscription/unsubscribe"');
   });
 
+  it('mirrors a theme stored before the cookie existed into the cookie', async () => {
+    document.cookie = 'osp-theme=; Max-Age=0; Path=/';
+    localStorage.setItem('osp-theme', 'dark');
+    const result = await serverRender('/');
+    const { problems } = await hydrateResult('/', result);
+    expect(problems).toEqual([]);
+    expect(document.cookie).toContain('osp-theme=dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    document.cookie = 'osp-theme=; Max-Age=0; Path=/';
+  });
+
   it('switches to the visitor time zone after hydration', async () => {
     localStorage.setItem('osp-tz', 'local');
     const result = await serverRender('/incidents/inc-1');
