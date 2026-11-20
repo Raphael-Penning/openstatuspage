@@ -756,6 +756,7 @@
     "infoLinkLabelHelp": "Optional. Empty: \"{{label}}\" in the visitor's language.",
     "utmHelp": "Adds these parameters to the links you configured that lead to other websites (footer, info link, service websites). Links on this site, mailto: links and links that already carry utm_ parameters stay unchanged.",
     "analyticsHelp": "Loads the Umami tracker on the public pages through this server (/pulse/), never from the Umami server itself. It only runs when the instance that serves the public pages has UMAMI_URL set. Visitors can turn it off in the footer; subscription links are never tracked.",
+    "analyticsUnavailable": "This server has no UMAMI_URL, so the switch has no effect here. Page views are only counted by instances that have it: set UMAMI_URL on every instance that serves the public pages, this one included.",
     "analyticsWebsiteIdHelp": "The UUID Umami shows for the website (Settings → Websites). Required when analytics is on.",
     "analyticsDomainsHelp": "Host names separated by commas, e.g. status.example.com. Empty: every host name the page is opened under.",
     "analyticsRespectDntHelp": "Sends nothing for visitors whose browser asks not to be tracked.",

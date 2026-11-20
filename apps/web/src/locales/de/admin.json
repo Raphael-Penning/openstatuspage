@@ -756,6 +756,7 @@
     "infoLinkLabelHelp": "Optional. Leer: „{{label}}“ in der Sprache des Besuchers.",
     "utmHelp": "Hängt diese Parameter an die von dir eingetragenen Links zu anderen Websites an (Fußzeile, Info-Link, Websites der Services). Links auf dieser Seite, mailto:-Links und Links, die schon utm_-Parameter haben, bleiben unverändert.",
     "analyticsHelp": "Lädt den Umami-Tracker auf den öffentlichen Seiten über diesen Server (/pulse/), nie direkt vom Umami-Server. Er läuft nur, wenn auf der Instanz, die die öffentlichen Seiten ausliefert, UMAMI_URL gesetzt ist. Besucher können ihn in der Fußzeile abschalten; Abo-Links werden nie erfasst.",
+    "analyticsUnavailable": "Auf diesem Server ist UMAMI_URL nicht gesetzt, der Schalter wirkt hier also nicht. Seitenaufrufe zählen nur Instanzen, die UMAMI_URL haben: Setze sie auf jeder Instanz, die die öffentlichen Seiten ausliefert, auch auf dieser.",
     "analyticsWebsiteIdHelp": "Die UUID, die Umami für die Website anzeigt (Settings → Websites). Pflicht, wenn die Statistik an ist.",
     "analyticsDomainsHelp": "Hostnamen, durch Kommas getrennt, z. B. status.example.com. Leer: jeder Hostname, unter dem die Seite aufgerufen wird.",
     "analyticsRespectDntHelp": "Sendet nichts für Besucher, deren Browser darum bittet, nicht erfasst zu werden.",
