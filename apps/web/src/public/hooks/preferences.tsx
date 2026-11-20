@@ -1,9 +1,14 @@
 /**
  * Visitor preferences of the public page: time zone mode (local / UTC) and a
  * shared "now" that ticks every 30 s so relative times stay current.
+ *
+ * Server rendering is deterministic: the server renders in UTC against its
+ * render time, and hydration repeats exactly that (lib/ssr.tsx). The visitor's
+ * time zone and clock apply right after hydration.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useHydrated, useSsr } from '../../lib/ssr';
 import {
   durationBetween,
   formatDate,
@@ -27,6 +32,7 @@ interface PreferencesValue {
 const PreferencesContext = createContext<PreferencesValue | null>(null);
 
 function readTimeZone(): TimeZoneMode {
+  if (typeof window === 'undefined') return 'utc';
   try {
     return localStorage.getItem(TZ_KEY) === 'utc' ? 'utc' : 'local';
   } catch {
@@ -35,10 +41,14 @@ function readTimeZone(): TimeZoneMode {
 }
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const [timeZone, setTz] = useState<TimeZoneMode>(readTimeZone);
-  const [now, setNow] = useState(() => Date.now());
+  const ssr = useSsr();
+  const hydrated = useHydrated();
+  const [storedTimeZone, setTz] = useState<TimeZoneMode>(readTimeZone);
+  const [now, setNow] = useState(() => ssr?.now ?? Date.now());
+  const timeZone: TimeZoneMode = hydrated ? storedTimeZone : 'utc';
 
   useEffect(() => {
+    setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
     return () => window.clearInterval(id);
   }, []);
