@@ -144,7 +144,7 @@ Index. Prüfe dann, ob der Proxy `/sitemap.xml` unverändert durchreicht und ob
 | Übersicht, Dienste, Dienst, Verlauf, Vorfall, Wartung, Standorte | ja | In den Sitemaps aufgeführt. |
 | Abonnieren | ja, wenn E-Mail-Abos angeboten werden | In der Sitemap der Seiten aufgeführt. |
 | Gefilterte, durchsuchte oder weitere Seiten, Zustände „gesendet“ und Fehler der Abo-Seite | nein | `noindex, follow`, keine kanonische Adresse. |
-| Tagesseiten der Verfügbarkeitsbalken (`/services/<dienst>/days/<datum>`) | nein | `noindex, follow`, keine kanonische Adresse: eine dünne Seite pro Dienst und Tag. In keiner Sitemap; die Balken verlinken sie mit `rel="nofollow"`. |
+| Tagesseiten der Verfügbarkeitsbalken (`/services/<dienst>/days/<datum>`) | nein | `noindex, follow`, keine kanonische Adresse: eine dünne Seite pro Dienst und Tag. In keiner Sitemap. |
 | Nicht gefunden (404), auch eine Verlaufsseite hinter der letzten | nein | `noindex`. |
 | Bestätigen-, Verwalten- und Abmelden-Links | nein | `noindex`, nicht in einer Sitemap, in der `robots.txt` ausgeschlossen. |
 | Private Seiten (`/p/<link>`) | nein | `noindex, nofollow` (Meta-Tag und Header), keine kanonische Adresse, weder in einer Sitemap noch in `llms.txt`. Absichtlich nicht in der `robots.txt` ausgeschlossen: Ein Crawler muss die Seite abrufen, um `noindex` zu sehen. Siehe [Private Seiten](#private-seiten). |
