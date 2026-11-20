@@ -608,6 +608,25 @@ describe('analytics settings over JSON:API', () => {
     }
   });
 
+  it('tell the management UI whether the instance has UMAMI_URL, read-only', async () => {
+    for (const [extra, available] of [
+      [{ UMAMI_URL: umami.url }, true],
+      [{}, false],
+    ] as const) {
+      const t = await createTestApp(extra);
+      try {
+        const admin = await adminClient(t);
+        expect(data(await admin.get('/api/admin/settings')), JSON.stringify(extra)).toMatchObject({ analyticsAvailable: available });
+        const saved = await admin.patch('/api/admin/settings', { ...ON, analyticsAvailable: !available });
+        expect(saved.statusCode).toBe(200);
+        expect(data(saved)).toMatchObject({ ...ON, analyticsAvailable: available });
+        expect(data(await t.app.inject({ method: 'GET', url: '/api/public/settings' }))).not.toHaveProperty('analyticsAvailable');
+      } finally {
+        await t.close();
+      }
+    }
+  });
+
   it('reject an UMAMI_URL that is no http(s) base URL', async () => {
     for (const url of ['ftp://umami.example.com', 'umami.example.com', 'https://umami.example.com/?x=1']) {
       await expect(createTestApp({ UMAMI_URL: url }), url).rejects.toThrow(/UMAMI_URL/);
