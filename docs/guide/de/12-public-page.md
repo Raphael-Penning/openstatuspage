@@ -139,6 +139,7 @@ Index. Prüfe dann, ob der Proxy `/sitemap.xml` unverändert durchreicht und ob
 | Übersicht, Dienste, Dienst, Verlauf, Vorfall, Wartung, Standorte | ja | In den Sitemaps aufgeführt. |
 | Abonnieren | ja, wenn E-Mail-Abos angeboten werden | In der Sitemap der Seiten aufgeführt. |
 | Gefilterte, durchsuchte oder weitere Seiten, Zustände „gesendet“ und Fehler der Abo-Seite | nein | `noindex, follow`, keine kanonische Adresse. |
+| Tagesseiten der Verfügbarkeitsbalken (`/services/<dienst>/days/<datum>`) | nein | `noindex, follow`: eine dünne Seite pro Dienst und Tag. In keiner Sitemap. |
 | Nicht gefunden (404), auch eine Verlaufsseite hinter der letzten | nein | `noindex`. |
 | Bestätigen-, Verwalten- und Abmelden-Links | nein | `noindex`, nicht in einer Sitemap, in der `robots.txt` ausgeschlossen. |
 | `/admin` auf einer Instanz, die sie ausliefert | nein | Die Antwort trägt `X-Robots-Tag: noindex, nofollow`. |
@@ -191,6 +192,11 @@ Skripte machen die Seite nur bequemer. Ohne sie gilt:
 - **Karte und Balken haben einen Textersatz.** Die Weltkarte zeichnet der Server
   als Bild der Länder mit ihren Markierungen. Die Verfügbarkeitsbalken haben auf
   der Dienstseite eine Tabelle mit denselben Tagen.
+- **Jeder Tag eines Verfügbarkeitsbalkens ist ein Link.** Er öffnet die
+  Tagesseite: Status und Verfügbarkeit des Tages, wann der Dienst ausgefallen,
+  eingeschränkt oder in Wartung war, die Vorfälle und Wartungen des Tages,
+  Korrekturen mit ihren öffentlichen Hinweisen und Links zum vorherigen und
+  nächsten Tag.
 - **Zeiten sind in UTC.** Der Server zeigt Zeiten in UTC. Ein Browser mit
   JavaScript stellt sie nach dem Laden auf die Zeitzone und das Format des
   Besuchers um.

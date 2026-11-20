@@ -158,7 +158,7 @@ Services für einen vergangenen Zeitraum:
 | Beginn / Ende | Der Zeitraum. Das Ende darf nicht in der Zukunft liegen. |
 | Status | *Betriebsbereit* für einen Fehlalarm (z. B. hat der Monitoring-Host sein Netz verloren). Ein Ausfall-Status trägt einen Ausfall nach, den das Monitoring nicht bemerkt hat. |
 | Grund | Pflichtfeld. Nur intern: wird nie öffentlich angezeigt, steht im Audit-Log. |
-| Hinweis auf der öffentlichen Seite zeigen | Pro Korrektur wählbar: Tage mit dieser Korrektur werden öffentlich als *Nachträglich korrigiert* markiert (im Tooltip der Verfügbarkeitsbalken und auf der Service-Seite). |
+| Hinweis auf der öffentlichen Seite zeigen | Pro Korrektur wählbar: Tage mit dieser Korrektur werden öffentlich als *Nachträglich korrigiert* markiert (im Tooltip der Verfügbarkeitsbalken, auf der Service-Seite und auf der Tagesseite, die auch den korrigierten Zeitraum markiert). |
 | Öffentlicher Hinweis | Optionaler Text zur Markierung, z. B. „Fehlalarm des Monitorings.“ |
 
 Ohne den öffentlichen Hinweis wird die korrigierte Uptime ohne Markierung
