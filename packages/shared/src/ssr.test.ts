@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalPath, HEAD_ATTR, headElements, isPersonalPath, normalizePath, scriptJson } from './ssr.js';
+import { canonicalPath, hasDotSegments, HEAD_ATTR, headElements, isPersonalPath, normalizePath, scriptJson } from './ssr.js';
 
 describe('scriptJson', () => {
   it('cannot close the script element or open a comment, and parses back', () => {
@@ -73,6 +73,26 @@ describe('normalizePath / isPersonalPath', () => {
     expect(normalizePath('/bad%E0%A4%A')).toBe('/bad%e0%a4%a');
   });
 
+  it('resolves dot segments like the router, also percent-encoded ones', () => {
+    expect(normalizePath('/./p/abc')).toBe('/p/abc');
+    expect(normalizePath('/a/../p/abc?x=1')).toBe('/p/abc');
+    expect(normalizePath('/%2e/P/abc')).toBe('/p/abc');
+    expect(normalizePath('/x/%2E%2E/subscription/manage')).toBe('/subscription/manage');
+    expect(normalizePath('/../../p')).toBe('/p');
+    expect(normalizePath('/p/.')).toBe('/p/');
+    expect(normalizePath('/..')).toBe('/');
+    expect(normalizePath('/services/a..b')).toBe('/services/a..b');
+  });
+
+  it('finds dot segments in any spelling', () => {
+    for (const url of ['/./p/abc', '/a/../p', '/%2e/p', '/%2E%2E/p', '/x/..%2fp', '/p/.', '/..']) {
+      expect(hasDotSegments(url), url).toBe(true);
+    }
+    for (const url of ['/', '/p/abc', '/services/a..b', '/history?return=/../p', '/.well-known/x', '/a.b/c']) {
+      expect(hasDotSegments(url), url).toBe(false);
+    }
+  });
+
   it('canonical paths: lower case, single slashes, no trailing slash', () => {
     expect(canonicalPath('/SERVICES/')).toBe('/services');
     expect(canonicalPath('//history//')).toBe('/history');
@@ -81,7 +101,7 @@ describe('normalizePath / isPersonalPath', () => {
   });
 
   it('detects personal pages in any spelling', () => {
-    for (const url of ['/subscription/manage?id=1&token=x', '/SUBSCRIPTION/manage', '/Subscription/Confirm', '//subscription//manage', '/%73ubscription/manage', '/p/abc', '/P/abc/services/web', '//p//abc', '/%70/abc', '/p']) {
+    for (const url of ['/subscription/manage?id=1&token=x', '/SUBSCRIPTION/manage', '/Subscription/Confirm', '//subscription//manage', '/%73ubscription/manage', '/p/abc', '/P/abc/services/web', '//p//abc', '/%70/abc', '/p', '/./p/abc', '/x/../p/abc', '/%2e/subscription/manage']) {
       expect(isPersonalPath(url), url).toBe(true);
     }
     for (const url of ['/', '/subscribe', '/subscriptions', '/history?return=/subscription/manage', '/pages', '/history?return=/p/abc']) {
