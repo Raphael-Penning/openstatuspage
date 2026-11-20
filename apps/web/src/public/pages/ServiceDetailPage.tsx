@@ -8,8 +8,7 @@ import { Card, EmptyState, ErrorState, SectionHeader, Skeleton, SkeletonList, St
 import { useViewportWidth } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useLocations, usePublicSettings, useService } from '../hooks/queries';
-import { formatUtcDay } from '../utils/time';
-import { averageUptime, correctedDays, formatPercent, lastDays } from '../utils/uptime';
+import { averageUptime, correctedDays, lastDays } from '../utils/uptime';
 import { NotFoundState } from './NotFoundState';
 import { usePageHead } from '../head';
 
@@ -100,7 +99,7 @@ export function ServiceDetailPage() {
               <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-3 sm:px-4">
                 <dt className="text-xs text-muted">{s.label}</dt>
                 <dd className="mt-0.5 text-base font-semibold tabular-nums sm:text-xl">
-                  {s.value === null ? t('uptime.noData') : formatPercent(s.value, f.locale)}
+                  {s.value === null ? t('uptime.noData') : f.percent(s.value)}
                 </dd>
               </div>
             ))}
@@ -114,7 +113,7 @@ export function ServiceDetailPage() {
               <ul className="mt-3 space-y-2 text-sm">
                 {corrected.map((d) => (
                   <li key={d.date} className="rounded-xl bg-surface-2 px-3 py-2">
-                    <span className="font-medium">{formatUtcDay(d.date, f.locale)}</span>
+                    <span className="font-medium">{f.utcDay(d.date)}</span>
                     {d.correctionNotes && d.correctionNotes.length > 0 ? (
                       d.correctionNotes.map((note) => (
                         <span key={note} className="block text-muted">

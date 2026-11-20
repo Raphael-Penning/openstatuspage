@@ -14,7 +14,7 @@ import { Card, EmptyState, ErrorState, PageTitle, SkeletonList } from '../compon
 import { useFormat } from '../hooks/preferences';
 import { useHistory, useLocations, usePublicSettings, useServices } from '../hooks/queries';
 import { flattenServices, maintenanceEnd, maintenanceStart } from '../utils/status';
-import { formatMonth, monthKey, recentMonths } from '../utils/time';
+import { monthKey, recentMonths } from '../utils/time';
 import { usePageHead } from '../head';
 
 const PAGE_SIZE = 20;
@@ -118,7 +118,7 @@ export function HistoryPage() {
             <option value="">{t('history.allMonths')}</option>
             {months.map((m) => (
               <option key={m} value={m}>
-                {formatMonth(m, f.locale)}
+                {f.month(m)}
               </option>
             ))}
           </FilterSelect>
@@ -152,7 +152,7 @@ export function HistoryPage() {
             {sections.map((s) => (
               <section key={s.month} aria-labelledby={`month-${s.month}`}>
                 <h2 id={`month-${s.month}`} className="mb-3 text-sm font-semibold tracking-wide text-muted uppercase">
-                  {formatMonth(s.month, f.locale)}
+                  {f.month(s.month)}
                 </h2>
                 <Card className="overflow-hidden">
                   <ul className="divide-y divide-border">

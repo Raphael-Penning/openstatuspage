@@ -24,8 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { STATUS_BG } from '../../lib/status';
 import { useDismiss } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
-import { formatUtcDay } from '../utils/time';
-import { averageUptime, dayIndexAt, dayPattern, formatPercent, lastDays, statusMinutes, tooltipAlign } from '../utils/uptime';
+import { averageUptime, dayIndexAt, dayPattern, lastDays, statusMinutes, tooltipAlign } from '../utils/uptime';
 
 interface UptimeBarProps {
   /** All buckets from the API, oldest first. */
@@ -58,7 +57,7 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
   const tooltipId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const avg = percent !== undefined && shown.length === uptime.length ? percent : averageUptime(shown);
-  const avgText = avg === null ? t('uptime.noData') : t('uptime.percent', { value: formatPercent(avg, f.locale) });
+  const avgText = avg === null ? t('uptime.noData') : t('uptime.percent', { value: f.percent(avg) });
   const correctedCount = shown.filter((d) => d.corrected).length;
 
   const hide = useCallback(() => {
@@ -73,11 +72,11 @@ export function UptimeBar({ uptime, days, label, percent, size = 'md', className
   const visible = active !== null && !dismissed ? shown[active] : undefined;
 
   function describe(day: DailyUptime): string {
-    const parts = [formatUtcDay(day.date, f.locale)];
+    const parts = [f.utcDay(day.date)];
     if (day.status === null) parts.push(t('uptime.noData'));
     else {
       parts.push(t(`common:status.${day.status}`));
-      if (day.uptime !== null) parts.push(t('uptime.percent', { value: formatPercent(day.uptime, f.locale) }));
+      if (day.uptime !== null) parts.push(t('uptime.percent', { value: f.percent(day.uptime) }));
       for (const m of statusMinutes(day)) parts.push(`${t(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`);
     }
     if (day.corrected) parts.push(t('uptime.corrected'), ...(day.correctionNotes ?? []));
@@ -207,7 +206,7 @@ function DayDetails({ day }: { day: DailyUptime }) {
   const minutes = statusMinutes(day);
   return (
     <div aria-live="polite">
-      <p className="font-semibold">{formatUtcDay(day.date, f.locale)}</p>
+      <p className="font-semibold">{f.utcDay(day.date)}</p>
       {day.status === null ? (
         <p className="mt-1 text-muted">{t('uptime.noData')}</p>
       ) : (
@@ -217,7 +216,7 @@ function DayDetails({ day }: { day: DailyUptime }) {
             {t(`common:status.${day.status}`)}
           </p>
           {day.uptime !== null && (
-            <p className="text-muted">{t('uptime.percent', { value: formatPercent(day.uptime, f.locale) })}</p>
+            <p className="text-muted">{t('uptime.percent', { value: f.percent(day.uptime) })}</p>
           )}
           {minutes.length > 0 ? (
             <ul className="mt-1 space-y-0.5 text-muted">

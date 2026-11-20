@@ -16,9 +16,13 @@ import {
   formatDuration,
   formatRange,
   formatRelative,
+  formatMonth,
   formatTime,
+  formatUtcDay,
+  neutral,
   type TimeZoneMode,
 } from '../utils/time';
+import { formatPercent, formatPercentNeutral } from '../utils/uptime';
 
 const TZ_KEY = 'osp-tz';
 const TICK_MS = 30_000;
@@ -72,24 +76,69 @@ export function usePreferences(): PreferencesValue {
   return ctx;
 }
 
-/** Formatting functions bound to the current language and time zone mode. */
-export function useFormat() {
+export interface Format {
+  locale: string;
+  timeZone: TimeZoneMode;
+  now: number;
+  dateTime: (v: string | Date) => string;
+  date: (v: string | Date) => string;
+  time: (v: string | Date) => string;
+  range: (a: string | Date, b: string | Date) => string;
+  /** "2 hours ago"; the absolute time until hydration. */
+  relative: (v: string | Date) => string;
+  duration: (ms: number) => string;
+  durationSince: (start: string, end: string | null) => string;
+  /** Day of a UTC uptime bucket ("YYYY-MM-DD"). */
+  utcDay: (day: string) => string;
+  /** Month of a "YYYY-MM" key. */
+  month: (month: string) => string;
+  /** Percentage (0–100), at most two fraction digits. */
+  percent: (value: number) => string;
+}
+
+/**
+ * Formatting functions bound to the current language and time zone mode. On the
+ * server and during hydration they are language neutral and ICU-free (UTC, ISO
+ * dates, see `neutral` in utils/time.ts), afterwards localized with Intl.
+ */
+export function useFormat(): Format {
   const { i18n } = useTranslation();
   const { timeZone, now } = usePreferences();
+  const hydrated = useHydrated();
   const locale = i18n.resolvedLanguage ?? i18n.language ?? 'en';
   return useMemo(
-    () => ({
-      locale,
-      timeZone,
-      now,
-      dateTime: (v: string | Date) => formatDateTime(v, locale, timeZone),
-      date: (v: string | Date) => formatDate(v, locale, timeZone),
-      time: (v: string | Date) => formatTime(v, locale, timeZone),
-      range: (a: string | Date, b: string | Date) => formatRange(a, b, locale, timeZone),
-      relative: (v: string | Date) => formatRelative(v, now, locale),
-      duration: (ms: number) => formatDuration(ms, locale),
-      durationSince: (start: string, end: string | null) => formatDuration(durationBetween(start, end, now), locale),
-    }),
-    [locale, timeZone, now],
+    (): Format =>
+      hydrated
+        ? {
+            locale,
+            timeZone,
+            now,
+            dateTime: (v) => formatDateTime(v, locale, timeZone),
+            date: (v) => formatDate(v, locale, timeZone),
+            time: (v) => formatTime(v, locale, timeZone),
+            range: (a, b) => formatRange(a, b, locale, timeZone),
+            relative: (v) => formatRelative(v, now, locale),
+            duration: (ms) => formatDuration(ms, locale),
+            durationSince: (start, end) => formatDuration(durationBetween(start, end, now), locale),
+            utcDay: (day) => formatUtcDay(day, locale),
+            month: (month) => formatMonth(month, locale),
+            percent: (value) => formatPercent(value, locale),
+          }
+        : {
+            locale,
+            timeZone: 'utc',
+            now,
+            dateTime: neutral.dateTime,
+            date: neutral.date,
+            time: neutral.time,
+            range: neutral.range,
+            relative: neutral.dateTime,
+            duration: neutral.duration,
+            durationSince: (start, end) => neutral.duration(durationBetween(start, end, now)),
+            utcDay: (day) => day,
+            month: (month) => month,
+            percent: (value) => formatPercentNeutral(value, locale),
+          },
+    [hydrated, locale, timeZone, now],
   );
 }

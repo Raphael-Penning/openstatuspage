@@ -47,6 +47,20 @@ export function averageUptime(days: readonly DailyUptime[]): number | null {
   return Math.round((sum / n) * 100) / 100;
 }
 
+/**
+ * Percentages without Intl (server render and hydration): the decimal separator
+ * and percent sign of the UI languages, at most two fraction digits.
+ */
+const PERCENT_STYLE: Record<string, { decimal: string; suffix: string }> = {
+  de: { decimal: ',', suffix: '\u00a0%' },
+};
+
+export function formatPercentNeutral(value: number, locale: string): string {
+  const style = PERCENT_STYLE[locale.slice(0, 2)] ?? { decimal: '.', suffix: '%' };
+  const text = String(Math.round(value * 100) / 100).replace('.', style.decimal);
+  return `${text}${style.suffix}`;
+}
+
 /** "99.95 %" style, locale aware, at most two fraction digits. */
 export function formatPercent(value: number, locale: string): string {
   return numberFormat(locale, {

@@ -140,3 +140,37 @@ export function durationBetween(start: string, end: string | null, now: number):
   return (end ? new Date(end).getTime() : now) - new Date(start).getTime();
 }
 
+/**
+ * Language-neutral formatting without Intl, used by the server render and the
+ * hydration render (hooks/preferences.tsx): ISO dates and 24-hour times in UTC,
+ * SI-style durations. It is deterministic, unambiguous without JavaScript, and
+ * keeps ICU (several MB of locale data and native memory) out of the server.
+ * After hydration the page switches to the localized Intl formatting above.
+ */
+export const neutral = {
+  date: (value: string | Date): string => toDate(value).toISOString().slice(0, 10),
+  time: (value: string | Date): string => `${toDate(value).toISOString().slice(11, 16)} UTC`,
+  dateTime: (value: string | Date): string => {
+    const iso = toDate(value).toISOString();
+    return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+  },
+  range: (start: string | Date, end: string | Date): string => {
+    const a = toDate(start).toISOString();
+    const b = toDate(end).toISOString();
+    const first = `${a.slice(0, 10)} ${a.slice(11, 16)}`;
+    return a.slice(0, 10) === b.slice(0, 10)
+      ? `${first} – ${b.slice(11, 16)} UTC`
+      : `${first} – ${b.slice(0, 10)} ${b.slice(11, 16)} UTC`;
+  },
+  /** "2 h 15 min", "3 d 4 h", "< 1 min" (at most two units, like formatDuration). */
+  duration: (ms: number): string => {
+    const totalMinutes = Math.floor(Math.max(0, ms) / MINUTE);
+    if (totalMinutes < 1) return '< 1 min';
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+    if (days > 0) return hours > 0 ? `${days} d ${hours} h` : `${days} d`;
+    if (hours > 0) return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
+    return `${minutes} min`;
+  },
+};
