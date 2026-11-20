@@ -17,7 +17,9 @@
  *   are outlined, so the bar does not rely on color alone (WCAG 1.4.1).
  * - The tooltip can be hovered, stays until the pointer or focus leaves, and
  *   Escape hides it (WCAG 1.4.13). On touch screens the first tap on a day
- *   shows its tooltip (with a link to the day), a second tap opens the day.
+ *   shows its tooltip (with a link to the day), a second tap opens the day; a
+ *   screen reader's activation of the focused day opens it at once.
+ * - Day links are rel="nofollow" (day pages are noindex).
  *
  * Days corrected afterwards carry a small marker below the segment and say so
  * (with the public notes) in the link name and the tooltip.
@@ -83,8 +85,11 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
   const [dismissed, setDismissed] = useState(false);
   /** The day in the tab order (roving tabindex); null: the newest. */
   const [cursor, setCursor] = useState<number | null>(null);
-  /** The last pointer that pressed on the bar and when (a tap selects first, a click opens). */
-  const pointer = useRef({ kind: 'mouse', at: -Infinity });
+  /**
+   * The last pointer that pressed on the bar, when, and whether the pressed day
+   * link had the focus already (a tap selects first, a click opens).
+   */
+  const pointer = useRef({ kind: 'mouse', at: -Infinity, focused: false });
   const wrapperRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const openLink = useClientLinks();
@@ -182,12 +187,19 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
    * A click on a day opens it, a click between two days opens the day under
    * the pointer (the whole bar is one target). A tap on a day whose tooltip is
    * not shown yet shows it first. Enter, assistive technology and clicks with
-   * modifier keys act on the link itself.
+   * modifier keys act on the link itself. A screen reader's double tap
+   * (VoiceOver, TalkBack) arrives as a touch on the link it focused: a press on
+   * a link that had the focus already opens it, so it never takes two
+   * activations.
    */
   function onClick(e: MouseEvent<HTMLDivElement>) {
     const link = indexOf(e.target);
     const index = link ?? indexAt(e);
-    const tap = e.detail > 0 && pointer.current.kind !== 'mouse' && e.timeStamp - pointer.current.at < TAP_MS;
+    const tap =
+      e.detail > 0 &&
+      pointer.current.kind !== 'mouse' &&
+      e.timeStamp - pointer.current.at < TAP_MS &&
+      !(link !== null && pointer.current.focused);
     if (tap && (index !== active || dismissed)) {
       e.preventDefault();
       select(index);
@@ -247,7 +259,8 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
           if (!wrapperRef.current?.contains(e.relatedTarget as Node | null)) hide();
         }}
         onPointerDown={(e) => {
-          pointer.current = { kind: e.pointerType || 'mouse', at: e.timeStamp };
+          const link = (e.target as Element | null)?.closest?.('a');
+          pointer.current = { kind: e.pointerType || 'mouse', at: e.timeStamp, focused: !!link && link === document.activeElement };
         }}
         onPointerMove={(e) => {
           if (e.pointerType !== 'mouse') return;
@@ -265,6 +278,8 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
             <a
               key={d.date}
               href={dayHref(d.date)}
+              // Day pages are noindex; crawlers need not walk up to 90 of them per bar.
+              rel="nofollow"
               tabIndex={i === tabbable ? 0 : -1}
               aria-label={describe(d)}
               className={clsx(
@@ -406,7 +421,9 @@ export function UptimeDayTable({ uptime, label, dayHref }: { uptime: DailyUptime
               return (
                 <tr key={day.date}>
                   <th scope="row">
-                    <a href={dayHref(day.date)}>{f.utcDay(day.date)}</a>
+                    <a href={dayHref(day.date)} rel="nofollow">
+                      {f.utcDay(day.date)}
+                    </a>
                   </th>
                   <td>
                     {day.status === null ? (
