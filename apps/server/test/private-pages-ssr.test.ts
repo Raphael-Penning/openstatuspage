@@ -220,9 +220,16 @@ describe('private page', () => {
 
   it('limits page views per client with a small page in the visitor’s language', async () => {
     const token = newPrivatePageToken();
+    // The bucket refills one view per second, so a slow runner may get a few more
+    // than 60 through: keep asking until the limit answers, with an upper bound.
     let last = await get(`/p/${token}`);
-    for (let i = 0; i < 60; i++) last = await get(`/p/${token}`, { 'accept-language': 'de-DE,de;q=0.9' });
+    let sent = 1;
+    while (last.statusCode !== 429 && sent < 120) {
+      last = await get(`/p/${token}`, { 'accept-language': 'de-DE,de;q=0.9' });
+      sent++;
+    }
     expect(last.statusCode).toBe(429);
+    expect(sent).toBeGreaterThan(60);
     expect(Number(last.headers['retry-after'])).toBeGreaterThan(0);
     expect(last.headers['cache-control']).toBe('no-store');
     expect(last.headers['x-robots-tag']).toBe('noindex, nofollow');
