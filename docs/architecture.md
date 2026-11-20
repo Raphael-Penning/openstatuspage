@@ -365,16 +365,22 @@ linux/arm64, the production image) against PostgreSQL 17 with the demo seed. The
 script starts the production build once per role, one instance at a time, and
 puts light load on it: a login and the main admin lists (admin, all), 400 public
 requests with 8 in parallel (server-rendered pages of every kind in both
-languages, the public API, feeds and assets) plus three subscriptions (public,
-admin, all), and a monitoring source polled every 10 s from a local fake Uptime
+languages, the public API, feeds and assets) plus three subscriptions through
+the API and two through the HTML form, one of them invalid and answered with the
+rendered page (public, admin, all), and a monitoring source polled every 10 s from a local fake Uptime
 Kuma for 40 s (worker, all). "After load" is read after 15 s without requests.
 
 | Role | After start | Peak under load | After load | Kernel peak (VmHWM) |
 | --- | --- | --- | --- | --- |
-| public | 76 MB | 94 MB | 80 MB | 94 MB |
-| admin | 83 MB | 101 MB | 90 MB | 104 MB |
-| worker | 74 MB | 93 MB | 78 MB | 93 MB |
-| all | 78 MB | 100 MB | 93 MB | 111 MB |
+| public | 76 MB | 95 MB | 83 MB | 97 MB |
+| admin | 84 MB | 105 MB | 92 MB | 107 MB |
+| worker | 75 MB | 76 MB | 76 MB | 90 MB |
+| all | 78 MB | 104 MB | 97 MB | 108 MB |
+
+These are the numbers with the pages working without JavaScript (forms, static
+map, day tables). The build before that, measured the same way on the same day,
+had public 76 / 97 / 83 MB (kernel peak 97 MB): the extra markup was paid for by
+moving the layout of the uptime bar segments into the stylesheet.
 
 Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
 after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
@@ -383,8 +389,8 @@ include it.
 
 What the target covers: `public` and `worker` stay below 100 MB at every
 point, also at their kernel peak. `admin` and `all` stay below it after start and
-at steady state, but exceed it briefly under load: up to 101 MB (admin) and
-100 MB (all) in the samples, 104–111 MB at the kernel peak, mostly while a
+at steady state, but exceed it briefly under load: up to 105 MB (admin) and
+104 MB (all) in the samples, 107–108 MB at the kernel peak, mostly while a
 password is checked (see below). Size memory limits for these peaks, not for the
 target: the Kubernetes examples request 128 MiB and limit at 256 MiB, and
 `deploy/compose/compose.split.yaml` sets the same limits.
