@@ -18,7 +18,7 @@ import { STATUS_BG } from '../../lib/status';
 import { IncidentSummary, MaintenanceSummary } from '../components/Events';
 import { TimeRange } from '../components/Time';
 import { Badge, Card, EmptyState, ErrorState, Skeleton, SkeletonList } from '../components/ui';
-import { usePageHead, useSiteName } from '../head';
+import { usePageHead, useSiteName, VARIANT_HEAD } from '../head';
 import { useServicePaths } from '../hooks/links';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useServiceDay } from '../hooks/queries';
@@ -45,9 +45,9 @@ export function ServiceDayPage() {
   usePageHead({
     title: name ? t('day.title', { name, date: f.utcDay(date) }) : t('day.timeline'),
     description: name ? t('seo.day', { name, date: f.utcDay(date), site }) : undefined,
-    // Thin pages, one per service and day: not indexed, their links are followed.
-    robots: 'noindex, follow',
-    canonical: data ? paths.day(data.service, data.date) : null,
+    // Thin pages, one per service and day: not indexed, their links are followed. No
+    // canonical URL: it would point a noindex page at itself (conflicting signals).
+    ...VARIANT_HEAD,
   });
 
   if (!valid || (isError && isNotFound(error))) return <NotFoundState message={t('day.notFound')} />;
