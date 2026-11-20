@@ -86,7 +86,10 @@ Lighthouse 13.6.0, chrome-headless-shell 158, production build, demo seed,
 | `/incidents/{id}` | 0.8 s | 0.2 s | 0.005 | 170 KiB |
 | `/subscribe` | 0.8 s | 0.2 s | 0 | 167 KiB |
 
-Total blocking time was 0 ms everywhere. The same pages on `APP_ROLE=public`
+Total blocking time was 0 ms everywhere. After the canonical redirects, the
+page variants marked `noindex, follow` and the one-render-at-a-time limit, the
+overview was measured again the same way: 100 in every category on both
+presets. Run `scripts/lighthouse.mjs` over all pages before a release. The same pages on `APP_ROLE=public`
 (PostgreSQL, the restricted `osp_public` login) also scored 100 in every
 category. Before the compression, caching and bundle changes the pages
 transferred 915 KiB and the mobile first paint took 1.5 s (still a performance
