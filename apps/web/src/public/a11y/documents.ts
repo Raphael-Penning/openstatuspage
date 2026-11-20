@@ -10,6 +10,7 @@ import type {
   PublicLocation,
   PublicMaintenance,
   PublicPageSettings,
+  PublicPrivatePage,
   PublicService,
   PublicServiceDay,
   PublicServiceGroup,
@@ -169,6 +170,29 @@ export function subscriptionDocument(sub: PublicSubscription, manageToken?: stri
 
 /** Answer of POST /api/public/subscriptions (always the same meta-only document). */
 export const subscribeAcceptedDocument = { jsonapi: { version: '1.1' }, meta: { accepted: true } };
+
+/** `private-pages` resource with its services, incidents and maintenance windows in `included`. */
+export function privatePageDocument(page: PublicPrivatePage): DataDocument {
+  const included: Included = new Map();
+  const { id, services, activeIncidents, activeMaintenances, upcomingMaintenances, ...attributes } = page;
+  add(included, ...services.map((s) => serviceResource(s)));
+  for (const i of activeIncidents) add(included, incidentResource(i, included));
+  for (const m of [...activeMaintenances, ...upcomingMaintenances]) add(included, maintenanceResource(m, included));
+  return doc(
+    {
+      type: 'private-pages',
+      id,
+      attributes,
+      relationships: {
+        services: ids('services', services),
+        activeIncidents: ids('incidents', activeIncidents),
+        activeMaintenances: ids('maintenances', activeMaintenances),
+        upcomingMaintenances: ids('maintenances', upcomingMaintenances),
+      },
+    },
+    included,
+  );
+}
 
 /** `service-days` resource with its service, incidents and maintenance windows in `included`. */
 export function serviceDayDocument(

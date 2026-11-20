@@ -12,6 +12,7 @@ import type {
   PublicLocationsResponse,
   PublicMaintenance,
   PublicPageSettings,
+  PublicPrivatePage,
   PublicService,
   PublicServiceDay,
   PublicServiceGroup,
@@ -24,6 +25,7 @@ import {
   incidentDocument,
   locationsDocument,
   maintenanceDocument,
+  privatePageDocument,
   serviceDayDocument,
   serviceDocument,
   servicesDocument,
@@ -303,9 +305,35 @@ export function apiDay(date: string): PublicServiceDay | null {
 export const API_TODAY = api.uptime![api.uptime!.length - 1]!.date;
 export const API_YESTERDAY = api.uptime![api.uptime!.length - 2]!.date;
 
+/** Token of the private page of the fake API (/p/<token>). */
+export const PRIVATE_TOKEN = 'abcdefghijklmnopqrstuvwxyz234567';
+
+/** A service hidden from the main page, shown on the private page. */
+const backend = service('backend', 'Partner backend', 'partial_outage', { groupId: null, locationIds: [] });
+
+export const privatePage: PublicPrivatePage = {
+  id: 'pp-1',
+  name: 'ACME status',
+  description: 'The services we run for ACME.',
+  overall: 'partial_outage',
+  counts: { operational: 0, degraded: 1, partial_outage: 1, major_outage: 0, maintenance: 0 },
+  generatedAt: iso(0),
+  services: [backend, { ...api, groupId: null, locationIds: [] }],
+  activeIncidents: [incident],
+  activeMaintenances: [maintenance],
+  upcomingMaintenances: [],
+};
+
 /** Response of the fake API for a request, or null for "not found". */
-export function respond(method: string, path: string): { status: number; body: unknown } {
+export function respond(method: string, path: string, headers: Headers = new Headers()): { status: number; body: unknown } {
   const ok = (body: unknown) => ({ status: 200, body });
+  if (method === 'GET' && path.startsWith('/api/public/private-page') && headers.get('x-private-page-token') === PRIVATE_TOKEN) {
+    if (path === '/api/public/private-page') return ok(privatePageDocument(privatePage));
+    if (path === '/api/public/private-page/services/backend') return ok(serviceDocument(backend, [incident], []));
+    const day = /^\/api\/public\/private-page\/services\/api\/days\/([^/]+)$/.exec(path);
+    const detail = day ? apiDay(decodeURIComponent(day[1]!)) : null;
+    if (detail) return ok(serviceDayDocument(detail, api, [resolvedIncident], []));
+  }
   if (method === 'GET') {
     if (path === '/api/public/settings') return ok(settingsDocument(settings));
     if (path === '/api/public/summary') return ok(summaryDocument(summary));

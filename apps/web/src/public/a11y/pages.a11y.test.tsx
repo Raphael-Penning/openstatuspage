@@ -8,7 +8,7 @@
 import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { axeViolations, installBrowserStubs, renderPublic, settle, type Rendered } from './harness';
-import { API_TODAY, API_YESTERDAY, SUBSCRIPTION_TOKEN } from './fixtures';
+import { API_TODAY, API_YESTERDAY, PRIVATE_TOKEN, SUBSCRIPTION_TOKEN } from './fixtures';
 
 const PAGES: [name: string, path: string][] = [
   ['overview', '/'],
@@ -32,6 +32,10 @@ const PAGES: [name: string, path: string][] = [
   ['services filtered', '/services?q=api&status=operational'],
   ['unknown incident', '/incidents/missing'],
   ['not found', '/does-not-exist'],
+  ['private page', `/p/${PRIVATE_TOKEN}`],
+  ['private service', `/p/${PRIVATE_TOKEN}/services/backend`],
+  ['private service day', `/p/${PRIVATE_TOKEN}/services/api/days/${API_YESTERDAY}`],
+  ['private page (wrong link)', '/p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
 ];
 
 const VARIANTS = [
@@ -326,5 +330,35 @@ describe('interactive states', () => {
     await click(link);
     await settle(50);
     expect(document.activeElement?.id).toBe('main');
+  });
+});
+
+describe('private pages', () => {
+  const base = `/p/${PRIVATE_TOKEN}`;
+
+  it('keep every service, bar day and service chip link on the private page', async () => {
+    page = await renderPublic({ path: base, lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main h1')?.textContent).toBe('ACME status');
+    expect(page.container.textContent).toContain('Partner backend');
+    const hrefs = [...page.container.querySelectorAll('main a[href^="/services"], main .osp-bar a')].map((a) => a.getAttribute('href'));
+    expect(hrefs.filter((h) => h?.startsWith('/services'))).toEqual([]);
+    expect(page.container.querySelector(`main a[href="${base}/services/backend"]`)).not.toBeNull();
+    expect(page.container.querySelector(`.osp-bar a[href^="${base}/services/backend/days/"]`)).not.toBeNull();
+    // No navigation to the main pages; the logo leads to the private page itself.
+    expect(page.container.querySelector('nav a[href="/history"]')).toBeNull();
+    expect(page.container.querySelector(`header a[href="${base}"]`)).not.toBeNull();
+    expect(document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? 'noindex, nofollow').toBe('noindex, nofollow');
+  });
+
+  it('a service page goes back to the private page', async () => {
+    page = await renderPublic({ path: `${base}/services/backend`, lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main h1')?.textContent).toBe('Partner backend');
+    expect(page.container.querySelector(`main a[href="${base}"]`)).not.toBeNull();
+    expect(page.container.querySelector('main a[href^="/history"]')).toBeNull();
+  });
+
+  it('a wrong link is "not found"', async () => {
+    page = await renderPublic({ path: '/p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main h1')?.textContent).toBe('Page not found');
   });
 });
