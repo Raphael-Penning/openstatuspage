@@ -148,7 +148,7 @@ describe('POST /subscribe', () => {
   });
 
   it('rejects posts from other sites', async () => {
-    for (const headers of [{ 'sec-fetch-site': 'cross-site' }, { origin: 'https://evil.example' }]) {
+    for (const headers of <Record<string, string>[]>[{ 'sec-fetch-site': 'cross-site' }, { origin: 'https://evil.example' }]) {
       const res = await post('/subscribe', [['email', 'jane@example.com']], { headers });
       expect(res.statusCode).toBe(403);
     }
