@@ -34,7 +34,29 @@ interface Values {
   recentIncidentDays: string;
   emailSubscriptionsEnabled: boolean;
   maintenanceReminderHours: string;
+  imprintUrl: string;
+  imprintLabel: string;
+  privacyUrl: string;
+  privacyLabel: string;
+  accessibilityUrl: string;
+  accessibilityLabel: string;
+  copyrightText: string;
+  brandUrl: string;
+  showPoweredBy: boolean;
+  infoLinkUrl: string;
+  infoLinkLabel: string;
+  utmEnabled: boolean;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
 }
+
+/** Legal links of the footer: settings keys and the public default label. */
+const LEGAL = [
+  { key: 'imprint', url: 'imprintUrl', label: 'imprintLabel', placeholder: 'https://www.example.com/imprint' },
+  { key: 'privacy', url: 'privacyUrl', label: 'privacyLabel', placeholder: 'https://www.example.com/privacy' },
+  { key: 'accessibility', url: 'accessibilityUrl', label: 'accessibilityLabel', placeholder: 'https://www.example.com/accessibility' },
+] as const;
 
 let rowKey = 0;
 const nextKey = () => `link-${++rowKey}`;
@@ -55,6 +77,21 @@ const toValues = (s: PublicPageSettings): Values => ({
   recentIncidentDays: String(s.recentIncidentDays),
   emailSubscriptionsEnabled: s.emailSubscriptionsEnabled,
   maintenanceReminderHours: String(s.maintenanceReminderHours),
+  imprintUrl: s.imprintUrl ?? '',
+  imprintLabel: s.imprintLabel,
+  privacyUrl: s.privacyUrl ?? '',
+  privacyLabel: s.privacyLabel,
+  accessibilityUrl: s.accessibilityUrl ?? '',
+  accessibilityLabel: s.accessibilityLabel,
+  copyrightText: s.copyrightText,
+  brandUrl: s.brandUrl ?? '',
+  showPoweredBy: s.showPoweredBy,
+  infoLinkUrl: s.infoLinkUrl ?? '',
+  infoLinkLabel: s.infoLinkLabel,
+  utmEnabled: s.utmEnabled,
+  utmSource: s.utmSource,
+  utmMedium: s.utmMedium,
+  utmCampaign: s.utmCampaign,
 });
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -106,6 +143,21 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
       recentIncidentDays: int(v.recentIncidentDays),
       emailSubscriptionsEnabled: v.emailSubscriptionsEnabled,
       maintenanceReminderHours: int(v.maintenanceReminderHours),
+      imprintUrl: empty(v.imprintUrl),
+      imprintLabel: v.imprintLabel.trim(),
+      privacyUrl: empty(v.privacyUrl),
+      privacyLabel: v.privacyLabel.trim(),
+      accessibilityUrl: empty(v.accessibilityUrl),
+      accessibilityLabel: v.accessibilityLabel.trim(),
+      copyrightText: v.copyrightText.trim(),
+      brandUrl: empty(v.brandUrl),
+      showPoweredBy: v.showPoweredBy,
+      infoLinkUrl: empty(v.infoLinkUrl),
+      infoLinkLabel: v.infoLinkLabel.trim(),
+      utmEnabled: v.utmEnabled,
+      utmSource: v.utmSource.trim(),
+      utmMedium: v.utmMedium.trim(),
+      utmCampaign: v.utmCampaign.trim(),
     });
     if (body) save.mutate(body);
   };
@@ -339,6 +391,106 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
             </div>
           ))}
           {form.errors.footerLinks && <p className="text-xs text-status-major-outage-text">{form.error('footerLinks')}</p>}
+        </div>
+      </Card>
+
+      <Card title={t('settings.sections.legal')}>
+        <div className="flex flex-col gap-3 p-4 sm:p-6">
+          <p className="text-sm text-muted">{t('settings.legalHelp')}</p>
+          {LEGAL.map((l) => (
+            <div key={l.key} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] sm:items-start">
+              <TextField
+                label={t(`settings.fields.${l.url}`)}
+                type="url"
+                value={v[l.url]}
+                onValue={(x) => form.set(l.url, x)}
+                error={form.error(l.url)}
+                placeholder={l.placeholder}
+              />
+              <TextField
+                label={t(`settings.fields.${l.label}`)}
+                value={v[l.label]}
+                onValue={(x) => form.set(l.label, x)}
+                error={form.error(l.label)}
+                help={t('settings.legalLabelHelp', { label: t(`settings.defaultLabels.${l.key}`) })}
+                maxLength={60}
+              />
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card title={t('settings.sections.brand')}>
+        <div className="grid gap-5 p-4 sm:p-6 md:grid-cols-2">
+          <TextField
+            label={t('settings.fields.copyrightText')}
+            value={v.copyrightText}
+            onValue={(x) => form.set('copyrightText', x)}
+            error={form.error('copyrightText')}
+            placeholder="© {year} Example Ltd."
+            help={t('settings.copyrightHelp')}
+            maxLength={200}
+          />
+          <TextField
+            label={t('settings.fields.brandUrl')}
+            type="url"
+            value={v.brandUrl}
+            onValue={(x) => form.set('brandUrl', x)}
+            error={form.error('brandUrl')}
+            placeholder="https://www.example.com"
+            help={t('settings.brandUrlHelp')}
+          />
+          <CheckboxField
+            label={t('settings.fields.showPoweredBy')}
+            help={t('settings.showPoweredByHelp')}
+            checked={v.showPoweredBy}
+            onChecked={(x) => form.set('showPoweredBy', x)}
+          />
+        </div>
+      </Card>
+
+      <Card title={t('settings.sections.infoLink')}>
+        <div className="grid gap-5 p-4 sm:p-6 md:grid-cols-2">
+          <p className="text-sm text-muted md:col-span-2">{t('settings.infoLinkHelp')}</p>
+          <TextField
+            label={t('settings.fields.infoLinkLabel')}
+            value={v.infoLinkLabel}
+            onValue={(x) => form.set('infoLinkLabel', x)}
+            error={form.error('infoLinkLabel')}
+            help={t('settings.infoLinkLabelHelp', { label: t('settings.defaultLabels.info') })}
+            maxLength={60}
+          />
+          <TextField
+            label={t('settings.fields.infoLinkUrl')}
+            value={v.infoLinkUrl}
+            onValue={(x) => form.set('infoLinkUrl', x)}
+            error={form.error('infoLinkUrl')}
+            placeholder="/about"
+            spellCheck={false}
+          />
+        </div>
+      </Card>
+
+      <Card title={t('settings.sections.utm')}>
+        <div className="grid gap-5 p-4 sm:p-6 md:grid-cols-3">
+          <CheckboxField
+            className="md:col-span-3"
+            label={t('settings.fields.utmEnabled')}
+            help={t('settings.utmHelp')}
+            checked={v.utmEnabled}
+            onChecked={(x) => form.set('utmEnabled', x)}
+          />
+          {(['utmSource', 'utmMedium', 'utmCampaign'] as const).map((k) => (
+            <TextField
+              key={k}
+              label={t(`settings.fields.${k}`)}
+              value={v[k]}
+              onValue={(x) => form.set(k, x)}
+              error={form.error(k)}
+              maxLength={100}
+              spellCheck={false}
+            />
+          ))}
         </div>
       </Card>
 
