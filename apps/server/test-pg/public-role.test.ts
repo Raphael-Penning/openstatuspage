@@ -846,6 +846,45 @@ describe('a public instance', () => {
     expect((await render({ url: '/', source, baseUrl: BASE_URL })).html).toContain('Public API');
   });
 
+  it('serves robots.txt, the sitemaps and llms.txt from the views', async () => {
+    const secrets = ['Secret message', ids.hiddenService, ids.hiddenIncident, ids.hiddenMaintenance, ids.hiddenLocation, 'Hidden backend', 'do-not-leak'];
+    const robots = await publicApp.inject('/robots.txt');
+    expect(robots.statusCode).toBe(200);
+    expect(robots.body).toContain(`Sitemap: ${BASE_URL}/sitemap.xml`);
+
+    const index = await publicApp.inject('/sitemap.xml');
+    expect(index.statusCode).toBe(200);
+    const subs = [...index.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!);
+    expect(subs).toEqual([`${BASE_URL}/sitemap-pages.xml`, `${BASE_URL}/sitemap-incidents-1.xml`, `${BASE_URL}/sitemap-services-1.xml`]);
+    const urls: string[] = [];
+    for (const sub of subs) {
+      const res = await publicApp.inject(sub.slice(BASE_URL.length));
+      expect(res.statusCode, sub).toBe(200);
+      urls.push(...[...res.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!));
+      expect(res.body, sub).toMatch(sub.endsWith('pages.xml') ? /<urlset/ : /<lastmod>\d{4}-\d{2}-\d{2}T/);
+    }
+    expect(urls).toEqual(
+      expect.arrayContaining([
+        `${BASE_URL}/incidents/${ids.incident}`,
+        `${BASE_URL}/maintenance/${ids.maintenance}`,
+        `${BASE_URL}/services/${ids.service}`,
+        `${BASE_URL}/services/${ids.serviceInHiddenGroup}`,
+      ]),
+    );
+
+    for (const url of ['/llms.txt', '/llms-full.txt']) {
+      const res = await publicApp.inject(url);
+      expect(res.statusCode, url).toBe(200);
+      expect(res.body.startsWith('# Example Status'), url).toBe(true);
+    }
+    expect((await publicApp.inject('/llms-full.txt')).body).toContain('Public API');
+
+    for (const url of ['/sitemap-incidents-1.xml', '/sitemap-services-1.xml', '/llms.txt', '/llms-full.txt']) {
+      const body = (await publicApp.inject(url)).body;
+      for (const secret of secrets) expect(body, `${url} ${secret}`).not.toContain(secret);
+    }
+  });
+
   it('runs the whole subscription flow through the database functions', async () => {
     const subscribe = await publicApp.inject({
       method: 'POST',
