@@ -155,7 +155,7 @@ describe('interactive states', () => {
 
   it('subscribe form with errors', async () => {
     page = await renderPublic({ path: '/subscribe', lang: 'de', theme: 'dark' });
-    const form = page.container.querySelector('main form')!;
+    const form = page.container.querySelector<HTMLFormElement>('main form')!;
     const email = form.querySelector<HTMLInputElement>('input[type="email"]')!;
     // WCAG 1.3.5: the purpose of the field is machine readable.
     expect(email.getAttribute('autocomplete')).toBe('email');
@@ -173,7 +173,7 @@ describe('interactive states', () => {
 
   it('subscribe success is announced by moving the focus to the result', async () => {
     page = await renderPublic({ path: '/subscribe', lang: 'en', theme: 'light' });
-    const form = page.container.querySelector('main form')!;
+    const form = page.container.querySelector<HTMLFormElement>('main form')!;
     const email = form.querySelector<HTMLInputElement>('input[type="email"]')!;
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
