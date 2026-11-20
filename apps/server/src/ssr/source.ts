@@ -41,6 +41,7 @@ export interface SourceExtras {
 const PRIVATE_PAGE_PATH = '/api/public/private-page';
 const PRIVATE_SERVICE_PATH = /^\/api\/public\/private-page\/services\/([^/]+)$/;
 const PRIVATE_DAY_PATH = /^\/api\/public\/private-page\/services\/([^/]+)\/days\/([^/]+)$/;
+const PRIVATE_EVENT_PATH = /^\/api\/public\/private-page\/(incidents|maintenances)\/([^/]+)$/;
 
 /** A private page document for `path`, or undefined when the path is none of them. */
 async function privatePageDocument(
@@ -61,6 +62,12 @@ async function privatePageDocument(
     const date = segment(day[2]!, 32);
     if (id === null || date === null) throw sourceError(404, 'Not found');
     return docs.day(req, token, id, date);
+  }
+  const event = PRIVATE_EVENT_PATH.exec(path);
+  if (event) {
+    const id = segment(event[2]!, 64);
+    if (id === null) throw sourceError(404, 'Not found');
+    return event[1] === 'incidents' ? docs.incident(req, token, id) : docs.maintenance(req, token, id);
   }
   const service = PRIVATE_SERVICE_PATH.exec(path);
   const id = service ? segment(service[1]!, 100) : null;

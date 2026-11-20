@@ -263,6 +263,32 @@ export class PrivatePages {
   }
 
   /**
+   * Oldest point the page links an incident or maintenance window from: the
+   * service pages (90 days) and the day pages (the uptime range).
+   */
+  private async linkedSince(now: Date): Promise<string> {
+    const settings = await getSettings(this.db);
+    const days = Math.max(SERVICE_INCIDENT_DAYS, settings.uptimeDays);
+    return rangeStart(days, now).toISOString();
+  }
+
+  /**
+   * One public incident of the page's services (the ones the page links to:
+   * unresolved, or of the last 90 days or the uptime range), with only the
+   * page's own services; null otherwise.
+   */
+  async incident(token: string, id: string, now = new Date()): Promise<PublicIncident | null> {
+    const row = (await this.store.incidents(token, await this.linkedSince(now))).find((i) => i.id === id);
+    return row ? toIncident(row) : null;
+  }
+
+  /** One public maintenance window of the page's services, like {@link incident}. */
+  async maintenance(token: string, id: string, now = new Date()): Promise<PublicMaintenance | null> {
+    const row = (await this.store.maintenances(token, await this.linkedSince(now))).find((m) => m.id === id);
+    return row ? toMaintenance(row) : null;
+  }
+
+  /**
    * One UTC day of a service of the page. null for a wrong token, an unknown
    * service, a day outside the uptime range and while uptime is not shown;
    * `date` must be a valid day (the caller answers 400 otherwise).

@@ -25,6 +25,7 @@ import type { PrivatePages } from './private-pages.js';
 const DAY_MS = 86_400_000;
 const SERVICE_INCLUDES = ['incidents', 'incidents.updates', 'maintenances', 'maintenances.updates'];
 const DAY_INCLUDES = ['service', 'incidents', 'incidents.updates', 'maintenances', 'maintenances.updates'];
+const UPDATE_INCLUDES = ['updates'];
 
 /** The one answer for everything a visitor without a valid link may ask. */
 export const privatePageNotFound = () => new HttpError(404, 'not_found', 'Not found');
@@ -60,6 +61,32 @@ export class PrivatePageDocuments {
       maintenances: toMany(PUBLIC_TYPES.maintenance, detail.maintenances.map((m) => m.id)),
     });
     return document(data, { included, links: { self: data.links!.self as string } });
+  }
+
+  /** GET /api/public/private-page/incidents/:id: an incident the page shows, with only the page's services. */
+  async incident(req: DocumentRequest, token: string, id: string): Promise<DataDocument> {
+    const include = parseInclude(req.query as Record<string, unknown>, UPDATE_INCLUDES, UPDATE_INCLUDES);
+    const incident = await this.pages.incident(token, id);
+    if (!incident) throw privatePageNotFound();
+    const included = new Included();
+    const data = {
+      ...incidentResource(incident, include.has('updates') ? included : undefined),
+      links: { self: `${PRIVATE_PAGE_API}/incidents/${encodeURIComponent(id)}` },
+    };
+    return document(data, { included, links: { self: data.links.self } });
+  }
+
+  /** GET /api/public/private-page/maintenances/:id: a maintenance window the page shows, like {@link incident}. */
+  async maintenance(req: DocumentRequest, token: string, id: string): Promise<DataDocument> {
+    const include = parseInclude(req.query as Record<string, unknown>, UPDATE_INCLUDES, UPDATE_INCLUDES);
+    const maintenance = await this.pages.maintenance(token, id);
+    if (!maintenance) throw privatePageNotFound();
+    const included = new Included();
+    const data = {
+      ...maintenanceResource(maintenance, include.has('updates') ? included : undefined),
+      links: { self: `${PRIVATE_PAGE_API}/maintenances/${encodeURIComponent(id)}` },
+    };
+    return document(data, { included, links: { self: data.links.self } });
   }
 
   /** GET /api/public/private-page/services/:idOrSlug/days/:date (400 for a malformed date, like the public day). */

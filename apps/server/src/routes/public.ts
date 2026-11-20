@@ -85,6 +85,12 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       const params = parse(ServiceDayParams, req.params);
       return privateDocs.day(req, privatePageToken(req), params.idOrSlug, params.date);
     });
+    scope.get('/api/public/private-page/incidents/:id', withIncludeLimited, (req) =>
+      privateDocs.incident(req, privatePageToken(req), parse(IdParams, req.params).id),
+    );
+    scope.get('/api/public/private-page/maintenances/:id', withIncludeLimited, (req) =>
+      privateDocs.maintenance(req, privatePageToken(req), parse(IdParams, req.params).id),
+    );
   });
 
   // Feeds (not JSON:API).
