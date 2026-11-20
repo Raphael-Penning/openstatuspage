@@ -6,6 +6,7 @@
  * endpoint list.
  */
 import { z } from 'zod';
+import { SUBSCRIPTION_LOCALES, type SubscriptionLocale } from './subscriptions.js';
 import {
   AGGREGATION_MODES,
   CHECK_STATES,
@@ -1132,8 +1133,6 @@ export interface AuditLogEntry {
 // Email subscriptions
 // ---------------------------------------------------------------------------
 
-export const SUBSCRIPTION_LOCALES = ['en', 'de'] as const;
-export type SubscriptionLocale = (typeof SUBSCRIPTION_LOCALES)[number];
 export const zSubscriptionLocale = z.enum(SUBSCRIPTION_LOCALES);
 
 const subscriptionScope = {
@@ -1171,8 +1170,6 @@ export type SubscriptionPreferencesInput = z.infer<typeof SubscriptionPreference
 export const SubscriptionConfirmInput = z.object({ token: z.string().min(16).max(256) });
 export type SubscriptionConfirmInput = z.infer<typeof SubscriptionConfirmInput>;
 
-/** Header carrying the manage token for GET/PUT/DELETE /api/public/subscriptions/:id. */
-export const SUBSCRIPTION_TOKEN_HEADER = 'x-subscription-token';
 
 /** GET /api/public/subscriptions/:id (only with a valid manage token). */
 export interface PublicSubscription {
