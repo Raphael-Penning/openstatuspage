@@ -14,6 +14,8 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 export const LANG_COOKIE = 'osp-lang';
 /** Cookie with the visitor's theme choice (set by the theme switcher). */
 export const THEME_COOKIE = 'osp-theme';
+/** UI languages of the public pages (apps/web/src/lib/languages.ts has their names). */
+export const PAGE_LANGUAGES = ['en', 'de'] as const;
 /** Query parameter that selects the language of a page (`?lang=de`). */
 export const LANG_QUERY = 'lang';
 /** Id of the non-executable JSON block with the dehydrated state (`<script type="application/json">`). */
@@ -54,6 +56,45 @@ export interface PublicDocumentSource {
   get(path: string, query?: Record<string, string>): Promise<DataDocument>;
 }
 
+/** Paths of the HTML form handlers (outside /api, form-urlencoded, Post/Redirect/Get). */
+export const FORM_PATHS = {
+  /** POST: theme=system|light|dark, return=<path>; sets the theme cookie. */
+  theme: '/preferences/theme',
+  /** GET: lang=<code>, return=<path>; sets the language cookie (a link, see LanguageSwitcher). */
+  language: '/preferences/language',
+  /** POST: email, locale, scope=all|selected, service=<id>…, group=<id>…, website (honeypot). */
+  subscribe: '/subscribe',
+  /** POST: id, token (the confirm token). */
+  confirm: '/subscription/confirm',
+  /** POST: id, token (the manage token), locale, scope, service…, group…. */
+  manage: '/subscription/manage',
+  /** POST: id, token (the manage token). */
+  unsubscribe: '/subscription/unsubscribe',
+} as const;
+
+/** Query parameter of the preference handlers with the path to return to. */
+export const RETURN_QUERY = 'return';
+
+/** Validation issue of a form submission (the shape of a zod issue the pages map to messages). */
+export interface FormIssue {
+  path: (string | number)[];
+  code: string;
+}
+
+/**
+ * A form submission the server answers with the page itself instead of a redirect
+ * (validation failed, rate limited): the page renders the submitted values, the
+ * error summary and the field errors.
+ */
+export interface SsrFormState {
+  /** Submitted fields (name → value, or all values of a repeated name). */
+  values: Record<string, string | string[]>;
+  /** Field problems (path[0] is the field: email, serviceIds, …). */
+  issues?: FormIssue[];
+  /** Problem with the whole submission. */
+  error?: 'invalid' | 'rate_limited' | 'generic';
+}
+
 export interface SsrRenderInput {
   /** Requested path with query string ("/history?type=incident"). */
   url: string;
@@ -66,6 +107,8 @@ export interface SsrRenderInput {
   baseUrl: string;
   /** Render time (ms since epoch). Relative times render against it on server and hydration. */
   now?: number;
+  /** Answer to a form submission: the page renders this form state (never cached). */
+  form?: SsrFormState;
 }
 
 export interface SsrRenderResult {
