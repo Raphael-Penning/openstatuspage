@@ -221,8 +221,8 @@ What to know:
   with the people it is meant for, as you would share a password.
 - Incidents and maintenance windows appear on a private page only when they are
   public, with their public text. Of the services they affect, the page shows only
-  its own. The titles link to the incident or maintenance page of the public
-  status page.
+  its own. The titles open the incident or maintenance on the private page
+  itself, so visitors never leave it.
 - Private pages are never indexed (`noindex, nofollow`, also on "not found"),
   never cached, never appear in the sitemaps, `llms.txt` or `robots.txt`, never load the statistics script and send
   no referrer to other sites. The server log writes `/p/[REDACTED]` instead of the
