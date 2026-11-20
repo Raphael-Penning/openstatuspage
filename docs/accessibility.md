@@ -149,8 +149,11 @@ plain text view.
 - **Logos** are shown with an empty `alt` because the site name is always shown
   next to them. A logo that contains important text other than the site name is
   not described.
-- **Links you configure** (support URL, footer links) open in a new tab; their
-  label is yours.
+- **Links you configure** (support URL, footer links, legal links, brand link,
+  an external info link, service websites) open in a new tab, marked with an
+  icon and a text for screen readers ("opens in a new tab"); their label is
+  yours. The legal links have their own navigation landmark ("Legal"). An info
+  link to a path on this site opens in the same tab.
 - **Color contrast** of the page is verified for the design tokens, not for
   every rendered pixel (jsdom has no layout); the in-browser check of the manual
   checklist covers the rest.
