@@ -72,7 +72,8 @@ breaking changes.
 - **Private status pages** at `/p/<link>`: a status page with a secret link for
   chosen services, also ones hidden from the public page, with the look of the
   public page (overall status, uptime bars with day pages, service pages, active
-  incidents, running and upcoming maintenance), server-rendered and complete
+  incidents, running and upcoming maintenance, each with its own page below the
+  link), server-rendered and complete
   without JavaScript. Managed by admins under *Administration → Private pages*
   and `/api/admin/private-pages` (name, description, services, expiry, enabled;
   audit log entries). The link carries 160 random bits, is shown once after

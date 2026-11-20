@@ -394,7 +394,8 @@ A private page (`/p/<token>`) shows the services an admin chose, also ones hidde
 from the main page, with the look of the main page: overall status, uptime bars
 with day pages (`/p/<token>/services/<slug>/days/<date>`), service pages
 (`/p/<token>/services/<slug>`), active incidents and running and upcoming
-maintenance of those services (public ones only).
+maintenance of those services (public ones only) with their own pages
+(`/p/<token>/incidents/<id>`, `/p/<token>/maintenance/<id>`).
 
 ```
 /p/<token>/…  ─▶ app.ts: rate limit (60/min per client) ─▶ ssr/pages.ts (personal path: no cache, never stale)
@@ -412,10 +413,11 @@ browser: the same queries over HTTP, token in the X-Private-Page-Token header
   [security-model.md](security-model.md#what-the-public-role-cannot-do)), elsewhere
   from the tables.
 - **Links.** Inside `PrivatePageProvider` every service, bar day, day table,
-  affected service and back link starts with `/p/<token>`
-  (`hooks/links.tsx`); the logo leads to the private page, the navigation of the
-  main page is replaced by a notice. Incident and maintenance titles link to their
-  public pages (they are public).
+  incident, maintenance window, affected service and back link starts with
+  `/p/<token>` (`hooks/links.tsx`); the logo leads to the private page, the
+  navigation of the main page is replaced by a notice. The incident and
+  maintenance pages read the private page API, so they list only the page's
+  services, even when the incident also affects hidden or other services.
 - **Never stored or indexed.** `isPersonalPath` covers `/p/`: the render cache
   is skipped, an overload is a `503` (never a stale copy), `Cache-Control: private,
   no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, meta
