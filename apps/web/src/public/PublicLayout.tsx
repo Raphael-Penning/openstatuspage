@@ -304,39 +304,46 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
     <footer className="border-t border-border">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-4 py-8 text-sm text-muted sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <nav aria-label={t('footer.label')}>
-            <ul className="flex flex-wrap gap-x-5 gap-y-2">
-              <li>
-                <a href="/api/public/status" className={linkClass}>
-                  {t('footer.statusApi')}
-                </a>
-              </li>
-              <li>
-                <a href="/feed.rss" className={linkClass}>
-                  {t('feeds.rss')}
-                </a>
-              </li>
-              <li>
-                <a href="/feed.atom" className={linkClass}>
-                  {t('feeds.atom')}
-                </a>
-              </li>
-              {settings?.supportUrl && (
-                <li>
-                  <OutboundLink href={settings.supportUrl} className={linkClass}>
-                    {t('footer.support')}
-                  </OutboundLink>
-                </li>
-              )}
-              {settings?.footerLinks.map((l) => (
-                <li key={`${l.label}-${l.url}`}>
-                  <OutboundLink href={l.url} className={linkClass}>
-                    {l.label}
-                  </OutboundLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          {/* A private page has no status API or feeds of its own: those of the main page stay out. */}
+          {(!isPrivate || settings?.supportUrl || (settings?.footerLinks.length ?? 0) > 0) && (
+            <nav aria-label={t('footer.label')}>
+              <ul className="flex flex-wrap gap-x-5 gap-y-2">
+                {!isPrivate && (
+                  <>
+                    <li>
+                      <a href="/api/public/status" className={linkClass}>
+                        {t('footer.statusApi')}
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/feed.rss" className={linkClass}>
+                        {t('feeds.rss')}
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/feed.atom" className={linkClass}>
+                        {t('feeds.atom')}
+                      </a>
+                    </li>
+                  </>
+                )}
+                {settings?.supportUrl && (
+                  <li>
+                    <OutboundLink href={settings.supportUrl} className={linkClass}>
+                      {t('footer.support')}
+                    </OutboundLink>
+                  </li>
+                )}
+                {settings?.footerLinks.map((l) => (
+                  <li key={`${l.label}-${l.url}`}>
+                    <OutboundLink href={l.url} className={linkClass}>
+                      {l.label}
+                    </OutboundLink>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
           {/* Legal pages (external links) and, when analytics runs, the visitor's statistics choice. */}
           {(legal.length > 0 || analytics) && (
             <nav aria-label={t('footer.legal')}>
