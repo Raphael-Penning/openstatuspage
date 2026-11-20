@@ -49,6 +49,9 @@ export function publicDocumentSource(docs: PublicDocuments, extras: SourceExtras
     ['/api/public/maintenances/', 64, (req, id) => docs.maintenance(req, id)],
   ];
 
+  /** `/api/public/services/<idOrSlug>/days/<date>`, matched before the service itself. */
+  const DAY_PATH = /^\/api\/public\/services\/([^/]+)\/days\/([^/]+)$/;
+
   return {
     async get(path, query = {}) {
       const qs = new URLSearchParams(query).toString();
@@ -61,6 +64,13 @@ export function publicDocumentSource(docs: PublicDocuments, extras: SourceExtras
           const token = query.token ?? '';
           if (id === null || id.includes('/') || !token || token.length > 256) throw sourceError(404, 'Not found');
           return await extras.subscription(id, token);
+        }
+        const day = DAY_PATH.exec(path);
+        if (day) {
+          const id = segment(day[1]!, 100);
+          const date = segment(day[2]!, 32);
+          if (id === null || date === null) throw sourceError(404, 'Not found');
+          return await docs.serviceDay(req, id, date);
         }
         for (const [prefix, max, buildOne] of byId) {
           if (!path.startsWith(prefix)) continue;
