@@ -9,7 +9,7 @@
  * server runs it before rendering the page (see loaders.ts).
  */
 import type { RouteObject } from 'react-router';
-import { isPrivatePageToken, isUptimeDay } from '@openstatuspage/shared';
+import { isPrivatePageToken, isUptimeDay, normalizePrivatePageToken } from '@openstatuspage/shared';
 import { privateQueries, publicQueries } from './hooks/queries';
 import { subscriptionQuery } from './hooks/subscriptions';
 import type { PublicRouteHandle } from './loaders';
@@ -120,8 +120,8 @@ export const publicRoutes: RouteObject[] = [
     ],
   },
   {
-    // Private pages: the token is part of the path (never cached, never indexed, no analytics).
-    // A malformed token is "not found" without asking the API.
+    // Private pages: the token is part of the path (never cached, never indexed, no analytics),
+    // in any case (base32: /p/<TOKEN> is the same page). A malformed token is "not found" without asking the API.
     path: '/p/:token',
     element: <PrivatePageRoot />,
     children: [
@@ -130,7 +130,7 @@ export const publicRoutes: RouteObject[] = [
         element: <PrivateOverviewPage />,
         handle: handle({
           prefetch: async ({ params, load, get }) => {
-            const token = params.token ?? '';
+            const token = normalizePrivatePageToken(params.token ?? '');
             if (isPrivatePageToken(token)) await load(privateQueries.page(token, get));
           },
         }),
@@ -140,7 +140,7 @@ export const publicRoutes: RouteObject[] = [
         element: <ServiceDetailPage />,
         handle: handle({
           prefetch: async ({ params, load, get }) => {
-            const token = params.token ?? '';
+            const token = normalizePrivatePageToken(params.token ?? '');
             if (isPrivatePageToken(token)) await load(privateQueries.service(token, params.slug ?? '', get));
           },
         }),
@@ -150,7 +150,7 @@ export const publicRoutes: RouteObject[] = [
         element: <ServiceDayPage />,
         handle: handle({
           prefetch: async ({ params, load, get }) => {
-            const token = params.token ?? '';
+            const token = normalizePrivatePageToken(params.token ?? '');
             const date = params.date ?? '';
             if (isPrivatePageToken(token) && isUptimeDay(date)) await load(privateQueries.serviceDay(token, params.slug ?? '', date, get));
           },
@@ -161,7 +161,7 @@ export const publicRoutes: RouteObject[] = [
         element: <IncidentPage />,
         handle: handle({
           prefetch: async ({ params, load, get }) => {
-            const token = params.token ?? '';
+            const token = normalizePrivatePageToken(params.token ?? '');
             if (isPrivatePageToken(token)) await load(privateQueries.incident(token, params.id ?? '', get));
           },
         }),
@@ -171,7 +171,7 @@ export const publicRoutes: RouteObject[] = [
         element: <MaintenancePage />,
         handle: handle({
           prefetch: async ({ params, load, get }) => {
-            const token = params.token ?? '';
+            const token = normalizePrivatePageToken(params.token ?? '');
             if (isPrivatePageToken(token)) await load(privateQueries.maintenance(token, params.id ?? '', get));
           },
         }),

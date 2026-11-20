@@ -9,7 +9,7 @@
  * JavaScript, never indexed (head.tsx) and without analytics (entry-server.tsx).
  * A wrong, disabled or expired link is "not found", like a malformed one.
  */
-import { isPrivatePageToken } from '@openstatuspage/shared';
+import { isPrivatePageToken, normalizePrivatePageToken } from '@openstatuspage/shared';
 import { CircleCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
@@ -18,16 +18,16 @@ import { ServiceCatalog } from '../components/ServiceList';
 import { StatusHero } from '../components/StatusHero';
 import { EmptyState, ErrorState, PageTitle, SectionHeader, Skeleton, SkeletonList } from '../components/ui';
 import { usePageHead } from '../head';
-import { PrivatePageProvider } from '../hooks/private-page';
+import { PrivatePageProvider, usePrivatePageToken } from '../hooks/private-page';
 import { isNotFound, usePrivatePage } from '../hooks/queries';
 import { PublicLayout } from '../PublicLayout';
 import { NotFoundState } from './NotFoundState';
 
-/** Route element of /p/:token: the public layout with the token and link base of the page. */
+/** Route element of /p/:token: the public layout with the token (lower case) and link base of the page. */
 export function PrivatePageRoot() {
   const { token = '' } = useParams();
   return (
-    <PrivatePageProvider token={token}>
+    <PrivatePageProvider token={normalizePrivatePageToken(token)}>
       <PublicLayout />
     </PrivatePageProvider>
   );
@@ -35,7 +35,7 @@ export function PrivatePageRoot() {
 
 
 export function PrivateOverviewPage() {
-  const { token = '' } = useParams();
+  const token = usePrivatePageToken() ?? '';
   const valid = isPrivatePageToken(token);
   const { t } = useTranslation('public');
   const { data, isPending, isError, error, refetch } = usePrivatePage(token, valid);
