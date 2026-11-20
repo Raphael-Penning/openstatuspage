@@ -135,21 +135,25 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // the render bundle and the role serves the public web client.
     let ssr: SsrPages | null = null;
     if (roleFeatures(config.APP_ROLE).publicWeb) {
-      const [{ SsrPages }, { PublicDocuments }] = await Promise.all([
+      const [{ SsrPages }, { PublicDocuments }, forms] = await Promise.all([
         import('./ssr/pages.js'),
         import('./services/public-documents.js'),
+        import('./forms/index.js'),
       ]);
       if (ssrModule || SsrPages.available(webDir)) {
         ssr = new SsrPages({
           webDir,
           baseUrl: config.PUBLIC_BASE_URL,
           docs: new PublicDocuments(ctx.db, ctx.mailer),
+          subscription: (id, token) => forms.subscriptionDocument(app, id, token),
           log: app.log,
           loadModule: ssrModule,
         });
       } else {
         app.log.warn(`The web build in ${webDir} has no server-side rendering bundle; public pages render in the browser only`);
       }
+      // HTML forms of the public pages (preferences, email subscription): they work without JavaScript.
+      await forms.registerFormRoutes(app, ssr);
     }
 
     // Client routes (GET/HEAD, not /api, no file extension): public pages are rendered
