@@ -237,6 +237,27 @@ Content-Security-Policy, `Cross-Origin-Opener-Policy` and `Permissions-Policy`
 (see [performance](../../performance.md)). Add `Strict-Transport-Security` in
 the proxy once the site is served only over HTTPS.
 
+Keep these headers exactly as the app sends them:
+
+- **`Vary` and `Content-Encoding`.** The app sends `Vary: Accept-Encoding` with
+  every compressed file, and `Vary: Accept-Language, Cookie, Accept-Encoding` with
+  every page, because the same address has a different answer for each language,
+  cookie and encoding. Do not strip these headers, and do not let a cache ignore
+  `Vary`. A cache that serves a Brotli copy to a client that only accepts gzip
+  breaks the page.
+- **`Accept-Encoding` and `Accept-Language`.** Pass the request headers to the app
+  unchanged. Do not remove them or set them to an empty value for the upstream;
+  the app picks the precompressed copy and the language from them.
+- **Do not compress twice.** Responses that already carry `Content-Encoding` must
+  pass through untouched. A compression module in the proxy is fine for other
+  responses, such as the JSON API, but it must skip what the app has compressed.
+- **Cache headers.** Keep the app's `Cache-Control`. Files in `/assets/` are cached
+  for a year (`immutable`), other static files for a day, pages for 10 seconds
+  with `stale-while-revalidate`. Keep the `ETag`, so that unchanged pages answer
+  `304 Not Modified`. Do not add caching of your own to `/admin` or `/api/`. The
+  personal subscription links (`/subscription/`, `/preferences/`) are answered
+  with `private, no-store`; the proxy must not store them either.
+
 ## Checklist
 
 - [ ] HTTPS works and HTTP redirects to HTTPS.
