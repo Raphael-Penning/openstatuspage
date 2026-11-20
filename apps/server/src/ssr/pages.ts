@@ -9,9 +9,11 @@
  * <html lang/dir/data-theme>, the head data of the page, the markup and the
  * state block are filled in.
  *
- * Memory (public instances stay below 100 MB, docs/architecture.md#memory): at
- * most two pages render at a time, the others wait; beyond 32 waiting pages a
- * request gets the plain page at once (graceful degradation under a flood). A rendered page is kept for a
+ * Memory (public instances stay below 100 MB, docs/architecture.md#memory): one
+ * page renders at a time, a few wait; beyond 4 waiting pages a request gets the
+ * plain page at once (graceful degradation under a flood: under 64 concurrent
+ * connections that kept the public instance below 100 MB, with 2 renders and 32
+ * waiting it reached 110 MB). A rendered page is kept for a
  * few seconds per URL (only the query parameters the pages read) and language/theme input as UTF-8 bytes (a bounded map:
  * entries and bytes; concurrent requests for the same key share one render) and
  * is sent with an ETag and a short shared Cache-Control. Any error is logged and
@@ -67,9 +69,9 @@ export interface SsrPagesOptions {
   cacheEntries?: number;
   /** Bytes of rendered pages kept at most (default 1 MiB). */
   cacheBytes?: number;
-  /** Pages rendered at the same time (default 2). */
+  /** Pages rendered at the same time (default 1). */
   concurrency?: number;
-  /** Pages waiting for a render at most; more get the plain page at once (default 32). */
+  /** Pages waiting for a render at most; more get the plain page at once (default 4). */
   maxWaiting?: number;
 }
 
@@ -244,7 +246,7 @@ export class SsrPages {
     this.ttlMs = (options.cacheSeconds ?? 5) * 1000;
     this.maxEntries = options.cacheEntries ?? 16;
     this.maxBytes = options.cacheBytes ?? 1024 * 1024;
-    this.limiter = new Limiter(options.concurrency ?? 2, options.maxWaiting ?? 32);
+    this.limiter = new Limiter(options.concurrency ?? 1, options.maxWaiting ?? 4);
   }
 
   /** Whether the web build has a render bundle at all. */

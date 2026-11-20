@@ -220,8 +220,11 @@ database answers, otherwise an error status. It needs no authentication.
 ## Memory
 
 An instance needs about 80–100 MB of memory in normal use; a password check or
-the first poll of a process briefly adds 10–20 MB. A memory limit of 128 MB per
-container leaves enough room. The Docker image sets the Node.js and allocator
+the first poll of a process briefly adds 10–20 MB. Many connections at the same
+time cost memory as well: a public instance stays below 100 MB with up to about
+64 concurrent connections, so limit them at the reverse proxy (for example 32
+per instance) and run another public instance when you need more. A memory
+limit of 128 MB per container leaves enough room. The Docker image sets the Node.js and allocator
 options for this (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`) and
 starts Node.js with `--max-opt=2`. Without the image, set them yourself:
 

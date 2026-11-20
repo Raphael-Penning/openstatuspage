@@ -235,7 +235,11 @@ nötig.
 
 Eine Instanz braucht im normalen Betrieb etwa 80–100 MB Arbeitsspeicher; eine
 Passwortprüfung oder die erste Abfrage eines Prozesses kommt kurz mit 10–20 MB
-dazu. Ein Speicherlimit von 128 MB pro Container lässt genug Luft. Das
+dazu. Viele gleichzeitige Verbindungen kosten ebenfalls Speicher: Eine
+öffentliche Instanz bleibt bis etwa 64 gleichzeitige Verbindungen unter 100 MB.
+Begrenze sie deshalb am Reverse Proxy (zum Beispiel auf 32 pro Instanz) und
+starte eine weitere öffentliche Instanz, wenn du mehr brauchst. Ein
+Speicherlimit von 128 MB pro Container lässt genug Luft. Das
 Docker-Image setzt dafür die Optionen von Node.js und dem Speicher-Allocator
 (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`) und startet Node.js
 mit `--max-opt=2`. Ohne das Image setzt du sie selbst:

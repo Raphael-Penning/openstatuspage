@@ -281,9 +281,13 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   says), then the `osp-lang` cookie (set by the language switcher), then
   `Accept-Language`, then the page default (`lib/languages.ts`). The browser
   switches to the server's language before hydrating.
-- **Caching.** A rendered page is kept for 5 s per URL, language and theme input
+- **Caching.** A rendered page is kept for 5 s per URL (only the query
+  parameters the pages read: `pageUrl` of the bundle, so `?utm_source=` or a
+  cache-busting parameter share the render), language and theme input
   (`cacheKey` of the bundle; at most 16 pages and 1 MiB including the compressed
-  copy, one render per key at a time, at most two renders at once) and sent
+  copy, one render per key at a time, one render at once with at most 4
+  waiting; beyond that a request gets the client-rendered page, and a full
+  queue is logged at most every 10 s) and sent
   with a weak `ETag`, `Vary: Accept-Language, Cookie, Accept-Encoding` and
   `Cache-Control: public, max-age=10, stale-while-revalidate=60` (`private,
   no-store` for the personal subscription links). If-None-Match answers 304.
@@ -437,14 +441,23 @@ languages, the public API, feeds, sitemaps, llms.txt and assets) plus three
 subscriptions through the API and two through the HTML form, one of them invalid
 and answered with the rendered page (public, admin, all), and a monitoring source
 polled every 10 s from a local fake Uptime
-Kuma for 40 s (worker, all). "After load" is read after 15 s without requests.
+Kuma for 40 s (worker, all). After the light load comes a burst (public, admin,
+all): 64 connections at once, four requests each, pages the render cache cannot
+answer (a new search, a new history page) and the summary API. "After load" is
+read after 15 s without requests.
 
-| Role | After start | Peak under load | After load | Kernel peak (VmHWM) |
-| --- | --- | --- | --- | --- |
-| public | 78 MB | 96 MB | 83–85 MB | 97 MB |
-| admin | 85 MB | 106 MB | 92 MB | 106 MB |
-| worker | 75 MB | 76 MB | 76 MB | 90 MB |
-| all | 80 MB | 106 MB | 99 MB | 108 MB |
+| Role | After start | Peak under load | Peak under burst (64 connections) | After load | Kernel peak (VmHWM) |
+| --- | --- | --- | --- | --- | --- |
+| public | 77 MB | 93 MB | 95–97 MB | 81–83 MB | 97–99 MB |
+| admin | 85 MB | 103 MB | 106 MB | 92 MB | 110 MB |
+| worker | 74 MB | 80 MB | – | 76 MB | 90 MB |
+| all | 81 MB | 100 MB | 106 MB | 97 MB | 113 MB |
+
+Public: four runs; the range is their spread. One page renders at a time and at
+most four wait; beyond that a request gets the client-rendered page. With two
+renders and 32 waiting (the setting before) the same burst took the public
+instance to 110 MB (kernel peak 111 MB), with one render and 8 waiting to 98–99
+MB (kernel peak 100 MB).
 
 These are the numbers with the pages working without JavaScript (forms, static
 map, day tables), the page head for search engines and gzip-compressed pages
@@ -459,8 +472,17 @@ after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
 render bundle is imported on the first page request, so "after start" does not
 include it.
 
-What the target covers: `public` and `worker` stay below 100 MB at every
-point, also at their kernel peak. `admin` and `all` stay below it after start and
+What the target covers: `worker` stays below 100 MB at every point, also at its
+kernel peak. `public` stays below it under the light load and under bursts of
+up to 64 concurrent connections, also at its kernel peak. More concurrent
+connections cost memory of their own (every connection has buffers, and the
+pages and documents in flight are held until sent): 128 connections took the
+public instance to 106 MB, 200 to 108 MB, and 64 connections to the summary API
+alone (no rendering) to 98 MB. A public instance cannot refuse connections by
+itself, so limit them at the reverse proxy, for example to 32 concurrent
+connections or requests per instance (nginx `limit_conn`, Traefik
+`inFlightReq`, HAProxy `maxconn` on the server line), and let more instances
+share the load. `admin` and `all` stay below it after start and
 at steady state, but exceed it briefly under load: up to 106 MB (admin and
 all) in the samples, 106–108 MB at the kernel peak, mostly while a
 password is checked (see below). Size memory limits for these peaks, not for the
@@ -505,7 +527,8 @@ What keeps it small:
 - **A small render bundle, loaded late.** The server-side rendering bundle
   (about 500 kB, ASCII only, `renderToString` without the streaming renderer,
   only the `common` and `public` translations) is imported on the first page
-  request, at most two pages render at once.
+  request, one page renders at a time (at most 4 wait, the rest get the
+  client-rendered page).
 - **Bounded caches.** The only response cache holds rendered public pages for
   5 s (at most 16 pages and 1 MiB, as UTF-8 bytes); there is no query cache. The rate limiter
   keeps at most 1000 clients per route (`RATE_LIMIT_KEYS`), the per-source

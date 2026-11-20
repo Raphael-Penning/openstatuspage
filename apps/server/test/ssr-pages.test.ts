@@ -444,12 +444,12 @@ describe('render limits', () => {
     );
     const warnings: unknown[] = [];
     t.app.log.warn = ((obj: unknown) => warnings.push(obj)) as typeof t.app.log.warn;
-    // 2 render, 32 wait, the rest gets the plain page at once.
-    const pending = Array.from({ length: 40 }, (_, i) => get(`/services?q=${i}`));
+    // 1 renders, 4 wait, the rest gets the plain page at once.
+    const pending = Array.from({ length: 10 }, (_, i) => get(`/services?q=${i}`));
     await new Promise((resolve) => setTimeout(resolve, 50));
     release();
     const pages = await Promise.all(pending);
-    expect(pages.filter((p) => p.body.includes('<title>management</title>')).length).toBe(6);
+    expect(pages.filter((p) => p.body.includes('<title>management</title>')).length).toBe(5);
     expect(warnings).toEqual([{ requests: 1 }]);
     await t.close();
   });
