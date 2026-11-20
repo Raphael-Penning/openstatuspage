@@ -85,9 +85,13 @@ export const zSitePath = z
   .string()
   .max(500)
   .regex(/^\/(?![/\\])[^\s\\\u0000-\u001f\u007f]*$/, 'must be a path on this site starting with a single /');
-/** Link target: an http(s) URL or a path on this site ({@link zSitePath}). */
+/**
+ * Link target: an http(s) URL or a path on this site ({@link zSitePath}).
+ * Leading and trailing whitespace is trimmed, like the http(s) URL fields.
+ */
 export const zLinkTarget = z
   .string()
+  .trim()
   .max(500)
   .refine((v) => zSitePath.safeParse(v).success || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path starting with /');
 /** Optional single-line label; empty means the translated default. */
