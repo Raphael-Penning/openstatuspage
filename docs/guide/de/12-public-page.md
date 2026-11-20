@@ -250,7 +250,12 @@ Was du wissen solltest:
   App nicht schwärzen kann. Beschränke, wer diese Logs lesen darf, halte sie kurz
   oder stelle den Proxy so ein, dass er `/p/` ohne den Teil danach protokolliert.
 - Jeder Client darf 60 private Seiten pro Minute öffnen; ein falscher Link ist
-  einfach „nicht gefunden“.
+  einfach „nicht gefunden“. Darüber hinaus sieht der Besucher eine kurze Seite
+  „Zu viele Anfragen“. Hinter einem Reverse Proxy setz
+  [`TRUST_PROXY`](03-reverse-proxy.md#trust_proxy), sonst zählt jeder Besucher als
+  der Proxy und alle teilen sich diese 60.
+- Private Seiten lassen sich, anders als die öffentliche Seite, nicht in andere
+  Websites einbetten (kein `iframe`).
 - Für private Seiten gibt es keine Feeds und keine E-Mail-Abos.
 - In einer geteilten Installation liest die öffentliche Instanz eine private Seite
   nur über Datenbankfunktionen, die ihren Link brauchen; sie kann weder private
