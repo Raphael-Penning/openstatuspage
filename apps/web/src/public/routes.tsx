@@ -10,6 +10,7 @@
  */
 import type { RouteObject } from 'react-router';
 import { publicQueries } from './hooks/queries';
+import { subscriptionQuery } from './hooks/subscriptions';
 import type { PublicRouteHandle } from './loaders';
 import { HistoryPage, historyQuery } from './pages/HistoryPage';
 import { IncidentPage } from './pages/IncidentPage';
@@ -85,9 +86,20 @@ export const publicRoutes: RouteObject[] = [
         element: <SubscribePage />,
         handle: handle({ prefetch: ({ load, get }) => load(publicQueries.summary(get)) }),
       },
-      // The link token is in the URL fragment: these pages load their data in the browser.
+      // Links carry the token in the query (older ones in the fragment, which only the browser sees).
       { path: 'subscription/confirm', element: <SubscriptionConfirmPage /> },
-      { path: 'subscription/manage', element: <SubscriptionManagePage /> },
+      {
+        path: 'subscription/manage',
+        element: <SubscriptionManagePage />,
+        handle: handle({
+          prefetch: async ({ search, load, get }) => {
+            const id = search.get('id')?.trim();
+            const token = search.get('token')?.trim();
+            if (!id || !token) return;
+            await Promise.all([load(subscriptionQuery(id, token, get)), load(publicQueries.summary(get))]);
+          },
+        }),
+      },
       // Unknown public paths render inside the layout. /admin/* is matched by
       // the admin routes, which are more specific.
       { path: '*', element: <NotFoundState /> },

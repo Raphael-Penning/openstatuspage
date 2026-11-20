@@ -9,8 +9,10 @@ import {
   type SubscribeInput,
   type SubscriptionPreferencesInput,
 } from '@openstatuspage/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { deserialize } from '@openstatuspage/shared';
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/api';
+import type { GetDocument } from './queries';
 
 const BASE = '/api/public/subscriptions';
 
@@ -44,9 +46,10 @@ export function useSubscribe() {
  * Confirms a subscription once per link. A query (not a mutation) so a
  * re-render or StrictMode does not post twice; the endpoint is idempotent anyway.
  */
-export function useConfirmSubscription(id: string, token: string) {
+export function useConfirmSubscription(id: string, token: string, enabled = true) {
   const queryClient = useQueryClient();
   return useQuery({
+    enabled,
     queryKey: ['subscription-confirm', id, token],
     queryFn: async () => {
       // The confirmed subscription carries the manage token as the `manageToken` attribute.
@@ -65,13 +68,24 @@ export function useConfirmSubscription(id: string, token: string) {
   });
 }
 
-export function useSubscription(id: string, token: string) {
-  return useQuery({
+/**
+ * The subscription of a manage link. In the browser the token travels in the
+ * X-Subscription-Token header; on the server (`get`, the route loader of the
+ * manage page) the in-process source takes it as the `token` value.
+ */
+export function subscriptionQuery(id: string, token: string, get?: GetDocument) {
+  return queryOptions({
     queryKey: subscriptionKey(id),
-    queryFn: () => api.get<PublicSubscription>(path(id), undefined, withToken(token)),
+    queryFn: get
+      ? async () => deserialize<PublicSubscription>(await get(path(id), { token }))
+      : () => api.get<PublicSubscription>(path(id), undefined, withToken(token)),
     retry,
     refetchOnWindowFocus: false,
   });
+}
+
+export function useSubscription(id: string, token: string) {
+  return useQuery(subscriptionQuery(id, token));
 }
 
 export function useUpdateSubscription(id: string, token: string) {

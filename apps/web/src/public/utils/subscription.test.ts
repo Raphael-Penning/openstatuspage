@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   hashParam,
   knownServiceIds,
+  formScope,
+  formValue,
   linkParams,
   managePath,
+  serverFormErrors,
   sectionServiceIds,
   selectionState,
   serviceSections,
@@ -131,12 +134,13 @@ describe('linkParams', () => {
     expect(linkParams(new URLSearchParams('id=%20'), '#token=t0k')).toBeNull();
   });
 
-  it('round-trips through managePath with the token in the fragment', () => {
+  it('round-trips through managePath with the token in the query (the server renders the page)', () => {
     const path = managePath('a b', 'x+y/z=');
     expect(path.startsWith('/subscription/manage?')).toBe(true);
     const url = new URL(path, 'https://status.example.com');
-    expect(url.searchParams.has('token')).toBe(false);
+    expect(url.searchParams.get('token')).toBe('x+y/z=');
     expect(url.searchParams.has('unsubscribe')).toBe(false);
+    expect(url.hash).toBe('');
     expect(linkParams(url.searchParams, url.hash)).toEqual({ id: 'a b', token: 'x+y/z=' });
   });
 
@@ -144,7 +148,7 @@ describe('linkParams', () => {
     const url = new URL(managePath('abc', 't0k', { unsubscribe: true }), 'https://status.example.com');
     expect(url.pathname).toBe('/subscription/manage');
     expect(url.searchParams.get('unsubscribe')).toBe('1');
-    expect(url.hash).toBe('#token=t0k');
+    expect(url.searchParams.get('token')).toBe('t0k');
   });
 });
 
@@ -168,5 +172,32 @@ describe('subscriptionErrors', () => {
     expect(subscriptionErrors([{ code: 'too_big', path: ['website'] }])).toEqual({ form: 'subscription.errors.invalid' });
     expect(subscriptionErrors(undefined)).toEqual({ form: 'subscription.errors.invalid' });
     expect(subscriptionErrors([])).toEqual({ form: 'subscription.errors.invalid' });
+  });
+});
+
+describe('server form state', () => {
+  const sections = [
+    { id: 'g1', name: 'Platform', services: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] },
+    { id: null, name: null, services: [{ id: 'c', name: 'C' }] },
+  ];
+
+  it('maps the issues and error codes of a form answer', () => {
+    expect(serverFormErrors({ values: {}, issues: [{ path: ['email'], code: 'invalid_format' }] }, null)).toEqual({
+      email: 'subscription.errors.email',
+    });
+    expect(serverFormErrors({ values: {}, error: 'rate_limited' }, null)).toEqual({ form: 'subscription.errors.rateLimited' });
+    expect(serverFormErrors(null, 'invalid')).toEqual({ form: 'subscription.errors.invalid' });
+    expect(serverFormErrors(null, 'whatever')).toEqual({});
+    expect(serverFormErrors(null, null)).toEqual({});
+  });
+
+  it('restores the scope with the services of checked groups', () => {
+    expect(formScope({ values: { scope: 'all', service: ['a'] } }, sections)).toEqual({ allServices: true, serviceIds: [] });
+    expect(formScope({ values: { scope: 'selected', service: ['c', 'gone'], group: ['g1'] } }, sections)).toEqual({
+      allServices: false,
+      serviceIds: ['c', 'a', 'b'],
+    });
+    expect(formValue({ values: { email: 'x@example.com' } }, 'email')).toBe('x@example.com');
+    expect(formValue(null, 'email')).toBe('');
   });
 });
