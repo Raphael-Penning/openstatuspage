@@ -235,12 +235,14 @@ describe('management UI', () => {
     await t.close();
   });
 
-  it('stays client-rendered', async () => {
+  it('stays client-rendered and is never indexed', async () => {
     for (const url of ['/admin', '/admin/services', '/ADMIN/users']) {
       const res = await get(url);
       expect(res.statusCode, url).toBe(200);
       expect(res.body).toContain('<title>management</title>');
+      expect(res.headers['x-robots-tag'], url).toBe('noindex, nofollow');
     }
+    expect((await get('/')).headers['x-robots-tag']).toBeUndefined();
   });
 });
 

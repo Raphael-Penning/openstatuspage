@@ -108,6 +108,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
       reply.header('X-Frame-Options', 'DENY');
       reply.header('Content-Security-Policy', "frame-ancestors 'none'");
     }
+    // The management UI is never indexed by search engines.
+    if (admin) reply.header('X-Robots-Tag', 'noindex, nofollow');
   });
 
   registerJsonApi(app);
