@@ -105,7 +105,7 @@ describe.each(['all', 'public'] as const)('discovery files (APP_ROLE=%s)', (role
     expect(res.headers['content-type']).toBe('text/plain; charset=utf-8');
     expect(res.headers['cache-control']).toBe('public, max-age=3600');
     const lines = res.body.split('\n');
-    expect(lines).toEqual(expect.arrayContaining(['User-agent: *', 'Allow: /', 'Disallow: /api/', 'Disallow: /admin', 'Disallow: /subscription/']));
+    expect(lines).toEqual(expect.arrayContaining(['User-agent: *', 'Allow: /', 'Disallow: /api/', 'Disallow: /admin', 'Disallow: /subscription/', 'Disallow: /preferences/']));
     expect(lines).toContain(`Sitemap: ${BASE_URL}/sitemap.xml`);
     expect(lines).not.toContain('Disallow: /');
     // Only comments, fields and blank lines.

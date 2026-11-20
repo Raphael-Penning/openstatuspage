@@ -28,7 +28,7 @@ import { SITEMAP_PAGE_SIZE, SiteIndex, type CurrentStatus, type SitemapKind, typ
  * subscription links (confirm, manage, unsubscribe). Form handlers outside
  * /api/ belong here as well.
  */
-export const DISALLOWED_PATHS = ['/api/', '/admin', '/subscription/'];
+export const DISALLOWED_PATHS = ['/api/', '/admin', '/subscription/', '/preferences/'];
 
 const SITEMAP_NS = 'http://www.sitemaps.org/schemas/sitemap/0.9';
 
