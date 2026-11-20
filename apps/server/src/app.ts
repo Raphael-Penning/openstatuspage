@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalPath, isPersonalPath, normalizePath, PRIVATE_PAGE_REQUESTS_PER_MINUTE } from '@openstatuspage/shared';
+import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath, PRIVATE_PAGE_REQUESTS_PER_MINUTE } from '@openstatuspage/shared';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -51,11 +51,13 @@ export function redactUrlTokens(url: string): string {
 
 /**
  * Replaces the token of a private page path in any spelling (`/p/<token>/...`,
- * `/P//<token>`, `/%70/<token>`): "/p/abc/services/web" → "/p/[REDACTED]/services/web".
+ * `/P//<token>`, `/%70/<token>`, `/x/../p/<token>`): "/p/abc/services/web" →
+ * "/p/[REDACTED]/services/web". A path with dot segments is logged resolved.
  */
 export function redactPrivatePagePath(url: string): string {
   const end = url.search(/[?#]/);
   const path = end === -1 ? url : url.slice(0, end);
+  if (hasDotSegments(path)) return redactPrivatePagePath(normalizePath(path) + (end === -1 ? '' : url.slice(end)));
   const parts = path.split('/');
   const first = parts.findIndex((part) => part !== '');
   if (first === -1 || safeDecode(parts[first]!).toLowerCase() !== 'p') return url;
@@ -228,6 +230,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // after a deploy. A public instance answers /admin/... with 404.
     app.setNotFoundHandler(async (req, reply) => {
       const path = req.url.split('?')[0] ?? '';
+      // Browsers resolve "." and ".." before sending a request; a path that still has them
+      // (/./p/<token>, /a/../p/<token>) is hand-made and gets nothing but a plain 404.
+      if (hasDotSegments(path)) return routeNotFound(reply.header('Cache-Control', 'no-store'));
       const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
         // One URL per page for search engines: /SERVICES/ → 301 /services. Not personal
