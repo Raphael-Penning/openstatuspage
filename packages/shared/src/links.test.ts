@@ -118,6 +118,13 @@ describe('link settings validation', () => {
     expect(zLinkTarget.safeParse('https://a.example').success).toBe(true);
   });
 
+  it('trims the info link like the other link fields', () => {
+    expect(zLinkTarget.parse(' https://a.example/x ')).toBe('https://a.example/x');
+    expect(zLinkTarget.parse('\t/about\n')).toBe('/about');
+    expect(SettingsInput.parse({ ...base, infoLinkUrl: ' /about' }).infoLinkUrl).toBe('/about');
+    expect(SettingsInput.parse({ ...base, imprintUrl: ' https://a.example/i' }).imprintUrl).toBe('https://a.example/i');
+  });
+
   it('rejects multi-line labels, notices and UTM values', () => {
     expect(ok({ imprintLabel: 'Imprint\nX' })).toBe(false);
     expect(ok({ copyrightText: '© {year}\r\nX' })).toBe(false);
