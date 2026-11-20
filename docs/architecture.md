@@ -286,7 +286,9 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   stale-while-revalidate=60` (`private, no-store` for the personal subscription
   links). If-None-Match answers 304.
 - **Failure.** A render error or a missing bundle is logged and the plain
-  client-rendered entry page is sent instead; the page still works.
+  client-rendered entry page is sent instead; the page still works. The same
+  happens at once when more than 32 pages wait for a render (a flood of distinct
+  URLs cannot queue without bound).
 - **Build.** `pnpm --filter @openstatuspage/web build` runs `vite build` (the
   two client entries) and `vite build --ssr src/entry-server.tsx --outDir
   dist/.ssr`: one self-contained, minified, ASCII-only ES module with every
