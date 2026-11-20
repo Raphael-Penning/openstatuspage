@@ -107,6 +107,18 @@ breaking changes.
   services, `/llms.txt` and `/llms-full.txt` (the current status as Markdown).
   See [docs/architecture.md](docs/architecture.md#search-engines-and-ai-agents).
 - **Public API**: maintenance windows have `createdAt` and `updatedAt`.
+- **Lighthouse 100**: the public pages score 100 in performance, accessibility,
+  best practices and SEO on mobile and desktop and pass the agentic browsing
+  audits. The web build writes Brotli and gzip copies of its files, which the
+  server sends as they are; rendered pages are sent gzip-compressed; hashed
+  assets are cached for a year. The public bundle no longer contains the
+  management UI's translations or zod (the subscription forms load it on
+  demand): 915 KiB → 170 KiB per page on the wire. `scripts/lighthouse.mjs`
+  runs Lighthouse against an instance. See [docs/performance.md](docs/performance.md).
+- **Security headers**: pages are sent with a Content-Security-Policy (scripts
+  from the own origin only), `Cross-Origin-Opener-Policy: same-origin` and a
+  `Permissions-Policy`. See
+  [docs/security-model.md](docs/security-model.md#browser-security-headers).
 - **Split deployment** with `APP_ROLE` (`all`, `public`, `admin`, `worker`): on
   PostgreSQL the public status page, the management side and the background worker
   can run as separate instances. A `public` instance has no management UI, login,
