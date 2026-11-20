@@ -920,7 +920,10 @@ token in the URL or query is never read.
   window that is not on the page and a day outside the uptime range are the same
   `404 not_found`, so the answer never tells which it was.
 - Answers carry `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`.
-  60 requests per minute and client (`429` beyond, like the HTML pages at `/p/`).
+  60 requests per minute and client (`429` beyond, like the HTML pages at `/p/`,
+  which answer with a small page in the visitor's language). The client is
+  `req.ip`: behind a reverse proxy set `TRUST_PROXY`, or every visitor shares one
+  budget.
 - Feeds and email subscriptions of a private page do not exist.
 
 ```http

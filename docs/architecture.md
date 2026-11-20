@@ -398,7 +398,7 @@ maintenance of those services (public ones only) with their own pages
 (`/p/<token>/incidents/<id>`, `/p/<token>/maintenance/<id>`).
 
 ```
-/p/<token>/…  ─▶ app.ts: rate limit (60/min per client) ─▶ ssr/pages.ts (personal path: no cache, never stale)
+/p/<token>/…  ─▶ app.ts: rate limit (60/min per client, 429 page of ssr/busy.ts) ─▶ ssr/pages.ts (personal path: no cache, never stale)
   └─ routes.tsx  /p/:token ─▶ PrivatePageProvider (token, link base /p/<token>) ─▶ PublicLayout
        └─ privateQueries.*(token, get) ─▶ ssr/source.ts ─▶ PrivatePageDocuments ─▶ PrivatePages
             └─ PrivatePageStore: tables (SQLite, admin/worker/all) | osp_public.private_page*() (public role)

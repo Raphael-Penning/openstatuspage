@@ -273,8 +273,9 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   so analytics needs no exception either.
 - `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns
   off camera, microphone, geolocation, payment and USB.
-- Framing: public pages may be embedded by other sites; the management UI and
-  the API add `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+- Framing: public pages may be embedded by other sites; the management UI, the
+  API and private pages (`/p/<token>`) add `frame-ancestors 'none'` and
+  `X-Frame-Options: DENY`.
 
 HSTS is left to the reverse proxy that terminates TLS.
 
