@@ -118,6 +118,20 @@ describe('interactive states', () => {
     expect(details.open).toBe(false);
   });
 
+  it('open language menu on a personal page (a form with buttons)', async () => {
+    page = await renderPublic({ path: `/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}`, lang: 'en', theme: 'light' });
+    const details = page.container.querySelector<HTMLDetailsElement>('header details')!;
+    await click(details.querySelector('summary'));
+    expect(details.querySelector('form')?.getAttribute('method')).toBe('post');
+    expect(details.querySelectorAll('a').length).toBe(0);
+    const buttons = [...details.querySelectorAll<HTMLButtonElement>('button[name="lang"]')];
+    expect(buttons.map((b) => b.value)).toEqual(['en', 'de']);
+    expect(await axeViolations()).toEqual([]);
+    await click(buttons[1]!);
+    expect(document.documentElement.lang).toBe('de');
+    expect(details.open).toBe(false);
+  });
+
   it('uptime bar with its tooltip, keyboard navigation and Escape', async () => {
     page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'dark' });
     const bar = page.container.querySelector<HTMLElement>('[aria-roledescription="uptime bar"]')!;

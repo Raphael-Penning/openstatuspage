@@ -138,6 +138,23 @@ describe('public pages without JavaScript', () => {
     expect(body).toMatch(/<style>html:root\{--accent:#7c6cf2;[^<]*<\/style>[\s\S]*rel="stylesheet"/);
   });
 
+  it('header on personal pages: the language is a form post, the token is in no URL', async () => {
+    const sub = await subscriber();
+    const url = `/subscription/manage?id=${sub.id}&token=${sub.manage}`;
+    const { root } = await page(url);
+    const language = formHtml(root, '/preferences/language')!;
+    expect(elements(language, 'form')[0]).toMatchObject({ method: 'post' });
+    expect(elements(language, 'input')).toEqual([{ type: 'hidden', name: 'return', value: url }]);
+    expect(elements(language, 'button').map((b) => [b.type, b.name, b.value])).toEqual([
+      ['submit', 'lang', 'en'],
+      ['submit', 'lang', 'de'],
+    ]);
+    // Only the page's own links (unsubscribe step) carry it.
+    for (const a of elements(root, 'a').filter((a) => !a.href?.startsWith('/subscription/'))) {
+      expect(a.href ?? '', a.href).not.toContain(sub.manage);
+    }
+  });
+
   it('a theme chosen without JavaScript is rendered by the server', async () => {
     const res = await t.app.inject({
       method: 'POST',

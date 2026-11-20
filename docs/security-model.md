@@ -228,14 +228,16 @@ requests per minute; the forms and the API count separately).
   of `PUBLIC_BASE_URL`; anything else gets `403`. A request without either header
   does not come from a browser page and cannot be forged through one. The same
   check guards the theme form (`POST /preferences/theme`); the language links
-  (`GET /preferences/language`) set no cookie for requests from other sites.
+  and form (`/preferences/language`) set no cookie for requests from other sites.
 - **Tokens in links.** For the confirm and manage pages to work without
   JavaScript, the server has to see the token, so the links in the emails carry
   it in the query string (`?id=…&token=…`) instead of the URL fragment, and the
   forms send it in the body. The server's request log redacts every `token=`
-  value, `/subscription/*` answers with `Referrer-Policy: no-referrer` and
-  `Cache-Control: private, no-store`, and these pages are never kept in the
-  render cache. A reverse proxy that logs full URLs does see the token: keep its
+  value (also one inside an encoded parameter such as `return=`),
+  `/subscription/*` in any spelling of the path answers with `Referrer-Policy:
+  no-referrer` and `Cache-Control: private, no-store`, these pages are never kept
+  in the render cache, and their language and theme switchers post the way back
+  in the body instead of linking to a URL that contains it. A reverse proxy that logs full URLs does see the token: keep its
   access log private or strip query strings from it. A leaked manage token lets
   someone change or end that one subscription, nothing else; confirming takes a
   click on a form, so a mail scanner that opens the link confirms nothing.

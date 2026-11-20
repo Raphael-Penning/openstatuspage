@@ -3,11 +3,11 @@
  * the subscribe menu (email, feeds, status API).
  *
  * They work without JavaScript (docs/accessibility.md): the language switcher
- * is a disclosure with one link per language, the theme switcher a form that
+ * is a disclosure with one link per language (a form on personal pages), the theme switcher a form that
  * sets the theme cookie, the subscribe menu a disclosure of links. With
  * JavaScript the same markup switches in place without a page load.
  */
-import { FORM_PATHS, LANG_COOKIE, LANG_QUERY, RETURN_QUERY } from '@openstatuspage/shared';
+import { FORM_PATHS, isPersonalPath, LANG_COOKIE, LANG_QUERY, RETURN_QUERY } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { Braces, ChevronDown, Clock, Globe, Mail, Monitor, Moon, Rss, Sun } from 'lucide-react';
 import { useCallback, useRef, useState, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
@@ -123,14 +123,19 @@ export function TimeZoneToggle() {
 /**
  * One link per language (/preferences/language sets the cookie and comes back
  * here). With JavaScript the page switches in place.
+ *
+ * Personal pages (subscription links) carry their token in the URL: there the
+ * choices are buttons of a form that posts the way back, so the token never
+ * ends up in a URL of its own (server logs, proxies, browser history).
  */
 export function LanguageSwitcher() {
   const { t, i18n } = useTranslation('public');
   const back = useReturnPath();
+  const personal = isPersonalPath(useLocation().pathname);
   const current = i18n.resolvedLanguage ?? 'en';
   const currentLabel = LANGUAGES.find((l) => l.code === current)?.label ?? current;
 
-  const choose = (e: MouseEvent<HTMLAnchorElement>, code: string, close: () => void) => {
+  const choose = (e: MouseEvent<HTMLElement>, code: string, close: () => void) => {
     e.preventDefault();
     try {
       localStorage.setItem(LANG_CHOSEN_KEY, '1');
@@ -155,26 +160,49 @@ export function LanguageSwitcher() {
         </>
       }
     >
-      {(close) => (
-        <ul className="absolute right-0 z-30 mt-2 w-40 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg">
-          {LANGUAGES.map((l) => (
-            <li key={l.code}>
-              <a
-                href={`${FORM_PATHS.language}?lang=${l.code}&${RETURN_QUERY}=${encodeURIComponent(back)}`}
-                // Language names are shown in their own language (WCAG 3.1.2).
-                lang={l.code}
-                hrefLang={l.code}
-                rel="nofollow"
-                aria-current={l.code === current ? 'true' : undefined}
-                onClick={(e) => choose(e, l.code, close)}
-                className={clsx(menuItem, l.code === current && 'font-semibold')}
-              >
-                {l.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
+      {(close) => {
+        const list = (
+          <ul className="absolute right-0 z-30 mt-2 w-40 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg">
+            {LANGUAGES.map((l) => (
+              <li key={l.code}>
+                {personal ? (
+                  <button
+                    type="submit"
+                    name="lang"
+                    value={l.code}
+                    lang={l.code}
+                    aria-current={l.code === current ? 'true' : undefined}
+                    onClick={(e) => choose(e, l.code, close)}
+                    className={clsx(menuItem, 'w-full text-start', l.code === current && 'font-semibold')}
+                  >
+                    {l.label}
+                  </button>
+                ) : (
+                  <a
+                    href={`${FORM_PATHS.language}?lang=${l.code}&${RETURN_QUERY}=${encodeURIComponent(back)}`}
+                    // Language names are shown in their own language (WCAG 3.1.2).
+                    lang={l.code}
+                    hrefLang={l.code}
+                    rel="nofollow"
+                    aria-current={l.code === current ? 'true' : undefined}
+                    onClick={(e) => choose(e, l.code, close)}
+                    className={clsx(menuItem, l.code === current && 'font-semibold')}
+                  >
+                    {l.label}
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        );
+        if (!personal) return list;
+        return (
+          <form method="post" action={FORM_PATHS.language}>
+            <input type="hidden" name={RETURN_QUERY} value={back} />
+            {list}
+          </form>
+        );
+      }}
     </Disclosure>
   );
 }

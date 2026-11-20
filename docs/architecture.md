@@ -331,7 +331,9 @@ visitor's time zone). The rules:
   `public/utils/map-projection.ts`); the location list below it has every
   location with its status.
 - **Preferences.** The theme switcher is a form posting to `/preferences/theme`
-  and the language switcher links to `/preferences/language?lang=…`; both set
+  and the language switcher links to `/preferences/language?lang=…` (on the
+  personal subscription pages it is a form posting there, so the token in their
+  return path never ends up in a URL); both set
   their cookie and redirect back (`forms/preferences.ts`). The `system` theme
   follows `prefers-color-scheme` in CSS. Times are in UTC until hydration, so the
   time zone toggle is a label until then. Every page lists its other languages
