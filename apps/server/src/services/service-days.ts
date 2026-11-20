@@ -130,9 +130,31 @@ export async function dayMaintenanceIds(db: DB, serviceId: string, dayStart: num
     .where('maintenances.status', '!=', 'cancelled')
     .where((eb) => eb.or([eb('maintenances.scheduled_start', '<', to), eb('maintenances.actual_start', '<', to)]))
     .execute();
+  return maintenancesOnDay(rows, dayStart, now);
+}
+
+/**
+ * Ids of the windows (not cancelled) that overlap the UTC day starting at
+ * `dayStart`, by their actual times where known, oldest first. A running window
+ * lasts at least until now.
+ */
+export function maintenancesOnDay(
+  rows: readonly {
+    id: string;
+    status: string;
+    scheduled_start: string;
+    scheduled_end: string;
+    actual_start: string | null;
+    actual_end: string | null;
+  }[],
+  dayStart: number,
+  now: Date,
+): string[] {
   const nowIso = now.toISOString();
   const from = new Date(dayStart).toISOString();
+  const to = new Date(dayStart + DAY_MS).toISOString();
   return rows
+    .filter((m) => m.status !== 'cancelled')
     .map((m) => {
       const start = m.actual_start ?? m.scheduled_start;
       let end = m.actual_end ?? m.scheduled_end;
