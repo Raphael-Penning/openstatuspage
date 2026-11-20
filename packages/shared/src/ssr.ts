@@ -37,6 +37,66 @@ export interface PageHead {
   jsonLd?: Record<string, unknown>[];
   /** HTTP status of the page (404 for unknown pages and entities). Default 200. */
   status?: number;
+  /** Site name (`og:site_name`). */
+  siteName?: string;
+  /** `og:type`: `article` for incidents and maintenance windows, otherwise `website`. */
+  type?: 'website' | 'article';
+  /** Open Graph locale of the page (`en_US`) and of its other languages. */
+  locale?: string;
+  localeAlternates?: string[];
+  /** Absolute image URL for link previews (the logo); omitted: no image tags. */
+  image?: string;
+  /** `meta[name=theme-color]` (the accent color). */
+  themeColor?: string;
+  /** Language versions of the page (`hreflang` incl. `x-default`); hrefs like `canonical`. */
+  alternates?: { hreflang: string; href: string }[];
+}
+
+/** One element of the page head besides `<title>` (see {@link headElements}). */
+export interface HeadElement {
+  tag: 'meta' | 'link' | 'script';
+  attrs: Record<string, string>;
+  /** Content of a script element: JSON, already escaped with {@link scriptJson}. */
+  text?: string;
+}
+
+/** Attribute that marks the head elements of a page; the browser replaces exactly these after a navigation. */
+export const HEAD_ATTR = 'data-osp-head';
+
+/**
+ * The head elements of a page in document order, the same on the server (as
+ * HTML) and in the browser (as DOM elements). URLs (canonical, alternates,
+ * image) must already be absolute. Every element carries {@link HEAD_ATTR}.
+ */
+export function headElements(head: PageHead): HeadElement[] {
+  const out: HeadElement[] = [];
+  const meta = (key: 'name' | 'property', name: string, content: string | undefined) => {
+    if (content) out.push({ tag: 'meta', attrs: { [key]: name, content, [HEAD_ATTR]: '' } });
+  };
+  meta('name', 'description', head.description);
+  meta('name', 'robots', head.robots);
+  if (head.canonical) out.push({ tag: 'link', attrs: { rel: 'canonical', href: head.canonical, [HEAD_ATTR]: '' } });
+  for (const alt of head.alternates ?? []) {
+    out.push({ tag: 'link', attrs: { rel: 'alternate', hreflang: alt.hreflang, href: alt.href, [HEAD_ATTR]: '' } });
+  }
+  meta('name', 'theme-color', head.themeColor);
+  // Open Graph (link previews in chats and social networks); Twitter/X reads it as well.
+  meta('property', 'og:type', head.type ?? 'website');
+  meta('property', 'og:site_name', head.siteName);
+  meta('property', 'og:title', head.title);
+  meta('property', 'og:description', head.description);
+  meta('property', 'og:url', head.canonical ?? undefined);
+  meta('property', 'og:locale', head.locale);
+  for (const locale of head.localeAlternates ?? []) meta('property', 'og:locale:alternate', locale);
+  meta('property', 'og:image', head.image);
+  meta('name', 'twitter:card', 'summary');
+  meta('name', 'twitter:title', head.title);
+  meta('name', 'twitter:description', head.description);
+  meta('name', 'twitter:image', head.image);
+  for (const obj of head.jsonLd ?? []) {
+    out.push({ tag: 'script', attrs: { type: 'application/ld+json', [HEAD_ATTR]: '' }, text: scriptJson(obj) });
+  }
+  return out;
 }
 
 /** Error of a {@link PublicDocumentSource}: the HTTP status the API would answer with. */
