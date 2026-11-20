@@ -11,6 +11,7 @@ import { averageUptime, correctedDays, lastDays } from '../utils/uptime';
 import { NotFoundState } from './NotFoundState';
 import { usePageHead, useSiteName } from '../head';
 import { useOutboundHref } from '../components/OutboundLink';
+import { useServicePaths } from '../hooks/links';
 
 export function ServiceDetailPage() {
   const { slug = '' } = useParams();
@@ -22,7 +23,8 @@ export function ServiceDetailPage() {
   const { data, isPending, isError, error, refetch, dataUpdatedAt } = useService(slug);
   const { data: locations } = useLocations(showLocations && (data?.locationIds.length ?? 0) > 0);
   const site = useSiteName();
-  const path = data ? `/services/${encodeURIComponent(data.slug || data.id)}` : undefined;
+  const paths = useServicePaths();
+  const path = data ? paths.service(data) : undefined;
   usePageHead({
     title: data?.name ?? t('nav.services'),
     description: data ? data.description || t('seo.service', { name: data.name, site }) : undefined,
@@ -55,6 +57,7 @@ export function ServiceDetailPage() {
     .map((n) => ({ label: t('service.lastDays', { count: n }), value: averageUptime(lastDays(data.uptime, n)) }));
   stats.push({ label: t('service.lastDays', { count: data.uptime.length }), value: data.uptimePercent });
   const corrected = correctedDays(data.uptime);
+  const dayHref = (date: string) => paths.day(data, date);
 
   return (
     <div className="space-y-10">
@@ -108,10 +111,11 @@ export function ServiceDetailPage() {
             tabletDays={data.uptime.length}
             phoneDays={90}
             label={data.name}
+            dayHref={dayHref}
             percent={data.uptimePercent}
             size="lg"
           />
-          <UptimeDayTable uptime={data.uptime} label={data.name} />
+          <UptimeDayTable uptime={data.uptime} label={data.name} dayHref={dayHref} />
           <dl className="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
             {stats.map((s) => (
               <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-3 sm:px-4">
@@ -131,7 +135,9 @@ export function ServiceDetailPage() {
               <ul className="mt-3 space-y-2 text-sm">
                 {corrected.map((d) => (
                   <li key={d.date} className="rounded-xl bg-surface-2 px-3 py-2">
-                    <span className="font-medium">{f.utcDay(d.date)}</span>
+                    <Link to={dayHref(d.date)} className="font-medium text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+                      {f.utcDay(d.date)}
+                    </Link>
                     {d.correctionNotes && d.correctionNotes.length > 0 ? (
                       d.correctionNotes.map((note) => (
                         <span key={note} className="block text-muted">
