@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
+import { precompress } from './tools/precompress.ts';
 import { worldMapSvg } from './tools/world-map.ts';
 
 const apiTarget = process.env.API_URL ?? 'http://localhost:3000';
@@ -58,8 +59,20 @@ function worldMap(): Plugin {
   };
 }
 
+/** Brotli and gzip copies of the client build (tools/precompress.ts), once every file is written. */
+const precompressed: Plugin = {
+  name: 'osp-precompress',
+  apply: 'build',
+  closeBundle: {
+    order: 'post',
+    handler() {
+      precompress(resolve(import.meta.dirname, 'dist'));
+    },
+  },
+};
+
 export default defineConfig(({ isSsrBuild }) => ({
-  plugins: [react(), tailwindcss(), ...(isSsrBuild ? [asciiOnly] : [worldMap()])],
+  plugins: [react(), tailwindcss(), ...(isSsrBuild ? [asciiOnly] : [worldMap(), precompressed])],
   server: {
     port: 5173,
     proxy: {
