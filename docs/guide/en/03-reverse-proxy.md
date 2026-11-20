@@ -210,8 +210,8 @@ customer portal:
 The management UI (`/admin`) and the API (`/api/...`) send
 `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`
 and cannot be framed. If you do not want the public page to be embedded
-either, let your proxy add `Content-Security-Policy: frame-ancestors 'self'`
-for all other paths. Conversely, do not add a global `X-Frame-Options`
+either, let your proxy add a second header `Content-Security-Policy:
+frame-ancestors 'self'` for all other paths (browsers enforce both policies). Conversely, do not add a global `X-Frame-Options`
 header in the proxy if you want embedding to work.
 
 Other ways to show the status elsewhere:
@@ -226,6 +226,16 @@ Search engines find the public pages through `/robots.txt` and `/sitemap.xml`.
 All links in them use `PUBLIC_BASE_URL` (or `BASE_URL`), so it must be the
 address visitors use. Pass these paths through the proxy unchanged, and keep
 the `X-Robots-Tag` header the app sends for `/admin`.
+
+## Compression, caching and security headers
+
+The app already compresses its responses: the files of the web client are
+stored as Brotli and gzip copies, and pages are sent gzip-compressed. Caching
+headers are set as well (one year for the hashed files in `/assets/`). The proxy
+can pass all of this through; compressing again gains nothing. Pages carry a
+Content-Security-Policy, `Cross-Origin-Opener-Policy` and `Permissions-Policy`
+(see [performance](../../performance.md)). Add `Strict-Transport-Security` in
+the proxy once the site is served only over HTTPS.
 
 ## Checklist
 

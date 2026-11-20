@@ -214,8 +214,9 @@ dein Kundenportal:
 Verwaltung (`/admin`) und API (`/api/...`) senden
 `X-Frame-Options: DENY` und `Content-Security-Policy: frame-ancestors 'none'`
 und lassen sich nicht einbetten. Soll auch die öffentliche Seite nicht
-eingebettet werden, lass deinen Proxy für alle übrigen Pfade
-`Content-Security-Policy: frame-ancestors 'self'` setzen. Umgekehrt gilt:
+eingebettet werden, lass deinen Proxy für alle übrigen Pfade einen zweiten
+Header `Content-Security-Policy: frame-ancestors 'self'` setzen (Browser
+beachten beide Richtlinien). Umgekehrt gilt:
 Setze im Proxy keinen globalen `X-Frame-Options`-Header, wenn das Einbetten
 funktionieren soll.
 
@@ -232,6 +233,17 @@ Suchmaschinen finden die öffentlichen Seiten über `/robots.txt` und
 das muss also die Adresse sein, die deine Besucher aufrufen. Leite diese Pfade
 unverändert durch den Proxy und lass den `X-Robots-Tag`-Header stehen, den die
 App für `/admin` sendet.
+
+## Komprimierung, Caching und Sicherheits-Header
+
+Die App komprimiert ihre Antworten bereits: Die Dateien des Web-Clients liegen
+als Brotli- und gzip-Kopien vor, und Seiten werden gzip-komprimiert gesendet.
+Auch die Caching-Header setzt sie (ein Jahr für die Dateien mit Hash im Namen
+unter `/assets/`). Dein Proxy kann all das unverändert durchreichen; nochmal zu
+komprimieren bringt nichts. Seiten tragen eine Content-Security-Policy,
+`Cross-Origin-Opener-Policy` und `Permissions-Policy` (siehe
+[Performance](../../performance.md)). Setz `Strict-Transport-Security` im Proxy,
+sobald die Seite nur noch über HTTPS erreichbar ist.
 
 ## Checkliste
 
