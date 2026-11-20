@@ -686,7 +686,11 @@
       "branding": "Branding",
       "display": "Anzeige",
       "footer": "Footer-Links",
-      "email": "E-Mail-Abonnements"
+      "email": "E-Mail-Abonnements",
+      "legal": "Rechtliche Links",
+      "brand": "Copyright und Hinweis",
+      "infoLink": "Info-Link",
+      "utm": "Link-Tracking (UTM)"
     },
     "fields": {
       "siteName": "Seitenname",
@@ -702,7 +706,22 @@
       "uptimeDays": "Tage der Verfügbarkeit",
       "recentIncidentDays": "Tage für kürzliche Vorfälle",
       "emailSubscriptionsEnabled": "E-Mail-Abonnements anbieten",
-      "maintenanceReminderHours": "Wartungserinnerung (Stunden)"
+      "maintenanceReminderHours": "Wartungserinnerung (Stunden)",
+      "imprintUrl": "Impressum-URL",
+      "imprintLabel": "Bezeichnung Impressum",
+      "privacyUrl": "Datenschutz-URL",
+      "privacyLabel": "Bezeichnung Datenschutz",
+      "accessibilityUrl": "URL der Erklärung zur Barrierefreiheit",
+      "accessibilityLabel": "Bezeichnung Erklärung zur Barrierefreiheit",
+      "copyrightText": "Copyright-Hinweis",
+      "brandUrl": "URL des Marken-Links",
+      "showPoweredBy": "„Betrieben mit OpenStatusPage“ anzeigen",
+      "infoLinkLabel": "Bezeichnung",
+      "infoLinkUrl": "URL oder Pfad",
+      "utmEnabled": "UTM-Parameter an ausgehende Links anhängen",
+      "utmSource": "utm_source",
+      "utmMedium": "utm_medium",
+      "utmCampaign": "utm_campaign"
     },
     "supportUrlHelp": "Optionaler Link zu deiner Support- oder Kontaktseite.",
     "pickColor": "Akzentfarbe wählen",
@@ -721,7 +740,21 @@
     "linkUrl": "URL",
     "removeLink": "Link {{name}} entfernen",
     "emailSubscriptionsHelp": "Besucher können Vorfälle und Wartungen per E-Mail abonnieren (Double-Opt-in). Wird nur angeboten, wenn ein Mailversand konfiguriert ist.",
-    "maintenanceReminderHoursHelp": "Erinnert Abonnenten so viele Stunden vor einer geplanten Wartung; 0 schaltet Erinnerungen ab (0–168)."
+    "maintenanceReminderHoursHelp": "Erinnert Abonnenten so viele Stunden vor einer geplanten Wartung; 0 schaltet Erinnerungen ab (0–168).",
+    "legalHelp": "Links zu deinen rechtlichen Seiten auf deiner Website, angezeigt in der Fußzeile. Ein Link ohne URL wird ausgeblendet.",
+    "legalLabelHelp": "Optional. Leer: „{{label}}“ in der Sprache des Besuchers.",
+    "copyrightHelp": "Reiner Text; {year} wird zum aktuellen Jahr. Leer: „© <Jahr> <Seitenname>“.",
+    "brandUrlHelp": "Optional. Macht den Copyright-Hinweis zu einem Link auf deine Website.",
+    "showPoweredByHelp": "Zeigt den Hinweis auf die Software in der Fußzeile.",
+    "infoLinkHelp": "Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine http(s)-URL oder ein Pfad auf dieser Seite mit einem einzelnen / am Anfang (wie /about).",
+    "infoLinkLabelHelp": "Optional. Leer: „{{label}}“ in der Sprache des Besuchers.",
+    "utmHelp": "Hängt diese Parameter an die von dir eingetragenen Links zu anderen Websites an (Fußzeile, Info-Link, Websites der Services). Links auf dieser Seite, mailto:-Links und Links, die schon utm_-Parameter haben, bleiben unverändert.",
+    "defaultLabels": {
+      "imprint": "Impressum",
+      "privacy": "Datenschutz",
+      "accessibility": "Erklärung zur Barrierefreiheit",
+      "info": "Über diese Seite"
+    }
   },
   "users": {
     "title": "Benutzer",

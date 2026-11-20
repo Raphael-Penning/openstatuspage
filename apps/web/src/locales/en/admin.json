@@ -686,7 +686,11 @@
       "branding": "Branding",
       "display": "Display",
       "footer": "Footer links",
-      "email": "Email subscriptions"
+      "email": "Email subscriptions",
+      "legal": "Legal links",
+      "brand": "Copyright and attribution",
+      "infoLink": "Info link",
+      "utm": "Link tracking (UTM)"
     },
     "fields": {
       "siteName": "Site name",
@@ -702,7 +706,22 @@
       "uptimeDays": "Uptime days",
       "recentIncidentDays": "Recent incident days",
       "emailSubscriptionsEnabled": "Offer email subscriptions",
-      "maintenanceReminderHours": "Maintenance reminder (hours)"
+      "maintenanceReminderHours": "Maintenance reminder (hours)",
+      "imprintUrl": "Imprint URL",
+      "imprintLabel": "Imprint label",
+      "privacyUrl": "Privacy policy URL",
+      "privacyLabel": "Privacy policy label",
+      "accessibilityUrl": "Accessibility statement URL",
+      "accessibilityLabel": "Accessibility statement label",
+      "copyrightText": "Copyright notice",
+      "brandUrl": "Brand link URL",
+      "showPoweredBy": "Show \"Powered by OpenStatusPage\"",
+      "infoLinkLabel": "Label",
+      "infoLinkUrl": "URL or path",
+      "utmEnabled": "Append UTM parameters to outbound links",
+      "utmSource": "utm_source",
+      "utmMedium": "utm_medium",
+      "utmCampaign": "utm_campaign"
     },
     "supportUrlHelp": "Optional link to your support or contact page.",
     "pickColor": "Pick accent color",
@@ -721,7 +740,21 @@
     "linkUrl": "URL",
     "removeLink": "Remove link {{name}}",
     "emailSubscriptionsHelp": "Visitors can subscribe to incidents and maintenance by email (double opt-in). Only offered when a mail transport is configured.",
-    "maintenanceReminderHoursHelp": "Reminds subscribers this many hours before scheduled maintenance; 0 turns reminders off (0–168)."
+    "maintenanceReminderHoursHelp": "Reminds subscribers this many hours before scheduled maintenance; 0 turns reminders off (0–168).",
+    "legalHelp": "Links to your legal pages on your website, shown in the footer. A link without URL is hidden.",
+    "legalLabelHelp": "Optional. Empty: \"{{label}}\" in the visitor's language.",
+    "copyrightHelp": "Plain text; {year} becomes the current year. Empty: \"© <year> <site name>\".",
+    "brandUrlHelp": "Optional. Turns the copyright notice into a link to your website.",
+    "showPoweredByHelp": "Shows the attribution line in the footer.",
+    "infoLinkHelp": "Optional extra entry in the navigation, e.g. \"What does the status mean?\". An http(s) URL or a path on this site starting with a single / (like /about).",
+    "infoLinkLabelHelp": "Optional. Empty: \"{{label}}\" in the visitor's language.",
+    "utmHelp": "Adds these parameters to the links you configured that lead to other websites (footer, info link, service websites). Links on this site, mailto: links and links that already carry utm_ parameters stay unchanged.",
+    "defaultLabels": {
+      "imprint": "Imprint",
+      "privacy": "Privacy policy",
+      "accessibility": "Accessibility statement",
+      "info": "About this page"
+    }
   },
   "users": {
     "title": "Users",
