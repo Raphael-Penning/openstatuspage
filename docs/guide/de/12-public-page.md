@@ -64,11 +64,9 @@ User-agent: *
 Allow: /
 Allow: /api/public/
 Disallow: /api/public/subscriptions
-Disallow: /api/public/private-page
 Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
-Disallow: /p/
 Disallow: /preferences/
 Disallow: /pulse/
 
@@ -87,6 +85,10 @@ Sitemap: https://status.example.com/sitemap.xml
   Der Header und das Meta-Tag `noindex` halten eine Seite aus den
   Suchergebnissen heraus. Deshalb tragen Seiten, die draußen bleiben sollen,
   beides.
+- Private Seiten (`/p/…`) stehen absichtlich nicht in der `robots.txt`. Ein
+  Crawler, der ausgesperrt ist, sieht ihr `noindex` nie und kann einen
+  durchgesickerten Link trotzdem als bloße Adresse listen; die Zeile würde
+  außerdem allen verraten, wo private Seiten liegen.
 
 Wenn du für bestimmte Crawler eigene Regeln brauchst (zum Beispiel um KI-Bots
 das Training zu verbieten), stell eine eigene `robots.txt` auf dem Reverse Proxy
@@ -145,7 +147,7 @@ Index. Prüfe dann, ob der Proxy `/sitemap.xml` unverändert durchreicht und ob
 | Tagesseiten der Verfügbarkeitsbalken (`/services/<dienst>/days/<datum>`) | nein | `noindex, follow`: eine dünne Seite pro Dienst und Tag. In keiner Sitemap. |
 | Nicht gefunden (404), auch eine Verlaufsseite hinter der letzten | nein | `noindex`. |
 | Bestätigen-, Verwalten- und Abmelden-Links | nein | `noindex`, nicht in einer Sitemap, in der `robots.txt` ausgeschlossen. |
-| Private Seiten (`/p/<link>`) | nein | `noindex, nofollow` (Meta-Tag und Header), keine kanonische Adresse, weder in einer Sitemap noch in `llms.txt`, in der `robots.txt` ausgeschlossen. Siehe [Private Seiten](#private-seiten). |
+| Private Seiten (`/p/<link>`) | nein | `noindex, nofollow` (Meta-Tag und Header), keine kanonische Adresse, weder in einer Sitemap noch in `llms.txt`. Absichtlich nicht in der `robots.txt` ausgeschlossen: Ein Crawler muss die Seite abrufen, um `noindex` zu sehen. Siehe [Private Seiten](#private-seiten). |
 | `/admin` auf einer Instanz, die sie ausliefert | nein | Die Antwort trägt `X-Robots-Tag: noindex, nofollow`. |
 | Alle Seiten einer Instanz `admin` | nein | `Disallow: /` in der `robots.txt` und `X-Robots-Tag: noindex, nofollow`. |
 
@@ -237,8 +239,9 @@ Was du wissen solltest:
   öffentlich sind, mit ihrem öffentlichen Text. Von den betroffenen Diensten zeigt
   die Seite nur ihre eigenen. Die Titel führen zur Vorfall- oder Wartungsseite der
   öffentlichen Statusseite.
-- Private Seiten werden nie indexiert (`noindex, nofollow`), nie zwischengespeichert,
-  stehen weder in den Sitemaps noch in `llms.txt`, laden nie das Statistik-Skript
+- Private Seiten werden nie indexiert (`noindex, nofollow`, auch bei „nicht
+  gefunden“), nie zwischengespeichert, stehen weder in den Sitemaps noch in
+  `llms.txt` oder der `robots.txt`, laden nie das Statistik-Skript
   und senden keinen Referrer an andere Seiten. Das Server-Log schreibt
   `/p/[REDACTED]` statt des Links.
 - **Behandle den Link wie ein Passwort.** Wer ihn hat, kann die Seite lesen, und
