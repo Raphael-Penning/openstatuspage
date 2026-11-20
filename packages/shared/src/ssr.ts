@@ -47,11 +47,13 @@ export function canonicalPath(pathname: string): string {
 
 /**
  * Pages with a personal link token in their URL (subscription confirm and
- * manage), in any spelling of the path: never cached, never indexed, and their
- * query never copied into other URLs.
+ * manage, private pages at /p/<token>), in any spelling of the path: never
+ * cached, never served stale, never indexed, without analytics, and their path
+ * and query never copied into other URLs.
  */
 export function isPersonalPath(url: string): boolean {
-  return normalizePath(url).startsWith('/subscription/');
+  const path = normalizePath(url);
+  return path.startsWith('/subscription/') || path === '/p' || path.startsWith('/p/');
 }
 
 /** Id of the non-executable JSON block with the dehydrated state (`<script type="application/json">`). */

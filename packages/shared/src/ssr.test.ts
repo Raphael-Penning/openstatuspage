@@ -81,10 +81,10 @@ describe('normalizePath / isPersonalPath', () => {
   });
 
   it('detects personal pages in any spelling', () => {
-    for (const url of ['/subscription/manage?id=1&token=x', '/SUBSCRIPTION/manage', '/Subscription/Confirm', '//subscription//manage', '/%73ubscription/manage']) {
+    for (const url of ['/subscription/manage?id=1&token=x', '/SUBSCRIPTION/manage', '/Subscription/Confirm', '//subscription//manage', '/%73ubscription/manage', '/p/abc', '/P/abc/services/web', '//p//abc', '/%70/abc', '/p']) {
       expect(isPersonalPath(url), url).toBe(true);
     }
-    for (const url of ['/', '/subscribe', '/subscriptions', '/history?return=/subscription/manage']) {
+    for (const url of ['/', '/subscribe', '/subscriptions', '/history?return=/subscription/manage', '/pages', '/history?return=/p/abc']) {
       expect(isPersonalPath(url), url).toBe(false);
     }
   });
