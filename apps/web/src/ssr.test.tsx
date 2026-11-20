@@ -97,6 +97,16 @@ describe('server rendering', () => {
     expect(missing.head).toMatchObject({ status: 404, robots: 'noindex', canonical: null });
   });
 
+  it('renders the uptime bars of every screen width, narrow ones by media query', async () => {
+    const services = await serverRender('/services');
+    const bar = /aria-roledescription="uptime bar"[^>]*>([\s\S]*?)<\/div><\/div>/.exec(services.html)?.[1] ?? '';
+    const segments = bar.match(/<div class="relative min-w-0 flex-1[^"]*"/g) ?? [];
+    expect(segments.length).toBeGreaterThan(30);
+    // The newest 30 days show on phones, the newest 60 on tablets: no re-render after hydration.
+    expect(segments.filter((s) => !s.includes('max-sm:hidden'))).toHaveLength(30);
+    expect(segments.filter((s) => !s.includes('max-lg:hidden')).length).toBe(Math.min(60, segments.length));
+  });
+
   it('moves hoisted elements to the head', async () => {
     const overview = await serverRender('/');
     expect(overview.hoisted).toContain('<link rel="alternate" type="application/rss+xml"');

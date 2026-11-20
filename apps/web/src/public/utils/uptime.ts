@@ -4,27 +4,6 @@
 import { SERVICE_STATUS_SEVERITY, type DailyUptime, type ServiceStatus } from '@openstatuspage/shared';
 import { numberFormat } from './intl';
 
-/** Breakpoints (px) and the number of days shown below them. */
-const DAY_STEPS: readonly (readonly [number, number])[] = [
-  [640, 30],
-  [1024, 60],
-];
-
-/**
- * Number of days an uptime bar shows for a viewport width: 30 on phones,
- * 60 on tablets, 90 on desktops. Never more than `available`.
- */
-export function barDaysForWidth(width: number, available: number, desktopDays = 90): number {
-  let days = desktopDays;
-  for (const [maxWidth, d] of DAY_STEPS) {
-    if (width < maxWidth) {
-      days = d;
-      break;
-    }
-  }
-  return Math.max(1, Math.min(days, available));
-}
-
 /** The newest `count` buckets (input is oldest first, like the API). */
 export function lastDays(uptime: readonly DailyUptime[], count: number): DailyUptime[] {
   if (count <= 0) return [];

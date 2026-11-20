@@ -2,7 +2,6 @@ import type { DailyUptime } from '@openstatuspage/shared';
 import { describe, expect, it } from 'vitest';
 import {
   averageUptime,
-  barDaysForWidth,
   correctedDays,
   dayIndexAt,
   dayPattern,
@@ -16,23 +15,6 @@ import {
 function day(date: string, uptime: number | null, minutes: DailyUptime['minutes'] = {}): DailyUptime {
   return { date, status: uptime === null ? null : 'operational', uptime, minutes };
 }
-
-describe('barDaysForWidth', () => {
-  it('shows 30/60/90 days depending on the viewport width', () => {
-    expect(barDaysForWidth(375, 90)).toBe(30);
-    expect(barDaysForWidth(800, 90)).toBe(60);
-    expect(barDaysForWidth(1280, 90)).toBe(90);
-  });
-
-  it('never exceeds the available days', () => {
-    expect(barDaysForWidth(1280, 14)).toBe(14);
-    expect(barDaysForWidth(375, 7)).toBe(7);
-  });
-
-  it('uses a custom desktop range', () => {
-    expect(barDaysForWidth(1600, 180, 180)).toBe(180);
-  });
-});
 
 describe('lastDays', () => {
   const days = [day('2026-01-01', 100), day('2026-01-02', 99), day('2026-01-03', 98)];

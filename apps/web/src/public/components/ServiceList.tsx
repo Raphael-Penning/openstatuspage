@@ -6,18 +6,17 @@ import { ChevronDown, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { useViewportWidth } from '../hooks/dom';
 import { usePublicSettings } from '../hooks/queries';
-import { barDaysForWidth } from '../utils/uptime';
 import { Card, StatusPill } from './ui';
 import { UptimeBar } from './UptimeBar';
 
-/** Days an uptime bar shows at the current viewport width. */
+/**
+ * Days an uptime bar shows on a wide screen: the configured range, at most 90.
+ * Narrow screens show fewer (UptimeBar hides them with media queries).
+ */
 export function useBarDays(): number {
-  const width = useViewportWidth();
   const { data } = usePublicSettings();
-  const max = data?.uptimeDays ?? 90;
-  return barDaysForWidth(width, max, Math.min(max, 90));
+  return Math.min(data?.uptimeDays ?? 90, 90);
 }
 
 export function ServiceRow({ service, days }: { service: PublicService; days: number }) {
