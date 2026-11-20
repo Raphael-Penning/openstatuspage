@@ -209,10 +209,14 @@ breaking changes.
   redirects, no cookies, the visitor's IP address only when allowed), so the
   CSP stays `'self'` and browsers never contact Umami. The tracker is rendered
   on the server, deferred, never on subscription links or the management UI;
-  tokens are stripped from tracked URLs; Do Not Track and Global Privacy
-  Control are respected by default. Visitors turn statistics off (and on) in
-  the footer, also without JavaScript (cookie `osp-analytics`); rendered pages
-  are cached per choice. `robots.txt` disallows `/pulse/`. See
+  tokens (with their subscription ID) and fragments are stripped from tracked
+  URLs and events keep only the tracker's fields; Do Not Track and Global
+  Privacy Control are respected by default. Visitors turn statistics off (and
+  on) in the footer, also without JavaScript (cookie `osp-analytics`, which
+  Umami's `localStorage` switch always follows); rendered pages are cached per
+  choice. The settings page warns when the server has no `UMAMI_URL`
+  (`analyticsAvailable`). Needs Umami 2.0 or later. `robots.txt` disallows
+  `/pulse/`. See
   [docs/configuration.md](docs/configuration.md#analytics).
 
 ### Changed
