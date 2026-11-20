@@ -35,6 +35,16 @@ export function normalizePath(url: string): string {
 }
 
 /**
+ * Preferred spelling of a page path (canonical URL, redirect target): lower
+ * case, single slashes, no trailing slash. Percent escapes stay as they are.
+ * Slugs and ids of public pages are lower case, so nothing distinct is merged.
+ */
+export function canonicalPath(pathname: string): string {
+  const path = pathname.toLowerCase().replace(/\/{2,}/g, '/');
+  return path.length > 1 ? path.replace(/\/+$/, '') : path;
+}
+
+/**
  * Pages with a personal link token in their URL (subscription confirm and
  * manage), in any spelling of the path: never cached, never indexed, and their
  * query never copied into other URLs.

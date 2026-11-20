@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HEAD_ATTR, headElements, isPersonalPath, normalizePath, scriptJson } from './ssr.js';
+import { canonicalPath, HEAD_ATTR, headElements, isPersonalPath, normalizePath, scriptJson } from './ssr.js';
 
 describe('scriptJson', () => {
   it('cannot close the script element or open a comment, and parses back', () => {
@@ -71,6 +71,13 @@ describe('normalizePath / isPersonalPath', () => {
     expect(normalizePath('/SERVICES//Web?q=1')).toBe('/services/web');
     expect(normalizePath('/%61dmin/x')).toBe('/admin/x');
     expect(normalizePath('/bad%E0%A4%A')).toBe('/bad%e0%a4%a');
+  });
+
+  it('canonical paths: lower case, single slashes, no trailing slash', () => {
+    expect(canonicalPath('/SERVICES/')).toBe('/services');
+    expect(canonicalPath('//history//')).toBe('/history');
+    expect(canonicalPath('/')).toBe('/');
+    expect(canonicalPath('/services/web-app')).toBe('/services/web-app');
   });
 
   it('detects personal pages in any spelling', () => {

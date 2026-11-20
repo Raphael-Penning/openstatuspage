@@ -84,6 +84,12 @@ describe('head of the indexable pages', () => {
     expect(head.title).toBe(`Dienste & Websites · ${settings.siteName}`);
   });
 
+  it('names the preferred spelling of the path as canonical (case, trailing slash)', async () => {
+    expect((await headOf('/SERVICES')).canonical).toBe(`${BASE_URL}/services`);
+    expect((await headOf('/services/')).canonical).toBe(`${BASE_URL}/services`);
+    expect((await headOf('/Services/api/')).alternates?.at(-1)).toEqual({ hreflang: 'x-default', href: `${BASE_URL}/services/api` });
+  });
+
   it('uses the content of incidents, maintenance windows and services', async () => {
     expect((await headOf('/incidents/inc-1')).description).toBe(summarize(incident.updates[0]!.message));
     expect((await headOf('/maintenance/m-1')).description).toBe(maintenance.description);

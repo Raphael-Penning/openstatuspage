@@ -18,7 +18,7 @@
  * URLs are absolute with the public base URL (state.baseUrl; the page's origin
  * in a client-only render).
  */
-import { HEAD_ATTR, headElements, LANG_QUERY, type HeadElement, type PageHead } from '@openstatuspage/shared';
+import { canonicalPath, HEAD_ATTR, headElements, LANG_QUERY, type HeadElement, type PageHead } from '@openstatuspage/shared';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router';
@@ -44,7 +44,8 @@ export interface PageHeadInput {
   /** Meta description (shortened to 160 characters); empty: the page description of the settings. */
   description?: string | null;
   /**
-   * Canonical path of the page; default: the current path. `?lang=` of the request
+   * Canonical path of the page; default: the current path (lower case, without a
+   * trailing slash). `?lang=` of the request
    * is kept (each language version is its own canonical page). null: none.
    */
   canonical?: string | null;
@@ -127,8 +128,9 @@ export function usePageHead(input: PageHeadInput): void {
   const status = input.status ?? 200;
   const indexable = status < 400 && !(input.robots ?? '').includes('noindex');
   const description = summarize(input.description || settings?.description || t('seo.default', { site }));
-  // The page's path (a page with several URLs passes its preferred one); null: no canonical URL.
-  const path = input.canonical === undefined ? pathname : input.canonical;
+  // The page's path in its preferred spelling (/SERVICES/ → /services; a page with
+  // several URLs passes its preferred one); null: no canonical URL.
+  const path = input.canonical === undefined ? canonicalPath(pathname) : input.canonical;
   const queryLang = new URLSearchParams(search).get(LANG_QUERY);
   const canonical = path ? absoluteUrl(withLang(path, isLanguage(queryLang) ? queryLang : null), baseUrl) : null;
   const info: SiteInfo = {
