@@ -33,6 +33,7 @@ wichtigsten Variablen:
 | `APP_ROLE` | `all` | `all`, oder mit PostgreSQL `public`, `admin` bzw. `worker`, wenn du Statusseite und Verwaltung als getrennte Instanzen betreibst. Siehe [Getrennter Betrieb](../../configuration.md#split-deployment). |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL-Login der `public`-Instanz. Sie darf nur öffentliche Daten lesen und Abonnements über geprüfte Funktionen verwalten. Lege die Rolle mit `deploy/postgres/roles.sql` an; siehe [Sicherheitsmodell](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` bei `APP_ROLE=admin`) | Hintergrundaufgaben; mit PostgreSQL dürfen mehrere Instanzen sie ausführen (Abstimmung über die Datenbank). |
+| `UMAMI_URL` | – | Dein Umami-Server für Statistiken über Seitenaufrufe, siehe [Statistik mit Umami](#statistik-mit-umami). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | E-Mail-Versand, siehe [E-Mail-Abonnements](07-email-subscriptions.md#mailserver). |
 
 Für alle Variablen gilt:
@@ -128,6 +129,54 @@ rechtliche Links, Marken-Link, Info-Link, Support-URL, Footer-Links und die
 Websites der Services. Deine Webanalyse sieht dann, dass Besuche von der
 Statusseite kamen. Links auf die Adresse der Statusseite selbst, `mailto:`-Links
 und Links, die schon einen `utm_`-Parameter enthalten, bleiben unverändert.
+
+### Statistik mit Umami
+
+Die Statusseite kann Seitenaufrufe mit [Umami](https://umami.is) zählen, einem
+Analyse-Server, den du selbst betreibst und der keine Cookies setzt. Zwei
+Schritte:
+
+1. Setze `UMAMI_URL` auf die Adresse deines Umami-Servers (zum Beispiel
+   `https://umami.example.com` oder `http://umami:3000` in einem
+   Docker-Netzwerk) auf jeder Instanz, die die Statusseite ausliefert, und
+   starte sie neu. Bei getrennten Instanzen ist das die `public`-Instanz (und
+   die `admin`-Instanz für ihre Vorschau).
+2. Lege in Umami eine Website an und kopiere ihre **Website ID**. Schalte unter
+   **Einstellungen → Statistik (Umami)** **Seitenaufrufe mit Umami zählen** ein
+   und füge die ID ein.
+
+Die Browser der Besucher sprechen nie mit Umami. Die Statusseite liefert den
+Tracker als `/pulse/p.js` aus und gibt die Ereignisse von `/pulse/api/send` an
+Umami weiter. Dein Umami-Server kann also intern bleiben, und die Seite braucht
+keine Ausnahme in ihrer Sicherheitsrichtlinie. Die Adresse des Umami-Servers ist
+absichtlich eine Umgebungsvariable und keine Einstellung: Wer nur Zugriff auf die
+Verwaltung hat, kann den Server nicht anderswohin verbinden lassen.
+
+Was Besucher und deine Statistik bekommen:
+
+- Jede öffentliche Seite hat im Footer neben der Datenschutzerklärung
+  **Statistik deaktivieren**. Das funktioniert ohne JavaScript und speichert die
+  Wahl ein Jahr lang im Cookie `osp-analytics`; danach steht dort „Statistik ist
+  deaktiviert.“ mit **Statistik aktivieren**.
+- Abo-Links aus E-Mails werden nie gezählt, und Tokens werden aus jeder Adresse
+  entfernt, bevor sie Umami erreicht. Die Verwaltung wird nie gezählt.
+- **Do Not Track und Global Privacy Control beachten** (standardmäßig an) sendet
+  nichts für Browser, die darum bitten, nicht erfasst zu werden.
+- **IP-Adressen der Besucher an Umami weitergeben** ist standardmäßig aus. Umami
+  sieht dann nur deinen Statusseiten-Server: Es zeigt keine Standorte der
+  Besucher (oder den des Servers) und zählt Besucher mit derselben
+  Browserversion als einen; die Besucherzahlen sind dann zu niedrig, die
+  Seitenaufrufe stimmen. Schalte es nur ein, wenn deine Datenschutzerklärung das
+  abdeckt, und setze hinter einem Reverse Proxy `TRUST_PROXY` (siehe
+  [Reverse Proxy](03-reverse-proxy.md#trust_proxy)), sonst bekommt Umami die
+  Adresse des Proxys.
+- **Nur auf diesen Domains** beschränkt das Zählen auf die Hostnamen, die du
+  einträgst, etwa um eine Testkopie auszunehmen.
+
+Ist Umami nicht erreichbar, funktionieren die Seiten ohne Fehler weiter; der
+Statistik fehlen dann nur diese Aufrufe. Erwähne die Statistik in deiner
+Datenschutzerklärung. Details und Grenzen:
+[configuration.md](../../configuration.md#analytics).
 
 ## Die wirksame Konfiguration prüfen
 
