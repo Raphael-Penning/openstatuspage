@@ -224,14 +224,18 @@ html {
  * in classes on each of the up to 90 segments of every bar, and the day table
  * of the service page likewise. Keeps the server-rendered pages small.
  */
-.osp-bar > div {
+.osp-bar > a {
   position: relative;
   min-width: 0;
   flex: 1 1 0%;
   border-radius: 2px;
 }
+/* The focus ring (the base :focus-visible outline) above the neighbouring days. */
+.osp-bar > a:focus-visible {
+  z-index: 1;
+}
 @media (prefers-reduced-motion: no-preference) {
-  .osp-bar > div {
+  .osp-bar > a {
     transition: opacity 150ms;
   }
 }
@@ -244,6 +248,11 @@ html {
   font-weight: 500;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.osp-days tbody th a {
+  color: var(--osp-accent-text, var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .osp-days td:nth-child(3) {
   text-align: end;

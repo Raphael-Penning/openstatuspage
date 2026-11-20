@@ -1,33 +1,39 @@
 /**
- * Uptime bar made of thin day segments (oldest left, today right).
+ * Uptime bar made of thin day segments (oldest left, today right). Every
+ * segment is a link to the detail page of its day (`dayHref`).
  *
- * One tab stop per bar: arrow keys / Home / End move through the days and the
- * tooltip shows date, status, uptime and non-operational minutes of that day.
+ * One tab stop per bar (roving tabindex): Tab reaches the newest day (or the
+ * one visited last), arrow keys / Home / End move the focus through the days,
+ * Enter opens the focused day. Each link is named with date, status, uptime
+ * and non-operational minutes of its day, and the tooltip shows the same.
  *
  * Accessibility (docs/accessibility.md):
- * - The whole bar is a single pointer target; the day follows from the pointer
- *   position, so thin segments do not have to be 24 px wide (WCAG 2.5.8).
+ * - With JavaScript the whole bar is a single pointer target; the day follows
+ *   from the pointer position, so thin segments do not have to be 24 px wide
+ *   (WCAG 2.5.8). Without JavaScript every segment is a plain link, and the
+ *   day table of the service page (UptimeDayTable) has the same links as
+ *   full-size targets.
  * - Days that were not fully operational are striped and days without data
  *   are outlined, so the bar does not rely on color alone (WCAG 1.4.1).
  * - The tooltip can be hovered, stays until the pointer or focus leaves, and
- *   Escape hides it (WCAG 1.4.13). Tapping a day shows it on touch screens.
- * - Keyboard navigation announces the selected day through a polite live
- *   region; pointer movement does not, so screen readers are not flooded.
+ *   Escape hides it (WCAG 1.4.13). On touch screens the first tap on a day
+ *   shows its tooltip (with a link to the day), a second tap opens the day.
  *
  * Days corrected afterwards carry a small marker below the segment and say so
- * (with the public notes) in the tooltip.
+ * (with the public notes) in the link name and the tooltip.
  *
- * Without JavaScript (and before hydration) the bar is a picture with its
- * summary as label and takes no tab stop; the day details are in the table of
- * the service page (UptimeDayTable), which needs no JavaScript.
+ * Without JavaScript (and before hydration) the links work as they are; only
+ * the newest day is in the tab order, the day table lists every day.
  */
 import type { DailyUptime } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
-import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link, useNavigate } from 'react-router';
 import { useHydrated } from '../../lib/ssr';
 import { STATUS_BG } from '../../lib/status';
 import { useDismiss, useViewportWidth } from '../hooks/dom';
+import { useClientLinks } from '../hooks/links';
 import { useFormat } from '../hooks/preferences';
 import { averageUptime, dayIndexAt, dayPattern, lastDays, statusMinutes, tooltipAlign } from '../utils/uptime';
 
@@ -41,6 +47,8 @@ interface UptimeBarProps {
   tabletDays?: number;
   /** Name of the service, used for the accessible label. */
   label: string;
+  /** Path of the detail page of a day (see useServicePaths().day). */
+  dayHref: (date: string) => string;
   /** Uptime over the full API range; when omitted it is computed from the shown days. */
   percent?: number | null;
   size?: 'md' | 'lg';
@@ -63,17 +71,21 @@ type Width = keyof typeof ONLY;
  * ones with media queries (no JavaScript, nothing moves on hydration); the
  * pointer and keyboard handling use the days the screen shows.
  */
-export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label, percent, size = 'md', className }: UptimeBarProps) {
+export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label, dayHref, percent, size = 'md', className }: UptimeBarProps) {
   const { t } = useTranslation('public');
   const f = useFormat();
   const shown = lastDays(uptime, days);
   const [active, setActive] = useState<number | null>(null);
   /** Hidden with Escape: stays hidden until the pointer leaves or the visitor picks another day. */
   const [dismissed, setDismissed] = useState(false);
-  /** Text for the live region; only set by keyboard navigation. */
-  const [announcement, setAnnouncement] = useState('');
-  const tooltipId = useId();
+  /** The day in the tab order (roving tabindex); null: the newest. */
+  const [cursor, setCursor] = useState<number | null>(null);
+  /** Kind of the last pointer that pressed on the bar (a tap selects first, a click opens). */
+  const pointerKind = useRef<string>('mouse');
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const openLink = useClientLinks();
+  const navigate = useNavigate();
   const hydrated = useHydrated();
   const viewport = useViewportWidth();
 
@@ -119,15 +131,27 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
     return parts.join(', ');
   }
 
-  function select(index: number, announce: boolean) {
+  function select(index: number) {
     setActive(index);
     setDismissed(false);
-    if (announce) setAnnouncement(describe(shown[index]!));
+  }
+
+  /** Index of the day link an event came from (data-i), or null. */
+  function indexOf(target: EventTarget | null): number | null {
+    const i = (target as HTMLElement | null)?.closest?.('[data-i]')?.getAttribute('data-i');
+    return i == null ? null : Number(i);
+  }
+
+  function focusDay(index: number) {
+    setCursor(index);
+    select(index);
+    barRef.current?.querySelector<HTMLElement>(`[data-i="${index}"]`)?.focus();
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const last = shown.length - 1;
-    const current = active !== null && active >= first ? active : last;
+    const from = indexOf(e.target);
+    const current = from !== null && from >= first ? from : last;
     let next: number | null = null;
     if (e.key === 'ArrowLeft') next = Math.max(first, current - 1);
     else if (e.key === 'ArrowRight') next = Math.min(last, current + 1);
@@ -135,8 +159,29 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
     else if (e.key === 'End') next = last;
     if (next !== null) {
       e.preventDefault();
-      select(next, true);
+      focusDay(next);
     }
+  }
+
+  /**
+   * A click anywhere on the bar opens the day under the pointer (the whole bar
+   * is one target); a tap on a day whose tooltip is not shown yet shows it
+   * first. Enter on a focused day and clicks with modifier keys go to its link.
+   */
+  function onClick(e: MouseEvent<HTMLDivElement>) {
+    if (e.detail === 0 || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      openLink(e);
+      return;
+    }
+    const index = indexAt(e);
+    if (pointerKind.current !== 'mouse' && (index !== active || dismissed)) {
+      e.preventDefault();
+      select(index);
+      return;
+    }
+    e.preventDefault();
+    setCursor(index);
+    void navigate(dayHref(shown[index]!.date));
   }
 
   function indexAt(e: { clientX: number; currentTarget: HTMLElement }): number {
@@ -144,6 +189,8 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
     return first + dayIndexAt(e.clientX - rect.left, rect.width, visibleCount);
   }
 
+  /** The day in the tab order: the one visited last on this screen, else the newest. */
+  const tabbable = cursor !== null && cursor >= first ? cursor : shown.length - 1;
   const align = active !== null ? tooltipAlign(active - first, visibleCount) : 'center';
   const left = active !== null ? ((active - first + 0.5) / visibleCount) * 100 : 50;
   /** A text per screen width; only the one for the current width is displayed. */
@@ -163,36 +210,45 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
       }}
     >
       <div
-        tabIndex={hydrated ? 0 : undefined}
+        ref={barRef}
         role="group"
         aria-roledescription={t('uptime.roleDescription')}
         aria-label={
           t(hydrated ? 'uptime.ariaLabel' : 'uptime.ariaLabelStatic', { name: label, days: visibleCount, uptime: avgText }) +
           (correctedCount > 0 ? ` ${t('uptime.correctedCount', { count: correctedCount })}` : '')
         }
-        aria-describedby={visible ? tooltipId : undefined}
         onKeyDown={onKeyDown}
-        onFocus={() => setActive((a) => (a !== null && a >= first ? a : shown.length - 1))}
+        onFocus={(e) => {
+          const index = indexOf(e.target);
+          if (index === null) return;
+          setCursor(index);
+          select(index);
+        }}
         onBlur={(e) => {
           if (!wrapperRef.current?.contains(e.relatedTarget as Node | null)) hide();
+        }}
+        onPointerDown={(e) => {
+          pointerKind.current = e.pointerType || 'mouse';
         }}
         onPointerMove={(e) => {
           if (e.pointerType !== 'mouse') return;
           const index = indexAt(e);
-          if (index !== active && !dismissed) select(index, false);
+          if (index !== active && !dismissed) select(index);
         }}
-        onClick={(e) => select(indexAt(e), false)}
-        className={clsx(
-          'osp-bar flex w-full cursor-default items-stretch gap-px rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-focus sm:gap-[2px]',
-          size === 'lg' ? 'h-12' : 'h-8',
-        )}
+        onClick={onClick}
+        className={clsx('osp-bar flex w-full cursor-pointer items-stretch gap-px rounded-md sm:gap-[2px]', size === 'lg' ? 'h-12' : 'h-8')}
       >
         {shown.map((d, i) => {
           const age = shown.length - 1 - i;
           return (
-            // Layout of the segments: .osp-bar in styles.css (up to 90 per bar, every class counts).
-            <div
+            // Layout and focus ring of the segments: .osp-bar in styles.css (up to 90 per bar, every class counts).
+            // A plain <a> per day (cheaper than <Link>); the bar's onClick navigates in the client.
+            <a
               key={d.date}
+              href={dayHref(d.date)}
+              data-i={i}
+              tabIndex={i === tabbable ? 0 : -1}
+              aria-label={describe(d)}
               className={clsx(
                 age >= counts.phone && 'max-sm:hidden',
                 age >= counts.tablet && 'max-lg:hidden',
@@ -202,17 +258,16 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
               )}
             >
               {d.corrected && <span aria-hidden className="absolute inset-x-0 -bottom-1.5 h-[3px] rounded-full bg-fg" />}
-            </div>
+            </a>
           );
         })}
       </div>
 
       {visible && (
         // The padding (not a margin) bridges the gap to the bar, so the pointer
-        // can move onto the tooltip without it disappearing. The content is
-        // announced through aria-describedby and the live region below.
+        // can move onto the tooltip without it disappearing. Hidden from
+        // assistive technology: the focused day link says the same.
         <div
-          id={tooltipId}
           aria-hidden
           className={clsx(
             'absolute bottom-full z-20 w-max max-w-64 min-w-44 pb-2',
@@ -223,13 +278,17 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
         >
           <div className="rounded-xl border border-border bg-surface px-3 py-2 text-xs shadow-lg">
             <DayDetails day={visible} />
+            {/* For pointers (a tap shows the tooltip first); keyboards use the day link itself. */}
+            <Link
+              to={dayHref(visible.date)}
+              tabIndex={-1}
+              className="mt-1.5 inline-flex min-h-6 items-center font-medium text-[color:var(--osp-accent-text,var(--accent))] hover:underline"
+            >
+              {t('uptime.openDay')}
+            </Link>
           </div>
         </div>
       )}
-
-      <p className="sr-only" aria-live="polite" aria-atomic>
-        {announcement}
-      </p>
 
       <div className={clsx('flex items-center justify-between gap-2 text-xs text-muted', anyCorrected ? 'mt-3' : 'mt-1.5')} aria-hidden>
         <span>{perWidth((count) => t('uptime.daysAgo', { count }))}</span>
@@ -253,7 +312,7 @@ function DayDetails({ day }: { day: DailyUptime }) {
   const f = useFormat();
   const minutes = statusMinutes(day);
   return (
-    <div aria-live="polite">
+    <div>
       <p className="font-semibold">{f.utcDay(day.date)}</p>
       {day.status === null ? (
         <p className="mt-1 text-muted">{t('uptime.noData')}</p>
@@ -295,12 +354,14 @@ function DayDetails({ day }: { day: DailyUptime }) {
 
 /**
  * Every day of an uptime bar as a table, newest first, in a disclosure: what
- * the bar's tooltip shows, without JavaScript and without a pointer. Cell
- * styles are in styles.css (.osp-days), so up to a year of rows stays small.
+ * the bar's tooltip shows, without JavaScript and without a pointer, each day
+ * linked to its detail page. Cell styles are in styles.css (.osp-days), so up
+ * to a year of rows stays small.
  */
-export function UptimeDayTable({ uptime, label }: { uptime: DailyUptime[]; label: string }) {
+export function UptimeDayTable({ uptime, label, dayHref }: { uptime: DailyUptime[]; label: string; dayHref: (date: string) => string }) {
   const { t } = useTranslation('public');
   const f = useFormat();
+  const openLink = useClientLinks();
   if (uptime.length === 0) return null;
   const days = [...uptime].reverse();
   return (
@@ -309,7 +370,8 @@ export function UptimeDayTable({ uptime, label }: { uptime: DailyUptime[]; label
         {t('uptime.dailyDetails')}
       </summary>
       <div className="mt-3 overflow-x-auto rounded-xl border border-border">
-        <table className="osp-days w-full text-sm">
+        {/* Plain links (up to a year of rows); clicks navigate in the client. */}
+        <table className="osp-days w-full text-sm" onClick={openLink}>
           <caption className="sr-only">{t('uptime.dailyCaption', { name: label, count: days.length })}</caption>
           <thead className="bg-surface-2 text-xs text-muted">
             <tr>
@@ -325,7 +387,9 @@ export function UptimeDayTable({ uptime, label }: { uptime: DailyUptime[]; label
               const notes = day.corrected ? [t('uptime.corrected'), ...(day.correctionNotes ?? [])].join(': ') : null;
               return (
                 <tr key={day.date}>
-                  <th scope="row">{f.utcDay(day.date)}</th>
+                  <th scope="row">
+                    <a href={dayHref(day.date)}>{f.utcDay(day.date)}</a>
+                  </th>
                   <td>
                     {day.status === null ? (
                       t('uptime.noData')
