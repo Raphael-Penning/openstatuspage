@@ -127,7 +127,7 @@
   },
   "uptime": {
     "roleDescription": "uptime bar",
-    "ariaLabel": "{{name}}, last {{days}} days: {{uptime}}. Use the arrow keys to inspect single days.",
+    "ariaLabel": "{{name}}, last {{days}} days: {{uptime}}. Every day links to its details; use the arrow keys to move between the days.",
     "percent": "{{value}} uptime",
     "noData": "No data",
     "noDowntime": "No downtime recorded.",
@@ -138,12 +138,41 @@
     "correctedLegend": "Marked days were corrected afterwards",
     "correctedCount_one": "{{count}} day was corrected afterwards.",
     "correctedCount_other": "{{count}} days were corrected afterwards.",
-    "ariaLabelStatic": "{{name}}, last {{days}} days: {{uptime}}.",
+    "ariaLabelStatic": "{{name}}, last {{days}} days: {{uptime}}. Every day links to its details.",
     "dailyDetails": "Show every day",
     "dailyCaption": "Uptime of {{name}} per day, last {{count}} days, newest first",
     "day": "Day (UTC)",
     "status": "Status",
-    "notOperational": "Not operational"
+    "notOperational": "Not operational",
+    "openDay": "Show this day"
+  },
+  "day": {
+    "back": "Back to {{name}}",
+    "title": "{{name}} on {{date}}",
+    "utcNote": "The day runs from 00:00 to 24:00 UTC, like the days of the uptime bar.",
+    "incomplete": "This day is not over yet: the values cover the time until now.",
+    "summary": "Summary of the day",
+    "status": "Status",
+    "uptime": "Uptime",
+    "notOperational": "Not operational",
+    "none": "None",
+    "timeline": "Timeline",
+    "timelineLabel": "Status of {{name}} over the day, from 00:00 to 24:00 UTC",
+    "period": "Period",
+    "duration": "Duration",
+    "ongoing": "ongoing",
+    "noData": "There is no data for this day.",
+    "corrected": "corrected afterwards",
+    "corrections": "Corrected afterwards",
+    "correctionsIntro": "The data of this day was corrected after the fact, for example after a false alarm of the monitoring. The values above already include the correction.",
+    "incidents": "Incidents on this day",
+    "noIncidents": "No incidents on this day.",
+    "maintenance": "Maintenance on this day",
+    "noMaintenance": "No maintenance on this day.",
+    "navigation": "Other days",
+    "previous": "Previous day",
+    "next": "Next day",
+    "notFound": "There is nothing to show for this day: the date is not valid or outside the uptime range of this page."
   },
   "locations": {
     "title": "Locations",
@@ -319,7 +348,8 @@
     "locations": "Status of the locations of {{site}} around the world.",
     "subscribe": "Get an email when {{site}} publishes incidents or maintenance.",
     "incident": "Incident report of {{site}}: {{title}}.",
-    "maintenance": "Maintenance of {{site}}: {{title}}."
+    "maintenance": "Maintenance of {{site}}: {{title}}.",
+    "day": "Status, uptime, incidents and maintenance of {{name}} on {{date}} at {{site}}."
   },
   "link": {
     "newTab": "(opens in a new tab)"
