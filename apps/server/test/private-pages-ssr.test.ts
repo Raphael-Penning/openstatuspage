@@ -117,6 +117,56 @@ describe('private page', () => {
     expect((await get(`${base}/services/${ids.hiddenSlug}/days/2001-01-01`)).statusCode).toBe(404);
   });
 
+  it('opens incidents and maintenance windows below the private page, with only its services', async () => {
+    const base = `/p/${page.token}`;
+    const publicService = data<Any>(await admin.get('/api/admin/services')).find((s: Any) => s.name === 'Public API');
+    const incident = data<Any>(
+      await admin.post('/api/admin/incidents', {
+        title: 'Backend outage',
+        message: 'We are on it.',
+        affectedServices: [
+          { serviceId: ids.hidden, status: 'major_outage' },
+          { serviceId: publicService.id, status: 'partial_outage' },
+        ],
+      }),
+    );
+    const start = new Date(Date.now() + 86_400_000).toISOString();
+    const maintenance = data<Any>(
+      await admin.post('/api/admin/maintenances', {
+        title: 'Backend upgrade',
+        scheduledStart: start,
+        scheduledEnd: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+        serviceIds: [ids.hidden],
+      }),
+    );
+    const hrefs = elements(rootOf(await get(base)), 'a').map((a) => a.href!);
+    expect(hrefs).toContain(`${base}/incidents/${incident.id}`);
+    expect(hrefs).toContain(`${base}/maintenance/${maintenance.id}`);
+    expect(hrefs.filter((h) => h.startsWith('/incidents/') || h.startsWith('/maintenance/'))).toEqual([]);
+
+    for (const [path, title] of [
+      [`${base}/incidents/${incident.id}`, 'Backend outage'],
+      [`${base}/maintenance/${maintenance.id}`, 'Backend upgrade'],
+    ] as const) {
+      const res = await get(path);
+      expect(res.statusCode, path).toBe(200);
+      expect(res.headers['cache-control'], path).toBe('private, no-store');
+      const root = rootOf(res);
+      expect(root, path).toContain(title);
+      expect(root, path).toContain('Partner backend');
+      expect(root, path).not.toContain('Public API');
+      const links = elements(root, 'a').map((a) => a.href!);
+      expect(links, path).toContain(base);
+      expect(links, path).toContain(`${base}/services/${ids.hidden}`);
+      expect(links.filter((h) => h.startsWith('/services') || h === '/history'), path).toEqual([]);
+      expect(elements(res.body, 'meta').find((m) => m.name === 'robots')?.content, path).toBe('noindex, nofollow');
+    }
+    // Not of another page, and not for a wrong link.
+    const other = data<Any>(await admin.post('/api/admin/private-pages', { name: 'Third', serviceIds: [ids.other] }));
+    expect((await get(`/p/${other.token}/incidents/${incident.id}`)).statusCode).toBe(404);
+    expect((await get(`/p/${newPrivatePageToken()}/incidents/${incident.id}`)).statusCode).toBe(404);
+  });
+
   it('is rendered for every request, never from a cache', async () => {
     expect(rootOf(await get(`/p/${page.token}`))).toContain('ACME status');
     await admin.patch(`/api/admin/private-pages/${page.id}`, { name: 'Renamed page' });
