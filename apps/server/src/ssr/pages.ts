@@ -23,6 +23,10 @@
  * free or a render fails. A render error without such a copy is logged and the
  * caller sends the plain client-rendered page instead.
  *
+ * The analytics opt-out cookie is part of the cache key (entry-server.tsx), so a
+ * page rendered with the analytics script never answers a visitor who turned it
+ * off, and the other way round (Vary: Cookie tells shared caches the same).
+ *
  * Pages are sent gzip-compressed to clients that accept it (a page shrinks to
  * about a sixth). The page is compressed once per render, kept with the page,
  * so a cached page costs no CPU per request; Brotli would compress better but
@@ -34,10 +38,12 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import {
+  ANALYTICS_PATHS,
   headElements,
   isPersonalPath,
   SSR_STATE_ID,
   type DataDocument,
+  type AnalyticsTag,
   type PageHead,
   type SsrFormState,
   type SsrModule,
@@ -140,6 +146,23 @@ export function headTags(head: PageHead, hoisted: string): string {
   return tags.join('');
 }
 
+/**
+ * The Umami script tag (routes/analytics.ts proxies script and events): deferred,
+ * so it never blocks rendering, and from this site, so the CSP stays 'self'.
+ * The URL fragment is left out (it only scrolls within a page).
+ */
+export function analyticsScriptTag(tag: AnalyticsTag): string {
+  const attrs: [string, string][] = [
+    ['src', ANALYTICS_PATHS.script],
+    ['data-website-id', tag.websiteId],
+    ['data-host-url', ANALYTICS_PATHS.host],
+    ['data-exclude-hash', 'true'],
+  ];
+  if (tag.domains) attrs.push(['data-domains', tag.domains]);
+  if (tag.doNotTrack) attrs.push(['data-do-not-track', 'true']);
+  return `<script defer${attrs.map(([name, value]) => ` ${name}="${escapeHtml(value)}"`).join('')}></script>`;
+}
+
 /** The built public.html, split around the parts a rendered page fills in. */
 export interface PageTemplate {
   /** From `<!doctype html>` up to (excluding) `<html ...>`. */
@@ -179,6 +202,7 @@ export function composePage(template: PageTemplate, page: SsrRenderResult): stri
     headTags(page.head, page.hoisted) +
     // The accent color before the stylesheet (it is more specific); never a way out of <style>.
     (page.css ? `<style>${page.css.replace(/</g, '')}</style>` : '') +
+    (page.analytics ? analyticsScriptTag(page.analytics) : '') +
     template.headRestAndBodyStart +
     page.html +
     // Data, not code: type=application/json is never executed.
