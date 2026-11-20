@@ -554,8 +554,9 @@ What keeps it small:
   the file names of the public entry, never file contents. The analytics proxy
   (only with `UMAMI_URL`, `routes/analytics.ts`) keeps one copy of Umami's
   tracker script (at most 64 KiB plus its gzip copy, refreshed hourly) and
-  forwards at most 8 events at a time (bodies up to 16 KiB, answers up to
-  8 KiB); further events are dropped, not queued.
+  forwards at most 8 events at a time, 2 per client address (bodies up to
+  16 KiB, answers up to 8 KiB); further events are dropped at once, not
+  queued, so they never hold memory or delay the pages.
 - **No fetch for outbound requests of the public instance.** The analytics
   proxy talks to Umami through `node:http`, so undici and its WebAssembly
   parser (several MB, see above) are never loaded on a public instance.
