@@ -9,10 +9,10 @@
  * (see public-catalog.ts, incidents.ts, maintenances.ts, serializers/public.ts).
  * Nothing about monitoring sources or checks is ever exposed here.
  */
-import { overallStatus, zId, type DataDocument, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type ResourceObject } from '@openstatuspage/shared';
+import { overallStatus, shiftUptimeDay, uptimeDayStart, zId, type DataDocument, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type ResourceObject } from '@openstatuspage/shared';
 import { z } from 'zod';
 import type { DB } from '../db/index.js';
-import { notFound } from '../lib/errors.js';
+import { HttpError, notFound } from '../lib/errors.js';
 import { collection, document, Included, resource, selfLink, toMany, toOne, type DocumentRequest } from '../lib/jsonapi.js';
 import { parseInclude, parseListQuery } from '../lib/jsonapi-query.js';
 import { mailerConfigured, type Mailer } from '../mail/mailer.js';
@@ -22,6 +22,7 @@ import {
   locationResource,
   maintenanceResource,
   PUBLIC_TYPES,
+  serviceDayResource,
   serviceResource,
   settingsResource,
   SETTINGS_ID,
@@ -29,6 +30,7 @@ import {
 import { loadIncidents, toPublicIncident } from './incidents.js';
 import { loadMaintenances, toPublicMaintenance } from './maintenances.js';
 import { countStatuses, loadPublicCatalog, loadPublicLocations, loadPublicService } from './public-catalog.js';
+import { bucketAttributes, dayIncidentIds, dayMaintenanceIds, loadDaySegments } from './service-days.js';
 import { getSettings } from './settings.js';
 
 const DAY_MS = 86400_000;
@@ -48,6 +50,9 @@ const HistoryFilter = {
 
 /** `include` paths of a resource with updates (incidents, maintenances). */
 const UPDATE_INCLUDES = ['updates'];
+
+/** `include` paths of a service day; all of them by default (what the day page shows). */
+const DAY_INCLUDES = ['service', 'incidents', 'incidents.updates', 'maintenances', 'maintenances.updates'];
 
 // --- Queries (ids only; records are loaded and serialized afterwards) ----------
 
@@ -104,6 +109,9 @@ export async function publicIncidents(db: DB, ids: string[]): Promise<PublicInci
 export async function publicMaintenances(db: DB, ids: string[]): Promise<PublicMaintenance[]> {
   return (await loadMaintenances(db, ids)).map(toPublicMaintenance);
 }
+
+/** A malformed day in the path (not YYYY-MM-DD or no real calendar day). */
+const invalidDay = () => new HttpError(400, 'invalid_date', 'Expected a day as YYYY-MM-DD');
 
 function monthRange(month: string): [string, string] {
   const [y, m] = month.split('-').map(Number) as [number, number];
@@ -290,6 +298,63 @@ export class PublicDocuments {
         incidents: toMany(PUBLIC_TYPES.incident, incidentIds),
         maintenances: toMany(PUBLIC_TYPES.maintenance, maintenanceIds),
       },
+    );
+    return document(data, { included, links: { self: selfLink(req) } });
+  }
+
+  /**
+   * GET /api/public/services/:idOrSlug/days/:date: one UTC day of the uptime bar
+   * in detail. 400 for a malformed date; 404 for unknown or hidden services, for
+   * days outside the uptime range (settings.uptimeDays, ending today) and while
+   * uptime is not shown at all.
+   */
+  async serviceDay(req: DocumentRequest, idOrSlug: string, date: string): Promise<DataDocument> {
+    const dayStart = uptimeDayStart(date);
+    if (dayStart === null) throw invalidDay();
+    const include = parseInclude(req.query as Record<string, unknown>, DAY_INCLUDES, DAY_INCLUDES);
+    const now = new Date();
+    const settings = await getSettings(this.db);
+    if (!settings.showUptime) throw notFound('Day');
+    const service = await loadPublicService(this.db, idOrSlug, settings, now);
+    if (!service) throw notFound('Service');
+    const days = service.uptime ?? [];
+    const index = days.findIndex((d) => d.date === date);
+    if (index < 0) throw notFound('Day');
+
+    const [segments, incidentIds, maintenanceIds] = await Promise.all([
+      loadDaySegments(this.db, service.id, dayStart, now),
+      dayIncidentIds(this.db, service.id, dayStart),
+      dayMaintenanceIds(this.db, service.id, dayStart, now),
+    ]);
+    const included = new Included();
+    const wants = (path: string) => include.has(path) || include.has(`${path}.updates`);
+    // The bars stay on the service resource; the day carries its own bucket.
+    if (include.has('service')) {
+      const { uptime: _bars, ...withoutBars } = service;
+      included.add(serviceResource(withoutBars));
+    }
+    if (wants('incidents')) {
+      const updates = include.has('incidents.updates') ? included : undefined;
+      for (const inc of await publicIncidents(this.db, incidentIds)) included.add(incidentResource(inc, updates));
+    }
+    if (wants('maintenances')) {
+      const updates = include.has('maintenances.updates') ? included : undefined;
+      for (const m of await publicMaintenances(this.db, maintenanceIds)) included.add(maintenanceResource(m, updates));
+    }
+    const data = serviceDayResource(
+      {
+        id: `${service.id}:${date}`,
+        ...bucketAttributes(days[index]!),
+        startsAt: new Date(dayStart).toISOString(),
+        endsAt: new Date(dayStart + DAY_MS).toISOString(),
+        complete: dayStart + DAY_MS <= now.getTime(),
+        segments,
+        previousDate: index > 0 ? shiftUptimeDay(date, -1) : null,
+        nextDate: index < days.length - 1 ? shiftUptimeDay(date, 1) : null,
+      },
+      service,
+      incidentIds,
+      maintenanceIds,
     );
     return document(data, { included, links: { self: selfLink(req) } });
   }

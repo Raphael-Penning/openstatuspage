@@ -17,6 +17,8 @@ import { registerFeedRoutes } from './feeds.js';
 
 const IdOrSlugParams = z.object({ idOrSlug: z.string().min(1).max(100) });
 const IdParams = z.object({ id: z.string().min(1).max(64) });
+/** The day is validated by the document builder (400 malformed, 404 outside the uptime range). */
+const ServiceDayParams = IdOrSlugParams.extend({ date: z.string().min(1).max(32) });
 
 const cacheHeaders = (scope: FastifyInstance) =>
   scope.addHook('onSend', async (req, reply, payload) => {
@@ -41,6 +43,10 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     scope.get('/api/public/services/:idOrSlug', withInclude, (req) =>
       docs.service(req, parse(IdOrSlugParams, req.params).idOrSlug),
     );
+    scope.get('/api/public/services/:idOrSlug/days/:date', withInclude, (req) => {
+      const params = parse(ServiceDayParams, req.params);
+      return docs.serviceDay(req, params.idOrSlug, params.date);
+    });
     scope.get('/api/public/locations', (req) => docs.locations(req));
     scope.get('/api/public/incidents/:id', withInclude, (req) => docs.incident(req, parse(IdParams, req.params).id));
     scope.get('/api/public/maintenances/:id', withInclude, (req) => docs.maintenance(req, parse(IdParams, req.params).id));
