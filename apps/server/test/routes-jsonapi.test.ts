@@ -1,7 +1,7 @@
 /**
  * Walks every registered route and checks that JSON responses are JSON:API
  * documents. The only routes outside JSON:API are the documented non-JSON:API
- * endpoints (health check, feeds, OIDC and the unsubscribe redirect).
+ * endpoints (health check, feeds, crawler files, OIDC and the unsubscribe redirect).
  */
 import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
 import type { HTTPMethods, LightMyRequestResponse, RouteOptions } from 'fastify';
@@ -16,6 +16,13 @@ const NON_JSONAPI = [
   'GET /api/auth/oidc/callback',
   'GET /feed.rss',
   'GET /feed.atom',
+  'GET /robots.txt',
+  'GET /sitemap.xml',
+  'GET /sitemap-pages.xml',
+  'GET /sitemap-incidents-:page.xml',
+  'GET /sitemap-services-:page.xml',
+  'GET /llms.txt',
+  'GET /llms-full.txt',
 ];
 
 /** Non-JSON:API routes whose successful answer is plain JSON. */

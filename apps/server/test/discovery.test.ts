@@ -65,13 +65,25 @@ async function roleApp(role: 'public' | 'admin', other: TestApp) {
   return app;
 }
 
-function parseXml(body: string): Document {
+// The DOM of the jsdom environment (the server's typecheck has no DOM types).
+interface XmlElement {
+  localName: string;
+  namespaceURI: string | null;
+  textContent: string | null;
+}
+interface XmlDocument {
+  documentElement: XmlElement;
+  getElementsByTagName(name: string): ArrayLike<XmlElement> & Iterable<XmlElement>;
+}
+declare const DOMParser: { new (): { parseFromString(source: string, type: string): XmlDocument } };
+
+function parseXml(body: string): XmlDocument {
   const xml = new DOMParser().parseFromString(body, 'application/xml');
   expect(xml.getElementsByTagName('parsererror')).toHaveLength(0);
   return xml;
 }
 
-const locs = (xml: Document) => [...xml.getElementsByTagName('loc')].map((el) => el.textContent ?? '');
+const locs = (xml: XmlDocument) => [...xml.getElementsByTagName('loc')].map((el) => el.textContent ?? '');
 
 describe.each(['all', 'public'] as const)('discovery files (APP_ROLE=%s)', (role) => {
   let app: TestApp['app'];
