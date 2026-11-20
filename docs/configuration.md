@@ -185,6 +185,31 @@ are set by `compose.yaml` itself (use `HOST_PORT` for the published port).
 Confirmation and unsubscribe links are signed with `SUBSCRIPTION_TOKEN_KEY`
 (default `SECRET_KEY`); changing it invalidates links in emails already sent.
 
+## Search engines and AI agents
+
+Search engines and AI agents need no settings of their own. The only variable is
+`PUBLIC_BASE_URL` (default `BASE_URL`): it is the address of every canonical link,
+alternate language link, sitemap entry, the `Sitemap:` line of `robots.txt`, the
+links of `llms.txt` and the structured data. Set it to the public address of the
+status page, with `https://`, also on the admin and worker instances of a split
+deployment.
+
+Per role the app answers:
+
+- `public` and `all`: `/robots.txt` allows the public pages and disallows `/api/`,
+  `/admin`, `/subscription/` and `/preferences/`; `/sitemap.xml` indexes the
+  navigation pages, the incident and maintenance sitemaps and the service sitemaps
+  (`/sitemap-services-N.xml`, at most 5,000 URLs per file); `/llms.txt` and
+  `/llms-full.txt` describe the page for language models.
+- `admin`: `/robots.txt` answers `Disallow: /`, and `/admin` carries
+  `X-Robots-Tag: noindex, nofollow`. No sitemap is served.
+- Pages of the status page that do not exist (`404`) and the personal
+  subscription links carry `noindex`.
+
+Details: [architecture.md](architecture.md#search-engines-and-ai-agents). For
+operators, the guide chapter [Search engines and the public page](guide/en/12-public-page.md)
+explains the sitemap submission and the proxy rules.
+
 ## Rate limits
 
 - `POST /api/auth/login`: 10 requests per minute per client IP.
