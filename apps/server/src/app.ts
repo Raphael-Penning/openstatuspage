@@ -13,6 +13,7 @@ import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
 import { TokenBucketLimiter } from './adapters/rate-limit.js';
 import { RATE_LIMIT_KEYS, registerRoutes } from './routes/index.js';
+import { sendTooManyRequests } from './ssr/busy.js';
 import type { RenderModule, SsrPages } from './ssr/pages.js';
 import { staticCacheControl, webAssetPolicy } from './web-assets.js';
 
@@ -148,7 +149,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // Subscription pages have a token in their URL: it never leaves as a referrer.
     reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
     const admin = path === '/admin' || path.startsWith('/admin/');
-    const framed = !(admin || isApiPath(path));
+    // Private pages are not embeddable either: whoever holds a link could otherwise show it on any site.
+    const framed = !(admin || isApiPath(path) || isPrivatePagePath(path));
     if (!framed) reply.header('X-Frame-Options', 'DENY');
     // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
     const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
@@ -245,12 +247,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         if (isPrivatePagePath(path)) {
           const retryAfter = privatePageLimiter.take(req.ip);
           if (retryAfter > 0) {
-            return reply
-              .status(429)
-              .header('Retry-After', String(retryAfter))
-              .header('Cache-Control', 'no-store')
-              .type('text/plain; charset=utf-8')
-              .send('Too many requests');
+            await sendTooManyRequests(req, reply, retryAfter);
+            return reply;
           }
         }
         if (ssr && !isAdminPath(path) && (await ssr.send(req, reply))) return reply;
