@@ -16,7 +16,7 @@ export interface UtmSettings {
 interface WhatwgUrl {
   readonly protocol: string;
   readonly origin: string;
-  readonly searchParams: { keys(): Iterable<string>; append(name: string, value: string): void };
+  readonly searchParams: { keys(): Iterable<string> };
   toString(): string;
 }
 const Url = (globalThis as unknown as { URL: new (input: string) => WhatwgUrl }).URL;
@@ -55,7 +55,9 @@ export function isOutboundUrl(href: string, siteOrigin?: string | null): boolean
  * (utm_source, utm_medium, utm_campaign; empty ones are left out). Unchanged
  * when UTM is off, when the link is not outbound ({@link isOutboundUrl}) or
  * when it already carries any utm_ parameter (they are never overwritten or
- * mixed). Keeps the fragment.
+ * mixed). The existing query string is kept byte for byte (bare flags, `%20`,
+ * `;` and `~` stay as entered, so signed URLs keep working); the UTM pairs are
+ * appended with encodeURIComponent, before the fragment.
  */
 export function outboundHref(href: string, utm: UtmSettings | null | undefined, siteOrigin?: string | null): string {
   if (!utm?.utmEnabled || !isOutboundUrl(href, siteOrigin)) return href;
@@ -65,8 +67,13 @@ export function outboundHref(href: string, utm: UtmSettings | null | undefined, 
   for (const key of url.searchParams.keys()) {
     if (key.toLowerCase().startsWith('utm_')) return href;
   }
-  for (const [param, value] of params) url.searchParams.append(param, value);
-  return url.toString();
+  const serialized = url.toString();
+  const hashAt = serialized.indexOf('#');
+  const base = hashAt < 0 ? serialized : serialized.slice(0, hashAt);
+  const fragment = hashAt < 0 ? '' : serialized.slice(hashAt);
+  const separator = !base.includes('?') ? '?' : base.endsWith('?') || base.endsWith('&') ? '' : '&';
+  const pairs = params.map(([param, value]) => `${param}=${encodeURIComponent(value)}`).join('&');
+  return `${base}${separator}${pairs}${fragment}`;
 }
 
 /**
