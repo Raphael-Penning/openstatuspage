@@ -182,10 +182,13 @@ async function waitForHealth(base, child) {
   throw new Error('no /api/health within 120 s');
 }
 
-/** Public pages (server-rendered), API and feeds, `count` requests with 8 in parallel. */
+/** Public pages (server-rendered), API, feeds, sitemaps and llms.txt, `count` requests with 8 in parallel. */
 async function publicLoad(base, count) {
   const paths = ['/', '/api/public/status', '/api/public/summary', '/api/public/services', '/api/public/locations',
-    '/api/public/history', '/api/public/settings', '/feed.rss', '/feed.atom'];
+    '/api/public/history', '/api/public/settings', '/feed.rss', '/feed.atom',
+    // Files for crawlers and AI agents.
+    '/robots.txt', '/sitemap.xml', '/sitemap-pages.xml', '/sitemap-incidents-1.xml', '/sitemap-services-1.xml',
+    '/llms.txt', '/llms-full.txt'];
   // Server-rendered pages, in both languages (a rendered page is cached for a few seconds per URL and language).
   for (const page of ['/services', '/locations', '/history', '/history?type=incident', '/subscribe', '/does-not-exist']) {
     paths.push(page, `${page}${page.includes('?') ? '&' : '?'}lang=de`);
