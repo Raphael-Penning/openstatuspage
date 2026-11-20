@@ -226,6 +226,30 @@ describe('interactive states', () => {
     expect(await axeViolations()).toEqual([]);
   });
 
+  it('uptime bar on touch screens: the first tap shows the day, the second opens it', async () => {
+    page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'light' });
+    const bar = page.container.querySelector<HTMLElement>('[aria-roledescription="uptime bar"]')!;
+    const day = bar.children[bar.children.length - 2] as HTMLAnchorElement;
+    const tap = async () => {
+      await act(async () => {
+        const down = new MouseEvent('pointerdown', { bubbles: true });
+        Object.defineProperty(down, 'pointerType', { value: 'touch' });
+        day.dispatchEvent(down);
+        day.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+      });
+      await settle();
+    };
+    await tap();
+    const tooltip = bar.parentElement!.querySelector('[aria-hidden="true"].absolute');
+    expect(tooltip?.textContent).toContain(API_YESTERDAY.slice(0, 4));
+    // The tooltip offers the day as a link, too (out of the tab order: the day link itself is in it).
+    expect(tooltip?.querySelector('a')?.getAttribute('href')).toBe(`/services/api/days/${API_YESTERDAY}`);
+    expect(tooltip?.querySelector('a')?.tabIndex).toBe(-1);
+    expect(page.container.querySelector('h1 time')).toBeNull();
+    await tap();
+    expect(page.container.querySelector('h1 time')?.getAttribute('datetime')).toBe(API_YESTERDAY);
+  });
+
   it('days that were not fully operational are not marked by color alone', async () => {
     page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'light' });
     const bar = page.container.querySelector('[aria-roledescription="uptime bar"]')!;
