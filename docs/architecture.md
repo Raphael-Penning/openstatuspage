@@ -286,20 +286,31 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   cache-busting parameter share the render), language and theme input
   (`cacheKey` of the bundle; at most 16 pages and 1 MiB including the compressed
   copy, one render per key at a time, one render at once with at most 4
-  waiting; beyond that a request gets the client-rendered page, and a full
-  queue is logged at most every 10 s) and sent
+  waiting; a full queue is logged at most every 10 s) and sent
   with a weak `ETag`, `Vary: Accept-Language, Cookie, Accept-Encoding` and
   `Cache-Control: public, max-age=10, stale-while-revalidate=60` (`private,
   no-store` for the personal subscription links). If-None-Match answers 304.
+- **Overload.** An expired page stays in the same bounded cache for a stale
+  window of 10 minutes (the 16-page and 1 MiB limits still apply, oldest
+  first). Within the 5 s a page is fresh it is sent as before; after that a
+  request renders it again when a render slot or waiting place is free. When
+  the queue is full (or the render fails), the last rendered version answers
+  with `X-Cache: STALE`, its own `ETag` (If-None-Match still answers 304) and
+  `Cache-Control: public, max-age=5`. Without such a version a full queue
+  answers `503` with `Retry-After: 5`, `Cache-Control: no-store`,
+  `X-Robots-Tag: noindex` and a small static page in the request's language
+  (`ssr/busy.ts`: `?lang=`, cookie, Accept-Language, else English; no scripts).
+  Personal pages are never kept, so they get the 503 under overload.
 - **Compression.** Each render is gzip-compressed once and kept with the page;
   clients that accept gzip get that copy. Static files are compressed at build
   time (Brotli and gzip, `apps/web/tools/precompress.ts`) and sent as they are;
   hashed files in `/assets/` are cached for a year (`immutable`). See
   [performance.md](performance.md).
 - **Failure.** A render error or a missing bundle is logged and the plain
-  client-rendered entry page is sent instead; the page still works. The same
-  happens at once when more than 32 pages wait for a render (a flood of distinct
-  URLs cannot queue without bound).
+  client-rendered entry page is sent instead (a stale copy of the page, if the
+  cache has one, is preferred); the page still works with JavaScript. A flood
+  of distinct URLs cannot queue without bound: beyond 4 waiting pages see
+  Overload above.
 - **Accent color.** The configured accent and its contrast-safe variants for
   both themes go into a `<style>` in the head (`public/utils/accent.ts`), so the
   page has its colors before (and without) hydration.
@@ -528,9 +539,10 @@ What keeps it small:
   (about 500 kB, ASCII only, `renderToString` without the streaming renderer,
   only the `common` and `public` translations) is imported on the first page
   request, one page renders at a time (at most 4 wait, the rest get the
-  client-rendered page).
+  last rendered version or a 503 busy page).
 - **Bounded caches.** The only response cache holds rendered public pages for
-  5 s (at most 16 pages and 1 MiB, as UTF-8 bytes); there is no query cache. The rate limiter
+  5 s, and expired ones for another 10 minutes to answer under overload (at
+  most 16 pages and 1 MiB together, as UTF-8 bytes); there is no query cache. The rate limiter
   keeps at most 1000 clients per route (`RATE_LIMIT_KEYS`), the per-source
   limiter of the ingest endpoints 10 000 keys. The web asset policy keeps only
   the file names of the public entry, never file contents.
