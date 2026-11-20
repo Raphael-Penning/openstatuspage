@@ -244,7 +244,7 @@ names blocking lists look for, and `robots.txt` disallows them):
 | Path | Upstream | Behaviour |
 | --- | --- | --- |
 | `GET /pulse/p.js` | `UMAMI_URL/script.js` | The tracker script. Fetched at most once an hour and kept in memory (one copy, at most 64 KiB, plus its gzip copy); an expired copy keeps answering while it is refreshed or when Umami is down (retry after a minute). Without any copy the answer is an empty script (`200`, `no-store`), so pages never log an error. 404 while analytics is off. Browsers cache it for an hour. 60 requests per minute per client. |
-| `POST /pulse/api/send` | `UMAMI_URL/api/send` | One tracker event. `application/json` only (else `415`), at most 16 KiB (`413`), 120 requests per minute per client (`429`), at most 16 forwarded at a time, 3 s timeout. Answers Umami's JSON on success and `204` without content in every other case (analytics off, event dropped, Umami slow, failing or redirecting). |
+| `POST /pulse/api/send` | `UMAMI_URL/api/send` | One tracker event. `application/json` only (else `415`), at most 16 KiB (`413`), 120 requests per minute per client (`429`), at most 8 forwarded at a time (more are dropped), 3 s timeout. Answers Umami's JSON on success and `204` without content in every other case (analytics off, event dropped, Umami slow, failing or redirecting). |
 
 What reaches Umami:
 
