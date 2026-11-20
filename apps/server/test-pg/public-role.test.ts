@@ -10,6 +10,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { DB } from '../src/db/index.js';
 import { MemoryMailer } from '../src/mail/mailer.js';
+import { PublicDocuments } from '../src/services/public-documents.js';
+import type { RenderModule } from '../src/ssr/pages.js';
+import { publicDocumentSource } from '../src/ssr/source.js';
 import { prepareDatabase } from '../src/startup.js';
 import {
   subscriptionToken,
@@ -812,6 +815,35 @@ describe('a public instance', () => {
     expect((await publicApp.inject(`/api/public/incidents/${ids.hiddenIncident}`)).statusCode).toBe(404);
     expect((await publicApp.inject(`/api/public/services/${ids.hiddenService}`)).statusCode).toBe(404);
     expect((await publicApp.inject(`/api/public/services/${ids.service}`)).statusCode).toBe(200);
+  });
+
+  it('renders the public pages from the views', async () => {
+    // The web client's render entry from source, with the in-process documents of the public connection.
+    const entry = new URL('../../web/src/entry-server.tsx', import.meta.url).href;
+    const { render } = (await import(/* @vite-ignore */ entry)) as RenderModule;
+    const source = publicDocumentSource(new PublicDocuments(pub, new MemoryMailer()));
+    const pages: [url: string, status: number][] = [
+      ['/', 200],
+      ['/services', 200],
+      [`/services/${ids.service}`, 200],
+      ['/locations', 200],
+      ['/history', 200],
+      [`/incidents/${ids.incident}`, 200],
+      [`/maintenance/${ids.maintenance}`, 200],
+      [`/services/${ids.hiddenService}`, 404],
+      [`/incidents/${ids.hiddenIncident}`, 404],
+      [`/maintenance/${ids.hiddenMaintenance}`, 404],
+    ];
+    for (const [url, status] of pages) {
+      const page = await render({ url, source, baseUrl: BASE_URL });
+      expect(page.status, url).toBe(status);
+      // A requested id is part of the URL (and the query key), not a leak.
+      const secrets = ['Secret message', ids.hiddenService, ids.hiddenIncident, ids.hiddenLocation, 'Internal reason', 'do-not-leak'];
+      for (const secret of secrets.filter((x) => !url.includes(x))) {
+        expect(page.html + page.state, `${url} ${secret}`).not.toContain(secret);
+      }
+    }
+    expect((await render({ url: '/', source, baseUrl: BASE_URL })).html).toContain('Public API');
   });
 
   it('runs the whole subscription flow through the database functions', async () => {
