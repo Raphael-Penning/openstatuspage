@@ -61,11 +61,9 @@ User-agent: *
 Allow: /
 Allow: /api/public/
 Disallow: /api/public/subscriptions
-Disallow: /api/public/private-page
 Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
-Disallow: /p/
 Disallow: /preferences/
 Disallow: /pulse/
 
@@ -82,6 +80,9 @@ Sitemap: https://status.example.com/sitemap.xml
 - `Disallow` stops crawling, not necessarily indexing. The `noindex` header and
   meta tag are what keep a page out of search results, which is why the pages
   that must stay out carry both.
+- Private pages (`/p/…`) are not in `robots.txt` on purpose. A crawler that is
+  kept out never sees their `noindex` and may still list a leaked link as a bare
+  address; the line would also tell everyone where private pages live.
 
 If you need rules for particular crawlers (for example to block AI training
 bots), serve your own `robots.txt` at the reverse proxy instead; the app's file is
@@ -137,7 +138,7 @@ accepts the same address.
 | Day pages of the uptime bars (`/services/<service>/days/<date>`) | no | `noindex, follow`: one thin page per service and day. Not in a sitemap. |
 | Not found (404), also a history page beyond the last one | no | `noindex`. |
 | Confirm, manage, unsubscribe links | no | `noindex`, not in a sitemap, disallowed in `robots.txt`. |
-| Private pages (`/p/<link>`) | no | `noindex, nofollow` (meta tag and header), no canonical address, not in a sitemap or `llms.txt`, disallowed in `robots.txt`. See [Private pages](#private-pages). |
+| Private pages (`/p/<link>`) | no | `noindex, nofollow` (meta tag and header), no canonical address, not in a sitemap or `llms.txt`. Not disallowed in `robots.txt`, on purpose: a crawler has to fetch the page to see `noindex`. See [Private pages](#private-pages). |
 | `/admin` on an instance that serves it | no | The response carries `X-Robots-Tag: noindex, nofollow`. |
 | Every page of an `admin` instance | no | `Disallow: /` in `robots.txt` and `X-Robots-Tag: noindex, nofollow`. |
 
@@ -222,8 +223,8 @@ What to know:
   public, with their public text. Of the services they affect, the page shows only
   its own. The titles link to the incident or maintenance page of the public
   status page.
-- Private pages are never indexed (`noindex, nofollow`), never cached, never
-  appear in the sitemaps or `llms.txt`, never load the statistics script and send
+- Private pages are never indexed (`noindex, nofollow`, also on "not found"),
+  never cached, never appear in the sitemaps, `llms.txt` or `robots.txt`, never load the statistics script and send
   no referrer to other sites. The server log writes `/p/[REDACTED]` instead of the
   link.
 - **Treat the link like a password.** Whoever holds it can read the page, and
