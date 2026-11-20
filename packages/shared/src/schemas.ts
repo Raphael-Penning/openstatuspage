@@ -213,6 +213,11 @@ export const SettingsInput = z.object({
 });
 export type SettingsInput = z.infer<typeof SettingsInput>;
 export type PublicPageSettings = SettingsInput;
+/** `settings/site` of the management API: the page settings plus read-only facts of the instance. */
+export type AdminPageSettings = PublicPageSettings & {
+  /** The instance has UMAMI_URL: analytics can run (read-only, ignored when sent). */
+  analyticsAvailable: boolean;
+};
 
 // ---------------------------------------------------------------------------
 // Auth & users
