@@ -92,7 +92,12 @@ function expectWorksWithoutScript(html: string, url: string) {
 describe('public pages without JavaScript', () => {
   it('none of them needs a script', async () => {
     const sub = await subscriber();
+    const secret = (await admin.post('/api/admin/private-pages', { name: 'Partner', serviceIds: [ids.service] })).json().data.attributes
+      .token as string;
     for (const url of [
+      `/p/${secret}`,
+      `/p/${secret}/services/${ids.slug}`,
+      `/p/${secret}/services/${ids.slug}/days/${new Date().toISOString().slice(0, 10)}`,
       '/',
       '/?upcoming=all',
       '/services',

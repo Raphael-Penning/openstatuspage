@@ -648,16 +648,18 @@ describe('overload: stale pages and 503', () => {
     expect((await page('/c')).body).toBe('plain page');
   });
 
-  it('never keeps or answers personal pages stale', async () => {
+  it.each([
+    ['/subscription/manage?id=x&token=y', 'token=y'],
+    ['/p/abcdefghijklmnopqrstuvwxyz234567', 'abcdefghijklmnopqrstuvwxyz234567'],
+  ])('never keeps or answers personal pages stale (%s)', async (url, secret) => {
     await start();
-    const url = '/subscription/manage?id=x&token=y';
     expect((await page(url)).headers['cache-control']).toBe('private, no-store');
     expect(ssr.cacheSize.entries).toBe(0);
     await overload();
     const res = await page(url);
     expect(res.statusCode).toBe(503);
     expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.body).not.toContain('token=y');
+    expect(res.body).not.toContain(secret);
   });
 
   it('keeps stale pages within the byte limit, dropping the oldest', async () => {
