@@ -375,6 +375,7 @@ outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age
 | GET | `/api/public/settings` | `settings/site` (`PublicPageSettings`) | – |
 | GET | `/api/public/services` | `services[]` in display order (grouped services in group order, then ungrouped), `meta.counts: Record<ServiceStatus, number>` | the `service-groups` |
 | GET | `/api/public/services/:idOrSlug` | `services` incl. `uptime: DailyUptime[]`; relationships `incidents` (last 90 days and unresolved), `maintenances` (active and upcoming) | `include`: `incidents`, `incidents.updates`, `maintenances`, `maintenances.updates` (default: all) |
+| GET | `/api/public/services/:idOrSlug/days/:date` | `service-days`: one UTC day (`YYYY-MM-DD`) of the service's uptime bar in detail (see below); relationships `service`, `incidents`, `maintenances` (public ones overlapping the day). `400` (`invalid_date`) for a malformed date, `404` for days outside the uptime range (`uptimeDays`, ending today), hidden services and while `showUptime` is off | `include`: `service`, `incidents`, `incidents.updates`, `maintenances`, `maintenances.updates` (default: all) |
 | GET | `/api/public/locations` | `locations[]` (relationship `services`), `meta.counts`; `404` when `showLocations` is disabled | – |
 | GET | `/api/public/incidents/:id` | `incidents` (relationships `locations`, `updates`) | `include`: `updates` (default) |
 | GET | `/api/public/maintenances/:id` | `maintenances` (relationships `services`, `locations`, `updates`) | `include`: `updates` (default) |
@@ -386,6 +387,21 @@ outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age
   `correctionNotes: string[]` (the public notes, possibly empty). Where a newer
   correction replaces a public one, that part no longer marks the day. The internal
   reason of a correction is never returned by public endpoints.
+- A **service day** (`service-days`, id `<service id>:<YYYY-MM-DD>`) has the values of
+  that day's `DailyUptime` bucket of the service (`date`, `status`, `uptime`, `minutes`,
+  `corrected`, `correctionNotes`, identical to the bar) plus `startsAt` / `endsAt` (the
+  UTC day, end exclusive), `complete` (`false` for today), `previousDate` / `nextDate`
+  (neighbours inside the uptime range, `null` at its ends) and `segments`: the status
+  periods of the corrected history clipped to the day, in time order, operational ones
+  included: `{ status, startedAt, endedAt, corrected? }`. `endedAt` is `null` while the
+  period lasts (today); `corrected: true` marks periods set by a public correction.
+  Neither the origin of other periods (measured, retroactive maintenance, unpublished
+  corrections) nor any correction id or reason is returned. Incidents overlap the day
+  when they started before its end and were not resolved before its start; maintenance
+  windows by their actual times where known (a running window lasts at least until
+  now, cancelled ones never count). The service in `included` carries no `uptime`
+  bars. The web client shows the day at `/services/<slug>/days/<YYYY-MM-DD>`
+  (`noindex, follow`, not in the sitemaps).
 - Upcoming maintenance: `status = scheduled` and `scheduled_end > now`. Active
   maintenance: `status = in_progress`. Active incidents: `status != resolved`.
 - The summary attribute `emailSubscriptions` is `true` when email subscriptions are
@@ -434,6 +450,52 @@ Content-Type: application/vnd.api+json
       },
       "links": {"self": "/api/public/settings"}
     }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/services/api/days/2026-11-19</code></summary>
+
+```http
+GET /api/public/services/api/days/2026-11-19
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "service-days", "id": "33ea…:2026-11-19",
+    "attributes": {
+      "date": "2026-11-19", "status": "major_outage", "uptime": 95.83,
+      "minutes": {"major_outage": 60},
+      "corrected": true, "correctionNotes": ["False alarm of the monitoring."],
+      "startsAt": "2026-11-19T00:00:00.000Z", "endsAt": "2026-11-20T00:00:00.000Z",
+      "complete": true,
+      "segments": [
+        {"status": "operational", "startedAt": "2026-11-19T00:00:00.000Z", "endedAt": "2026-11-19T10:00:00.000Z"},
+        {"status": "operational", "startedAt": "2026-11-19T10:00:00.000Z", "endedAt": "2026-11-19T11:00:00.000Z", "corrected": true},
+        {"status": "major_outage", "startedAt": "2026-11-19T11:00:00.000Z", "endedAt": "2026-11-19T12:00:00.000Z"},
+        {"status": "operational", "startedAt": "2026-11-19T12:00:00.000Z", "endedAt": "2026-11-20T00:00:00.000Z"}
+      ],
+      "previousDate": "2026-11-18", "nextDate": "2026-11-20"
+    },
+    "relationships": {
+      "service": {"data": {"type": "services", "id": "33ea…"}},
+      "incidents": {"data": [{"type": "incidents", "id": "6c02…"}]},
+      "maintenances": {"data": []}
+    },
+    "links": {"self": "/api/public/services/api/days/2026-11-19"}
+  },
+  "links": {"self": "/api/public/services/api/days/2026-11-19"},
+  "included": [
+    {"type": "services", "id": "33ea…", "attributes": {"slug": "api", "name": "API", "status": "operational", "uptimePercent": 99.95, "…": "…"}},
+    {"type": "incidents", "id": "6c02…", "attributes": {"title": "Elevated error rates", "status": "resolved", "…": "…"}}
   ]
 }
 ```
