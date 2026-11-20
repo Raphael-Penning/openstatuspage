@@ -27,8 +27,14 @@
  *   Umami's own `x-umami-cache` header; never cookies, and the visitor's IP
  *   address (X-Forwarded-For) only when the settings allow it.
  * - Failures answer 204 quickly, without upstream details.
+ *
+ * Upstream requests use node:http(s), not fetch: fetch would load undici and
+ * compile its WebAssembly HTTP parser, several MB that a public instance
+ * (docs/architecture.md#memory) does not need to spend.
  */
 import { createHash } from 'node:crypto';
+import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { gzipSync } from 'node:zlib';
 import { ANALYTICS_PATHS, analyticsActive, isPersonalPath, type PublicPageSettings } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -68,8 +74,8 @@ export interface UmamiProxyOptions {
   baseUrl: string;
   /** Page settings (tests pass their own). Default: from the database. */
   settings?: () => Promise<PublicPageSettings>;
-  /** Replaces the global fetch (tests). */
-  fetch?: typeof fetch;
+  /** Replaces the HTTP client (tests). */
+  request?: Upstream;
   scriptTimeoutMs?: number;
   sendTimeoutMs?: number;
 }
@@ -81,29 +87,60 @@ interface ScriptCopy {
   fetchedAt: number;
 }
 
-/** Reads a response body, at most `max` bytes; null when it is longer. */
-export async function readLimited(res: Response, max: number): Promise<Buffer | null> {
-  const declared = Number(res.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > max) {
-    await res.body?.cancel().catch(() => {});
-    return null;
-  }
-  if (!res.body) return Buffer.alloc(0);
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks);
+/** A request to Umami. Redirects are never followed. */
+export interface UpstreamRequest {
+  url: string;
+  method: 'GET' | 'POST';
+  headers: Record<string, string>;
+  body?: string;
+  timeoutMs: number;
+  /** Longest answer body read; a longer one rejects. */
+  maxBytes: number;
 }
+
+export interface UpstreamResponse {
+  status: number;
+  /** Content type of the answer (lower case, without parameters); '' when missing. */
+  type: string;
+  body: Buffer;
+}
+
+export type Upstream = (req: UpstreamRequest) => Promise<UpstreamResponse>;
+
+/** One HTTP request with node:http(s): a timeout for the whole exchange and a cap on the answer. */
+export const httpUpstream: Upstream = ({ url, method, headers, body, timeoutMs, maxBytes }) =>
+  new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
+    const outgoing = body === undefined ? headers : { ...headers, 'content-length': String(Buffer.byteLength(body)) };
+    const req = send(target, { method, headers: outgoing, signal: AbortSignal.timeout(timeoutMs) }, (res) => {
+      const declared = Number(res.headers['content-length']);
+      if (Number.isFinite(declared) && declared > maxBytes) {
+        res.destroy();
+        reject(new Error(`answer larger than ${maxBytes} bytes`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let total = 0;
+      res.on('data', (chunk: Buffer) => {
+        total += chunk.length;
+        if (total > maxBytes) {
+          res.destroy();
+          reject(new Error(`answer larger than ${maxBytes} bytes`));
+        } else chunks.push(chunk);
+      });
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, type: contentType(res.headers), body: Buffer.concat(chunks) }));
+      res.on('error', reject);
+      // Cut off (timeout, connection lost) before the end: never a partial answer.
+      res.on('close', () => {
+        if (!res.complete) reject(new Error('answer incomplete'));
+      });
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+
+const contentType = (headers: IncomingHttpHeaders) => (headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
 
 /** The single in-memory copy of Umami's tracker script. */
 export class ScriptCache {
@@ -113,7 +150,7 @@ export class ScriptCache {
 
   constructor(
     private readonly url: string,
-    private readonly fetchFn: typeof fetch,
+    private readonly upstream: Upstream,
     private readonly timeoutMs: number,
     private readonly log: { warn(obj: object, msg: string): void },
   ) {}
@@ -132,18 +169,18 @@ export class ScriptCache {
 
   private async refresh(now: number): Promise<ScriptCopy | null> {
     try {
-      const res = await this.fetchFn(this.url, {
+      const res = await this.upstream({
+        url: this.url,
+        method: 'GET',
         headers: { accept: 'application/javascript, text/javascript', 'user-agent': 'OpenStatusPage' },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(this.timeoutMs),
+        timeoutMs: this.timeoutMs,
+        maxBytes: SCRIPT_MAX_BYTES,
       });
-      const type = res.headers.get('content-type') ?? '';
-      if (res.status !== 200 || !/javascript|ecmascript/i.test(type)) {
-        await res.body?.cancel().catch(() => {});
-        throw new Error(`unexpected answer ${res.status} (${type || 'no content type'})`);
+      // A redirect (3xx) or an error page is never taken for the script.
+      if (res.status !== 200 || !/javascript|ecmascript/.test(res.type)) {
+        throw new Error(`unexpected answer ${res.status} (${res.type || 'no content type'})`);
       }
-      const body = await readLimited(res, SCRIPT_MAX_BYTES);
-      if (!body) throw new Error(`script larger than ${SCRIPT_MAX_BYTES} bytes`);
+      const { body } = res;
       const copy: ScriptCopy = {
         body,
         gzip: gzipSync(body, { level: 9 }),
@@ -227,9 +264,9 @@ export function cleanEvent(body: unknown, websiteId: string, baseUrl: string): E
 const dropped = (reply: FastifyReply) => reply.status(204).header('Cache-Control', 'no-store').send();
 
 export async function registerAnalyticsRoutes(app: FastifyInstance, options: UmamiProxyOptions): Promise<void> {
-  const fetchFn = options.fetch ?? fetch;
+  const upstream = options.request ?? httpUpstream;
   const settings = options.settings ?? (() => getSettings(app.ctx.db));
-  const script = new ScriptCache(`${options.upstream}/script.js`, fetchFn, options.scriptTimeoutMs ?? SCRIPT_TIMEOUT_MS, app.log);
+  const script = new ScriptCache(`${options.upstream}/script.js`, upstream, options.scriptTimeoutMs ?? SCRIPT_TIMEOUT_MS, app.log);
   const sendUrl = `${options.upstream}/api/send`;
   const sendTimeout = options.sendTimeoutMs ?? SEND_TIMEOUT_MS;
   let inFlight = 0;
@@ -265,21 +302,16 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, options: Uma
 
       inFlight++;
       try {
-        const res = await fetchFn(sendUrl, {
+        const res = await upstream({
+          url: sendUrl,
           method: 'POST',
           headers,
           body: JSON.stringify(event),
-          redirect: 'manual',
-          signal: AbortSignal.timeout(sendTimeout),
+          timeoutMs: sendTimeout,
+          maxBytes: SEND_RESPONSE_MAX_BYTES,
         });
-        const json = /^application\/json\b/i.test(res.headers.get('content-type') ?? '');
-        if (res.status !== 200 || !json) {
-          await res.body?.cancel().catch(() => {});
-          return dropped(reply);
-        }
-        const answer = await readLimited(res, SEND_RESPONSE_MAX_BYTES);
-        if (!answer) return dropped(reply);
-        return reply.status(200).header('Cache-Control', 'no-store').type('application/json').send(answer);
+        if (res.status !== 200 || res.type !== 'application/json') return dropped(reply);
+        return reply.status(200).header('Cache-Control', 'no-store').type('application/json').send(res.body);
       } catch {
         return dropped(reply);
       } finally {
