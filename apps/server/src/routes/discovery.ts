@@ -1,7 +1,8 @@
 /**
  * Files for search engines and AI agents (every role that serves the public web client):
  *
- *   /robots.txt                 public and all: the public pages, without the API, the
+ *   /robots.txt                 public and all: the public pages and the read-only public
+ *                               API, without the rest of the API, the
  *                               management UI and the personal subscription links, plus the
  *                               sitemap. admin: `Disallow: /` (a preview, not the status page).
  *   /sitemap.xml                sitemap index (public and all) of:
@@ -28,7 +29,14 @@ import { SITEMAP_PAGE_SIZE, SiteIndex, type CurrentStatus, type SitemapKind, typ
  * subscription links (confirm, manage, unsubscribe). Form handlers outside
  * /api/ belong here as well.
  */
-export const DISALLOWED_PATHS = ['/api/', '/admin', '/subscription/', '/preferences/'];
+export const DISALLOWED_PATHS = ['/api/public/subscriptions', '/api/', '/admin', '/subscription/', '/preferences/'];
+
+/**
+ * Exceptions inside the disallowed paths: the read-only public API that
+ * llms.txt points agents to. The longest matching rule wins (RFC 9309), so the
+ * subscription endpoints below it stay disallowed.
+ */
+export const ALLOWED_API_PATHS = ['/api/public/'];
 
 const SITEMAP_NS = 'http://www.sitemaps.org/schemas/sitemap/0.9';
 
@@ -50,6 +58,7 @@ export function renderRobots(role: AppRole, baseUrl: string): string {
     '# Public status page. A summary for language models: ' + `${baseUrl}/llms.txt`,
     'User-agent: *',
     'Allow: /',
+    ...ALLOWED_API_PATHS.map((path) => `Allow: ${path}`),
     ...DISALLOWED_PATHS.map((path) => `Disallow: ${path}`),
     '',
     `Sitemap: ${baseUrl}/sitemap.xml`,

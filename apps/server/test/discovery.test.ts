@@ -108,6 +108,8 @@ describe.each(['all', 'public'] as const)('discovery files (APP_ROLE=%s)', (role
     expect(lines).toEqual(expect.arrayContaining(['User-agent: *', 'Allow: /', 'Disallow: /api/', 'Disallow: /admin', 'Disallow: /subscription/', 'Disallow: /preferences/']));
     expect(lines).toContain(`Sitemap: ${BASE_URL}/sitemap.xml`);
     expect(lines).not.toContain('Disallow: /');
+    // llms.txt points agents to the public API: allowed, except the subscription endpoints.
+    expect(lines).toEqual(expect.arrayContaining(['Allow: /api/public/', 'Disallow: /api/public/subscriptions']));
     // Only comments, fields and blank lines.
     expect(lines.every((l) => l === '' || l.startsWith('#') || /^(User-agent|Allow|Disallow|Sitemap): \S+$/.test(l))).toBe(true);
   });

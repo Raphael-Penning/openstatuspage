@@ -404,7 +404,7 @@ agents. Everything is built from the page settings and public data only.
 
   | Path | Roles | Content |
   | --- | --- | --- |
-  | `/robots.txt` | public, all | `Allow: /`, `Disallow: /api/`, `/admin`, `/subscription/`, `/preferences/`, `Sitemap:` |
+  | `/robots.txt` | public, all | `Allow: /` and `/api/public/` (the read-only API llms.txt points to), `Disallow: /api/public/subscriptions`, `/api/`, `/admin`, `/subscription/`, `/preferences/`, `Sitemap:` |
   | `/robots.txt` | admin | `Disallow: /` (a preview, not the status page) |
   | `/sitemap.xml` | public, all | sitemap index of the files below |
   | `/sitemap-pages.xml` | public, all | overview, services, history, locations and subscribe (when switched on) |
