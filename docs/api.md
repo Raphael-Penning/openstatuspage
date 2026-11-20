@@ -303,13 +303,15 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
 | --- | --- |
 | `/api/public/*` | none (only public data) |
 | `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` (from the manage link) |
+| `/api/public/private-page*` | header `X-Private-Page-Token: <token>` (from the private page link) |
 | `/api/auth/*` | session cookie `osp_session` after login |
 | `/api/admin/*` | session cookie **or** `Authorization: Bearer <api token>` (`osp_…`) |
 | `/api/ingest/*` | `Authorization: Bearer <ingest token>` of the source, or `?token=` |
 
 - Roles: `editor` may manage incidents, maintenance and history corrections and
   read the catalog; `admin` may additionally manage services, groups, locations,
-  monitoring sources, check bundles, settings, users, API tokens and subscribers.
+  monitoring sources, check bundles, settings, users, API tokens, private pages and
+  subscribers.
   Missing credentials are `401`, a missing role is `403`.
 - Cookie-authenticated mutating requests must send the header
   `X-Requested-With: openstatuspage` (simple CSRF protection; the web client always
@@ -884,6 +886,74 @@ Content-Type: application/vnd.api+json
 
 </details>
 
+
+### Private pages
+
+A private page (`/p/<token>`, see [the guide](guide/en/12-public-page.md#private-pages))
+shows chosen services, also ones hidden from the public page, to whoever has its
+link. Its API needs the token of the link in the `X-Private-Page-Token` header; a
+token in the URL or query is never read.
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| GET | `/api/public/private-page` | the page (`private-pages`) |
+| GET | `/api/public/private-page/services/{idOrSlug}` | a service of the page (`services`) with `incidents` and `maintenances` |
+| GET | `/api/public/private-page/services/{idOrSlug}/days/{date}` | a day of a service of the page (`service-days`) |
+
+- `private-pages` attributes: `name`, `description`, `overall`, `counts`,
+  `generatedAt`; relationships `services` (with their uptime bars), `activeIncidents`,
+  `activeMaintenances` and `upcomingMaintenances`, all in `included` (no `include`
+  parameter).
+- The service and day documents have the shape of `GET /api/public/services/{idOrSlug}`
+  and `GET /api/public/services/{idOrSlug}/days/{date}` (same `include` paths, `400
+  invalid_date` for a malformed date), limited to the services of the page. Their
+  `links.self` point below `/api/public/private-page`.
+- Incidents and maintenance windows are the public ones (`isPublic`) that affect a
+  service of the page; `affectedServices` lists only services of the page.
+- A missing, wrong, disabled or expired token, a service that is not on the page
+  and a day outside the uptime range are the same `404 not_found`, so the answer
+  never tells which it was.
+- Answers carry `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`.
+  60 requests per minute and client (`429` beyond, like the HTML pages at `/p/`).
+- Feeds and email subscriptions of a private page do not exist.
+
+```http
+GET /api/public/private-page
+X-Private-Page-Token: 4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "private-pages",
+    "id": "1b6f…",
+    "attributes": {
+      "name": "ACME status",
+      "description": "The services we run for ACME.",
+      "overall": "operational",
+      "counts": { "operational": 2, "degraded": 0, "partial_outage": 0, "major_outage": 0, "maintenance": 0 },
+      "generatedAt": "2026-11-20T09:00:00.000Z"
+    },
+    "relationships": {
+      "services": { "data": [{ "type": "services", "id": "8c2e…" }, { "type": "services", "id": "c41a…" }] },
+      "activeIncidents": { "data": [] },
+      "activeMaintenances": { "data": [] },
+      "upcomingMaintenances": { "data": [] }
+    },
+    "links": { "self": "/api/public/private-page" }
+  },
+  "included": [
+    {
+      "type": "services",
+      "id": "8c2e…",
+      "attributes": { "slug": "partner-backend", "name": "Partner backend", "status": "operational", "uptimePercent": 100, "uptime": ["…"] },
+      "links": { "self": "/api/public/private-page/services/partner-backend" }
+    }
+  ],
+  "links": { "self": "/api/public/private-page" }
+}
+```
 
 ## Email subscriptions
 
@@ -4116,6 +4186,62 @@ Content-Type: application/vnd.api+json
 
 </details>
 
+
+### Private pages (admin)
+
+Role `admin`. Resource type `private-pages`; `services` is a relationship (in
+display order, any service, also hidden ones). Attributes: `name`, `description`,
+`expiresAt` (or null), `enabled`, read-only `expired`, `tokenCreatedAt`,
+`createdAt`, `updatedAt`. Input: `PrivatePageInput`. Answers are `Cache-Control: no-store`.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/admin/private-pages` | all pages, newest first |
+| POST | `/api/admin/private-pages` | `201` with `token` and `url` (shown only here) |
+| GET | `/api/admin/private-pages/:id` | |
+| PATCH | `/api/admin/private-pages/:id` | partial update; the link stays the same |
+| DELETE | `/api/admin/private-pages/:id` | `204`; the link stops working |
+| POST | `/api/admin/private-pages/:id/regenerate-token` | `200` with the new `token` and `url`; the old link stops working |
+
+- The token is 160 random bits as 32 characters of lower-case base32, generated by
+  the server. Only its SHA-256 hash is stored (like the subscription tokens), so it
+  cannot be shown again: renew the link when it is lost. `url` is
+  `PUBLIC_BASE_URL/p/<token>`.
+- Audit log: `private_page.create`, `.update`, `.delete`, `.regenerate_token`
+  (name and number of services, never the token).
+
+```http
+POST /api/admin/private-pages
+Content-Type: application/vnd.api+json
+
+{ "data": { "type": "private-pages", "attributes": { "name": "ACME status", "expiresAt": null },
+  "relationships": { "services": { "data": [{ "type": "services", "id": "8c2e…" }] } } } }
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "private-pages",
+    "id": "1b6f…",
+    "attributes": {
+      "name": "ACME status",
+      "description": null,
+      "expiresAt": null,
+      "enabled": true,
+      "expired": false,
+      "createdAt": "2026-11-20T09:00:00.000Z",
+      "updatedAt": "2026-11-20T09:00:00.000Z",
+      "tokenCreatedAt": "2026-11-20T09:00:00.000Z",
+      "token": "4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj",
+      "url": "https://status.example.com/p/4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj"
+    },
+    "relationships": { "services": { "data": [{ "type": "services", "id": "8c2e…" }] } },
+    "links": { "self": "/api/admin/private-pages/1b6f…" }
+  },
+  "links": { "self": "/api/admin/private-pages" }
+}
+```
 
 ### Side effects the server must apply
 
