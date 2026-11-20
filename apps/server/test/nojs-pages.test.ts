@@ -29,10 +29,13 @@ beforeEach(async () => {
   ).json().data.id;
   const service = (await admin.post('/api/admin/services', { name: 'Public API', groupId: group, locationIds: [fra] })).json().data.id;
   await admin.post('/api/admin/services', { name: 'Website', kind: 'site', url: 'https://www.example.com' });
-  // More than one page of history (20 per page).
+  // More than one page of history (20 per page), one minute apart so the order is fixed.
   let incident = '';
+  const first = Date.now() - 60 * 60_000;
   for (let i = 0; i < 21; i++) {
-    incident = (await admin.post('/api/admin/incidents', { title: `Incident ${i}`, message: 'Investigating.' })).json().data.id;
+    const startedAt = new Date(first + i * 60_000).toISOString();
+    incident = (await admin.post('/api/admin/incidents', { title: `Incident ${i}`, message: 'Investigating.', startedAt })).json()
+      .data.id;
   }
   const services = (await t.app.inject({ method: 'GET', url: '/api/public/services' })).json().data as {
     id: string;
