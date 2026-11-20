@@ -72,9 +72,15 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 | Anzeige | Verfügbarkeit anzeigen | Zeigt Verfügbarkeitsbalken und Prozentwerte. |
 | Anzeige | Tage der Verfügbarkeit | Tage in den Verfügbarkeitsbalken (7–180, Standard 90). |
 | Anzeige | Tage für kürzliche Vorfälle | Wie lange behobene Vorfälle in der Übersicht bleiben (1–90, Standard 7). |
-| Footer-Links | – | Bis zu 10 Links im Footer (z. B. Impressum, Datenschutzerklärung). |
+| Footer-Links | – | Bis zu 10 weitere Links im Footer. |
 | E-Mail-Abonnements | E-Mail-Abonnements anbieten | Bietet Abonnements auf der öffentlichen Seite an (setzt einen konfigurierten Mailserver voraus). Standard: aus. |
 | E-Mail-Abonnements | Wartungserinnerung (Stunden) | Stunden vor einer geplanten Wartung, zu denen Abonnenten erinnert werden (0–168, 0 = aus, Standard 24). |
+| Rechtliche Links | Impressum, Datenschutz, Erklärung zur Barrierefreiheit | `https://`-Links zu diesen Seiten auf deiner Website, jeweils mit optionaler Bezeichnung; erscheinen im Footer unter „Rechtliches“, ohne URL ausgeblendet. |
+| Copyright und Hinweis | Copyright-Hinweis | Reiner Text wie `© {year} Beispiel GmbH`; `{year}` wird zum aktuellen Jahr. Leer: `© <Jahr> <Seitenname>`. |
+| Copyright und Hinweis | URL des Marken-Links | Optional; macht den Hinweis zu einem Link auf deine Website. |
+| Copyright und Hinweis | „Betrieben mit OpenStatusPage“ anzeigen | Zeigt den Hinweis auf die Software. Standard: an. |
+| Info-Link | Bezeichnung, URL oder Pfad | Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine `https://`-URL oder ein Pfad auf dieser Seite wie `/about`. |
+| Link-Tracking (UTM) | UTM-Parameter anhängen, utm_source, utm_medium, utm_campaign | Hängt die Parameter an die Links oben an, die zu anderen Websites führen, siehe [unten](#utm-parameter). Standard: aus. |
 
 Die E-Mail-Einstellungen und den Kasten **E-Mail-Versand** darunter erklärt
 [E-Mail-Abonnements](07-email-subscriptions.md).
@@ -102,6 +108,26 @@ Texte zu Vorfällen und Wartungen in der Sprache der meisten Besucher.
 
 Sprache und Darstellung der Verwaltung stellt jeder Benutzer selbst im
 Benutzermenü (unten links) ein.
+
+### Rechtliche Links und Info-Link
+
+Die rechtlichen Links zeigen auf Seiten deiner eigenen Website; die Statusseite
+hat keinen Editor dafür. Jede öffentliche Seite zeigt sie im Footer, auch ohne
+JavaScript. Links zu anderen Websites öffnen sich in einem neuen Tab, und
+Screenreader sagen das an. Der Info-Link kann auch ein Pfad auf dieser Seite
+sein (`/about`), etwa eine Seite, die dein Reverse Proxy ausliefert; so ein Pfad
+muss mit einem einzelnen `/` beginnen, damit der Link nie zu einem anderen Host
+führen kann.
+
+### UTM-Parameter
+
+Ist **UTM-Parameter an ausgehende Links anhängen** eingeschaltet, hängt die
+Seite `utm_source`, `utm_medium` und `utm_campaign` (die, die du ausgefüllt
+hast) an jeden von dir eingetragenen Link zu einer anderen Website an:
+rechtliche Links, Marken-Link, Info-Link, Support-URL, Footer-Links und die
+Websites der Services. Deine Webanalyse sieht dann, dass Besuche von der
+Statusseite kamen. Links auf die Adresse der Statusseite selbst, `mailto:`-Links
+und Links, die schon einen `utm_`-Parameter enthalten, bleiben unverändert.
 
 ## Die wirksame Konfiguration prüfen
 

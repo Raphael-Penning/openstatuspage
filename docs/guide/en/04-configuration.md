@@ -70,9 +70,15 @@ variables into the secret `openstatuspage` or the `env:` list of
 | Display | Show uptime | Shows uptime bars and percentages. |
 | Display | Uptime days | Days shown in the uptime bars (7–180, default 90). |
 | Display | Recent incident days | How long resolved incidents stay on the overview (1–90, default 7). |
-| Footer links | – | Up to 10 links in the page footer (e.g. imprint, privacy policy). |
+| Footer links | – | Up to 10 further links in the page footer. |
 | Email subscriptions | Offer email subscriptions | Offers subscriptions on the public page (needs a configured mail server). Default: off. |
 | Email subscriptions | Maintenance reminder (hours) | Hours before a scheduled maintenance to remind subscribers (0–168, 0 = off, default 24). |
+| Legal links | Imprint, privacy policy, accessibility statement | `https://` links to these pages on your website, each with an optional label; shown in the footer under "Legal", hidden without URL. |
+| Copyright and attribution | Copyright notice | Plain text such as `© {year} Example Ltd.`; `{year}` becomes the current year. Empty: `© <year> <site name>`. |
+| Copyright and attribution | Brand link URL | Optional; turns the notice into a link to your website. |
+| Copyright and attribution | Show "Powered by OpenStatusPage" | Shows the attribution line. Default: on. |
+| Info link | Label, URL or path | Optional extra entry in the navigation, e.g. "What does the status mean?". An `https://` URL or a path on this site such as `/about`. |
+| Link tracking (UTM) | Append UTM parameters, utm_source, utm_medium, utm_campaign | Adds the parameters to the links above that lead to other websites, see [below](#utm-parameters). Default: off. |
 
 The email settings and the **Email delivery** panel below them are explained
 in [Email subscriptions](07-email-subscriptions.md).
@@ -98,6 +104,25 @@ maintenance texts in the language of most of your visitors.
 
 The language and theme of the management UI are personal settings in the user
 menu (bottom left).
+
+### Legal links and the info link
+
+The legal links point to pages on your own website; the status page has no
+editor for them. Every public page shows them in the footer, also without
+JavaScript. Links to other websites open in a new tab, and screen readers
+announce that. The info link may also be a path on this site (`/about`), for
+example a page your reverse proxy serves; such a path must start with a single
+`/`, so the link can never lead to another host.
+
+### UTM parameters
+
+With **Append UTM parameters to outbound links** switched on, the page adds
+`utm_source`, `utm_medium` and `utm_campaign` (the ones you filled in) to every
+link you configured that leads to another website: legal links, brand link,
+info link, support URL, footer links and the websites of services. Your
+analytics then sees visits that came from the status page. Links on the
+status page's own address, `mailto:` links and links that already contain a
+`utm_` parameter stay as they are.
 
 ## Checking the effective configuration
 
