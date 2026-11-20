@@ -100,7 +100,8 @@
     "openSite": "{{name}} in neuem Tab öffnen",
     "empty": "Es wurden noch keine Dienste veröffentlicht.",
     "noMatches": "Keine Dienste passen zu deiner Suche.",
-    "groupToggle": "Dienste von {{name}} ein- oder ausblenden"
+    "groupToggle": "Dienste von {{name}} ein- oder ausblenden",
+    "searchSubmit": "Suchen"
   },
   "service": {
     "back": "Alle Dienste",
@@ -173,7 +174,8 @@
     "pagination": "Seitennavigation",
     "previous": "Neuer",
     "next": "Älter",
-    "pageOf": "Seite {{page}} von {{total}}"
+    "pageOf": "Seite {{page}} von {{total}}",
+    "apply": "Filter anwenden"
   },
   "detail": {
     "back": "Verlauf",

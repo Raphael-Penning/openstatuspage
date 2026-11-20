@@ -1,5 +1,6 @@
 import type { HistoryItem, HistoryQuery } from '@openstatuspage/shared';
-import { ChevronDown, ChevronLeft, ChevronRight, RotateCcwClock, X } from 'lucide-react';
+import { clsx } from 'clsx';
+import { ChevronDown, ChevronLeft, ChevronRight, Filter, RotateCcwClock, X } from 'lucide-react';
 import { useId, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
@@ -9,6 +10,7 @@ import {
   MaintenanceIcon,
   MaintenanceStatusBadge,
 } from '../components/Events';
+import { NoScript } from '../components/NoScript';
 import { DateTime } from '../components/Time';
 import { Card, EmptyState, ErrorState, PageTitle, SkeletonList } from '../components/ui';
 import { useFormat } from '../hooks/preferences';
@@ -59,13 +61,19 @@ export function HistoryPage() {
   const month = query.month ?? '';
   const { data, isPending, isError, isPlaceholderData, refetch } = useHistory(query);
 
-  function update(key: string, value: string) {
+  /** The query string with one filter changed (filters reset the page). */
+  function withFilter(key: string, value: string): URLSearchParams {
     const next = new URLSearchParams(params);
     if (value && !(key === 'type' && value === 'all')) next.set(key, value);
     else next.delete(key);
     if (key !== 'page') next.delete('page');
-    setParams(next, { replace: key !== 'page' });
+    return next;
   }
+  const update = (key: string, value: string) => setParams(withFilter(key, value), { replace: true });
+  const pageHref = (n: number) => {
+    const qs = withFilter('page', n > 1 ? String(n) : '').toString();
+    return qs ? `/history?${qs}` : '/history';
+  };
 
   const currentMonth = monthKey(new Date(f.now));
   const months = useMemo(() => recentMonths(new Date(`${currentMonth}-01T00:00:00Z`), 24), [currentMonth]);
@@ -90,13 +98,15 @@ export function HistoryPage() {
 
       <Card as="section" className="p-4 sm:p-5">
         <h2 className="sr-only">{t('history.filters')}</h2>
+        {/* A GET form: without JavaScript "Apply" loads the filtered page; with JavaScript every change applies at once. */}
+        <form method="get" action="/history" onSubmit={(e) => e.preventDefault()}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <FilterSelect label={t('history.type')} value={type} onChange={(v) => update('type', v)}>
+          <FilterSelect name="type" label={t('history.type')} value={type} onChange={(v) => update('type', v)}>
             <option value="all">{t('history.types.all')}</option>
             <option value="incident">{t('history.types.incident')}</option>
             <option value="maintenance">{t('history.types.maintenance')}</option>
           </FilterSelect>
-          <FilterSelect label={t('history.service')} value={serviceId} onChange={(v) => update('service', v)}>
+          <FilterSelect name="service" label={t('history.service')} value={serviceId} onChange={(v) => update('service', v)}>
             <option value="">{t('history.allServices')}</option>
             {serviceOptions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -105,7 +115,7 @@ export function HistoryPage() {
             ))}
           </FilterSelect>
           {showLocations && (
-            <FilterSelect label={t('history.location')} value={locationId} onChange={(v) => update('location', v)}>
+            <FilterSelect name="location" label={t('history.location')} value={locationId} onChange={(v) => update('location', v)}>
               <option value="">{t('history.allLocations')}</option>
               {(locations.data?.locations ?? []).map((l) => (
                 <option key={l.id} value={l.id}>
@@ -114,7 +124,7 @@ export function HistoryPage() {
               ))}
             </FilterSelect>
           )}
-          <FilterSelect label={t('history.month')} value={month} onChange={(v) => update('month', v)}>
+          <FilterSelect name="month" label={t('history.month')} value={month} onChange={(v) => update('month', v)}>
             <option value="">{t('history.allMonths')}</option>
             {months.map((m) => (
               <option key={m} value={m}>
@@ -123,16 +133,26 @@ export function HistoryPage() {
             ))}
           </FilterSelect>
         </div>
-        {filtered && (
-          <button
-            type="button"
-            onClick={() => setParams(new URLSearchParams(), { replace: true })}
-            className="mt-3 inline-flex items-center gap-1.5 text-sm text-[color:var(--osp-accent-text,var(--accent))] hover:underline"
-          >
-            <X aria-hidden className="size-4" />
-            {t('history.reset')}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <NoScript>
+            <button type="submit" className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2 px-4 py-1.5 text-sm font-medium hover:border-accent">
+              <Filter aria-hidden className="size-4" />
+              {t('history.apply')}
+            </button>
+          </NoScript>
+          {filtered && (
+            <Link
+              to="/history"
+              replace
+              preventScrollReset
+              className="mt-3 inline-flex items-center gap-1.5 text-sm text-[color:var(--osp-accent-text,var(--accent))] hover:underline"
+            >
+              <X aria-hidden className="size-4" />
+              {t('history.reset')}
+            </Link>
+          )}
+        </div>
+        </form>
       </Card>
 
       {isPending ? (
@@ -167,15 +187,15 @@ export function HistoryPage() {
 
           {totalPages > 1 && (
             <nav aria-label={t('history.pagination')} className="mt-8 flex items-center justify-between gap-3">
-              <PageButton disabled={page <= 1} onClick={() => update('page', String(page - 1))}>
+              <PageLink disabled={page <= 1} to={pageHref(page - 1)} rel="prev">
                 <ChevronLeft aria-hidden className="size-4" />
                 {t('history.previous')}
-              </PageButton>
+              </PageLink>
               <span className="text-sm text-muted">{t('history.pageOf', { page, total: totalPages })}</span>
-              <PageButton disabled={page >= totalPages} onClick={() => update('page', String(page + 1))}>
+              <PageLink disabled={page >= totalPages} to={pageHref(page + 1)} rel="next">
                 {t('history.next')}
                 <ChevronRight aria-hidden className="size-4" />
-              </PageButton>
+              </PageLink>
             </nav>
           )}
         </div>
@@ -185,11 +205,13 @@ export function HistoryPage() {
 }
 
 function FilterSelect({
+  name,
   label,
   value,
   onChange,
   children,
 }: {
+  name: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -204,6 +226,7 @@ function FilterSelect({
       <div className="relative">
         <select
           id={id}
+          name={name}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="min-h-10 w-full cursor-pointer appearance-none rounded-xl border border-border-strong bg-surface-2 py-2 pr-9 pl-3 text-sm focus:border-accent"
@@ -216,19 +239,20 @@ function FilterSelect({
   );
 }
 
-function PageButton({ disabled, onClick, children }: { disabled: boolean; onClick: () => void; children: ReactNode }) {
+/** Link to the previous / next page (works without JavaScript); a dimmed label at the ends. */
+function PageLink({ disabled, to, rel, children }: { disabled: boolean; to: string; rel: 'prev' | 'next'; children: ReactNode }) {
+  const className = 'inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium';
+  if (disabled) {
+    return (
+      <span aria-disabled="true" className={clsx(className, 'opacity-40')}>
+        {children}
+      </span>
+    );
+  }
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => {
-        onClick();
-        window.scrollTo({ top: 0 });
-      }}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium hover:border-accent disabled:pointer-events-none disabled:opacity-40"
-    >
+    <Link to={to} rel={rel} onClick={() => window.scrollTo({ top: 0 })} className={clsx(className, 'hover:border-accent')}>
       {children}
-    </button>
+    </Link>
   );
 }
 

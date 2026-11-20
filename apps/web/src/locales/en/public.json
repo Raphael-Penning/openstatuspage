@@ -100,7 +100,8 @@
     "openSite": "Open {{name}} in a new tab",
     "empty": "No services have been published yet.",
     "noMatches": "No services match your search.",
-    "groupToggle": "Show or hide the services of {{name}}"
+    "groupToggle": "Show or hide the services of {{name}}",
+    "searchSubmit": "Search"
   },
   "service": {
     "back": "All services",
@@ -173,7 +174,8 @@
     "pagination": "Pagination",
     "previous": "Newer",
     "next": "Older",
-    "pageOf": "Page {{page}} of {{total}}"
+    "pageOf": "Page {{page}} of {{total}}",
+    "apply": "Apply filters"
   },
   "detail": {
     "back": "History",
