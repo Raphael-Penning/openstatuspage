@@ -376,10 +376,16 @@ agents. Everything is built from the page settings and public data only.
     most 160 characters (the service description, the latest incident update,
     the maintenance description, else a generated sentence; the overview uses
     the page description of the settings),
-  - `robots`: `index, follow`; `noindex` for 404 pages and the subscription
-    links (confirm, manage, unsubscribe), which have no canonical URL either,
-  - `canonical`: the path without query; `?lang=xx` is kept, because every
-    language version is a page of its own. The `hreflang` alternates list
+  - `robots`: `index, follow`; `noindex` for 404 pages (also a history page
+    beyond the last one) and the subscription links (confirm, manage,
+    unsubscribe), which have no canonical URL either; `noindex, follow` without
+    a canonical URL for variants of a page: a filtered, searched or later
+    history page (`?type=`, `?page=2` ...), a searched or filtered service list,
+    `/?upcoming=all` and the states of the subscribe page (`?sent=1`,
+    `?error=`, the answer to a form),
+  - `canonical`: the path without query, lower case and without a trailing
+    slash (the server answers other spellings of a path with a `301` to this
+    one); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
     `?lang=xx` for every language and the plain path (language from cookie,
     `Accept-Language` or the page default) as `x-default`. A service's
     canonical path is its slug.

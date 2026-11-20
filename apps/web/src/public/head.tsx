@@ -62,6 +62,13 @@ export interface PageHeadInput {
   article?: { datePublished: string; dateModified: string };
 }
 
+/**
+ * Head of a filtered, searched or paged variant of a page (and of states such
+ * as "sent"): not indexed, but its links are followed; no canonical URL of
+ * its own.
+ */
+export const VARIANT_HEAD = { robots: 'noindex, follow', canonical: null } as const satisfies PageHeadInput;
+
 /** Collects the heads of the rendered pages; applies the winner in the browser. */
 export class HeadStore {
   private readonly heads = new Map<number, PageHead>();

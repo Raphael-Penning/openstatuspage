@@ -17,7 +17,7 @@ import { useFormat } from '../hooks/preferences';
 import { useHistory, useLocations, usePublicSettings, useServices } from '../hooks/queries';
 import { flattenServices, maintenanceEnd, maintenanceStart } from '../utils/status';
 import { monthKey, recentMonths } from '../utils/time';
-import { usePageHead, useSiteName } from '../head';
+import { usePageHead, useSiteName, VARIANT_HEAD } from '../head';
 
 const PAGE_SIZE = 20;
 const TYPES = ['all', 'incident', 'maintenance'] as const;
@@ -53,12 +53,6 @@ export function HistoryPage() {
   const services = useServices();
   const locations = useLocations(showLocations);
   const site = useSiteName();
-  // Filtered and paged views have the unfiltered history as their canonical page.
-  usePageHead({
-    title: t('nav.history'),
-    description: t('seo.history', { site }),
-    breadcrumbs: [{ name: t('nav.history'), path: '/history' }],
-  });
 
   const query = historyQuery(params, showLocations);
   const { type, page } = query as { type: HistoryType; page: number };
@@ -66,6 +60,17 @@ export function HistoryPage() {
   const locationId = query.locationId ?? '';
   const month = query.month ?? '';
   const { data, isPending, isError, isPlaceholderData, refetch } = useHistory(query);
+  const filtered = type !== 'all' || serviceId || locationId || month;
+  // A page beyond the last one does not exist (no soft 404).
+  const outOfRange = page > 1 && data !== undefined && data.items.length === 0;
+  // Only the unfiltered first page is indexed; filtered and later pages are
+  // followed (their links lead to the incidents) but not indexed.
+  usePageHead({
+    title: t('nav.history'),
+    description: t('seo.history', { site }),
+    breadcrumbs: [{ name: t('nav.history'), path: '/history' }],
+    ...(outOfRange ? { status: 404, robots: 'noindex', canonical: null } : filtered || page > 1 ? VARIANT_HEAD : {}),
+  });
 
   /** The query string with one filter changed (filters reset the page). */
   function withFilter(key: string, value: string): URLSearchParams {
@@ -84,7 +89,6 @@ export function HistoryPage() {
   const currentMonth = monthKey(new Date(f.now));
   const months = useMemo(() => recentMonths(new Date(`${currentMonth}-01T00:00:00Z`), 24), [currentMonth]);
   const serviceOptions = services.data ? flattenServices(services.data.groups, services.data.ungrouped) : [];
-  const filtered = type !== 'all' || serviceId || locationId || month;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   const sections = useMemo(() => {

@@ -131,9 +131,11 @@ describe('public pages without JavaScript', () => {
       '/preferences/language?lang=de&return=%2Fhistory%3Ftype%3Dincident',
     ]);
     expect(language.every((a) => a.rel === 'nofollow')).toBe(true);
-    // Search engines get the page in every language.
-    expect(body).toContain(`<link rel="alternate" hreflang="de" href="${BASE_URL}/history?lang=de" data-osp-head>`);
-    expect(body).toContain(`<link rel="alternate" hreflang="x-default" href="${BASE_URL}/history" data-osp-head>`);
+    // Search engines get the page in every language (the unfiltered one: a filtered list is not indexed).
+    const plain = (await page('/history')).body;
+    expect(body).toContain('<meta name="robots" content="noindex, follow" data-osp-head>');
+    expect(plain).toContain(`<link rel="alternate" hreflang="de" href="${BASE_URL}/history?lang=de" data-osp-head>`);
+    expect(plain).toContain(`<link rel="alternate" hreflang="x-default" href="${BASE_URL}/history" data-osp-head>`);
     // The configured accent color is in the head, before the stylesheet.
     expect(body).toMatch(/<style>html:root\{--accent:#7c6cf2;[^<]*<\/style>[\s\S]*rel="stylesheet"/);
   });

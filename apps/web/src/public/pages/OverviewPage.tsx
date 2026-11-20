@@ -7,7 +7,7 @@ import { ServiceCatalog } from '../components/ServiceList';
 import { StatusHero } from '../components/StatusHero';
 import { EmptyState, ErrorState, PageTitle, SectionHeader, Skeleton, SkeletonList } from '../components/ui';
 import { useSummary } from '../hooks/queries';
-import { usePageHead } from '../head';
+import { usePageHead, VARIANT_HEAD } from '../head';
 
 const UPCOMING_PREVIEW = 3;
 
@@ -17,7 +17,8 @@ export function OverviewPage() {
   // ?upcoming=all lists every upcoming maintenance (a link, so it works without JavaScript).
   const [params] = useSearchParams();
   const allUpcoming = params.get('upcoming') === 'all';
-  usePageHead({ home: true });
+  // The full list of upcoming maintenance is a variant of the overview: followed, not indexed.
+  usePageHead({ home: true, ...(allUpcoming ? VARIANT_HEAD : {}) });
 
   if (isPending) return <OverviewSkeleton />;
   if (isError) return <ErrorState onRetry={() => void refetch()} />;

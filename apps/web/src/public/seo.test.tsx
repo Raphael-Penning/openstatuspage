@@ -8,7 +8,8 @@
 import { headElements, type DataDocument, type PageHead, type PublicDocumentSource } from '@openstatuspage/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { render } from '../entry-server';
-import { incident, maintenance, respond, settings } from './a11y/fixtures';
+import { history, incident, maintenance, respond, settings } from './a11y/fixtures';
+import { historyDocument } from './a11y/documents';
 import { installBrowserStubs } from './a11y/harness';
 import { applyHead } from './head';
 import { breadcrumbLd, languageAlternates, summarize, withLang } from './seo';
@@ -40,7 +41,7 @@ const INDEXABLE: [url: string, path: string][] = [
   ['/services', '/services'],
   ['/services/api', '/services/api'],
   ['/locations', '/locations'],
-  ['/history?type=incident&page=2', '/history'],
+  ['/history', '/history'],
   ['/incidents/inc-1', '/incidents/inc-1'],
   ['/maintenance/m-1', '/maintenance/m-1'],
   ['/subscribe', '/subscribe'],
@@ -171,6 +172,40 @@ describe('JSON-LD', () => {
       expect(el.text).not.toContain('<');
       expect(() => JSON.parse(el.text!)).not.toThrow();
     }
+  });
+});
+
+describe('variants of a page: followed, not indexed', () => {
+  it.each([
+    '/history?type=incident',
+    '/history?page=2',
+    '/history?month=2026-01',
+    '/services?q=api',
+    '/services?status=operational',
+    '/?upcoming=all',
+    '/subscribe?sent=1',
+    '/subscribe?error=invalid',
+  ])('%s: noindex, follow, no canonical or alternates', async (url) => {
+    const head = await headOf(url);
+    expect(head.status ?? 200).toBe(200);
+    expect(head.robots).toBe('noindex, follow');
+    expect(head.canonical).toBeNull();
+    expect(head.alternates).toBeUndefined();
+    expect(head.jsonLd).toBeUndefined();
+  });
+
+  it('a history page beyond the last one is not found (404)', async () => {
+    const source = sourceWith();
+    const empty: PublicDocumentSource = {
+      async get(path, query) {
+        const doc = await source.get(path, query);
+        if (path === '/api/public/history' && query?.['page[number]'] === '99') return historyDocument({ ...history, items: [], page: 99 });
+        return doc;
+      },
+    };
+    const result = await render({ url: '/history?page=99', source: empty, baseUrl: BASE_URL });
+    expect(result.status).toBe(404);
+    expect(result.head.robots).toBe('noindex');
   });
 });
 

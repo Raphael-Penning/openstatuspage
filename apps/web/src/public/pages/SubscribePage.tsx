@@ -26,7 +26,7 @@ import {
   secondaryButton,
 } from '../components/Subscription';
 import { Card, ErrorState, PageTitle, Skeleton } from '../components/ui';
-import { usePageHead, useSiteName } from '../head';
+import { usePageHead, useSiteName, VARIANT_HEAD } from '../head';
 import { useSummary } from '../hooks/queries';
 import { useSubscribe } from '../hooks/subscriptions';
 import {
@@ -55,6 +55,8 @@ export function SubscribePage() {
     title: hasErrors ? t('subscription.errors.titlePrefix', { title: t('subscription.title') }) : t('subscription.title'),
     description: t('seo.subscribe', { site }),
     breadcrumbs: [{ name: t('subscription.title'), path: '/subscribe' }],
+    // "Sent", an error and the answer to a form are states, not pages of their own.
+    ...(serverForm || params.has('sent') || params.has('error') ? VARIANT_HEAD : {}),
   });
   const summary = useSummary();
   const [unavailable, setUnavailable] = useState(false);

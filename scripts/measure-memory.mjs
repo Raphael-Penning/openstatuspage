@@ -7,6 +7,7 @@
  *
  *   startup  RSS a few seconds after /api/health answered
  *   peak     highest RSS seen during the light load below
+ *   burst    highest RSS seen during the burst below (roles with public pages)
  *   after    RSS once the load is over and the process settled
  *
  * Light load: the demo seed, a few hundred requests to the server-rendered public
@@ -14,6 +15,11 @@
  * HTML form (public, admin, all), a login and the main
  * admin lists plus a monitoring source that is polled from a local fake Uptime Kuma
  * (admin, all), and at least one polling cycle of that source (worker, all).
+ *
+ * Burst (public, admin, all; after the light load): `--burst` concurrent
+ * connections at once, each requesting pages that cannot come from the render
+ * cache (a new search or history page every time) and the public API, like a
+ * crawler or a flood without a connection limit at the proxy.
  *
  * Usage (build first: pnpm -r build):
  *
@@ -30,6 +36,7 @@
  *   --roles <list>      roles in this order (default admin,public,worker,all;
  *                       admin or all comes first so the polled source exists)
  *   --requests <n>      public requests per role (default 400)
+ *   --burst <n>         concurrent connections of the burst (default 64; 0 skips it)
  *   --poll-seconds <n>  how long worker and all keep running for polls (default 40)
  *   --settle-seconds <n> idle time before "after" is read (default 15; V8 shrinks
  *                       the heap of an idle process after a few seconds)
@@ -53,6 +60,7 @@ const { values: opts } = parseArgs({
     server: { type: 'string', default: join(root, 'apps/server/dist/index.js') },
     roles: { type: 'string', default: 'admin,public,worker,all' },
     requests: { type: 'string', default: '400' },
+    burst: { type: 'string', default: '64' },
     'poll-seconds': { type: 'string', default: '40' },
     'settle-seconds': { type: 'string', default: '15' },
     'node-args': { type: 'string', default: '' },
@@ -73,6 +81,7 @@ const serverEntry = resolve(opts.server);
 const cliDir = join(dirname(serverEntry), 'cli');
 const roles = opts.roles.split(',').map((r) => r.trim()).filter(Boolean);
 const requests = Number(opts.requests);
+const burst = Number(opts.burst);
 const pollSeconds = Number(opts['poll-seconds']);
 const settleSeconds = Number(opts['settle-seconds']);
 const nodeArgs = opts['node-args'].split(/\s+/).filter(Boolean);
@@ -241,6 +250,26 @@ async function publicLoad(base, count) {
   return statuses;
 }
 
+/**
+ * `concurrency` connections at once, four requests each: pages the render cache
+ * cannot answer (a new search, a new history page) and the summary API.
+ */
+async function burstLoad(base, concurrency) {
+  const statuses = {};
+  const run = async (i) => {
+    for (const path of [`/services?q=burst-${i}`, `/history?page=${i + 2}`, '/api/public/summary', `/?upcoming=all&q=${i}`]) {
+      try {
+        const res = await request(base, path, { headers: { 'accept-encoding': 'gzip' } });
+        statuses[res.status] = (statuses[res.status] ?? 0) + 1;
+      } catch {
+        statuses.error = (statuses.error ?? 0) + 1;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, (_, i) => run(i)));
+  return statuses;
+}
+
 /** Login, the main admin lists, and the polled source (created once). */
 async function adminLoad(base, kumaUrl) {
   const login = await request(base, '/api/auth/login', {
@@ -313,10 +342,20 @@ async function measureRole(role, kumaUrl) {
     const features = { public: ['public'], admin: ['admin', 'public'], worker: ['poll'], all: ['admin', 'public', 'poll'] }[role];
     if (features.includes('admin')) await adminLoad(base, kumaUrl);
     if (features.includes('public')) load.public = await publicLoad(base, requests);
+    const lightPeak = peak;
+    let burstPeak = NaN;
+    if (features.includes('public') && burst > 0) {
+      // Let the light load settle first, so the burst peak is its own.
+      await sleep(3000);
+      peak = memoryOf(child.pid).rss;
+      load.burst = await burstLoad(base, burst);
+      burstPeak = peak;
+      peak = lightPeak;
+    }
     if (features.includes('poll')) await sleep(pollSeconds * 1000);
     await sleep(settleSeconds * 1000);
     const mem = memoryOf(child.pid);
-    return { role, startup, peak: Math.max(peak, mem.rss), after: mem.rss, hwm: mem.hwm, startupAnon: started.anon, anon: mem.anon, load };
+    return { role, startup, peak: Math.max(peak, mem.rss), burst: burstPeak, after: mem.rss, hwm: mem.hwm, startupAnon: started.anon, anon: mem.anon, load };
   } catch (err) {
     throw new Error(`${role}: ${err.message}\n${stderr}`);
   } finally {
@@ -345,11 +384,12 @@ if (opts.json) {
   console.log(JSON.stringify({ node: process.version, nodeArgs, results }, null, 2));
 } else {
   console.log(`Node ${process.version}${nodeArgs.length ? ` ${nodeArgs.join(' ')}` : ''}`);
-  console.log('| Role | After start | Peak under load | After load | Kernel peak (VmHWM) | Anonymous after start / load |');
-  console.log('| --- | --- | --- | --- | --- | --- |');
+  console.log(`| Role | After start | Peak under load | Peak under burst (${burst} connections) | After load | Kernel peak (VmHWM) | Anonymous after start / load |`);
+  console.log('| --- | --- | --- | --- | --- | --- | --- |');
   for (const r of results) {
     const anon = `${mb(r.startupAnon)} / ${mb(r.anon)}`;
-    console.log(`| ${r.role} | ${mb(r.startup)} | ${mb(r.peak)} | ${mb(r.after)} | ${mb(r.hwm)} | ${anon} |`);
+    console.log(`| ${r.role} | ${mb(r.startup)} | ${mb(r.peak)} | ${mb(r.burst)} | ${mb(r.after)} | ${mb(r.hwm)} | ${anon} |`);
   }
   for (const r of results) if (r.load.public) log(`${r.role} responses: ${JSON.stringify(r.load.public)}`);
+  for (const r of results) if (r.load.burst) log(`${r.role} burst responses: ${JSON.stringify(r.load.burst)}`);
 }
