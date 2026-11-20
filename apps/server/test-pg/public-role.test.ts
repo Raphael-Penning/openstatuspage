@@ -11,6 +11,7 @@ import { buildApp } from '../src/app.js';
 import type { DB } from '../src/db/index.js';
 import { MemoryMailer } from '../src/mail/mailer.js';
 import { PublicDocuments } from '../src/services/public-documents.js';
+import { getSettings } from '../src/services/settings.js';
 import type { RenderModule } from '../src/ssr/pages.js';
 import { publicDocumentSource } from '../src/ssr/source.js';
 import { prepareDatabase } from '../src/startup.js';
@@ -452,6 +453,51 @@ describe('views of the public role', () => {
 
   it('return only the page settings', async () => {
     expect((await rows('select key from settings')).map((r) => r.key)).toEqual(['page']);
+  });
+
+  it('read the footer, info link and UTM settings and the service website, and no other column', async () => {
+    const page = {
+      siteName: 'Example Status',
+      emailSubscriptionsEnabled: true,
+      imprintUrl: 'https://www.example.com/imprint',
+      privacyUrl: 'https://www.example.com/privacy',
+      accessibilityUrl: 'https://www.example.com/accessibility',
+      copyrightText: '© {year} Example GmbH',
+      brandUrl: 'https://www.example.com/',
+      showPoweredBy: false,
+      infoLinkUrl: '/about',
+      infoLinkLabel: 'What does the status mean?',
+      utmEnabled: true,
+      utmSource: 'status',
+      utmMedium: 'referral',
+      utmCampaign: 'statuspage',
+    };
+    const site = 'https://www.example.com';
+    await owner.updateTable('settings').set({ value: JSON.stringify(page) }).where('key', '=', 'page').execute();
+    await owner.updateTable('services').set({ kind: 'site', url: site }).where('id', '=', ids.service).execute();
+    try {
+      // The settings are one JSON document of the page key: the new options need no new column.
+      expect(await getSettings(pub)).toMatchObject(page);
+      expect(await rows(`select url from services where id = '${ids.service}'`)).toEqual([{ url: site }]);
+      const privileges = await rows<{ table_name: string; column_name: string }>(
+        `select table_name, column_name from information_schema.column_privileges
+         where grantee = current_user and privilege_type = 'SELECT' and table_schema = 'public'
+           and table_name in ('settings', 'services') order by table_name, column_name`,
+      );
+      const columns = (table: string) => privileges.filter((p) => p.table_name === table).map((p) => p.column_name);
+      expect(columns('settings')).toEqual(['key', 'updated_at', 'value']);
+      expect(columns('services')).toEqual(
+        ['created_at', 'current_status', 'description', 'id', 'is_public', 'kind', 'name', 'slug', 'sort_order', 'status_changed_at', 'updated_at', 'url'],
+      );
+      await expect(rows('select status_mode from public.services')).rejects.toMatchObject({ code: '42501' });
+    } finally {
+      await owner
+        .updateTable('settings')
+        .set({ value: JSON.stringify({ siteName: 'Example Status', emailSubscriptionsEnabled: true }) })
+        .where('key', '=', 'page')
+        .execute();
+      await owner.updateTable('services').set({ kind: 'service', url: null }).where('id', '=', ids.service).execute();
+    }
   });
 });
 
