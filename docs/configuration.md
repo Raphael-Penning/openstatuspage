@@ -196,15 +196,20 @@ deployment.
 
 Per role the app answers:
 
-- `public` and `all`: `/robots.txt` allows the public pages and disallows `/api/`,
-  `/admin`, `/subscription/` and `/preferences/`; `/sitemap.xml` indexes the
+- `public` and `all`: `/robots.txt` allows the public pages and the read-only
+  `/api/public/` endpoints and disallows the subscription endpoints, the rest of
+  `/api/`, `/admin`, `/subscription/` and `/preferences/`; `/sitemap.xml` indexes the
   navigation pages, the incident and maintenance sitemaps and the service sitemaps
   (`/sitemap-services-N.xml`, at most 5,000 URLs per file); `/llms.txt` and
   `/llms-full.txt` describe the page for language models.
-- `admin`: `/robots.txt` answers `Disallow: /`, and `/admin` carries
-  `X-Robots-Tag: noindex, nofollow`. No sitemap is served.
+- `admin`: `/robots.txt` answers `Disallow: /`, and every page (the management
+  UI and the preview of the public pages) carries `X-Robots-Tag: noindex,
+  nofollow`, so a URL linked from elsewhere is not indexed either. No sitemap is
+  served.
 - Pages of the status page that do not exist (`404`) and the personal
-  subscription links carry `noindex`.
+  subscription links carry `noindex`; filtered, searched and later pages
+  carry `noindex, follow`. Other spellings of a page path (`/SERVICES/`) get a
+  `301` to the canonical one.
 
 Details: [architecture.md](architecture.md#search-engines-and-ai-agents). For
 operators, the guide chapter [Search engines and the public page](guide/en/12-public-page.md)

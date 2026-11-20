@@ -101,6 +101,15 @@ describe('web client per APP_ROLE', () => {
     }
   });
 
+  it('marks every page of an admin instance noindex (a preview, not the status page)', async () => {
+    for (const url of ['/', '/history', '/admin']) {
+      expect((await get('admin', url)).headers['x-robots-tag'], url).toBe('noindex, nofollow');
+    }
+    expect((await get('admin', '/favicon.svg')).headers['x-robots-tag']).toBeUndefined();
+    expect((await get('all', '/')).headers['x-robots-tag']).toBeUndefined();
+    expect((await get('public', '/')).headers['x-robots-tag']).toBeUndefined();
+  });
+
   it('serves public.html for client routes on a public instance', async () => {
     for (const url of ['/', '/services/api', '/subscription/manage?id=1', '/administration']) {
       const res = await get('public', url);

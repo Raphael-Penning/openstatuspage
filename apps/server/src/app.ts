@@ -110,6 +110,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     await app.register(cookie, { secret: config.SECRET_KEY });
   }
 
+  const adminInstance = config.APP_ROLE === 'admin';
   // Basic hardening headers. The public page may be embedded (iframe) by
   // customers; the management UI and the API may not.
   app.addHook('onSend', async (req, reply) => {
@@ -123,15 +124,17 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     const framed = !(admin || isApiPath(path));
     if (!framed) reply.header('X-Frame-Options', 'DENY');
     // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
-    if (String(reply.getHeader('content-type') ?? '').startsWith('text/html')) {
+    const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
+    if (html) {
       reply.header('Content-Security-Policy', framed ? PUBLIC_PAGE_CSP : FRAMELESS_PAGE_CSP);
       reply.header('Cross-Origin-Opener-Policy', 'same-origin');
       reply.header('Permissions-Policy', PERMISSIONS_POLICY);
     } else if (!framed) {
       reply.header('Content-Security-Policy', "frame-ancestors 'none'");
     }
-    // The management UI is never indexed by search engines.
-    if (admin) reply.header('X-Robots-Tag', 'noindex, nofollow');
+    // The management UI is never indexed by search engines, nor is any page of an
+    // admin instance (its public pages are a preview; the status page is elsewhere).
+    if (admin || (adminInstance && html)) reply.header('X-Robots-Tag', 'noindex, nofollow');
   });
 
   registerJsonApi(app);
