@@ -133,8 +133,15 @@ Details, die Abonnenten und deinen Mailserver schützen:
 - Links in E-Mails enthalten ein geheimes Token. Tokens werden nie
   gespeichert, auch nicht in der Warteschlange; sie werden beim Versand aus
   `SECRET_KEY` und einem Zufallswert pro Abonnent abgeleitet. Das Token steht
-  im `#`-Teil des Links, den Browser nie an den Server schicken – es taucht
-  also weder in Server- noch in Proxy-Logs auf.
+  im Query-String des Links, damit die Seiten auch ohne JavaScript
+  funktionieren. Das Server-Log blendet es aus; wenn dein Reverse Proxy
+  vollständige URLs protokolliert, halte dieses Log privat oder lass den
+  Query-String darin weg.
+- Zum Bestätigen braucht es einen Klick auf **Abonnement bestätigen**. Das
+  bloße Öffnen des Links (etwa durch den Link-Scanner eines Mail-Anbieters)
+  bestätigt nichts.
+- Anmelden, Bestätigen, Einstellungen ändern und Abmelden funktionieren auch
+  ohne JavaScript als normale Formulare.
 - Jede Benachrichtigung enthält einen Link zur Verwaltung und einen Link zum
   Abmelden. Der Abmeldelink öffnet die Verwaltungsseite mit bereits
   angezeigter Rückfrage, ein Klick auf **Ja, abmelden** genügt dann.

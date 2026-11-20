@@ -125,9 +125,14 @@ Details that protect subscribers and your mail server:
   [Reverse proxy](03-reverse-proxy.md#trust_proxy)).
 - Links in emails contain a secret token. Tokens are never stored, not even
   in the email queue; they are derived from `SECRET_KEY` and a random value
-  per subscriber when an email is sent. The token is part of the link's `#`
-  fragment, which browsers never send to the server, so it does not show up
-  in server or proxy logs.
+  per subscriber when an email is sent. The token is part of the link's query
+  string, so the pages also work without JavaScript. The server log hides it;
+  if your reverse proxy logs full URLs, keep that log private or leave the
+  query string out of it.
+- Confirming takes one click on **Confirm subscription**. Opening the link
+  alone (for example by a link scanner of a mail provider) confirms nothing.
+- Subscribing, confirming, changing preferences and unsubscribing work
+  without JavaScript as plain forms.
 - Every notification email contains a manage link and an unsubscribe link.
   The unsubscribe link opens the manage page with the unsubscribe question
   already shown, so one more click on **Yes, unsubscribe** is enough.
