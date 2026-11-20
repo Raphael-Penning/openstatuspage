@@ -2,16 +2,23 @@
  * Shared shell of all public pages: header with branding and visitor
  * preferences, pill navigation, content outlet and footer.
  */
-import { formatCopyright, type PublicPageSettings } from '@openstatuspage/shared';
+import {
+  analyticsActive,
+  FORM_PATHS,
+  formatCopyright,
+  RETURN_QUERY,
+  UMAMI_DISABLED_KEY,
+  type PublicPageSettings,
+} from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { Activity, Earth, Info, LayoutDashboard, RotateCcwClock, Server } from 'lucide-react';
 import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router';
 import { LANGUAGES } from '../lib/languages';
-import { useSsr } from '../lib/ssr';
+import { useAnalyticsOff, useSsr } from '../lib/ssr';
 import { ThemeProvider, useAccentColor, useTheme } from '../lib/theme';
-import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle } from './components/Controls';
+import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle, useReturnPath } from './components/Controls';
 import { OutboundLink } from './components/OutboundLink';
 import { Skeleton } from './components/ui';
 import { PreferencesProvider, usePreferences } from './hooks/preferences';
@@ -250,18 +257,22 @@ const LEGAL_LINKS = [
   ['accessibility', 'accessibilityUrl', 'accessibilityLabel'],
 ] as const;
 
+const linkClass = 'rounded-sm underline-offset-2 hover:text-fg hover:underline';
+
 function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
   // The shared clock: the server's render time until hydration (no mismatch at New Year).
   const year = new Date(usePreferences().now).getUTCFullYear();
-  const linkClass = 'rounded-sm underline-offset-2 hover:text-fg hover:underline';
   const copyright = settings?.copyrightText
     ? formatCopyright(settings.copyrightText, year)
     : t('footer.copyright', { year, name: settings?.siteName ?? t('fallbackSiteName') });
+  const analytics = analyticsActive(settings);
   const legal = LEGAL_LINKS.flatMap(([key, urlKey, labelKey]) => {
     const url = settings?.[urlKey];
     return url ? [{ key, url, label: settings[labelKey] || t(`footer.${key}`) }] : [];
   });
+  // The statistics choice comes right after the privacy policy (or where it would be).
+  const analyticsAt = legal.filter((l) => l.key === 'imprint' || l.key === 'privacy').length;
   return (
     <footer className="border-t border-border">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-4 py-8 text-sm text-muted sm:px-6">
@@ -299,19 +310,20 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
               ))}
             </ul>
           </nav>
-          {/*
-            Legal pages (external links). An analytics opt-out link belongs into this
-            list, right after the privacy policy.
-          */}
-          {legal.length > 0 && (
+          {/* Legal pages (external links) and, when analytics runs, the visitor's statistics choice. */}
+          {(legal.length > 0 || analytics) && (
             <nav aria-label={t('footer.legal')}>
               <ul className="flex flex-wrap gap-x-5 gap-y-2 sm:justify-end">
-                {legal.map((l) => (
-                  <li key={l.key}>
-                    <OutboundLink href={l.url} className={linkClass}>
-                      {l.label}
-                    </OutboundLink>
+                {legal.slice(0, analyticsAt).map((l) => (
+                  <LegalLink key={l.key} url={l.url} label={l.label} />
+                ))}
+                {analytics && (
+                  <li>
+                    <AnalyticsChoice />
                   </li>
+                )}
+                {legal.slice(analyticsAt).map((l) => (
+                  <LegalLink key={l.key} url={l.url} label={l.label} />
                 ))}
               </ul>
             </nav>
@@ -331,5 +343,58 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
         </p>
       </div>
     </footer>
+  );
+}
+
+function LegalLink({ url, label }: { url: string; label: string }) {
+  return (
+    <li>
+      <OutboundLink href={url} className={linkClass}>
+        {label}
+      </OutboundLink>
+    </li>
+  );
+}
+
+/**
+ * Turns the analytics of this browser off or on again: a form posting to the
+ * preference handler, which sets (or removes) the opt-out cookie and comes back
+ * here, so it works without JavaScript; the page then renders without (or with)
+ * the analytics script. With JavaScript the tracker of the current page is
+ * stopped at once through Umami's own switch (localStorage `umami.disabled`).
+ */
+function AnalyticsChoice() {
+  const { t } = useTranslation('public');
+  const off = useAnalyticsOff();
+  const back = useReturnPath();
+
+  // A page rendered for a visitor who opted out keeps Umami's switch set as well.
+  useEffect(() => {
+    if (!off) return;
+    try {
+      localStorage.setItem(UMAMI_DISABLED_KEY, '1');
+    } catch {
+      /* storage unavailable */
+    }
+  }, [off]);
+
+  const remember = () => {
+    try {
+      if (off) localStorage.removeItem(UMAMI_DISABLED_KEY);
+      else localStorage.setItem(UMAMI_DISABLED_KEY, '1');
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  return (
+    <form method="post" action={FORM_PATHS.analytics} onSubmit={remember}>
+      <input type="hidden" name={RETURN_QUERY} value={back} />
+      <input type="hidden" name="analytics" value={off ? 'on' : 'off'} />
+      {off && <span>{t('footer.analyticsDisabled')} </span>}
+      <button type="submit" className={clsx(linkClass, 'cursor-pointer text-start')}>
+        {off ? t('footer.analyticsEnable') : t('footer.analyticsDisable')}
+      </button>
+    </form>
   );
 }
