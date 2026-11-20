@@ -81,6 +81,7 @@ export function AffectedServices({ services, className }: { services: { id: stri
 
 /** Compact incident card used on the overview and service pages. */
 export function IncidentSummary({ incident }: { incident: PublicIncident }) {
+  const paths = useServicePaths();
   const { t } = useTranslation('public');
   const f = useFormat();
   const latest = latestUpdate(incident);
@@ -92,7 +93,7 @@ export function IncidentSummary({ incident }: { incident: PublicIncident }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="min-w-0 font-semibold">
-              <Link to={`/incidents/${incident.id}`} className="after:absolute after:inset-0 hover:underline">
+              <Link to={paths.incident(incident.id)} className="after:absolute after:inset-0 hover:underline">
                 {incident.title}
               </Link>
             </h3>
@@ -118,6 +119,7 @@ export function IncidentSummary({ incident }: { incident: PublicIncident }) {
 
 /** Compact maintenance card used on the overview and service pages. */
 export function MaintenanceSummary({ maintenance }: { maintenance: PublicMaintenance }) {
+  const paths = useServicePaths();
   const { t } = useTranslation('public');
   const message = useMaintenanceMessage();
   const latest = latestUpdate(maintenance);
@@ -128,7 +130,7 @@ export function MaintenanceSummary({ maintenance }: { maintenance: PublicMainten
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="min-w-0 font-semibold">
-              <Link to={`/maintenance/${maintenance.id}`} className="after:absolute after:inset-0 hover:underline">
+              <Link to={paths.maintenance(maintenance.id)} className="after:absolute after:inset-0 hover:underline">
                 {maintenance.title}
               </Link>
             </h3>

@@ -1,6 +1,7 @@
 /**
  * Internal links of the public pages that have to work below another base
- * path, too: the day links of the uptime bars and the day pages.
+ * path, too: services, the day links of the uptime bars and the day pages,
+ * incidents and maintenance windows.
  *
  * The public pages live at "/" (base ""). Pages served below a prefix, such as
  * a secret page at /p/<token>, wrap their tree in <LinkBaseProvider base="/p/<token>">;
@@ -29,6 +30,9 @@ export interface ServicePaths {
   home: string;
   service: (service: { slug?: string | null; id: string }) => string;
   day: (service: { slug?: string | null; id: string }, day: string) => string;
+  /** Incident and maintenance pages ("/incidents/<id>", "/p/<token>/incidents/<id>"). */
+  incident: (id: string) => string;
+  maintenance: (id: string) => string;
 }
 
 /** Path builders of service and day pages below the current link base. */
@@ -39,6 +43,8 @@ export function useServicePaths(): ServicePaths {
       home: base || '/',
       service: (service) => servicePath(service, base),
       day: (service, day) => serviceDayPath(service, day, base),
+      incident: (id) => `${base}/incidents/${encodeURIComponent(id)}`,
+      maintenance: (id) => `${base}/maintenance/${encodeURIComponent(id)}`,
     }),
     [base],
   );

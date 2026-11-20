@@ -156,6 +156,26 @@ export const publicRoutes: RouteObject[] = [
           },
         }),
       },
+      {
+        path: 'incidents/:id',
+        element: <IncidentPage />,
+        handle: handle({
+          prefetch: async ({ params, load, get }) => {
+            const token = params.token ?? '';
+            if (isPrivatePageToken(token)) await load(privateQueries.incident(token, params.id ?? '', get));
+          },
+        }),
+      },
+      {
+        path: 'maintenance/:id',
+        element: <MaintenancePage />,
+        handle: handle({
+          prefetch: async ({ params, load, get }) => {
+            const token = params.token ?? '';
+            if (isPrivatePageToken(token)) await load(privateQueries.maintenance(token, params.id ?? '', get));
+          },
+        }),
+      },
       { path: '*', element: <NotFoundState /> },
     ],
   },

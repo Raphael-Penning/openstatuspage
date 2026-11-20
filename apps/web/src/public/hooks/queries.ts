@@ -211,6 +211,18 @@ export const privateQueries = {
       ...common,
       refetchInterval: (query) => (query.state.data?.complete ? false : REFRESH_INTERVAL),
     }),
+  incident: (token: string, id: string, get?: GetDocument) =>
+    queryOptions({
+      queryKey: ['private', token, 'incident', id],
+      queryFn: () => one<PublicIncident>(privateDocuments(token, get), `${PRIVATE_API}/incidents/${encodeURIComponent(id)}`),
+      ...common,
+    }),
+  maintenance: (token: string, id: string, get?: GetDocument) =>
+    queryOptions({
+      queryKey: ['private', token, 'maintenance', id],
+      queryFn: () => one<PublicMaintenance>(privateDocuments(token, get), `${PRIVATE_API}/maintenances/${encodeURIComponent(id)}`),
+      ...common,
+    }),
 };
 
 /** The private page of the token (disabled for a malformed token: "not found" without asking). */
@@ -249,12 +261,16 @@ export function useLocations(enabled = true) {
   return useQuery({ ...publicQueries.locations(), enabled });
 }
 
+/** An incident; of the private page when inside one (only the page's services). */
 export function useIncident(id: string) {
-  return useQuery(publicQueries.incident(id));
+  const token = usePrivatePageToken();
+  return useQuery(token ? privateQueries.incident(token, id) : publicQueries.incident(id));
 }
 
+/** A maintenance window; of the private page when inside one. */
 export function useMaintenance(id: string) {
-  return useQuery(publicQueries.maintenance(id));
+  const token = usePrivatePageToken();
+  return useQuery(token ? privateQueries.maintenance(token, id) : publicQueries.maintenance(id));
 }
 
 export function useHistory(query: Partial<HistoryQuery>) {

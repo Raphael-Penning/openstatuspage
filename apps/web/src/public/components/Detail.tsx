@@ -5,6 +5,8 @@ import { ArrowLeft, MapPin } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { useServicePaths } from '../hooks/links';
+import { usePrivatePageToken } from '../hooks/private-page';
 import { useLocations, usePublicSettings } from '../hooks/queries';
 import { Skeleton } from './ui';
 
@@ -29,12 +31,15 @@ export function Fact({ label, children }: { label: string; children: ReactNode }
   );
 }
 
+/** Back to the history; on a private page (/p/<token>) back to that page, which has no history. */
 export function BackToHistory() {
   const { t } = useTranslation('public');
+  const isPrivate = usePrivatePageToken() !== null;
+  const paths = useServicePaths();
   return (
-    <Link to="/history" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+    <Link to={isPrivate ? paths.home : '/history'} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
       <ArrowLeft aria-hidden className="size-4" />
-      {t('detail.back')}
+      {isPrivate ? t('private.back') : t('detail.back')}
     </Link>
   );
 }
