@@ -79,7 +79,11 @@ breaking changes.
   the visitor's time zone after loading. Rendered pages are cached for 5 s
   (keyed on the query parameters the pages read) and sent with an `ETag`; one
   page renders at a time, at most four wait, and further requests get the
-  client-rendered page. The management UI stays client-rendered and carries
+  last rendered version of the page, even an expired one up to 10 minutes old
+  (`X-Cache: STALE`, still within the cache's 16 pages and 1 MiB), or, without
+  one, `503` with `Retry-After: 5` and a small static "temporarily busy" page
+  (`no-store`, `noindex`; personal subscription links are never served stale).
+  A render error prefers the stale copy to the client-rendered page. The management UI stays client-rendered and carries
   `X-Robots-Tag: noindex, nofollow`, as does every page of an `admin` instance. See
   [docs/architecture.md](docs/architecture.md#server-side-rendering).
 - **The public pages work without JavaScript.** Every control is a link or a
