@@ -84,6 +84,30 @@ describe('the check itself', () => {
   });
 });
 
+describe.each(VARIANTS)('footer and info link ($lang, $theme)', ({ lang, theme }) => {
+  it('are labelled landmarks with outbound links that say they open a new tab', async () => {
+    page = await renderPublic({ path: '/services', lang, theme });
+    const footer = page.container.querySelector('footer')!;
+    expect(footer).not.toBeNull();
+    const navs = [...footer.querySelectorAll('nav')].map((n) => n.getAttribute('aria-label'));
+    expect(navs).toEqual(lang === 'de' ? ['Fußzeile', 'Rechtliches'] : ['Footer', 'Legal']);
+    const legal = footer.querySelectorAll<HTMLAnchorElement>('nav:last-of-type a');
+    expect([...legal].map((a) => a.firstChild?.textContent)).toEqual(
+      lang === 'de' ? ['Impressum', 'Privacy', 'Erklärung zur Barrierefreiheit'] : ['Imprint', 'Privacy', 'Accessibility statement'],
+    );
+    for (const a of footer.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]')) {
+      expect(a.rel).toBe('noopener noreferrer');
+      expect(a.querySelector('.sr-only')?.textContent).toMatch(lang === 'de' ? /neuen Tab/ : /new tab/);
+      expect(new URL(a.href).searchParams.get('utm_source')).toBe('status');
+    }
+    expect(footer.textContent).toContain(`© ${new Date().getUTCFullYear()} Example GmbH`);
+    const info = page.container.querySelector<HTMLAnchorElement>('nav a[href="/about"]');
+    expect(info?.textContent).toBe('What does the status mean?');
+    expect(info?.target).toBe('');
+    expect(await axeViolations()).toEqual([]);
+  });
+});
+
 describe('interactive states', () => {
   it('open subscribe menu', async () => {
     page = await renderPublic({ path: '/', lang: 'en', theme: 'light' });
