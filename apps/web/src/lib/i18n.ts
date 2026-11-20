@@ -2,8 +2,8 @@
  * i18next setup of the browser. Namespaces:
  *   common  shared vocabulary (statuses, impacts, buttons, dates)
  *   public  public status page
- *   admin   management UI
- *   help    help area of the management UI (the guide itself is markdown in docs/guide)
+ *   admin   management UI           } added by lib/i18n-admin.ts when the management
+ *   help    help of the management UI } UI loads (not part of the public pages' bundle)
  * Add a language by adding src/locales/<lng>/*.json and listing it in lib/languages.ts.
  *
  * The language is detected like on the server (lib/languages.ts): the `osp-lang`
@@ -14,13 +14,9 @@ import { LANG_COOKIE, LANG_QUERY } from '@openstatuspage/shared';
 import i18n from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import { initReactI18next } from 'react-i18next';
-import adminDe from '../locales/de/admin.json';
 import commonDe from '../locales/de/common.json';
-import helpDe from '../locales/de/help.json';
 import publicDe from '../locales/de/public.json';
-import adminEn from '../locales/en/admin.json';
 import commonEn from '../locales/en/common.json';
-import helpEn from '../locales/en/help.json';
 import publicEn from '../locales/en/public.json';
 import { isLanguage, languageDir, LANGUAGES } from './languages';
 
@@ -45,12 +41,12 @@ export const i18nReady = i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { common: commonEn, public: publicEn, admin: adminEn, help: helpEn },
-      de: { common: commonDe, public: publicDe, admin: adminDe, help: helpDe },
+      en: { common: commonEn, public: publicEn },
+      de: { common: commonDe, public: publicDe },
     },
     supportedLngs: LANGUAGES.map((l) => l.code),
     fallbackLng: 'en',
-    ns: ['common', 'public', 'admin', 'help'],
+    ns: ['common', 'public'],
     defaultNS: 'common',
     interpolation: { escapeValue: false },
     detection: {
