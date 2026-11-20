@@ -121,8 +121,14 @@ With **Append UTM parameters to outbound links** switched on, the page adds
 link you configured that leads to another website: legal links, brand link,
 info link, support URL, footer links and the websites of services. Your
 analytics then sees visits that came from the status page. Links on the
-status page's own address, `mailto:` links and links that already contain a
-`utm_` parameter stay as they are.
+status page's own address and links that already contain a `utm_` parameter
+stay as they are. The rest of a link's address is not touched: the page only
+adds the UTM parameters at the end of the query, before a `#fragment`.
+
+The page knows its own address from `PUBLIC_BASE_URL` (or `BASE_URL` when that
+is not set). Behind a reverse proxy it must be the address visitors actually
+use. If it is wrong, links to the status page itself count as links to another
+website: they get UTM parameters, open in a new tab and are announced as such.
 
 ## Checking the effective configuration
 
