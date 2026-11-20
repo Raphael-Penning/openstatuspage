@@ -277,6 +277,19 @@ describe('a public instance', () => {
       expect(day.statusCode).toBe(200);
       expect(day.json().data.attributes.status).toBe('major_outage');
 
+      // An incident of the page with only its own services, also with the token in upper case.
+      const incident = await app.inject({ url: '/api/public/private-page/incidents/inc-a', headers: { [PRIVATE_PAGE_TOKEN_HEADER]: tokens.a.toUpperCase() } });
+      expect(incident.statusCode).toBe(200);
+      expect(incident.body).not.toContain(ids.otherHidden);
+      expect(incident.json().data.attributes.title).toBe('Backend outage');
+      for (const id of ['inc-b', 'inc-internal']) {
+        expect((await app.inject({ url: `/api/public/private-page/incidents/${id}`, headers: { [PRIVATE_PAGE_TOKEN_HEADER]: tokens.a } })).statusCode, id).toBe(404);
+      }
+      const incidentPage = await app.inject({ url: `/p/${tokens.a}/incidents/inc-a` });
+      expect(incidentPage.statusCode).toBe(200);
+      expect(rootOf(incidentPage)).toContain('Backend outage');
+      expect(rootOf(incidentPage)).not.toContain('Other secret');
+
       for (const token of [tokens.disabled, tokens.expired, newPrivatePageToken()]) {
         expect((await app.inject({ url: '/api/public/private-page', headers: { [PRIVATE_PAGE_TOKEN_HEADER]: token } })).statusCode).toBe(404);
       }
