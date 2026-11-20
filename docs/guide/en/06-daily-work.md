@@ -201,5 +201,6 @@ Who receives the email depends on the affected services, see
 ## Roles
 
 Editors may create and change incidents, maintenance and corrections and
-read everything else. Services, groups, locations, monitoring, settings, users and API tokens
+read everything else. Services, groups, locations, monitoring, settings, users, API tokens and
+[private pages](12-public-page.md#private-pages)
 are managed by administrators; see [Users and access](08-users-and-access.md).

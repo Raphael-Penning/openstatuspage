@@ -61,10 +61,13 @@ User-agent: *
 Allow: /
 Allow: /api/public/
 Disallow: /api/public/subscriptions
+Disallow: /api/public/private-page
 Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
+Disallow: /p/
 Disallow: /preferences/
+Disallow: /pulse/
 
 Sitemap: https://status.example.com/sitemap.xml
 ```
@@ -134,6 +137,7 @@ accepts the same address.
 | Day pages of the uptime bars (`/services/<service>/days/<date>`) | no | `noindex, follow`: one thin page per service and day. Not in a sitemap. |
 | Not found (404), also a history page beyond the last one | no | `noindex`. |
 | Confirm, manage, unsubscribe links | no | `noindex`, not in a sitemap, disallowed in `robots.txt`. |
+| Private pages (`/p/<link>`) | no | `noindex, nofollow` (meta tag and header), no canonical address, not in a sitemap or `llms.txt`, disallowed in `robots.txt`. See [Private pages](#private-pages). |
 | `/admin` on an instance that serves it | no | The response carries `X-Robots-Tag: noindex, nofollow`. |
 | Every page of an `admin` instance | no | `Disallow: /` in `robots.txt` and `X-Robots-Tag: noindex, nofollow`. |
 
@@ -192,6 +196,42 @@ more comfortable. Without them:
 What needs JavaScript: the live update of the status every 60 seconds, the
 interactive map, the time zone switch and the closing of menus by a click outside
 or the Escape key.
+
+## Private pages
+
+A private page is a status page with a secret link, for example for one
+customer or partner. It shows the services you choose, also services that are
+hidden from the public page, and looks like the public page: overall status,
+uptime bars with their day pages, a page per service, active incidents and
+running and upcoming maintenance of those services.
+
+**Create one** under *Administration → Private pages* (admins only): give it a
+name, an optional description, choose the services, optionally an expiry date,
+and save. The dialog then shows the full link
+(`https://status.example.com/p/<link>`, built from `PUBLIC_BASE_URL`) with a copy
+button. **The link is shown only this once**: only a hash of it is stored. If it
+gets lost or should no longer work, choose *New link*: the old link stops working
+at once and the dialog shows the new one. Disable a page, let it expire or delete
+it to close it; all three answer like a link that never existed.
+
+What to know:
+
+- Everyone who has the link can see the page, without signing in. Share it only
+  with the people it is meant for, as you would share a password.
+- Incidents and maintenance windows appear on a private page only when they are
+  public, with their public text. Of the services they affect, the page shows only
+  its own. The titles link to the incident or maintenance page of the public
+  status page.
+- Private pages are never indexed (`noindex, nofollow`), never cached, never
+  appear in the sitemaps or `llms.txt`, never load the statistics script and send
+  no referrer to other sites. The server log writes `/p/[REDACTED]` instead of the
+  link.
+- Every client may open 60 private pages per minute; a wrong link is just "not
+  found".
+- There are no feeds and no email subscriptions for private pages.
+- On a split deployment the public instance reads a private page only through
+  database functions that need its link; it cannot list private pages or hidden
+  services (see the [security model](../../security-model.md)).
 
 ## Troubleshooting
 
