@@ -7,7 +7,8 @@
     "home": "Go to the overview",
     "timeZone": "Time zone: {{current}}. Click to switch.",
     "language": "Language",
-    "theme": "Color theme"
+    "theme": "Color theme",
+    "timeZoneUtc": "Times are shown in UTC"
   },
   "nav": {
     "label": "Status page sections",

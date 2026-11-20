@@ -1,6 +1,6 @@
 import { THEME_COOKIE, type ThemePreference } from '@openstatuspage/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { writePreferenceCookie } from './languages';
+import { readCookie, writePreferenceCookie } from './languages';
 import { useSsr } from './ssr';
 
 export type { ThemePreference } from '@openstatuspage/shared';
@@ -19,7 +19,14 @@ export function isThemePreference(v: unknown): v is ThemePreference {
   return v === 'dark' || v === 'light' || v === 'system';
 }
 
+/**
+ * The visitor's choice: the cookie first (also set by the theme form without
+ * JavaScript, and what the server rendered with), then the stored one.
+ */
 function readStored(): ThemePreference | null {
+  if (typeof document === 'undefined') return null;
+  const cookie = readCookie(document.cookie, THEME_COOKIE);
+  if (isThemePreference(cookie)) return cookie;
   try {
     const v = localStorage.getItem(STORAGE_KEY);
     return isThemePreference(v) ? v : null;

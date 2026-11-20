@@ -7,7 +7,8 @@
     "home": "Zur Übersicht",
     "timeZone": "Zeitzone: {{current}}. Klicken zum Umschalten.",
     "language": "Sprache",
-    "theme": "Farbschema"
+    "theme": "Farbschema",
+    "timeZoneUtc": "Zeiten werden in UTC angezeigt"
   },
   "nav": {
     "label": "Bereiche der Statusseite",
