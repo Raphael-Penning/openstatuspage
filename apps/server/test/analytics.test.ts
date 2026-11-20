@@ -311,8 +311,25 @@ describe('POST /pulse/api/send', () => {
     await send(app, event({ url: '/', referrer: 'https://mail.example.com/read?Token=x&id=2' }));
     expect(umami.received.map((r) => (r.body as { payload: { url: string; referrer: string } }).payload)).toMatchObject([
       { url: '/history?type=incident', referrer: `${BASE_URL}/` },
-      { url: '/', referrer: 'https://mail.example.com/read?id=2' },
+      { url: '/', referrer: 'https://mail.example.com/read' },
     ]);
+  });
+
+  it('removes fragments, tokens in custom data and fields the tracker never sends', async () => {
+    await send(
+      app,
+      event({ url: '/history?a=1#token=3', referrer: 'https://ex.com/r?id=7#token=1', data: { token: 's', step: 2 }, cookie: 'x', ip: '1.2.3.4' }),
+    );
+    const { payload } = umami.received[0]!.body as { payload: Record<string, unknown> };
+    expect(payload).toEqual({
+      website: WEBSITE,
+      hostname: 'status.example.com',
+      url: '/history?a=1',
+      referrer: 'https://ex.com/r?id=7',
+      title: 'History',
+      data: { step: 2 },
+    });
+    expect((await send(app, event({ data: 'token=1' }))).statusCode).toBe(204);
   });
 
   it('sends nothing for Do Not Track and Global Privacy Control unless told otherwise', async () => {
@@ -396,7 +413,7 @@ describe('POST /pulse/api/send', () => {
 
 describe('cleanEvent', () => {
   it('keeps absolute page URLs absolute and paths paths', () => {
-    expect(cleanEvent(event({ url: `${BASE_URL}/x?token=1#a` }), WEBSITE, BASE_URL)?.payload.url).toBe(`${BASE_URL}/x#a`);
+    expect(cleanEvent(event({ url: `${BASE_URL}/x?token=1#a` }), WEBSITE, BASE_URL)?.payload.url).toBe(`${BASE_URL}/x`);
     expect(cleanEvent(event({ url: '/x?a=1' }), WEBSITE, BASE_URL)?.payload.url).toBe('/x?a=1');
     expect(cleanEvent(event({ website: WEBSITE.toUpperCase() }), WEBSITE, BASE_URL)).not.toBeNull();
     expect(cleanEvent(event({ url: 42 }), WEBSITE, BASE_URL)).toBeNull();
