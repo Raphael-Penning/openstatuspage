@@ -31,7 +31,17 @@ import {
 import type { DB } from '../db/index.js';
 import { buildCorrectionLayers } from './corrections.js';
 import { applyCorrections, rangeStart } from './history-corrections.js';
-import type { PrivateIncidentRow, PrivateMaintenanceRow, PrivatePageRef, PrivatePageStore, PrivateServiceRow } from './private-page-store.js';
+import type { Config } from '../config.js';
+import {
+  DirectPrivatePageStore,
+  FunctionPrivatePageStore,
+  type PrivateIncidentRow,
+  type PrivateMaintenanceRow,
+  type PrivatePageRef,
+  type PrivatePageStore,
+  type PrivateServiceRow,
+} from './private-page-store.js';
+import { usesDatabaseFunctions } from './subscription-flow.js';
 import { countStatuses, segmentsByService, toPublicService, uptimeOf } from './public-catalog.js';
 import { daySegments, maintenancesOnDay } from './service-days.js';
 import { getSettings } from './settings.js';
@@ -165,6 +175,14 @@ export interface PrivateServiceDay {
   nextDate: string | null;
   incidents: PublicIncident[];
   maintenances: PublicMaintenance[];
+}
+
+/**
+ * The visitor's view for an instance: through the osp_public functions on a
+ * public PostgreSQL instance (restricted role), from the tables everywhere else.
+ */
+export function createPrivatePages(db: DB, config: Pick<Config, 'APP_ROLE' | 'database'>): PrivatePages {
+  return new PrivatePages(db, usesDatabaseFunctions(config) ? new FunctionPrivatePageStore(db) : new DirectPrivatePageStore(db));
 }
 
 /** The visitor's view of a private page. Every method resolves null for a token without a page. */

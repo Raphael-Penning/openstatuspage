@@ -8,10 +8,13 @@
  *
  * The feeds are not JSON:API (stable formats for feed readers).
  */
-import type { FastifyInstance } from 'fastify';
+import { PRIVATE_PAGE_TOKEN_HEADER } from '@openstatuspage/shared';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { parse } from '../lib/http.js';
 import { useJsonApi, withInclude } from '../plugins/jsonapi.js';
+import { PrivatePageDocuments } from '../services/private-page-documents.js';
+import { createPrivatePages } from '../services/private-pages.js';
 import { PublicDocuments } from '../services/public-documents.js';
 import { registerFeedRoutes } from './feeds.js';
 
@@ -20,7 +23,16 @@ const IdParams = z.object({ id: z.string().min(1).max(64) });
 /** The day is validated by the document builder (400 malformed, 404 outside the uptime range). */
 const ServiceDayParams = IdOrSlugParams.extend({ date: z.string().min(1).max(32) });
 
-const cacheHeaders = (scope: FastifyInstance) =>
+/** Requests per minute and client to private pages (API and HTML), against guessing tokens. */
+export const PRIVATE_PAGE_RATE_LIMIT = { max: 60, timeWindow: '1 minute' };
+
+/** The token of the X-Private-Page-Token header ('' when missing: answered like a wrong one). */
+function privatePageToken(req: FastifyRequest): string {
+  const value = req.headers[PRIVATE_PAGE_TOKEN_HEADER];
+  return typeof value === 'string' && value.length <= 64 ? value : '';
+}
+
+const cacheHeaders =(scope: FastifyInstance) =>
   scope.addHook('onSend', async (req, reply, payload) => {
     if (req.method === 'GET' && reply.statusCode === 200) {
       reply.header('cache-control', 'public, max-age=30');
@@ -51,6 +63,28 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     scope.get('/api/public/incidents/:id', withInclude, (req) => docs.incident(req, parse(IdParams, req.params).id));
     scope.get('/api/public/maintenances/:id', withInclude, (req) => docs.maintenance(req, parse(IdParams, req.params).id));
     scope.get('/api/public/history', withInclude, (req) => docs.history(req));
+  });
+
+  // Private pages (/p/<token>): the token comes in the X-Private-Page-Token header, never in
+  // the URL. Every token problem is the same 404; rate limited against guessing.
+  const privateDocs = new PrivatePageDocuments(createPrivatePages(app.ctx.db, app.ctx.config));
+  await app.register(async (scope) => {
+    useJsonApi(scope);
+    scope.addHook('onSend', async (_req, reply, payload) => {
+      reply.header('cache-control', 'private, no-store');
+      reply.header('X-Robots-Tag', 'noindex, nofollow');
+      return payload;
+    });
+    const limited = { rateLimit: PRIVATE_PAGE_RATE_LIMIT };
+    const withIncludeLimited = { config: { ...limited, jsonapi: { include: true } } };
+    scope.get('/api/public/private-page', { config: limited }, (req) => privateDocs.page(req, privatePageToken(req)));
+    scope.get('/api/public/private-page/services/:idOrSlug', withIncludeLimited, (req) =>
+      privateDocs.service(req, privatePageToken(req), parse(IdOrSlugParams, req.params).idOrSlug),
+    );
+    scope.get('/api/public/private-page/services/:idOrSlug/days/:date', withIncludeLimited, (req) => {
+      const params = parse(ServiceDayParams, req.params);
+      return privateDocs.day(req, privatePageToken(req), params.idOrSlug, params.date);
+    });
   });
 
   // Feeds (not JSON:API).
