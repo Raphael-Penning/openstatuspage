@@ -26,6 +26,9 @@ The core promise: **customers see services, never infrastructure.**
   and masked in admin responses.
 - Ingest tokens and session/API tokens are stored as SHA-256 hashes only.
 - Subscription tokens are not stored at all (HMAC of `SUBSCRIPTION_TOKEN_KEY`, default `SECRET_KEY`, and a salt).
+- Private page links (`/p/<token>`) carry 160 random bits; only the SHA-256 of the
+  token is stored. A private page shows hidden services only to holders of its
+  link (see [Private pages](#private-pages)).
 - Optional page view statistics (Umami, off by default) go through the app's own
   proxy: no third-party request from the visitor's browser, no IP address
   forwarded unless the settings say so, no tracker on subscription links, and a
@@ -384,6 +387,45 @@ visitor's time zone). The rules:
 - `apps/server/test/nojs-pages.test.ts` fetches every page and checks that each
   control is a link or a form with its action, method and field names, and that
   no button, field or tab stop depends on a script.
+
+## Private pages
+
+A private page (`/p/<token>`) shows the services an admin chose, also ones hidden
+from the main page, with the look of the main page: overall status, uptime bars
+with day pages (`/p/<token>/services/<slug>/days/<date>`), service pages
+(`/p/<token>/services/<slug>`), active incidents and running and upcoming
+maintenance of those services (public ones only).
+
+```
+/p/<token>/…  ─▶ app.ts: rate limit (60/min per client) ─▶ ssr/pages.ts (personal path: no cache, never stale)
+  └─ routes.tsx  /p/:token ─▶ PrivatePageProvider (token, link base /p/<token>) ─▶ PublicLayout
+       └─ privateQueries.*(token, get) ─▶ ssr/source.ts ─▶ PrivatePageDocuments ─▶ PrivatePages
+            └─ PrivatePageStore: tables (SQLite, admin/worker/all) | osp_public.private_page*() (public role)
+browser: the same queries over HTTP, token in the X-Private-Page-Token header
+```
+
+- **One code path.** `services/private-pages.ts` builds the view from the rows of
+  a `PrivatePageStore` (`services/private-page-store.ts`) with the functions of the
+  main page (`uptimeOf`, `buildCorrectionLayers`, `daySegments`), so bars and days
+  match the main page exactly. On a public PostgreSQL instance the rows come from
+  the token-scoped functions of `osp_public` (see
+  [security-model.md](security-model.md#what-the-public-role-cannot-do)), elsewhere
+  from the tables.
+- **Links.** Inside `PrivatePageProvider` every service, bar day, day table,
+  affected service and back link starts with `/p/<token>`
+  (`hooks/links.tsx`); the logo leads to the private page, the navigation of the
+  main page is replaced by a notice. Incident and maintenance titles link to their
+  public pages (they are public).
+- **Never stored or indexed.** `isPersonalPath` covers `/p/`: the render cache
+  is skipped, an overload is a `503` (never a stale copy), `Cache-Control: private,
+  no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, meta
+  robots `noindex, nofollow`, no canonical URL, no language alternates, no JSON-LD,
+  no Umami tag and no analytics choice in the footer. `robots.txt` disallows `/p/`
+  and the private page API; sitemaps and `llms.txt` never list them. The request
+  log writes `/p/[REDACTED]/…`.
+- **No oracle.** Unknown, disabled, expired and malformed tokens get the same 404
+  page and API answer; a token is checked by one indexed lookup of its hash.
+- **Out of scope:** feeds and email subscriptions of private pages.
 
 ## Search engines and AI agents
 
