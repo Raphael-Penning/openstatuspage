@@ -25,6 +25,8 @@ export function useLinkBase(): string {
 }
 
 export interface ServicePaths {
+  /** Start page below the link base: "/" on the public pages, "/p/<token>" on a private page. */
+  home: string;
   service: (service: { slug?: string | null; id: string }) => string;
   day: (service: { slug?: string | null; id: string }, day: string) => string;
 }
@@ -34,6 +36,7 @@ export function useServicePaths(): ServicePaths {
   const base = useLinkBase();
   return useMemo(
     () => ({
+      home: base || '/',
       service: (service) => servicePath(service, base),
       day: (service, day) => serviceDayPath(service, day, base),
     }),

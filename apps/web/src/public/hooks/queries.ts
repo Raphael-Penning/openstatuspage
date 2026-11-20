@@ -13,6 +13,7 @@ import {
   deserialize,
   deserializeDocument,
   deserializePage,
+  PRIVATE_PAGE_TOKEN_HEADER,
   resourceType,
   toQueryParams,
   type DailyUptime,
@@ -25,6 +26,7 @@ import {
   type PublicLocationsResponse,
   type PublicMaintenance,
   type PublicPageSettings,
+  type PublicPrivatePage,
   type PublicService,
   type PublicServiceDay,
   type PublicServiceGroup,
@@ -33,6 +35,7 @@ import {
 } from '@openstatuspage/shared';
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '../../lib/api';
+import { usePrivatePageToken } from './private-page';
 
 export const REFRESH_INTERVAL = 60_000;
 
@@ -171,6 +174,50 @@ export const publicQueries = {
     }),
 };
 
+/**
+ * The document source of a private page: in the browser the token travels in
+ * the X-Private-Page-Token header, never in an API URL; on the server (`get`,
+ * the route loaders) the in-process source takes it as the `token` value.
+ */
+export function privateDocuments(token: string, get?: GetDocument): GetDocument {
+  if (get) return (path, query) => get(path, { ...query, token });
+  return (path, query) => api.document(path, query, { headers: { [PRIVATE_PAGE_TOKEN_HEADER]: token } });
+}
+
+const PRIVATE_API = '/api/public/private-page';
+
+/** Query options of a private page (/p/<token>), like publicQueries. */
+export const privateQueries = {
+  page: (token: string, get?: GetDocument) =>
+    queryOptions({
+      queryKey: ['private', token, 'page'],
+      queryFn: () => one<PublicPrivatePage>(privateDocuments(token, get), PRIVATE_API),
+      ...common,
+    }),
+  service: (token: string, idOrSlug: string, get?: GetDocument) =>
+    queryOptions({
+      queryKey: ['private', token, 'service', idOrSlug],
+      queryFn: () => one<PublicServiceDetail>(privateDocuments(token, get), `${PRIVATE_API}/services/${encodeURIComponent(idOrSlug)}`),
+      ...common,
+    }),
+  serviceDay: (token: string, idOrSlug: string, date: string, get?: GetDocument) =>
+    queryOptions({
+      queryKey: ['private', token, 'service-day', idOrSlug, date],
+      queryFn: () =>
+        one<PublicServiceDayDetail>(
+          privateDocuments(token, get),
+          `${PRIVATE_API}/services/${encodeURIComponent(idOrSlug)}/days/${encodeURIComponent(date)}`,
+        ),
+      ...common,
+      refetchInterval: (query) => (query.state.data?.complete ? false : REFRESH_INTERVAL),
+    }),
+};
+
+/** The private page of the token (disabled for a malformed token: "not found" without asking). */
+export function usePrivatePage(token: string, enabled = true) {
+  return useQuery({ ...privateQueries.page(token), enabled });
+}
+
 export function usePublicSettings() {
   return useQuery(publicQueries.settings());
 }
@@ -183,13 +230,19 @@ export function useServices() {
   return useQuery(publicQueries.services());
 }
 
+/** A service with its bars, incidents and maintenance; of the private page when inside one. */
 export function useService(idOrSlug: string) {
-  return useQuery(publicQueries.service(idOrSlug));
+  const token = usePrivatePageToken();
+  return useQuery(token ? privateQueries.service(token, idOrSlug) : publicQueries.service(idOrSlug));
 }
 
-/** A day of a service; disabled for a malformed date (the page shows "not found" without asking). */
+/**
+ * A day of a service (of the private page when inside one); disabled for a
+ * malformed date (the page shows "not found" without asking).
+ */
 export function useServiceDay(idOrSlug: string, date: string, enabled = true) {
-  return useQuery({ ...publicQueries.serviceDay(idOrSlug, date), enabled });
+  const token = usePrivatePageToken();
+  return useQuery({ ...(token ? privateQueries.serviceDay(token, idOrSlug, date) : publicQueries.serviceDay(idOrSlug, date)), enabled });
 }
 
 export function useLocations(enabled = true) {
