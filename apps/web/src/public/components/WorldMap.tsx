@@ -12,11 +12,12 @@ import { useTranslation } from 'react-i18next';
 import { feature } from 'topojson-client';
 import world from 'world-atlas/countries-110m.json';
 import { useCountryName } from '../hooks/countries';
+import { MAP_HEIGHT, MAP_SCALE, MAP_TRANSLATE, MAP_WIDTH } from '../utils/map-projection';
 import { statusShapePath } from '../utils/shapes';
 import { statusVar } from './StatusMarker';
 import { StatusPill } from './ui';
 
-const WIDTH = 960;
+const WIDTH = MAP_WIDTH;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 8;
 /** Antarctica only takes space on a map of data centers. */
@@ -30,9 +31,12 @@ const countries: Countries = (() => {
   return { ...all, features: all.features.filter((f) => f.id !== ANTARCTICA) };
 })();
 
-const projection = geoNaturalEarth1().fitWidth(WIDTH, countries);
+// The same projection as the map rendered on the server (StaticWorldMap), so markers do not move.
+const projection = geoNaturalEarth1()
+  .scale(MAP_SCALE)
+  .translate([...MAP_TRANSLATE]);
 const path = geoPath(projection);
-const HEIGHT = Math.ceil(path.bounds(countries)[1][1]);
+const HEIGHT = MAP_HEIGHT;
 const countryPaths = countries.features.map((f, i) => ({ id: String(f.id ?? i), d: path(f) ?? '' }));
 
 interface View {

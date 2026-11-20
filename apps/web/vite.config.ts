@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
+import { worldMapSvg } from './tools/world-map';
 
 const apiTarget = process.env.API_URL ?? 'http://localhost:3000';
 const require = createRequire(import.meta.url);
@@ -34,8 +35,31 @@ const asciiOnly: Plugin = {
   },
 };
 
+/**
+ * /world-map.svg (tools/world-map.ts): written next to the pages by the client
+ * build and served by the dev server. Not part of any chunk, so every role that
+ * serves the public pages serves it.
+ */
+const WORLD_MAP = 'world-map.svg';
+function worldMap(): Plugin {
+  let svg: string | undefined;
+  const source = () => (svg ??= worldMapSvg());
+  return {
+    name: 'osp-world-map',
+    configureServer(server) {
+      server.middlewares.use(`/${WORLD_MAP}`, (_req, res) => {
+        res.setHeader('Content-Type', 'image/svg+xml');
+        res.end(source());
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: WORLD_MAP, source: source() });
+    },
+  };
+}
+
 export default defineConfig(({ isSsrBuild }) => ({
-  plugins: [react(), tailwindcss(), ...(isSsrBuild ? [asciiOnly] : [])],
+  plugins: [react(), tailwindcss(), ...(isSsrBuild ? [asciiOnly] : [worldMap()])],
   server: {
     port: 5173,
     proxy: {
