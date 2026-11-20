@@ -353,5 +353,14 @@
   },
   "link": {
     "newTab": "(öffnet in einem neuen Tab)"
+  },
+  "private": {
+    "badge": "Private Statusseite",
+    "notice": "Nur Personen mit dem Link können diese Seite sehen. Bitte gib den Link nicht weiter.",
+    "services": "Dienste",
+    "empty": "Diese Seite zeigt noch keine Dienste.",
+    "notFound": "Diese private Statusseite gibt es nicht oder sie ist nicht mehr verfügbar.",
+    "back": "Zurück zur Übersicht",
+    "home": "Übersicht dieser privaten Statusseite"
   }
 }

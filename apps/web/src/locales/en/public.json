@@ -353,5 +353,14 @@
   },
   "link": {
     "newTab": "(opens in a new tab)"
+  },
+  "private": {
+    "badge": "Private status page",
+    "notice": "Only people with the link can see this page. Please do not pass the link on.",
+    "services": "Services",
+    "empty": "This page does not show any services yet.",
+    "notFound": "This private status page does not exist or is no longer available.",
+    "back": "Back to the overview",
+    "home": "Overview of this private status page"
   }
 }
