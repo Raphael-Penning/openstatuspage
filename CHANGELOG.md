@@ -69,6 +69,17 @@ breaking changes.
 
 ### Added
 
+- **Server-side rendered public pages**: every public page (overview, services,
+  service, locations, history, incident, maintenance, subscribe, subscription
+  links, not found) is rendered on the server and hydrated in the browser, so
+  it works without JavaScript and search engines get the content. Unknown pages,
+  services, incidents and maintenance windows answer `404`. The language comes
+  from the `osp-lang` cookie (set by the language switcher), `?lang=`,
+  `Accept-Language` or the page default; times are rendered in UTC and switch to
+  the visitor's time zone after loading. Rendered pages are cached for 5 s and
+  sent with an `ETag`. The management UI stays client-rendered and carries
+  `X-Robots-Tag: noindex, nofollow`. See
+  [docs/architecture.md](docs/architecture.md#server-side-rendering).
 - **Split deployment** with `APP_ROLE` (`all`, `public`, `admin`, `worker`): on
   PostgreSQL the public status page, the management side and the background worker
   can run as separate instances. A `public` instance has no management UI, login,
@@ -124,6 +135,9 @@ breaking changes.
 
 ### Changed
 
+- The Docker image and `pnpm start` run Node.js with `--max-opt=2` (no TurboFan),
+  which saves 10–15 MB per instance. Start the server the same way when you run it
+  without the image.
 - **Less memory per instance**: about 80–100 MB instead of 100–130 MB with the
   Docker image (public and worker stay below 100 MB; admin and all peak at about
   105 MB during password checks, see [docs/architecture.md](docs/architecture.md#memory)). The server build bundles and minifies its dependencies, every role
