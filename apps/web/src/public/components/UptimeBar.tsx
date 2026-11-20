@@ -122,15 +122,25 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
   if (shown.length === 0) return null;
   const visible = active !== null && !dismissed && active >= first ? shown[active] : undefined;
 
+  // Every day link is named on every render (up to 90 per bar): each text is translated once per render.
+  const texts = new Map<string, string>();
+  const text = (key: string) => {
+    let value = texts.get(key);
+    if (value === undefined) texts.set(key, (value = t(key)));
+    return value;
+  };
+  const percentText = t('uptime.percent', { value: '\u0000' });
+
+  /** Name of a day link: date, status, uptime, non-operational time and corrections. */
   function describe(day: DailyUptime): string {
     const parts = [f.utcDay(day.date)];
-    if (day.status === null) parts.push(t('uptime.noData'));
+    if (day.status === null) parts.push(text('uptime.noData'));
     else {
-      parts.push(t(`common:status.${day.status}`));
-      if (day.uptime !== null) parts.push(t('uptime.percent', { value: f.percent(day.uptime) }));
-      for (const m of statusMinutes(day)) parts.push(`${t(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`);
+      parts.push(text(`common:status.${day.status}`));
+      if (day.uptime !== null) parts.push(percentText.replace('\u0000', f.percent(day.uptime)));
+      for (const m of statusMinutes(day)) parts.push(`${text(`common:status.${m.status}`)}: ${f.duration(m.minutes * 60_000)}`);
     }
-    if (day.corrected) parts.push(t('uptime.corrected'), ...(day.correctionNotes ?? []));
+    if (day.corrected) parts.push(text('uptime.corrected'), ...(day.correctionNotes ?? []));
     return parts.join(', ');
   }
 
