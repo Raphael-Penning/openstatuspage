@@ -417,6 +417,26 @@ export interface TaskLeasesTable {
   last_finished_at: string | number | null;
 }
 
+/** Private status pages at /p/<token> (0009_private_pages); the token is stored as its SHA-256 hash only. */
+export interface PrivatePagesTable {
+  id: string;
+  name: string;
+  description: string | null;
+  token_hash: string;
+  token_created_at: string;
+  expires_at: string | null;
+  enabled: Bool;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PrivatePageServicesTable {
+  page_id: string;
+  service_id: string;
+  sort_order: number;
+}
+
 export interface Database {
   settings: SettingsTable;
   users: UsersTable;
@@ -450,6 +470,8 @@ export interface Database {
   status_corrections: StatusCorrectionsTable;
   status_correction_services: StatusCorrectionServicesTable;
   task_leases: TaskLeasesTable;
+  private_pages: PrivatePagesTable;
+  private_page_services: PrivatePageServicesTable;
 }
 
 export type User = Selectable<UsersTable>;
