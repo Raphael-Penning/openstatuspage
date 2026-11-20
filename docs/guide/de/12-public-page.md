@@ -241,6 +241,11 @@ Was du wissen solltest:
   stehen weder in den Sitemaps noch in `llms.txt`, laden nie das Statistik-Skript
   und senden keinen Referrer an andere Seiten. Das Server-Log schreibt
   `/p/[REDACTED]` statt des Links.
+- **Behandle den Link wie ein Passwort.** Wer ihn hat, kann die Seite lesen, und
+  er steht in der Adresse jedes Besuchs. Ein Reverse Proxy oder Load Balancer vor
+  der Instanz schreibt den vollen Pfad meist in sein eigenes Zugriffs-Log, das die
+  App nicht schwärzen kann. Beschränke, wer diese Logs lesen darf, halte sie kurz
+  oder stelle den Proxy so ein, dass er `/p/` ohne den Teil danach protokolliert.
 - Jeder Client darf 60 private Seiten pro Minute öffnen; ein falscher Link ist
   einfach „nicht gefunden“.
 - Für private Seiten gibt es keine Feeds und keine E-Mail-Abos.
