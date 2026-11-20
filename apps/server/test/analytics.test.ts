@@ -420,6 +420,24 @@ describe('POST /pulse/api/send', () => {
       await slow.close();
     }
   });
+
+  it("passes on the plain-text session token of older Umami versions, nothing else", async () => {
+    umami.send = (_req, reply) => reply.type('text/plain').send('header.payload.signature');
+    const res = await send(app, event());
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('text/plain; charset=utf-8');
+    expect(res.body).toBe('header.payload.signature');
+
+    for (const [type, body] of [
+      ['text/plain', '<script>alert(1)</script>'],
+      ['text/html', 'header.payload.signature'],
+    ]) {
+      umami.send = (_req, reply) => reply.type(type!).send(body);
+      const other = await send(app, event());
+      expect(other.statusCode, type).toBe(204);
+      expect(other.body).toBe('');
+    }
+  });
 });
 
 describe('cleanEvent', () => {
