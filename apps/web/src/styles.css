@@ -210,3 +210,11 @@ html {
 .osp-group:has(> details > summary:hover) .osp-group-head {
   background: var(--surface-2);
 }
+
+/*
+ * Subscription scope (Subscription.tsx): the service checklist only shows for
+ * "Selected services", also without JavaScript.
+ */
+.osp-scope:has(.osp-scope-all:checked) .osp-scope-services {
+  display: none;
+}
