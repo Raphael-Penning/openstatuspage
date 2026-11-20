@@ -51,7 +51,7 @@ const UPDATE_INCLUDES = ['updates'];
 
 // --- Queries (ids only; records are loaded and serialized afterwards) ----------
 
-async function activeIncidentIds(db: DB): Promise<string[]> {
+export async function activeIncidentIds(db: DB): Promise<string[]> {
   const rows = await db
     .selectFrom('incidents')
     .select('id')
@@ -62,7 +62,7 @@ async function activeIncidentIds(db: DB): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-async function recentIncidentIds(db: DB, since: string): Promise<string[]> {
+export async function recentIncidentIds(db: DB, since: string): Promise<string[]> {
   const rows = await db
     .selectFrom('incidents')
     .select('id')
@@ -74,7 +74,7 @@ async function recentIncidentIds(db: DB, since: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-async function activeMaintenanceIds(db: DB): Promise<string[]> {
+export async function activeMaintenanceIds(db: DB): Promise<string[]> {
   const rows = await db
     .selectFrom('maintenances')
     .select('id')
@@ -85,7 +85,7 @@ async function activeMaintenanceIds(db: DB): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-async function upcomingMaintenanceIds(db: DB, now: string): Promise<string[]> {
+export async function upcomingMaintenanceIds(db: DB, now: string): Promise<string[]> {
   const rows = await db
     .selectFrom('maintenances')
     .select('id')
@@ -97,11 +97,11 @@ async function upcomingMaintenanceIds(db: DB, now: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-async function publicIncidents(db: DB, ids: string[]): Promise<PublicIncident[]> {
+export async function publicIncidents(db: DB, ids: string[]): Promise<PublicIncident[]> {
   return (await loadIncidents(db, ids)).map(toPublicIncident);
 }
 
-async function publicMaintenances(db: DB, ids: string[]): Promise<PublicMaintenance[]> {
+export async function publicMaintenances(db: DB, ids: string[]): Promise<PublicMaintenance[]> {
   return (await loadMaintenances(db, ids)).map(toPublicMaintenance);
 }
 

@@ -17,7 +17,7 @@ export function OverviewPage() {
   // ?upcoming=all lists every upcoming maintenance (a link, so it works without JavaScript).
   const [params] = useSearchParams();
   const allUpcoming = params.get('upcoming') === 'all';
-  usePageHead({});
+  usePageHead({ home: true });
 
   if (isPending) return <OverviewSkeleton />;
   if (isError) return <ErrorState onRetry={() => void refetch()} />;

@@ -7,14 +7,21 @@ import { Card, ErrorState, StatusPill } from '../components/ui';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useIncident } from '../hooks/queries';
 import { NotFoundState } from './NotFoundState';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 
 export function IncidentPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation('public');
   const f = useFormat();
   const { data, isPending, isError, error, refetch } = useIncident(id);
-  usePageHead({ title: data?.title ?? t('incident.title') });
+  const site = useSiteName();
+  usePageHead({
+    title: data?.title ?? t('incident.title'),
+    // The latest update says best what the incident is about.
+    description: data ? data.updates[0]?.message || t('seo.incident', { site, title: data.title }) : undefined,
+    article: data ? { datePublished: data.startedAt, dateModified: data.updatedAt } : undefined,
+    breadcrumbs: data ? [{ name: t('nav.history'), path: '/history' }, { name: data.title, path: `/incidents/${encodeURIComponent(data.id)}` }] : undefined,
+  });
 
   if (isPending) return <DetailSkeleton />;
   if (isError) {

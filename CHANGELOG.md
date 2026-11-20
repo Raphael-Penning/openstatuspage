@@ -96,6 +96,17 @@ breaking changes.
   the API, Post/Redirect/Get, server-side validation errors with an error summary,
   and a same-origin check (`Sec-Fetch-Site`/`Origin`) against cross-site posts.
   See [docs/security-model.md](docs/security-model.md#html-forms).
+- **Search engines and AI agents**: every public page has a unique title, a
+  description from its content, a canonical URL and `hreflang` alternates
+  (`?lang=xx`, `x-default`) from `PUBLIC_BASE_URL`, Open Graph and Twitter card
+  tags (the logo as image), `theme-color` and robots rules (`noindex` for 404
+  pages and subscription links). JSON-LD: `WebSite` and `Organization` on the
+  overview, `BreadcrumbList` on the other pages, `Article` for incidents and
+  maintenance windows. New files: `/robots.txt` (per role; `Disallow: /` on
+  `admin` instances), the sitemap index `/sitemap.xml` with pages, incidents and
+  services, `/llms.txt` and `/llms-full.txt` (the current status as Markdown).
+  See [docs/architecture.md](docs/architecture.md#search-engines-and-ai-agents).
+- **Public API**: maintenance windows have `createdAt` and `updatedAt`.
 - **Split deployment** with `APP_ROLE` (`all`, `public`, `admin`, `worker`): on
   PostgreSQL the public status page, the management side and the background worker
   can run as separate instances. A `public` instance has no management UI, login,

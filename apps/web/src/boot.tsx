@@ -25,7 +25,7 @@ export function boot(routes: RouteObject[]): void {
   });
 
   // Public pages keep document.head in sync (usePageHead); the management UI sets its own title.
-  const heads = new HeadStore((head) => applyHead(head, window.location.origin));
+  const heads = new HeadStore(applyHead);
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

@@ -20,6 +20,7 @@ export const RATE_LIMIT_KEYS = 1000;
  *   /api/admin/*         management API (session cookie or API token)
  *   /api/ingest/*        push endpoints for monitoring systems (source token)
  *   /feed.rss, /feed.atom
+ *   /robots.txt, /sitemap*.xml, /llms.txt, /llms-full.txt  (discovery.ts)
  *
  * Which modules exist depends on APP_ROLE (see role.ts): `public` has no
  * auth/admin/ingest routes at all (404), `worker` only has /api/health.
@@ -56,6 +57,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     ]);
     await registerPublicRoutes(app);
     await registerSubscriptionRoutes(app);
+  }
+
+  // robots.txt, sitemaps and llms.txt where the public pages are served.
+  if (features.publicWeb) {
+    const { registerDiscoveryRoutes } = await import('./discovery.js');
+    await registerDiscoveryRoutes(app);
   }
 
   if (features.adminApi) {

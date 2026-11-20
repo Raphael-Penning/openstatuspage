@@ -15,7 +15,6 @@ import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle } from
 import { Skeleton } from './components/ui';
 import { PreferencesProvider, usePreferences } from './hooks/preferences';
 import { usePublicSettings } from './hooks/queries';
-import { absoluteUrl, languagePath } from './head';
 import { readableOnAll, solidAccent } from './utils/color';
 
 export function PublicLayout() {
@@ -119,7 +118,6 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
       {/* React 19 hoists these into <head>. */}
       <link rel="alternate" type="application/rss+xml" title={t('feeds.rss')} href="/feed.rss" />
       <link rel="alternate" type="application/atom+xml" title={t('feeds.atom')} href="/feed.atom" />
-      <LanguageAlternates />
 
       <a
         href="#main"
@@ -155,25 +153,6 @@ function useFocusOnNavigation(mainRef: RefObject<HTMLElement | null>) {
     previous.current = pathname;
     mainRef.current?.focus({ preventScroll: true });
   }, [pathname, mainRef]);
-}
-
-/**
- * The page in every language (`?lang=xx`) and the language-neutral URL as
- * x-default, for search engines (hreflang). Visitors switch with the language
- * switcher, which also remembers the choice.
- */
-function LanguageAlternates() {
-  const { pathname } = useLocation();
-  const ssr = useSsr();
-  const base = ssr?.baseUrl ?? (typeof window === 'undefined' ? '' : window.location.origin);
-  return (
-    <>
-      {LANGUAGES.map((l) => (
-        <link key={l.code} rel="alternate" hrefLang={l.code} href={absoluteUrl(languagePath(pathname, l.code), base)} />
-      ))}
-      <link rel="alternate" hrefLang="x-default" href={absoluteUrl(pathname, base)} />
-    </>
-  );
 }
 
 function Header({ settings }: { settings: PublicPageSettings | undefined }) {

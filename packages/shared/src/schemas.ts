@@ -525,6 +525,9 @@ export interface PublicMaintenance {
   locationIds: string[];
   /** Newest first. */
   updates: MaintenanceUpdateEntry[];
+  /** When the window was entered and last changed (publication dates of the report). */
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AdminMaintenance extends PublicMaintenance {
@@ -541,8 +544,6 @@ export interface AdminMaintenance extends PublicMaintenance {
    * and a window that had already ended is created as completed without any email.
    */
   retroactive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 /** A `maintenance-updates` resource as answered by the admin API, with its maintenance (without the updates). */

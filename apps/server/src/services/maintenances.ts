@@ -81,6 +81,8 @@ function base(rec: MaintenanceRecord, publicOnly: boolean): PublicMaintenance {
     affectedServices: rec.services.filter((s) => !publicOnly || s.isPublic).map((s) => ({ id: s.id, name: s.name })),
     locationIds: rec.locations.filter((l) => !publicOnly || l.isPublic).map((l) => l.id),
     updates: rec.updates.map((u) => ({ id: u.id, status: u.status, message: u.message, createdAt: u.created_at })),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -97,7 +99,5 @@ export function toAdminMaintenance(rec: MaintenanceRecord): AdminMaintenance {
     notify: rec.row.notify_subscribers === 1,
     reminderSentAt: rec.row.reminder_sent_at,
     retroactive: rec.row.retroactive === 1,
-    createdAt: rec.row.created_at,
-    updatedAt: rec.row.updated_at,
   };
 }

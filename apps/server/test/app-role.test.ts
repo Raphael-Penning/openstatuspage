@@ -98,7 +98,11 @@ async function routesOf(role: string): Promise<string[]> {
   return routes.sort();
 }
 
-const isPublicRoute = (r: string) => /^\w+ (\/api\/public(\/|$)|\/feed\.|\/api\/health$)/.test(r);
+const isPublicRoute = (r: string) =>
+  /^\w+ (\/api\/public(\/|$)|\/feed\.|\/api\/health$|\/robots\.txt$|\/sitemap|\/llms)/.test(r);
+
+/** Files for crawlers that describe the status page: not on a management instance (robots.txt only). */
+const STATUS_PAGE_ONLY = /^GET \/(sitemap|llms)/;
 
 describe('APP_ROLE route availability', () => {
   let all: string[];
@@ -110,7 +114,8 @@ describe('APP_ROLE route availability', () => {
     expect(all.some((r) => r.startsWith('GET /api/admin/'))).toBe(true);
     expect(all.some((r) => r.startsWith('POST /api/ingest/'))).toBe(true);
     expect(all.some((r) => r.startsWith('POST /api/auth/login'))).toBe(true);
-    expect(await routesOf('admin')).toEqual(all);
+    expect(await routesOf('admin')).toEqual(all.filter((r) => !STATUS_PAGE_ONLY.test(r)));
+    expect(all).toEqual(expect.arrayContaining(['GET /robots.txt', 'GET /sitemap.xml', 'GET /llms.txt']));
   });
 
   it('serves only the public routes with public', async () => {

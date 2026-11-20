@@ -153,6 +153,8 @@ export const maintenance: PublicMaintenance = {
   affectedServices: [{ id: 'api', name: 'API' }],
   locationIds: ['loc-fra'],
   updates: [{ id: 'mu-1', status: 'in_progress', message: '', createdAt: iso(-3_600_000) }],
+  createdAt: iso(-DAY),
+  updatedAt: iso(-3_600_000),
 };
 
 const upcoming: PublicMaintenance = {

@@ -64,7 +64,11 @@ Server-side rendering of the public pages reads through the same code: the
 render bundle gets the documents of `/api/public` in-process
 (`apps/server/src/ssr/source.ts` → `services/public-documents.ts`), so a rendered
 page and its embedded state block contain nothing the public API would not
-return. The render bundle itself (`.ssr/`) is never served as a file.
+return. The render bundle itself (`.ssr/`) is never served as a file. The
+sitemaps and `llms.txt` (`routes/discovery.ts` → `services/site-index.ts`) read
+the same views, with the same `is_public` filters on every other database; they
+list only what the public pages show, and `robots.txt` keeps crawlers away
+from `/api/`, `/admin` and the personal subscription links.
 
 ## What the public role cannot do
 

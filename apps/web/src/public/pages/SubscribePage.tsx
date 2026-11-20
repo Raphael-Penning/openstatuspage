@@ -26,7 +26,7 @@ import {
   secondaryButton,
 } from '../components/Subscription';
 import { Card, ErrorState, PageTitle, Skeleton } from '../components/ui';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 import { useSummary } from '../hooks/queries';
 import { useSubscribe } from '../hooks/subscriptions';
 import {
@@ -45,12 +45,15 @@ const EMAIL_FIELD_ID = 'subscription-email';
 
 export function SubscribePage() {
   const { t } = useTranslation('public');
+  const site = useSiteName();
   const [params] = useSearchParams();
   const serverForm = useServerForm();
   const hasErrors = Object.keys(serverFormErrors(serverForm, params.get('error'))).length > 0;
   // A page that answers a form with errors says so in its title (read first by screen readers).
   usePageHead({
     title: hasErrors ? t('subscription.errors.titlePrefix', { title: t('subscription.title') }) : t('subscription.title'),
+    description: t('seo.subscribe', { site }),
+    breadcrumbs: [{ name: t('subscription.title'), path: '/subscribe' }],
   });
   const summary = useSummary();
   const [unavailable, setUnavailable] = useState(false);

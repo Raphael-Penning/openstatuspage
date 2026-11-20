@@ -9,9 +9,10 @@
  */
 import { LANG_COOKIE } from '@openstatuspage/shared';
 
+/** `ogLocale`: Open Graph locale of the language (`og:locale`). */
 export const LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'de', label: 'Deutsch' },
+  { code: 'en', label: 'English', ogLocale: 'en_US' },
+  { code: 'de', label: 'Deutsch', ogLocale: 'de_DE' },
 ] as const;
 
 export type LanguageCode = (typeof LANGUAGES)[number]['code'];

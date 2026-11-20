@@ -33,7 +33,7 @@ export async function hydratePublic(
   const queryClient = browserQueryClient();
   hydrate(queryClient, decodeQueries(state.queries));
   const router = createBrowserRouter(publicOnlyRoutes);
-  const heads = new HeadStore((head) => applyHead(head, state.baseUrl));
+  const heads = new HeadStore(applyHead);
 
   hydrateRoot(
     container,

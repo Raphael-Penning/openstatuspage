@@ -302,5 +302,15 @@
       "summary": "Please correct the following:",
       "titlePrefix": "Error: {{title}}"
     }
+  },
+  "seo": {
+    "default": "Current status, incidents and maintenance of {{site}}.",
+    "services": "Current status and uptime of all services and websites of {{site}}.",
+    "service": "Current status, uptime and incidents of {{name}} at {{site}}.",
+    "history": "Past incidents and maintenance of {{site}}.",
+    "locations": "Status of the locations of {{site}} around the world.",
+    "subscribe": "Get an email when {{site}} publishes incidents or maintenance.",
+    "incident": "Incident report of {{site}}: {{title}}.",
+    "maintenance": "Maintenance of {{site}}: {{title}}."
   }
 }

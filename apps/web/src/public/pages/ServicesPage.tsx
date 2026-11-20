@@ -8,7 +8,7 @@ import { ServiceCatalog } from '../components/ServiceList';
 import { EmptyState, ErrorState, PageTitle, Skeleton, SkeletonList } from '../components/ui';
 import { useServices } from '../hooks/queries';
 import { filterServices, toCounters, type CounterKey } from '../utils/status';
-import { usePageHead } from '../head';
+import { usePageHead, useSiteName } from '../head';
 
 const COUNTER_KEYS: readonly CounterKey[] = ['operational', 'degraded', 'offline', 'maintenance'];
 const parseCounter = (value: string | null): CounterKey | null =>
@@ -35,7 +35,12 @@ export function ServicesPage() {
   const [query, setQueryState] = useState(() => params.get('q') ?? '');
   const counter = parseCounter(params.get('status'));
   const searchId = useId();
-  usePageHead({ title: t('nav.services') });
+  const site = useSiteName();
+  usePageHead({
+    title: t('nav.services'),
+    description: t('seo.services', { site }),
+    breadcrumbs: [{ name: t('nav.services'), path: '/services' }],
+  });
 
   const setQuery = (value: string) => {
     setQueryState(value);
