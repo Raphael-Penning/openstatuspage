@@ -49,6 +49,11 @@ interface Values {
   utmSource: string;
   utmMedium: string;
   utmCampaign: string;
+  analyticsEnabled: boolean;
+  analyticsWebsiteId: string;
+  analyticsDomains: string;
+  analyticsRespectDnt: boolean;
+  analyticsForwardIp: boolean;
 }
 
 /** Legal links of the footer: settings keys and the public default label. */
@@ -92,6 +97,11 @@ const toValues = (s: PublicPageSettings): Values => ({
   utmSource: s.utmSource,
   utmMedium: s.utmMedium,
   utmCampaign: s.utmCampaign,
+  analyticsEnabled: s.analyticsEnabled,
+  analyticsWebsiteId: s.analyticsWebsiteId ?? '',
+  analyticsDomains: s.analyticsDomains,
+  analyticsRespectDnt: s.analyticsRespectDnt,
+  analyticsForwardIp: s.analyticsForwardIp,
 });
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -158,6 +168,11 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
       utmSource: v.utmSource.trim(),
       utmMedium: v.utmMedium.trim(),
       utmCampaign: v.utmCampaign.trim(),
+      analyticsEnabled: v.analyticsEnabled,
+      analyticsWebsiteId: empty(v.analyticsWebsiteId),
+      analyticsDomains: v.analyticsDomains,
+      analyticsRespectDnt: v.analyticsRespectDnt,
+      analyticsForwardIp: v.analyticsForwardIp,
     });
     if (body) save.mutate(body);
   };
@@ -491,6 +506,50 @@ function SettingsForm({ settings }: { settings: PublicPageSettings }) {
               spellCheck={false}
             />
           ))}
+        </div>
+      </Card>
+
+      <Card title={t('settings.sections.analytics')}>
+        <div className="grid gap-5 p-4 sm:p-6 md:grid-cols-2">
+          <CheckboxField
+            className="md:col-span-2"
+            label={t('settings.fields.analyticsEnabled')}
+            help={t('settings.analyticsHelp')}
+            checked={v.analyticsEnabled}
+            onChecked={(x) => form.set('analyticsEnabled', x)}
+          />
+          <TextField
+            label={t('settings.fields.analyticsWebsiteId')}
+            value={v.analyticsWebsiteId}
+            onValue={(x) => form.set('analyticsWebsiteId', x)}
+            error={form.error('analyticsWebsiteId')}
+            help={t('settings.analyticsWebsiteIdHelp')}
+            placeholder="00000000-0000-0000-0000-000000000000"
+            maxLength={36}
+            spellCheck={false}
+          />
+          <TextField
+            label={t('settings.fields.analyticsDomains')}
+            value={v.analyticsDomains}
+            onValue={(x) => form.set('analyticsDomains', x)}
+            error={form.error('analyticsDomains')}
+            help={t('settings.analyticsDomainsHelp')}
+            placeholder="status.example.com"
+            maxLength={500}
+            spellCheck={false}
+          />
+          <CheckboxField
+            label={t('settings.fields.analyticsRespectDnt')}
+            help={t('settings.analyticsRespectDntHelp')}
+            checked={v.analyticsRespectDnt}
+            onChecked={(x) => form.set('analyticsRespectDnt', x)}
+          />
+          <CheckboxField
+            label={t('settings.fields.analyticsForwardIp')}
+            help={t('settings.analyticsForwardIpHelp')}
+            checked={v.analyticsForwardIp}
+            onChecked={(x) => form.set('analyticsForwardIp', x)}
+          />
         </div>
       </Card>
 
