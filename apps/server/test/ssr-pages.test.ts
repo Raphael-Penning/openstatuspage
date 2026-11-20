@@ -331,7 +331,7 @@ describe('render errors', () => {
       {
         web: {
           dir: webDir,
-          ssrModule: async () => ({ cacheKey: (i) => i.url, render: () => Promise.reject(new Error('boom')) }),
+          ssrModule: async () => ({ cacheKey: (i) => i.url, pageUrl: (u) => u, render: () => Promise.reject(new Error('boom')) }),
         },
       },
     );
@@ -397,6 +397,7 @@ describe('render limits', () => {
           dir: webDir,
           ssrModule: async () => ({
             cacheKey: real.cacheKey,
+            pageUrl: real.pageUrl,
             render: async (input) => {
               renders++;
               return real.render(input);
@@ -412,6 +413,11 @@ describe('render limits', () => {
     await get('/services', { 'accept-language': 'de' });
     await get('/history');
     expect(renders).toBe(3);
+    // Parameters no page reads share the render (cache busting, tracking).
+    await Promise.all([get('/history?x=1'), get('/history?utm_source=a'), get('/history?x=2&y=3')]);
+    expect(renders).toBe(3);
+    await get('/history?page=2&x=1');
+    expect(renders).toBe(4);
     await t.close();
   });
 });

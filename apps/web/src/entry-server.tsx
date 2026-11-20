@@ -59,15 +59,38 @@ function documentGetter(source: PublicDocumentSource): GetDocument {
 }
 
 /**
- * Part of the cache key of a rendered page that depends on the request (with the
- * URL): the language and theme inputs. The page default language is the same
- * for every request, so it is not part of it.
+ * Query parameters the public pages read (?lang= and the filters, pages and
+ * states of the routes). Personal pages are rendered with their whole URL and
+ * never cached; the server does not call pageUrl for them.
+ */
+const PAGE_PARAMS = [LANG_QUERY, 'upcoming', 'q', 'status', 'type', 'service', 'location', 'month', 'page', 'sent', 'error'];
+
+/**
+ * The URL a public page is rendered with: the path and only the query
+ * parameters the pages read, in a fixed order. Other parameters (tracking,
+ * cache busting) change nothing on the page, so they share its cached render.
+ */
+export function pageUrl(url: string): string {
+  const parsed = new URL(url, 'http://ssr.invalid');
+  const kept = new URLSearchParams();
+  for (const name of PAGE_PARAMS) {
+    const value = parsed.searchParams.get(name);
+    if (value !== null) kept.set(name, value);
+  }
+  const query = kept.toString();
+  return query ? `${parsed.pathname}?${query}` : parsed.pathname;
+}
+
+/**
+ * Cache key of a rendered page: its URL as pageUrl() gives it and the language
+ * and theme inputs. The page default language is the same for every request,
+ * so it is not part of it.
  */
 export function cacheKey(input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptLanguage'>): string {
   const cookieLang = readCookie(input.cookie, LANG_COOKIE);
   const theme = readCookie(input.cookie, THEME_COOKIE);
   return [
-    input.url,
+    pageUrl(input.url),
     isLanguage(cookieLang) ? cookieLang : '',
     fromAcceptLanguage(input.acceptLanguage) ?? '',
     isThemePreference(theme) ? theme : '',

@@ -12,7 +12,7 @@
  * Memory (public instances stay below 100 MB, docs/architecture.md#memory): at
  * most two pages render at a time, the others wait; beyond 32 waiting pages a
  * request gets the plain page at once (graceful degradation under a flood). A rendered page is kept for a
- * few seconds per URL and language/theme input as UTF-8 bytes (a bounded map:
+ * few seconds per URL (only the query parameters the pages read) and language/theme input as UTF-8 bytes (a bounded map:
  * entries and bytes; concurrent requests for the same key share one render) and
  * is sent with an ETag and a short shared Cache-Control. Any error is logged and
  * the caller sends the plain client-rendered page instead.
@@ -45,9 +45,11 @@ import { publicDocumentSource } from './source.js';
 export const SSR_BUNDLE = '.ssr/entry-server.mjs';
 const TEMPLATE = 'public.html';
 
-/** SSR bundle with its cache key function (exported by entry-server.tsx). */
+/** SSR bundle with its cache key functions (exported by entry-server.tsx). */
 export interface RenderModule extends SsrModule {
   cacheKey(input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptLanguage'>): string;
+  /** The URL a page is rendered with: only the query parameters the pages read. */
+  pageUrl(url: string): string;
 }
 
 export interface SsrPagesOptions {
@@ -336,10 +338,13 @@ export class SsrPages {
 
   private async render(req: FastifyRequest): Promise<RenderedPage> {
     const module = await this.module_();
-    const input = this.inputOf(req);
+    const request = this.inputOf(req);
     // Personal pages (a token in the URL) are neither kept nor shared between requests,
     // in any spelling of the path (the router matches /SUBSCRIPTION/manage as well).
-    if (isPersonalPath(input.url)) return this.limiter.run(() => this.renderPage(module, input));
+    if (isPersonalPath(request.url)) return this.limiter.run(() => this.renderPage(module, request));
+    // Rendered without the query parameters no page reads: /?x=1, /?x=2 ... share one
+    // render instead of forcing a new one each (the cache key is the same URL).
+    const input = { ...request, url: module.pageUrl(request.url) };
     const key = module.cacheKey(input);
     const now = Date.now();
 

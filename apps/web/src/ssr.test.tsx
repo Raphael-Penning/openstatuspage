@@ -8,7 +8,7 @@
 import type { DataDocument, PublicDocumentSource, SsrFormState, SsrRenderResult } from '@openstatuspage/shared';
 import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cacheKey, render } from './entry-server';
+import { cacheKey, pageUrl, render } from './entry-server';
 import { hydratePublic } from './hydrate';
 import { incident, respond, settings, SUBSCRIPTION_TOKEN } from './public/a11y/fixtures';
 import { installBrowserStubs, settle } from './public/a11y/harness';
@@ -142,6 +142,15 @@ describe('server rendering', () => {
     expect(key('/', undefined, 'en-US')).toBe(key('/', undefined, 'en'));
     expect(key('/', 'osp-theme=dark')).not.toBe(key('/'));
     expect(key('/?lang=de')).not.toBe(key('/'));
+    // Only the query parameters the pages read, in a fixed order.
+    expect(key('/?x=1')).toBe(key('/'));
+    expect(key('/history?x=1&page=2&type=incident')).toBe(key('/history?type=incident&page=2'));
+  });
+
+  it('renders pages with the query parameters they read only', () => {
+    expect(pageUrl('/history?utm_source=x&page=2&type=incident&lang=de')).toBe('/history?lang=de&type=incident&page=2');
+    expect(pageUrl('/?x=1')).toBe('/');
+    expect(pageUrl('/services?q=a%20b&status=operational')).toBe('/services?q=a+b&status=operational');
   });
 });
 
