@@ -97,6 +97,12 @@ export function preferenceCookie(req: FastifyRequest, name: string, value: strin
   return `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${YEAR_SECONDS}; SameSite=Lax${secure}`;
 }
 
+/** Removes a preference cookie (the attributes match {@link preferenceCookie}). */
+export function clearPreferenceCookie(req: FastifyRequest, name: string): string {
+  const secure = req.protocol === 'https' ? '; Secure' : '';
+  return `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+}
+
 /** Post/Redirect/Get: 303 to a page of this site; never stored by caches. */
 export function seeOther(reply: FastifyReply, location: string): FastifyReply {
   return reply.header('Cache-Control', 'no-store').redirect(location, 303);

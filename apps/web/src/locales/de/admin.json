@@ -690,7 +690,8 @@
       "legal": "Rechtliche Links",
       "brand": "Copyright und Hinweis",
       "infoLink": "Info-Link",
-      "utm": "Link-Tracking (UTM)"
+      "utm": "Link-Tracking (UTM)",
+      "analytics": "Statistik (Umami)"
     },
     "fields": {
       "siteName": "Seitenname",
@@ -721,7 +722,12 @@
       "utmEnabled": "UTM-Parameter an ausgehende Links anhängen",
       "utmSource": "utm_source",
       "utmMedium": "utm_medium",
-      "utmCampaign": "utm_campaign"
+      "utmCampaign": "utm_campaign",
+      "analyticsEnabled": "Seitenaufrufe mit Umami zählen",
+      "analyticsWebsiteId": "Website-ID",
+      "analyticsDomains": "Nur auf diesen Domains",
+      "analyticsRespectDnt": "Do Not Track und Global Privacy Control beachten",
+      "analyticsForwardIp": "IP-Adressen der Besucher an Umami weitergeben"
     },
     "supportUrlHelp": "Optionaler Link zu deiner Support- oder Kontaktseite.",
     "pickColor": "Akzentfarbe wählen",
@@ -749,6 +755,11 @@
     "infoLinkHelp": "Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine http(s)-URL oder ein Pfad auf dieser Seite mit einem einzelnen / am Anfang (wie /about).",
     "infoLinkLabelHelp": "Optional. Leer: „{{label}}“ in der Sprache des Besuchers.",
     "utmHelp": "Hängt diese Parameter an die von dir eingetragenen Links zu anderen Websites an (Fußzeile, Info-Link, Websites der Services). Links auf dieser Seite, mailto:-Links und Links, die schon utm_-Parameter haben, bleiben unverändert.",
+    "analyticsHelp": "Lädt den Umami-Tracker auf den öffentlichen Seiten über diesen Server (/pulse/), nie direkt vom Umami-Server. Er läuft nur, wenn auf der Instanz, die die öffentlichen Seiten ausliefert, UMAMI_URL gesetzt ist. Besucher können ihn in der Fußzeile abschalten; Abo-Links werden nie erfasst.",
+    "analyticsWebsiteIdHelp": "Die UUID, die Umami für die Website anzeigt (Settings → Websites). Pflicht, wenn die Statistik an ist.",
+    "analyticsDomainsHelp": "Hostnamen, durch Kommas getrennt, z. B. status.example.com. Leer: jeder Hostname, unter dem die Seite aufgerufen wird.",
+    "analyticsRespectDntHelp": "Sendet nichts für Besucher, deren Browser darum bittet, nicht erfasst zu werden.",
+    "analyticsForwardIpHelp": "Standardmäßig aus: Umami sieht dann diesen Server statt des Besuchers, zeigt also keine Standorte und zählt Besucher mit derselben Browserversion als einen. Schalte es nur ein, wenn deine Datenschutzerklärung das abdeckt.",
     "defaultLabels": {
       "imprint": "Impressum",
       "privacy": "Datenschutz",

@@ -5,3 +5,4 @@ export * from './color.js';
 export * from './jsonapi.js';
 export * from './ssr.js';
 export * from './links.js';
+export * from './analytics.js';

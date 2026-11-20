@@ -27,9 +27,10 @@ import { SITEMAP_PAGE_SIZE, SiteIndex, type CurrentStatus, type SitemapKind, typ
  * Paths crawlers must not request: the API (also the subscription and
  * one-click unsubscribe endpoints), the management UI and the personal
  * subscription links (confirm, manage, unsubscribe). Form handlers outside
- * /api/ belong here as well.
+ * /api/ belong here as well, and the analytics proxy (crawlers neither need the
+ * script nor should they count as visitors).
  */
-export const DISALLOWED_PATHS = ['/api/public/subscriptions', '/api/', '/admin', '/subscription/', '/preferences/'];
+export const DISALLOWED_PATHS = ['/api/public/subscriptions', '/api/', '/admin', '/subscription/', '/preferences/', '/pulse/'];
 
 /**
  * Exceptions inside the disallowed paths: the read-only public API that

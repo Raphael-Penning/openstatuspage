@@ -38,7 +38,7 @@ export async function hydratePublic(
   hydrateRoot(
     container,
     <StrictMode>
-      <PublicApp queryClient={queryClient} ssr={{ now: state.now, theme: state.theme, baseUrl: state.baseUrl, form: state.form }} head={heads}>
+      <PublicApp queryClient={queryClient} ssr={{ now: state.now, theme: state.theme, baseUrl: state.baseUrl, form: state.form, analyticsOff: state.analyticsOff }} head={heads}>
         <RouterProvider router={router} />
       </PublicApp>
     </StrictMode>,

@@ -34,7 +34,10 @@
     "legal": "Rechtliches",
     "imprint": "Impressum",
     "privacy": "Datenschutz",
-    "accessibility": "Erklärung zur Barrierefreiheit"
+    "accessibility": "Erklärung zur Barrierefreiheit",
+    "analyticsDisable": "Statistik deaktivieren",
+    "analyticsEnable": "Statistik aktivieren",
+    "analyticsDisabled": "Statistik ist deaktiviert."
   },
   "error": {
     "title": "Der Status konnte nicht geladen werden.",

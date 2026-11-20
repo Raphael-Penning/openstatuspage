@@ -32,6 +32,7 @@ The complete reference with every option lives in
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL login of the `public` instance. It can only read public data and manage subscriptions through checked functions. Create it with `deploy/postgres/roles.sql`; see [Security model](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; on PostgreSQL several instances may run them (coordinated through the database). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | Email delivery, see [Email subscriptions](07-email-subscriptions.md#mail-server). |
+| `UMAMI_URL` | – | Your Umami server for page view statistics, see [Statistics with Umami](#statistics-with-umami). |
 
 Rules that apply to all variables:
 
@@ -129,6 +130,51 @@ The page knows its own address from `PUBLIC_BASE_URL` (or `BASE_URL` when that
 is not set). Behind a reverse proxy it must be the address visitors actually
 use. If it is wrong, links to the status page itself count as links to another
 website: they get UTM parameters, open in a new tab and are announced as such.
+
+### Statistics with Umami
+
+The status page can count page views with [Umami](https://umami.is), an
+analytics server you run yourself and that sets no cookies. Two steps:
+
+1. Set `UMAMI_URL` to the address of your Umami server (for example
+   `https://umami.example.com`, or `http://umami:3000` inside a Docker network)
+   on every instance that serves the status page, and restart it. In a split
+   deployment that is the `public` instance (and the `admin` instance for its
+   preview).
+2. In Umami, add a website and copy its **Website ID**. In **Settings →
+   Analytics (Umami)** switch on **Count page views with Umami** and paste the ID.
+
+Visitors' browsers never contact Umami. The status page delivers the tracker as
+`/pulse/p.js` and passes the events of `/pulse/api/send` on to Umami, so your
+Umami server may stay internal and the page needs no exception in its security
+policy. The address of the Umami server is deliberately an environment variable
+and not a setting: nobody who only has access to the management UI can make
+the server connect elsewhere.
+
+What visitors and your statistics get:
+
+- Every public page has **Disable statistics** in the footer, next to the
+  privacy policy. It works without JavaScript and stores the choice in the
+  cookie `osp-analytics` for a year; afterwards the page says "Statistics are
+  disabled." and offers **Enable statistics**.
+- Subscription links from emails are never counted, and tokens are removed
+  from every address before it reaches Umami. The management UI is never
+  counted.
+- **Respect Do Not Track and Global Privacy Control** (on by default) sends
+  nothing for browsers that ask not to be tracked.
+- **Pass visitors' IP addresses to Umami** is off by default. Umami then only
+  sees your status page server: it shows no visitor locations (or the server's
+  location), and visitors with the same browser version count as one visitor,
+  so visitor numbers are too low while page views stay right. Switch it on
+  only if your privacy policy covers it, and set `TRUST_PROXY` behind a reverse
+  proxy (see [Reverse proxy](03-reverse-proxy.md#trust_proxy)), otherwise
+  Umami gets the proxy's address.
+- **Only on these domains** limits counting to the host names you list, for
+  example to leave out a staging copy.
+
+If Umami is down, the pages keep working without errors; the statistics simply
+miss those page views. Mention the statistics in your privacy policy. Details
+and limits: [configuration.md](../../configuration.md#analytics).
 
 ## Checking the effective configuration
 

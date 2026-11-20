@@ -1225,6 +1225,19 @@ the UTM pairs are appended percent-encoded before the fragment. `infoLinkUrl` is
 stored trimmed, like the http(s) URL attributes. The API returns the stored URLs,
 without UTM parameters.
 
+Analytics settings (attributes of `settings/site`, all optional; see
+[configuration.md](configuration.md#analytics)):
+
+| Attribute | Type | Meaning |
+| --- | --- | --- |
+| `analyticsEnabled` | boolean, default `false` | Load the Umami tracker on the public pages. Needs `analyticsWebsiteId` (`400` with pointer `/data/attributes/analyticsWebsiteId` otherwise). `GET /api/public/settings` reports `true` only when the instance also has `UMAMI_URL`. |
+| `analyticsWebsiteId` | UUID or `null` | The website ID in Umami. |
+| `analyticsDomains` | string (≤ 500), default `""` | Host names the tracker runs on, separated by commas (stored lower case without spaces); empty: every host. |
+| `analyticsRespectDnt` | boolean, default `true` | Send nothing for browsers with Do Not Track or Global Privacy Control. |
+| `analyticsForwardIp` | boolean, default `false` | Pass the visitor's IP address to Umami (`X-Forwarded-For`) for its locations and visitor counts. |
+
+The Umami server itself is never a setting: it is the instance variable `UMAMI_URL`.
+
 Examples:
 
 <details>

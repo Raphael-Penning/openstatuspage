@@ -107,6 +107,29 @@ const zUtmValue = z
   .regex(/^[^\u0000-\u001f\u007f]*$/, 'single line')
   .default('');
 
+/** Umami website ID (a UUID, as Umami shows it under Settings → Websites). */
+export const zUmamiWebsiteId = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'must be a UUID');
+/**
+ * Host names the analytics script tracks on (Umami `data-domains`), separated by
+ * commas: `status.example.com, status.example.org`. Empty: every host.
+ */
+export const zAnalyticsDomains = z
+  .string()
+  .max(500)
+  .transform((v) =>
+    v
+      .split(',')
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean)
+      .join(','),
+  )
+  .refine(
+    (v) => v === '' || v.split(',').every((d) => /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/.test(d)),
+    'must be host names separated by commas',
+  );
+
 /** Value the server returns in place of stored secrets. Sending it back keeps the stored value. */
 export const SECRET_MASK = '••••••••';
 
@@ -169,6 +192,24 @@ export const SettingsInput = z.object({
   utmSource: zUtmValue,
   utmMedium: zUtmValue,
   utmCampaign: zUtmValue,
+
+  // Umami analytics (docs/configuration.md#analytics). The Umami server itself is
+  // UMAMI_URL on the instance (never a setting: no admin can point the server at
+  // another host); analytics only runs when both are set.
+  /** Load the analytics script on the public pages. */
+  analyticsEnabled: z.boolean().default(false),
+  /** Website ID in Umami; required when analytics is enabled. */
+  analyticsWebsiteId: zUmamiWebsiteId.nullish(),
+  /** Only track on these host names (comma separated); empty: every host. */
+  analyticsDomains: zAnalyticsDomains.default(''),
+  /** Send nothing for visitors with Do Not Track or Global Privacy Control. */
+  analyticsRespectDnt: z.boolean().default(true),
+  /** Pass the visitor's IP address to Umami (X-Forwarded-For) for its location and visitor counts. */
+  analyticsForwardIp: z.boolean().default(false),
+}).superRefine((s, ctx) => {
+  if (s.analyticsEnabled && !s.analyticsWebsiteId) {
+    ctx.addIssue({ code: 'custom', path: ['analyticsWebsiteId'], message: 'required when analytics is enabled' });
+  }
 });
 export type SettingsInput = z.infer<typeof SettingsInput>;
 export type PublicPageSettings = SettingsInput;

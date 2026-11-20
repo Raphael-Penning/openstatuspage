@@ -146,6 +146,19 @@ describe('server rendering', () => {
     // Only the query parameters the pages read, in a fixed order.
     expect(key('/?x=1')).toBe(key('/'));
     expect(key('/history?x=1&page=2&type=incident')).toBe(key('/history?type=incident&page=2'));
+    // Pages with and without the analytics script are never shared.
+    expect(key('/', 'osp-analytics=off')).not.toBe(key('/'));
+    expect(key('/', 'osp-analytics=off; osp-theme=dark')).not.toBe(key('/', 'osp-theme=dark'));
+    expect(key('/', 'osp-analytics=on')).toBe(key('/'));
+  });
+
+  it('asks for the analytics script except on personal pages and for visitors who opted out', async () => {
+    const tag = { websiteId: settings.analyticsWebsiteId, domains: '', doNotTrack: true };
+    expect((await serverRender('/')).analytics).toEqual(tag);
+    expect((await serverRender('/history?type=incident')).analytics).toEqual(tag);
+    expect((await serverRender('/', { cookie: 'osp-analytics=off' })).analytics).toBeUndefined();
+    expect((await serverRender(`/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}`)).analytics).toBeUndefined();
+    expect((await serverRender('/subscription/confirm?id=sub-1')).analytics).toBeUndefined();
   });
 
   it('renders pages with the query parameters they read only', () => {
@@ -199,6 +212,15 @@ describe('hydration', () => {
     expect(result.html).toContain(`name="token" value="${SUBSCRIPTION_TOKEN}"`);
     const confirm = await serverRender(`/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}&unsubscribe=1`);
     expect(confirm.html).toContain('action="/subscription/unsubscribe"');
+  });
+
+  it('hydrates a page of a visitor who opted out of analytics', async () => {
+    const result = await serverRender('/services', { cookie: 'osp-analytics=off' });
+    expect(result.html).toContain('Statistics are disabled.');
+    const { root, problems } = await hydrateResult('/services', result);
+    expect(problems).toEqual([]);
+    expect(root.querySelector<HTMLInputElement>('footer input[name="analytics"]')?.value).toBe('on');
+    expect(localStorage.getItem('umami.disabled')).toBe('1');
   });
 
   it('mirrors a theme stored before the cookie existed into the cookie', async () => {

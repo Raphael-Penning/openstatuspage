@@ -13,6 +13,9 @@
  *   4. dehydrates the query cache into the state block the browser hydrates from.
  */
 import {
+  analyticsOptedOut,
+  analyticsTag,
+  isPersonalPath,
   LANG_COOKIE,
   LANG_QUERY,
   scriptJson,
@@ -82,9 +85,10 @@ export function pageUrl(url: string): string {
 }
 
 /**
- * Cache key of a rendered page: its URL as pageUrl() gives it and the language
- * and theme inputs. The page default language is the same for every request,
- * so it is not part of it.
+ * Cache key of a rendered page: its URL as pageUrl() gives it, the language
+ * and theme inputs and the analytics opt-out (pages with and without the
+ * analytics script never share a render). The page default language is the
+ * same for every request, so it is not part of it.
  */
 export function cacheKey(input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptLanguage'>): string {
   const cookieLang = readCookie(input.cookie, LANG_COOKIE);
@@ -94,6 +98,7 @@ export function cacheKey(input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptL
     isLanguage(cookieLang) ? cookieLang : '',
     fromAcceptLanguage(input.acceptLanguage) ?? '',
     isThemePreference(theme) ? theme : '',
+    analyticsOptedOut(input.cookie) ? 'analytics-off' : '',
   ].join('\n');
 }
 
@@ -144,7 +149,8 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
     if (context instanceof Response) throw new Error(`Unexpected response ${context.status} from the static handler`);
     const router = createStaticRouter(handler.dataRoutes, context);
 
-    const ssr = { now, theme, baseUrl: input.baseUrl, form: input.form };
+    const analyticsOff = analyticsOptedOut(input.cookie);
+    const ssr = { now, theme, baseUrl: input.baseUrl, form: input.form, analyticsOff };
     const heads = new HeadStore();
     const markup = renderToString(
       <PublicApp queryClient={queryClient} ssr={ssr} head={heads} server i18n={publicI18n(lang)}>
@@ -168,6 +174,7 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
       theme,
       now,
       baseUrl: input.baseUrl,
+      ...(analyticsOff ? { analyticsOff } : {}),
       ...(input.form ? { form: input.form } : {}),
       queries: encodeQueries(
         dehydrate(queryClient, {
@@ -175,6 +182,9 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
         }),
       ),
     };
+
+    // Never on personal pages (subscription links carry a token) nor for visitors who opted out.
+    const analytics = analyticsTag(settings, { optedOut: analyticsOff, personal: isPersonalPath(input.url) });
 
     return {
       status: head.status ?? 200,
@@ -186,6 +196,7 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
       theme,
       state: scriptJson(state),
       css: accentCss(settings.accentColor),
+      ...(analytics ? { analytics } : {}),
     };
   } finally {
     queryClient.clear();

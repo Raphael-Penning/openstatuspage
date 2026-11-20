@@ -34,7 +34,10 @@
     "legal": "Legal",
     "imprint": "Imprint",
     "privacy": "Privacy policy",
-    "accessibility": "Accessibility statement"
+    "accessibility": "Accessibility statement",
+    "analyticsDisable": "Disable statistics",
+    "analyticsEnable": "Enable statistics",
+    "analyticsDisabled": "Statistics are disabled."
   },
   "error": {
     "title": "The status could not be loaded.",

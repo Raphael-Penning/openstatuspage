@@ -108,6 +108,40 @@ describe.each(VARIANTS)('footer and info link ($lang, $theme)', ({ lang, theme }
   });
 });
 
+describe.each(VARIANTS)('statistics choice ($lang, $theme)', ({ lang, theme }) => {
+  afterEach(() => {
+    document.cookie = 'osp-analytics=; Path=/; Max-Age=0';
+  });
+
+  it('is a form in the legal landmark right after the privacy policy', async () => {
+    page = await renderPublic({ path: '/history', lang, theme });
+    const items = [...page.container.querySelectorAll('footer nav:last-of-type li')];
+    const form = items[2]?.querySelector('form');
+    expect(items[1]?.querySelector('a')?.firstChild?.textContent).toBe('Privacy');
+    expect(form?.getAttribute('method')).toBe('post');
+    expect(form?.getAttribute('action')).toBe('/preferences/analytics');
+    expect(form?.querySelector<HTMLInputElement>('input[name="analytics"]')?.value).toBe('off');
+    expect(form?.querySelector<HTMLInputElement>('input[name="return"]')?.value).toBe('/history');
+    expect(form?.querySelector('button[type="submit"]')?.textContent).toBe(
+      lang === 'de' ? 'Statistik deaktivieren' : 'Disable statistics',
+    );
+    expect(await axeViolations()).toEqual([]);
+  });
+
+  it('says that statistics are disabled and offers to enable them again', async () => {
+    document.cookie = 'osp-analytics=off; Path=/';
+    page = await renderPublic({ path: '/', lang, theme });
+    const form = page.container.querySelector('footer form[action="/preferences/analytics"]')!;
+    expect(form.querySelector<HTMLInputElement>('input[name="analytics"]')?.value).toBe('on');
+    expect(form.textContent).toBe(
+      lang === 'de' ? 'Statistik ist deaktiviert. Statistik aktivieren' : 'Statistics are disabled. Enable statistics',
+    );
+    // Umami's own switch is set as well, so a tracker that is still loaded stops.
+    expect(localStorage.getItem('umami.disabled')).toBe('1');
+    expect(await axeViolations()).toEqual([]);
+  });
+});
+
 describe('interactive states', () => {
   it('open subscribe menu', async () => {
     page = await renderPublic({ path: '/', lang: 'en', theme: 'light' });
