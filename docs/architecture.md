@@ -533,6 +533,17 @@ compressed copy of a page in the render cache and the compression itself cost
 about 1 MB. The pages working without JavaScript were paid for by moving the
 layout of the uptime bar segments into the stylesheet.
 
+Day links and private pages (measured the same way, three runs each against
+the build before them in alternation): public 78 / 95–96 / 98–101 / 85 MB,
+kernel peak 101–103 MB, against 78 / 94–96 / 95–96 / 82–83 MB and 98 MB
+before. The overview of the demo seed grew from 126 to 200 kB because every
+day of a bar is a named link now (630 links); rendering and compressing the
+larger pages costs the 2–5 MB. The public instance is at its target under the
+burst and slightly above it at the kernel peak, so limiting concurrent
+connections at the proxy (below) matters more now. Zod must stay out of the
+public bundles (it once came in through a schema in `private-pages.ts` and
+grew the render bundle from 439 to 556 kB).
+
 Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
 after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
 render bundle is imported on the first page request, so "after start" does not
