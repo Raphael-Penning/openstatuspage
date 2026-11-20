@@ -1,8 +1,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import cookie from '@fastify/cookie';
-import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -10,7 +8,9 @@ import type { DB } from './db/index.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
+import { roleFeatures } from './role.js';
 import { registerRoutes } from './routes/index.js';
+import { webAssetPolicy } from './web-assets.js';
 
 export interface BuildAppOptions {
   config: Config;
@@ -88,7 +88,11 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     ctx.mailer.close();
   });
 
-  await app.register(cookie, { secret: config.SECRET_KEY });
+  // Cookies only carry sessions and the OIDC state: the admin side alone needs them.
+  if (roleFeatures(config.APP_ROLE).adminApi) {
+    const { default: cookie } = await import('@fastify/cookie');
+    await app.register(cookie, { secret: config.SECRET_KEY });
+  }
 
   // Basic hardening headers. The public page may be embedded (iframe) by
   // customers; the management UI and the API may not.
@@ -111,15 +115,24 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   await registerRoutes(app);
 
   const webDir = resolveWebDir(config);
-  if (serveWeb && webDir) {
-    await app.register(fastifyStatic, { root: webDir, wildcard: false, index: false });
-    // SPA fallback: client routes (GET/HEAD, not /api, no file extension) return index.html.
-    // Missing assets get a real 404 so stale chunk requests fail cleanly after a deploy.
+  // Per role (web-assets.ts): public serves public.html and its files only, worker nothing.
+  const web = serveWeb && webDir ? webAssetPolicy(config.APP_ROLE, webDir) : null;
+  if (web && webDir) {
+    const { default: fastifyStatic } = await import('@fastify/static');
+    await app.register(fastifyStatic, {
+      root: webDir,
+      wildcard: false,
+      index: false,
+      allowedPath: (pathname) => web.allows(pathname),
+    });
+    // SPA fallback: client routes (GET/HEAD, not /api, no file extension) return the
+    // entry page. Missing assets get a real 404 so stale chunk requests fail cleanly
+    // after a deploy. A public instance answers /admin/... with 404.
     app.setNotFoundHandler((req, reply) => {
       const path = req.url.split('?')[0] ?? '';
-      const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path);
+      const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
-        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile('index.html');
+        return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index);
       }
       return routeNotFound(reply);
     });

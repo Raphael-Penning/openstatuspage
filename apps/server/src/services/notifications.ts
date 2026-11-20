@@ -8,7 +8,7 @@
  * affected public service.
  *
  * Tokens: subscriber mails are queued with TOKEN_PLACEHOLDERS instead of the
- * confirm/manage tokens. deliverOne derives the real tokens (SECRET_KEY +
+ * confirm/manage tokens. deliverOne derives the real tokens (SUBSCRIPTION_TOKEN_KEY +
  * subscriber id + token_salt) right before sending, so the outbox never holds
  * a token. Once a row is sent, its bodies and headers are blanked; subject,
  * kind and status stay for the status view.
@@ -22,6 +22,7 @@
  */
 import type { NotificationStatus } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
+import { z } from 'zod';
 import type { Config } from '../config.js';
 import type { DB } from '../db/index.js';
 import type { OutboxRow } from '../db/types.js';
@@ -29,7 +30,9 @@ import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { mailerConfigured, type Mailer } from '../mail/mailer.js';
 import {
+  confirmationMail,
   incidentMail,
+  manageMail,
   maintenanceMail,
   testMail,
   type MailSite,
@@ -85,6 +88,21 @@ export interface DeliveryResult {
 }
 
 const BASE_HEADERS = { 'Auto-Submitted': 'auto-generated' };
+
+/**
+ * A recipient must be exactly one plain address (the rule of the subscribe form). Rows
+ * written through the database functions of the public role are checked again here.
+ */
+const Recipient = z.email().max(254);
+
+/**
+ * A confirmation or "manage" mail queued without content. The database functions of
+ * the restricted public role (0007_public_role) queue them like this, so a public
+ * instance can never decide what a mail says; the worker renders them before sending.
+ */
+function isUnrenderedAccountMail(row: OutboxRow): boolean {
+  return (row.kind === 'confirm' || row.kind === 'manage') && row.text_body === '' && row.html_body === '';
+}
 
 export class NotificationService {
   /** Current time; replaced in tests. */
@@ -148,7 +166,7 @@ export class NotificationService {
     const settings = await getSettings(this.db);
     if (!settings.emailSubscriptionsEnabled) return null;
     return {
-      site: { siteName: settings.siteName, baseUrl: this.config.BASE_URL, accentColor: settings.accentColor },
+      site: { siteName: settings.siteName, baseUrl: this.config.PUBLIC_BASE_URL, accentColor: settings.accentColor },
       reminderHours: settings.maintenanceReminderHours,
     };
   }
@@ -350,25 +368,51 @@ export class NotificationService {
    * here, never stored). Rows without subscriber are used as they are. Returns null
    * when the subscriber no longer exists.
    */
-  private async prepare(row: OutboxRow): Promise<{ text: string; html: string; headers?: string } | null> {
+  private async prepare(
+    row: OutboxRow,
+  ): Promise<{ subject: string; text: string; html: string; headers?: string } | null> {
     const headers = row.headers ?? undefined;
-    if (row.subscriber_id === null) return { text: row.text_body, html: row.html_body, headers };
+    if (row.subscriber_id === null) return { subject: row.subject, text: row.text_body, html: row.html_body, headers };
     const sub = await this.db
       .selectFrom('subscribers')
-      .select(['id', 'token_salt'])
+      .select(['id', 'token_salt', 'locale'])
       .where('id', '=', row.subscriber_id)
       .executeTakeFirst();
     if (!sub) return null;
     const tokens = subscriberTokens(this.config, sub);
+    let { subject, text_body: text, html_body: html } = row;
+    if (isUnrenderedAccountMail(row)) {
+      // Queued by the database function of the public role, which never takes mail content.
+      const settings = await getSettings(this.db);
+      const site = { siteName: settings.siteName, baseUrl: this.config.PUBLIC_BASE_URL, accentColor: settings.accentColor };
+      const links = subscriberLinks(this.config, sub.id, TOKEN_PLACEHOLDERS);
+      const mail =
+        row.kind === 'confirm'
+          ? confirmationMail(site, sub.locale, links.confirmUrl)
+          : manageMail(site, sub.locale, links.manageUrl);
+      ({ subject, text, html } = mail);
+    }
     return {
-      text: fillTokens(row.text_body, tokens),
-      html: fillTokens(row.html_body, tokens),
+      subject,
+      text: fillTokens(text, tokens),
+      html: fillTokens(html, tokens),
       headers: headers === undefined ? undefined : fillTokens(headers, tokens),
     };
   }
 
   private async deliverOne(row: OutboxRow, result: DeliveryResult): Promise<void> {
     const attempts = row.attempts + 1;
+    if (!Recipient.safeParse(row.recipient).success) {
+      // Never retried: the address does not change.
+      await this.db
+        .updateTable('email_outbox')
+        .set({ status: 'failed', attempts, last_error: 'Invalid recipient address', last_attempt_at: this.clock().toISOString() })
+        .where('id', '=', row.id)
+        .execute();
+      this.log.warn({ outboxId: row.id, kind: row.kind }, 'email not sent: invalid recipient address');
+      result.failed++;
+      return;
+    }
     const mail = await this.prepare(row);
     if (!mail) {
       await this.db.deleteFrom('email_outbox').where('id', '=', row.id).execute();
@@ -377,7 +421,7 @@ export class NotificationService {
     try {
       await this.mailer.send({
         to: row.recipient,
-        subject: row.subject,
+        subject: mail.subject,
         text: mail.text,
         html: mail.html,
         headers: mail.headers ? (JSON.parse(mail.headers) as Record<string, string>) : undefined,
@@ -388,6 +432,8 @@ export class NotificationService {
         .updateTable('email_outbox')
         .set({
           status: 'sent',
+          // Rows queued without content get the subject they were sent with.
+          subject: mail.subject,
           attempts,
           sent_at: sentAt,
           last_attempt_at: sentAt,
@@ -452,7 +498,7 @@ export class NotificationService {
     if (!mailerConfigured(this.mailer)) throw conflict('No mail transport configured (MAIL_TRANSPORT=none)');
     const settings = await getSettings(this.db);
     const mail = testMail(
-      { siteName: settings.siteName, baseUrl: this.config.BASE_URL, accentColor: settings.accentColor },
+      { siteName: settings.siteName, baseUrl: this.config.PUBLIC_BASE_URL, accentColor: settings.accentColor },
       settings.defaultLocale,
     );
     try {

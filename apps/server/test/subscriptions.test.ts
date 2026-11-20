@@ -1,7 +1,14 @@
 import type { LightMyRequestResponse } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
-import { subscriptionToken, TOKEN_PLACEHOLDERS } from '../src/services/subscriptions.js';
+import {
+  subscriberTokens,
+  subscriptionToken,
+  syncSubscriptionTokenHashes,
+  tokenHash,
+  tokenKeyFingerprint,
+  TOKEN_PLACEHOLDERS,
+} from '../src/services/subscriptions.js';
 import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
 import { adminClient, BASE_URL, createTestApp, data, doc, errors, type Client, type TestApp } from './helpers.js';
 
@@ -389,5 +396,42 @@ describe('manage and unsubscribe', () => {
     await enableSubscriptions(false);
     expect((await manage('GET', id, manageToken)).statusCode).toBe(200);
     expect((await manage('DELETE', id, manageToken)).statusCode).toBe(204);
+  });
+});
+
+describe('token hashes', () => {
+  it('stores the hashes of both tokens, never the tokens', async () => {
+    await subscribe({ email: 'jane@example.com' });
+    const row = await t.db.selectFrom('subscribers').selectAll().executeTakeFirstOrThrow();
+    const tokens = subscriberTokens(t.config, row);
+    expect(row).toMatchObject({
+      confirm_token_hash: tokenHash(tokens.confirm),
+      manage_token_hash: tokenHash(tokens.manage),
+      token_key: tokenKeyFingerprint(t.config.SECRET_KEY),
+    });
+    expect(row.confirm_token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(row)).not.toContain(tokens.confirm);
+    expect(JSON.stringify(row)).not.toContain(tokens.manage);
+  });
+
+  it('fills missing hashes and refreshes hashes of another SECRET_KEY', async () => {
+    await subscribe({ email: 'jane@example.com' });
+    await subscribe({ email: 'john@example.com' });
+    await t.db
+      .updateTable('subscribers')
+      .set({ confirm_token_hash: null, manage_token_hash: null, token_key: null })
+      .where('email', '=', 'jane@example.com')
+      .execute();
+    expect(await syncSubscriptionTokenHashes(t.db, t.config.SECRET_KEY)).toBe(1);
+    expect(await syncSubscriptionTokenHashes(t.db, t.config.SECRET_KEY)).toBe(0);
+    const jane = await t.db.selectFrom('subscribers').selectAll().where('email', '=', 'jane@example.com').executeTakeFirstOrThrow();
+    expect(jane.manage_token_hash).toBe(tokenHash(subscriberTokens(t.config, jane).manage));
+
+    const rotated = 'another-secret-key-that-is-long-enough-0987654321';
+    expect(await syncSubscriptionTokenHashes(t.db, rotated, 1)).toBe(2);
+    for (const r of await t.db.selectFrom('subscribers').selectAll().execute()) {
+      expect(r.token_key).toBe(tokenKeyFingerprint(rotated));
+      expect(r.confirm_token_hash).toBe(tokenHash(subscriptionToken(rotated, 'confirm', r.id, r.token_salt)));
+    }
   });
 });

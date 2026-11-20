@@ -6,6 +6,7 @@
  * concatenate HTML themselves.
  */
 import { solidAccent, type SubscriptionLocale } from '@openstatuspage/shared';
+import { formatUtcDateTime } from '../lib/time.js';
 
 export interface RenderedMail {
   subject: string;
@@ -166,21 +167,12 @@ const value = (t: Texts, v: string) => t.values[v] ?? v;
 
 /** Formats an ISO timestamp in UTC, e.g. "17 Nov 2026, 10:00 UTC". */
 export function formatUtc(iso: string, locale: SubscriptionLocale): string {
-  return `${dateFormat(locale).format(new Date(iso))} UTC`;
+  return `${formatUtcDateTime(iso, locale)} UTC`;
 }
 
 /** Formats a time window in UTC, e.g. "17 Nov 2026, 10:00 – 17 Nov 2026, 12:00 UTC". */
 export function formatWindow(start: string, end: string, locale: SubscriptionLocale): string {
-  const f = dateFormat(locale);
-  return `${f.format(new Date(start))} – ${f.format(new Date(end))} UTC`;
-}
-
-function dateFormat(locale: SubscriptionLocale): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC',
-  });
+  return `${formatUtcDateTime(start, locale)} – ${formatUtcDateTime(end, locale)} UTC`;
 }
 
 // --- Escaping & rendering ------------------------------------------------------------

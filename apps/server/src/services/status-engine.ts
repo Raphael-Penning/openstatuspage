@@ -7,7 +7,9 @@
  */
 import { EventEmitter } from 'node:events';
 import type { ServiceStatus } from '@openstatuspage/shared';
-import type { DB } from '../db/index.js';
+import type { Kysely } from 'kysely';
+import type { Database, DB } from '../db/index.js';
+import { LOCK_KEYS, serialized } from '../db/locks.js';
 import { newId } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { aggregateMonitorStatus, computeEffectiveStatus, type CheckLinkState } from './status-rules.js';
@@ -46,18 +48,27 @@ export class StatusEngine extends EventEmitter<StatusEngineEvents> {
     return this.recompute(rows.map((r) => r.service_id));
   }
 
-  /** Recomputes the given services and records status history. Returns actual changes. */
+  /**
+   * Recomputes the given services and records status history. Returns actual changes.
+   * Serialised across instances on PostgreSQL (db/locks.ts), so two recomputes never
+   * open two history segments for one service; `change` events follow the commit.
+   */
   async recompute(serviceIds: string[]): Promise<StatusChange[]> {
     const ids = [...new Set(serviceIds)];
     if (ids.length === 0) return [];
+    const changes = await serialized(this.db, LOCK_KEYS.statusEngine, (q) => this.recomputeWith(q, ids));
+    for (const change of changes) this.emit('change', change);
+    return changes;
+  }
 
+  private async recomputeWith(q: Kysely<Database>, ids: string[]): Promise<StatusChange[]> {
     const now = nowIso();
     const changes: StatusChange[] = [];
 
     // Load everything needed in a handful of queries.
-    const services = await this.db.selectFrom('services').selectAll().where('id', 'in', ids).execute();
+    const services = await q.selectFrom('services').selectAll().where('id', 'in', ids).execute();
 
-    const links = await this.db
+    const links = await q
       .selectFrom('service_checks')
       .innerJoin('monitor_checks', 'monitor_checks.id', 'service_checks.check_id')
       .innerJoin('monitor_sources', 'monitor_sources.id', 'monitor_checks.source_id')
@@ -73,7 +84,7 @@ export class StatusEngine extends EventEmitter<StatusEngineEvents> {
       .where('monitor_sources.enabled', '=', 1)
       .execute();
 
-    const incidentRows = await this.db
+    const incidentRows = await q
       .selectFrom('incident_services')
       .innerJoin('incidents', 'incidents.id', 'incident_services.incident_id')
       .select(['incident_services.service_id', 'incident_services.status'])
@@ -82,7 +93,7 @@ export class StatusEngine extends EventEmitter<StatusEngineEvents> {
       .where('incidents.is_public', '=', 1)
       .execute();
 
-    const maintenanceRows = await this.db
+    const maintenanceRows = await q
       .selectFrom('maintenance_services')
       .innerJoin('maintenances', 'maintenances.id', 'maintenance_services.maintenance_id')
       .select('maintenance_services.service_id')
@@ -113,7 +124,7 @@ export class StatusEngine extends EventEmitter<StatusEngineEvents> {
 
       const statusChanged = status !== service.current_status;
       if (statusChanged || monitorStatus !== service.monitor_status) {
-        await this.db
+        await q
           .updateTable('services')
           .set({
             current_status: status,
@@ -124,12 +135,11 @@ export class StatusEngine extends EventEmitter<StatusEngineEvents> {
           .execute();
       }
 
-      await this.recordHistory(service.id, status, now);
+      await this.recordHistory(q, service.id, status, now);
 
       if (statusChanged) {
         const change = { serviceId: service.id, from: service.current_status, to: status, at: now };
         changes.push(change);
-        this.emit('change', change);
       }
     }
 
@@ -140,8 +150,8 @@ export class StatusEngine extends EventEmitter<StatusEngineEvents> {
    * Ensures the open history segment of a service matches `status`.
    * Also creates the very first segment for new services.
    */
-  private async recordHistory(serviceId: string, status: ServiceStatus, now: string): Promise<void> {
-    const open = await this.db
+  private async recordHistory(q: Kysely<Database>, serviceId: string, status: ServiceStatus, now: string): Promise<void> {
+    const open = await q
       .selectFrom('service_status_history')
       .select(['id', 'status'])
       .where('service_id', '=', serviceId)
@@ -152,14 +162,14 @@ export class StatusEngine extends EventEmitter<StatusEngineEvents> {
     if (open.length === 1 && open[0]!.status === status) return;
 
     if (open.length > 0) {
-      await this.db
+      await q
         .updateTable('service_status_history')
         .set({ ended_at: now })
         .where('service_id', '=', serviceId)
         .where('ended_at', 'is', null)
         .execute();
     }
-    await this.db
+    await q
       .insertInto('service_status_history')
       .values({ id: newId(), service_id: serviceId, status, started_at: now, ended_at: null })
       .execute();

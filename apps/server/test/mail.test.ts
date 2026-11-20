@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FastifyBaseLogger } from 'fastify';
 import { loadConfig } from '../src/config.js';
-import { createMailer } from '../src/mail/mailer.js';
+import { createMailer, OutboxOnlyMailer } from '../src/mail/mailer.js';
 import {
   confirmationMail,
   escapeHtml,
@@ -121,6 +121,19 @@ describe('subscriber links', () => {
     });
   });
 
+  it('use PUBLIC_BASE_URL instead of the BASE_URL of an admin or worker instance', () => {
+    const split = loadConfig({
+      NODE_ENV: 'test',
+      SECRET_KEY: 'test-secret-key-that-is-long-enough-1234567890',
+      BASE_URL: 'https://status.admin.example.com',
+      PUBLIC_BASE_URL: 'https://status.example.com/',
+    });
+    expect(split.PUBLIC_BASE_URL).toBe('https://status.example.com');
+    expect(config.PUBLIC_BASE_URL).toBe(config.BASE_URL);
+    const links = subscriberLinks(split, 'sub-1', { confirm: 'ct', manage: 'mt' });
+    for (const url of Object.values(links)) expect(url.startsWith('https://status.example.com/')).toBe(true);
+  });
+
   it('fills placeholders with the derived tokens', () => {
     const sub = { id: 'sub-1', token_salt: 'salt' };
     const tokens = subscriberTokens(config, sub);
@@ -190,5 +203,19 @@ describe('createMailer', () => {
     await logMailer.send({ to: 'a@example.com', subject: 'Hello', text: 'Body text', html: '<p>Body</p>' });
     expect(logged).toHaveLength(1);
     expect(JSON.stringify(logged[0])).toContain('Body text');
+  });
+
+  it('never sends from a public instance, but keeps the configured kind', async () => {
+    const env = {
+      ...base,
+      APP_ROLE: 'public',
+      MAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_FROM: 'Example Status <status@example.com>',
+    };
+    const mailer = createMailer(loadConfig(env, { allowSqliteForAnyRole: true }), log);
+    expect(mailer).toBeInstanceOf(OutboxOnlyMailer);
+    expect(mailer).toMatchObject({ transport: 'smtp', from: 'Example Status <status@example.com>' });
+    await expect(mailer.send({ to: 'a@example.com', subject: 's', text: 't', html: 'h' })).rejects.toThrow(/APP_ROLE=public/);
   });
 });

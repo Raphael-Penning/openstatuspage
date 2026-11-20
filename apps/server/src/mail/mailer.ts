@@ -2,15 +2,20 @@
  * Mail transports. Selected by MAIL_TRANSPORT (see config.ts):
  *
  * - smtp: delivers via nodemailer. STARTTLS is used when the server offers it,
- *   SMTP_SECURE=true switches to implicit TLS (port 465).
+ *   SMTP_SECURE=true switches to implicit TLS (port 465). nodemailer is loaded
+ *   with the first mail, so instances that never send do not keep it in memory.
  * - log:  writes every mail to the server log instead of sending it (development).
  * - none: no transport; sending fails. Subscriptions are not offered.
+ *
+ * With APP_ROLE=public the configured kind is kept (subscriptions are offered when
+ * it is not `none`), but the instance never sends: mails go to the outbox and a
+ * worker instance delivers them (OutboxOnlyMailer).
  *
  * Tests use MemoryMailer.
  */
 import type { MailTransportKind } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import nodemailer, { type Transporter } from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import type { Config } from '../config.js';
 
 export interface MailMessage {
@@ -62,37 +67,47 @@ export class LogMailer implements Mailer {
   close(): void {}
 }
 
+export interface SmtpOptions {
+  host: string;
+  port: number;
+  secure: boolean;
+  user?: string;
+  password?: string;
+  rejectUnauthorized: boolean;
+}
+
 export class SmtpMailer implements Mailer {
   readonly transport = 'smtp' as const;
-  private readonly transporter: Transporter;
+  private transporter: Promise<Transporter> | null = null;
 
   constructor(
     readonly from: string,
-    options: {
-      host: string;
-      port: number;
-      secure: boolean;
-      user?: string;
-      password?: string;
-      rejectUnauthorized: boolean;
-    },
-  ) {
-    this.transporter = nodemailer.createTransport({
-      host: options.host,
-      port: options.port,
-      secure: options.secure,
-      auth: options.user ? { user: options.user, pass: options.password ?? '' } : undefined,
-      tls: { rejectUnauthorized: options.rejectUnauthorized },
-      pool: true,
-      maxConnections: 2,
-      connectionTimeout: 15_000,
-      greetingTimeout: 15_000,
-      socketTimeout: 30_000,
-    });
+    private readonly options: SmtpOptions,
+  ) {}
+
+  /** Loads nodemailer and opens the connection pool on first use. */
+  private connect(): Promise<Transporter> {
+    const { options } = this;
+    this.transporter ??= import('nodemailer').then(({ default: nodemailer }) =>
+      nodemailer.createTransport({
+        host: options.host,
+        port: options.port,
+        secure: options.secure,
+        auth: options.user ? { user: options.user, pass: options.password ?? '' } : undefined,
+        tls: { rejectUnauthorized: options.rejectUnauthorized },
+        pool: true,
+        maxConnections: 2,
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+        socketTimeout: 30_000,
+      }),
+    );
+    return this.transporter;
   }
 
   async send(message: MailMessage): Promise<void> {
-    await this.transporter.sendMail({
+    const transporter = await this.connect();
+    await transporter.sendMail({
       from: this.from,
       to: message.to,
       subject: message.subject,
@@ -103,8 +118,25 @@ export class SmtpMailer implements Mailer {
   }
 
   close(): void {
-    this.transporter.close();
+    void this.transporter?.then((t) => t.close());
   }
+}
+
+/**
+ * Mailer of a public instance: reports the configured transport so the instance
+ * knows whether subscriptions are offered, but never opens a connection. Every
+ * mail is queued in the outbox and delivered by a worker instance.
+ */
+export class OutboxOnlyMailer implements Mailer {
+  constructor(
+    readonly transport: MailTransportKind,
+    readonly from: string | null,
+  ) {}
+
+  async send(): Promise<void> {
+    throw new Error('This instance (APP_ROLE=public) does not send mail; a worker instance delivers the outbox');
+  }
+  close(): void {}
 }
 
 /** Collects mails in memory. For tests; `fail` makes the next sends throw. */
@@ -131,6 +163,7 @@ export class MemoryMailer implements Mailer {
 }
 
 export function createMailer(config: Config, log: FastifyBaseLogger): Mailer {
+  if (config.APP_ROLE === 'public') return new OutboxOnlyMailer(config.MAIL_TRANSPORT, config.SMTP_FROM ?? null);
   switch (config.MAIL_TRANSPORT) {
     case 'smtp':
       return new SmtpMailer(config.SMTP_FROM!, {

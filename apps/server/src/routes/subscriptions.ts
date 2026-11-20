@@ -29,18 +29,8 @@ import { IdParams, parse } from '../lib/http.js';
 import { document, metaDocument, noContent } from '../lib/jsonapi.js';
 import { useJsonApi } from '../plugins/jsonapi.js';
 import { AUTH_TYPES, subscriptionResource } from '../serializers/auth-users.js';
-import {
-  assertPublicServices,
-  confirmSubscription,
-  deleteSubscriber,
-  findByToken,
-  subscribe,
-  subscriberLinks,
-  subscriberTokens,
-  subscriptionsAvailable,
-  toPublicSubscription,
-  updatePreferences,
-} from '../services/subscriptions.js';
+import { confirm, getManaged, startSubscription, unsubscribe, updateManaged } from '../services/subscription-flow.js';
+import { assertPublicServices, subscriberLinks, subscriptionsAvailable } from '../services/subscriptions.js';
 
 const TokenQuery = z.object({ token: z.string().max(256).optional() });
 /** Relationships of a subscription request document. */
@@ -76,9 +66,11 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
     scope.get('/api/public/subscriptions/:id/unsubscribe', queryTokenRoute, async (req, reply) => {
       const { id } = parse(IdParams, req.params);
       const { token } = parse(TokenQuery, req.query);
-      const sub = await findByToken(ctx, id, 'manage', token);
+      // Checks the token (404 otherwise); valid means it is the subscriber's manage token.
+      const sub = await getManaged(ctx, id, token);
       // The manage page reads the token from the URL fragment.
-      return reply.redirect(subscriberLinks(ctx.config, sub.id, subscriberTokens(ctx.config, sub)).unsubscribeUrl, 303);
+      const links = subscriberLinks(ctx.config, sub.id, { confirm: '', manage: token! });
+      return reply.redirect(links.unsubscribeUrl, 303);
     });
 
     await scope.register(async (api) => {
@@ -116,7 +108,7 @@ function registerSubscriptionApi(
       const answered = new Promise<void>((resolve) => reply.raw.once('close', () => resolve()));
       ctx.worker.runDetached('subscribe', async () => {
         await answered;
-        await subscribe(ctx, { ...input, serviceIds });
+        await startSubscription(ctx, { ...input, serviceIds });
       });
       return reply.status(202).send(accepted());
     },
@@ -126,14 +118,13 @@ function registerSubscriptionApi(
   scope.post('/api/public/subscriptions/:id/confirm', { config: { ...manageRoute.config, jsonapi: { allowId: true } } }, async (req) => {
     const { id } = parse(IdParams, req.params);
     const { token } = parse(SubscriptionConfirmInput, req.body);
-    const { subscription, manageToken } = await confirmSubscription(ctx, id, token);
+    const { subscription, manageToken } = await confirm(ctx, id, token);
     return document(subscriptionResource(subscription, { manageToken }));
   });
 
   scope.get('/api/public/subscriptions/:id', manageRoute, async (req) => {
     const { id } = parse(IdParams, req.params);
-    const sub = await findByToken(ctx, id, 'manage', headerToken(req));
-    return document(subscriptionResource(await toPublicSubscription(ctx.db, sub)));
+    return document(subscriptionResource(await getManaged(ctx, id, headerToken(req))));
   });
 
   scope.patch(
@@ -141,23 +132,22 @@ function registerSubscriptionApi(
     { config: { ...manageRoute.config, jsonapi: { type: AUTH_TYPES.subscription, relationships: SUBSCRIPTION_RELATIONSHIPS } } },
     async (req) => {
       const { id } = parse(IdParams, req.params);
-      const sub = await findByToken(ctx, id, 'manage', headerToken(req));
+      const token = headerToken(req);
       // Partial update: what is left out keeps its value.
-      const current = await toPublicSubscription(ctx.db, sub);
+      const current = await getManaged(ctx, id, token);
       const input = parse(SubscriptionPreferencesInput, {
         locale: current.locale,
         allServices: current.allServices,
         serviceIds: current.serviceIds,
         ...(req.body as object),
       });
-      return document(subscriptionResource(await updatePreferences(ctx, sub, input)));
+      return document(subscriptionResource(await updateManaged(ctx, id, token, input)));
     },
   );
 
   scope.delete('/api/public/subscriptions/:id', manageRoute, async (req, reply) => {
     const { id } = parse(IdParams, req.params);
-    const sub = await findByToken(ctx, id, 'manage', headerToken(req));
-    await deleteSubscriber(ctx.db, sub.id);
+    await unsubscribe(ctx, id, headerToken(req));
     return noContent(reply);
   });
 
@@ -168,8 +158,7 @@ function registerSubscriptionApi(
     async (req, reply) => {
       const { id } = parse(IdParams, req.params);
       const { token } = parse(TokenQuery, req.query);
-      const sub = await findByToken(ctx, id, 'manage', token);
-      await deleteSubscriber(ctx.db, sub.id);
+      await unsubscribe(ctx, id, token);
       return noContent(reply);
     },
   );

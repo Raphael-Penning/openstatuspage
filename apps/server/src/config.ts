@@ -2,10 +2,12 @@
  * Runtime configuration, read exclusively from environment variables.
  * See `.env.example` in the repository root for documentation of every option.
  */
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { MailTransportKind } from '@openstatuspage/shared';
 import { z } from 'zod';
+import { APP_ROLES, type AppRole } from './role.js';
 
 const bool = z
   .enum(['true', 'false', '1', '0', 'yes', 'no'])
@@ -14,17 +16,55 @@ const bool = z
 const EnvSchema = z.object({
   /** Defaults to production; `pnpm dev` sets development. */
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
+  /**
+   * What this instance does (see role.ts): `public` (status page, public API, feeds,
+   * subscriptions), `admin` (management UI/API, login, ingest, plus the public API),
+   * `worker` (background jobs, only /api/health) or `all` (everything, default).
+   * Every role except `all` needs PostgreSQL.
+   */
+  APP_ROLE: z.enum(APP_ROLES).default('all'),
+  /**
+   * Seconds a `public` instance waits on start for the database schema to reach the
+   * version it was built for (the admin or worker instance runs the migrations).
+   */
+  SCHEMA_WAIT_SECONDS: z.coerce.number().int().min(0).max(3600).default(120),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  /** Public base URL, used for links in feeds, OIDC redirects and ingest URLs. */
+  /** Base URL of this instance, used for OIDC redirects, ingest URLs and secure cookies. */
   BASE_URL: z.string().url().default('http://localhost:3000'),
+  /**
+   * Base URL of the public status page, used for every link in mails and feeds.
+   * Defaults to BASE_URL. Set it on admin and worker instances of a split deployment,
+   * whose BASE_URL is the admin domain.
+   */
+  PUBLIC_BASE_URL: z.string().url().optional(),
   /** `sqlite:<path>` or `postgres://user:pass@host:5432/db`. */
   DATABASE_URL: z.string().default('sqlite:./data/openstatuspage.db'),
+  /**
+   * PostgreSQL only: the restricted database role (login) of APP_ROLE=public instances.
+   * Instances that migrate grant it access to the osp_public schema on every start,
+   * once the role exists (deploy/postgres/roles.sql, docs/security-model.md).
+   */
+  DB_PUBLIC_ROLE: z
+    .string()
+    .regex(/^[a-z_][a-z0-9_]{0,62}$/, 'expected a lower-case PostgreSQL role name')
+    .default('osp_public'),
   /**
    * Secret used to encrypt monitoring credentials at rest and to sign cookies.
    * At least 32 characters. Changing it makes stored credentials unreadable.
    */
   SECRET_KEY: z.string().min(32).optional(),
+  /**
+   * Key of the email subscription tokens (confirm and manage links). Defaults to
+   * SECRET_KEY. A split deployment sets its own value on every instance and gives
+   * the public instance only this key, not SECRET_KEY.
+   */
+  SUBSCRIPTION_TOKEN_KEY: z.string().min(32).optional(),
+  /**
+   * APP_ROLE=public on PostgreSQL refuses to start when its database login is not a
+   * registered public role (DB_PUBLIC_ROLE). `true` only logs a warning instead.
+   */
+  ALLOW_UNRESTRICTED_PUBLIC_DB: bool.default(false),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   /**
    * Reverse proxy trust, so client IPs and https are detected from X-Forwarded-* headers.
@@ -76,8 +116,11 @@ const EnvSchema = z.object({
 
   /** Directory with the built web client. Defaults to ../web/dist relative to the server. */
   WEB_DIST_DIR: z.string().optional(),
-  /** Disable the background poller/scheduler (e.g. for additional read-only replicas). */
-  WORKER_ENABLED: bool.default(true),
+  /**
+   * Run the background tasks (pollers, scheduler, mail delivery, cleanup). Defaults to
+   * true for APP_ROLE=all and worker, false for admin; never allowed for public.
+   */
+  WORKER_ENABLED: bool.optional(),
   /**
    * Check bundles: how long a result of a push-only source (type webhook) counts
    * in a bundle vote before the member is treated as not reporting. Pull sources
@@ -102,8 +145,18 @@ const EnvSchema = z.object({
   SMTP_TLS_REJECT_UNAUTHORIZED: bool.default(true),
 });
 
-export type Config = Omit<z.infer<typeof EnvSchema>, 'MAIL_TRANSPORT' | 'SESSION_MAX_AGE_HOURS'> & {
+export type Config = Omit<
+  z.infer<typeof EnvSchema>,
+  'MAIL_TRANSPORT' | 'SESSION_MAX_AGE_HOURS' | 'WORKER_ENABLED' | 'PUBLIC_BASE_URL' | 'SUBSCRIPTION_TOKEN_KEY'
+> & {
+  /** Effective: PUBLIC_BASE_URL or BASE_URL, without trailing slash. */
+  PUBLIC_BASE_URL: string;
+  /** SECRET_KEY; on a public instance without one a random key of this process (nothing it does needs it). */
   SECRET_KEY: string;
+  /** Effective: SUBSCRIPTION_TOKEN_KEY or SECRET_KEY. */
+  SUBSCRIPTION_TOKEN_KEY: string;
+  /** Effective: WORKER_ENABLED or the default of APP_ROLE. */
+  WORKER_ENABLED: boolean;
   /** Effective absolute session lifetime (never shorter than SESSION_TTL_HOURS). */
   SESSION_MAX_AGE_HOURS: number;
   /** True when SECRET_KEY was not set and the public development secret is used. */
@@ -123,7 +176,15 @@ export interface LoadConfigOptions {
    * development secret). Only for CLI commands that never touch secrets.
    */
   allowMissingSecret?: boolean;
+  /**
+   * Allow APP_ROLE public/admin/worker on SQLite. Only for tests: SQLite is a
+   * single-instance database and only supports APP_ROLE=all.
+   */
+  allowSqliteForAnyRole?: boolean;
 }
+
+/** Default of WORKER_ENABLED per role. */
+const WORKER_DEFAULT: Record<AppRole, boolean> = { all: true, worker: true, admin: false, public: false };
 
 /**
  * Loads a `.env` file into process.env (existing variables win). Looks at
@@ -149,11 +210,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
   const c = parsed.data;
 
   let secret = c.SECRET_KEY;
+  if (!secret && c.APP_ROLE === 'public' && c.SUBSCRIPTION_TOKEN_KEY) {
+    // A public instance encrypts no credentials and signs no cookies: it only needs the token key.
+    secret = randomBytes(48).toString('base64url');
+  }
   if (!secret) {
     if (c.NODE_ENV === 'production' && !options.allowMissingSecret) {
       throw new Error(
-        'SECRET_KEY must be set (at least 32 characters, e.g. `openssl rand -base64 48`). ' +
-          'For local development run `pnpm dev` or set NODE_ENV=development.',
+        c.APP_ROLE === 'public'
+          ? 'SUBSCRIPTION_TOKEN_KEY must be set for APP_ROLE=public (the same value as on the admin and worker ' +
+              'instances, at least 32 characters). The public instance does not need SECRET_KEY.'
+          : 'SECRET_KEY must be set (at least 32 characters, e.g. `openssl rand -base64 48`). ' +
+              'For local development run `pnpm dev` or set NODE_ENV=development.',
       );
     }
     secret = DEV_SECRET;
@@ -168,12 +236,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     throw new Error('DATABASE_URL must start with sqlite: or postgres://');
   }
 
-  const oidcEnabled = Boolean(c.OIDC_ISSUER_URL && c.OIDC_CLIENT_ID);
+  const role = c.APP_ROLE;
+  const roleIssues: string[] = [];
+  if (role !== 'all' && database.dialect === 'sqlite' && !options.allowSqliteForAnyRole) {
+    roleIssues.push(
+      `  APP_ROLE: ${role} needs PostgreSQL. SQLite is a single-instance database and only supports APP_ROLE=all ` +
+        '(one instance running everything).',
+    );
+  }
+  if (role === 'public' && c.WORKER_ENABLED === true) {
+    roleIssues.push('  WORKER_ENABLED: must not be true with APP_ROLE=public (the public instance runs no background tasks)');
+  }
+  if (role === 'worker' && c.WORKER_ENABLED === false) {
+    roleIssues.push('  WORKER_ENABLED: must not be false with APP_ROLE=worker (the worker instance only runs background tasks)');
+  }
+  if (roleIssues.length > 0) throw new Error(`Invalid configuration:\n${roleIssues.join('\n')}`);
+  const workerEnabled = c.WORKER_ENABLED ?? WORKER_DEFAULT[role];
+
+  // Login and OIDC only exist where the admin routes are served.
+  const oidcEnabled = (role === 'all' || role === 'admin') && Boolean(c.OIDC_ISSUER_URL && c.OIDC_CLIENT_ID);
 
   const mailTransport: MailTransportKind = c.MAIL_TRANSPORT ?? (c.SMTP_HOST ? 'smtp' : 'none');
   const mailIssues: string[] = [];
   if (mailTransport !== 'none' && !c.SMTP_FROM) mailIssues.push(`  SMTP_FROM: required when MAIL_TRANSPORT=${mailTransport}`);
-  if (mailTransport === 'smtp' && !c.SMTP_HOST) mailIssues.push('  SMTP_HOST: required when MAIL_TRANSPORT=smtp');
+  // A public instance only queues mails (the worker delivers them), so it needs no SMTP server.
+  if (mailTransport === 'smtp' && !c.SMTP_HOST && role !== 'public') {
+    mailIssues.push('  SMTP_HOST: required when MAIL_TRANSPORT=smtp');
+  }
   if (c.SMTP_FROM && !/@[^\s@>]+\.[^\s@>]+>?\s*$/.test(c.SMTP_FROM)) {
     mailIssues.push('  SMTP_FROM: expected an address like "Example Status <status@example.com>"');
   }
@@ -190,8 +279,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
 
   return {
     ...c,
+    WORKER_ENABLED: workerEnabled,
     BASE_URL: c.BASE_URL.replace(/\/+$/, ''),
+    PUBLIC_BASE_URL: (c.PUBLIC_BASE_URL ?? c.BASE_URL).replace(/\/+$/, ''),
     SECRET_KEY: secret,
+    SUBSCRIPTION_TOKEN_KEY: c.SUBSCRIPTION_TOKEN_KEY ?? secret,
     insecureSecret: secret === DEV_SECRET,
     oidcEnabled,
     database,

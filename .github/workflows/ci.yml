@@ -25,7 +25,8 @@ jobs:
       - run: pnpm -r build
 
   postgres:
-    # Runs migrations and the demo seed against PostgreSQL to keep the schema portable.
+    # Runs migrations and the demo seed against PostgreSQL to keep the schema portable,
+    # then the PostgreSQL tests of the restricted public role (apps/server/test-pg).
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -47,8 +48,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Create the public database role
+        # Throwaway password of the CI service container only.
+        run: psql "$DATABASE_URL" -v public_password=osp_public_ci -f deploy/postgres/roles.sql
       - run: pnpm db:migrate
       - run: pnpm db:seed
+      - name: PostgreSQL tests (public role)
+        env:
+          PG_TEST_URL: postgres://osp:osp@localhost:5432/osp
+          PG_TEST_PUBLIC_URL: postgres://osp_public:osp_public_ci@localhost:5432/osp
+        run: pnpm --filter @openstatuspage/server test:pg
 
   image:
     # Builds the container image (docker/Dockerfile). Pull requests only build it

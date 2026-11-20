@@ -353,6 +353,12 @@ export interface SubscribersTable {
   confirmation_sent_at: string | null;
   created_at: string;
   updated_at: string;
+  /** SHA-256 (hex) of the confirm token, so the database can check tokens (see subscriptionTokenHashes). */
+  confirm_token_hash: string | null;
+  /** SHA-256 (hex) of the manage token. */
+  manage_token_hash: string | null;
+  /** Fingerprint of the token key (SUBSCRIPTION_TOKEN_KEY) the hashes were derived from (null = not derived yet). */
+  token_key: string | null;
 }
 
 export interface SubscriberServicesTable {
@@ -402,6 +408,15 @@ export interface StatusCorrectionServicesTable {
   service_id: string;
 }
 
+/** Background task leases (several instances on PostgreSQL); times in ms since the epoch. */
+export interface TaskLeasesTable {
+  name: string;
+  owner: string | null;
+  locked_until: string | number | null;
+  last_started_at: string | number | null;
+  last_finished_at: string | number | null;
+}
+
 export interface Database {
   settings: SettingsTable;
   users: UsersTable;
@@ -434,6 +449,7 @@ export interface Database {
   email_outbox: EmailOutboxTable;
   status_corrections: StatusCorrectionsTable;
   status_correction_services: StatusCorrectionServicesTable;
+  task_leases: TaskLeasesTable;
 }
 
 export type User = Selectable<UsersTable>;

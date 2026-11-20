@@ -29,6 +29,7 @@ It is also shown in the management UI under **Help**, in English or German.
 | [adapters/](adapters/README.md) | Monitoring adapters: Icinga 2, Uptime Kuma, openITCockpit, generic webhook |
 | [oidc.md](oidc.md) | Single sign-on with OpenID Connect, role mapping, provider notes |
 | [architecture.md](architecture.md) | Code layout, privacy model, status model, database, worker |
+| [security-model.md](security-model.md) | Split deployment on PostgreSQL: what the restricted public database role can and cannot do, how it is enforced, threat model |
 | [accessibility.md](accessibility.md) | WCAG 2.2 AA for the public page and the emails: implementation, automated checks, manual test checklist, known limitations |
 | [releasing.md](releasing.md) | Container image pipeline, image tags, cutting a release, release assets, GHCR setup (maintainers) |
 | [../deploy/compose/](../deploy/compose/) | Docker Compose setup (`compose.yaml`, `.env.example`, build override `compose.build.yaml`), also attached to every release, see [installation](guide/en/02-installation.md#docker-compose) |

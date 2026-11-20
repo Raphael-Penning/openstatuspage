@@ -7,6 +7,7 @@
 import type { PublicIncident, PublicMaintenance } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
 import type { DB } from '../db/index.js';
+import { formatUtcDateTime } from '../lib/time.js';
 import { escapeXml } from '../lib/xml.js';
 import { loadIncidents, toPublicIncident } from '../services/incidents.js';
 import { loadMaintenances, toPublicMaintenance } from '../services/maintenances.js';
@@ -72,15 +73,10 @@ const TEXTS = {
 
 function formatter(locale: FeedLocale) {
   const t = TEXTS[locale];
-  const dateFormat = new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC',
-  });
   return {
     t,
     value: (v: string) => t.values[v] ?? v,
-    date: (iso: string) => `${dateFormat.format(new Date(iso))} UTC`,
+    date: (iso: string) => `${formatUtcDateTime(iso, locale)} UTC`,
   };
 }
 
@@ -242,8 +238,8 @@ export async function registerFeedRoutes(app: FastifyInstance): Promise<void> {
   // Feed texts use the page's default language.
   async function load() {
     const settings = await getSettings(db);
-    const meta = { title: settings.siteName, description: settings.description, baseUrl: config.BASE_URL };
-    return { meta, items: await loadFeedItems(db, config.BASE_URL, settings.defaultLocale) };
+    const meta = { title: settings.siteName, description: settings.description, baseUrl: config.PUBLIC_BASE_URL };
+    return { meta, items: await loadFeedItems(db, config.PUBLIC_BASE_URL, settings.defaultLocale) };
   }
 
   app.get('/feed.rss', async (_req, reply) => {

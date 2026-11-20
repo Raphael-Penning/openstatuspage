@@ -435,7 +435,8 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
         for (const r of await mq.execute()) entries.push({ type: 'maintenance', id: r.id, date: r.date });
       }
 
-      entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id.localeCompare(b.id)));
+      // Ids are UUIDs: a plain comparison orders them like localeCompare, without ICU collation.
+      entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       const page = entries.slice(q.page.offset, q.page.offset + q.page.size);
 
       const [incidents, maintenances] = await Promise.all([

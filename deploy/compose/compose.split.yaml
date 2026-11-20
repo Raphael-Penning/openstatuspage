@@ -1,0 +1,142 @@
+# OpenStatusPage split deployment: the public status page, the admin instance
+# and the background worker, sharing one PostgreSQL database. Every role runs in
+# its own container with its own database role. Only "public" and "admin"
+# publish a port, each for its own domain; "worker" and "db" are reachable only
+# inside the compose network. Guide: docs/guide/en/02-installation.md#split-deployment
+#
+# Setup (from a clone of the repository, the file needs deploy/postgres/):
+#
+#   cd deploy/compose
+#   cp .env.example .env        # keep the file private: chmod 600 .env
+#   # uncomment and set the "Split deployment" variables and the secrets in .env
+#   docker compose -f compose.split.yaml up -d
+#
+# Database roles (deploy/postgres/roles.sql, see docs/security-model.md):
+#   public        -> osp_public: login with no table access, only the osp_public
+#                    views and the subscription functions. The database init script
+#                    creates it when the data volume is created.
+#   admin, worker -> osp_app: owns the tables and runs the migrations, but is no
+#                    superuser, so the functions the public role may call do not
+#                    run as one. Created by the same init script.
+#   POSTGRES_USER (openstatuspage) is the superuser of the image; only the init
+#   script uses it.
+#
+# The fixed project name gives the volumes their own names
+# (openstatuspage-split_pg), so this file can run next to a single-instance
+# compose.yaml on the same host.
+name: openstatuspage-split
+
+x-image: &image
+  image: ${OSP_IMAGE:-ghcr.io/raphael-penning/openstatuspage}:${OSP_VERSION:-latest}
+  restart: unless-stopped
+  # Like the Kubernetes example: about 80-100 MB in use, short peaks above that
+  # (docs/architecture.md#memory).
+  mem_reservation: 128m
+  mem_limit: 256m
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # No env_file: the database must not receive the application secrets.
+    environment:
+      POSTGRES_DB: openstatuspage
+      POSTGRES_USER: openstatuspage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Read by the init script only, which creates the public and the app role with them.
+      POSTGRES_PUBLIC_PASSWORD: ${POSTGRES_PUBLIC_PASSWORD:?set POSTGRES_PUBLIC_PASSWORD in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}
+    volumes:
+      - pg:/var/lib/postgresql/data
+      # Runs once, on an empty data volume (see deploy/postgres/init-roles.sh).
+      - ../postgres:/osp-postgres:ro
+      - ../postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      # -h localhost: during its init phase the image accepts socket connections
+      # only, so the check passes once the server really listens on TCP.
+      test: ["CMD-SHELL", "pg_isready -h localhost -U openstatuspage -d openstatuspage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The public instance: status page, public API, feeds, subscriptions and health.
+  # It never migrates, runs no background tasks and serves no admin routes.
+  public:
+    <<: *image
+    ports:
+      - "${PUBLIC_BIND:-127.0.0.1}:${PUBLIC_HOST_PORT:-3000}:3000"
+    # No env_file: the public instance gets only the settings listed here, not
+    # SECRET_KEY, the admin password, the OIDC or the SMTP secrets.
+    environment:
+      APP_ROLE: public
+      HOST: 0.0.0.0
+      PORT: "3000"
+      WORKER_ENABLED: "false"
+      BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Subscriptions are offered when mails are configured; the worker sends them.
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # Only the key of the subscription links, never SECRET_KEY (it decrypts the
+      # monitoring credentials and signs the admin cookies).
+      SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
+      DATABASE_URL: postgres://osp_public:${POSTGRES_PUBLIC_PASSWORD:?set POSTGRES_PUBLIC_PASSWORD in .env}@db:5432/openstatuspage
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+  # The admin instance: management UI and API, login and OIDC, ingest endpoints,
+  # and the public page for previews. Its background tasks are off.
+  admin:
+    <<: *image
+    ports:
+      - "${ADMIN_BIND:-127.0.0.1}:${ADMIN_HOST_PORT:-3001}:3000"
+    # The rest of .env reaches the admin instance (ADMIN_*, OIDC_*, SMTP_*, ...).
+    env_file: .env
+    environment:
+      APP_ROLE: admin
+      HOST: 0.0.0.0
+      PORT: "3000"
+      WORKER_ENABLED: "false"
+      BASE_URL: ${ADMIN_BASE_URL:?set ADMIN_BASE_URL in .env}
+      # Links in subscriber mails and feeds point to the public page.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
+      DATABASE_URL: postgres://osp_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}@db:5432/openstatuspage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The worker: polling, mails, maintenance, bundles, imports and cleanup. Its
+  # HTTP port serves /api/health only and is not published.
+  worker:
+    <<: *image
+    env_file: .env
+    environment:
+      APP_ROLE: worker
+      HOST: 0.0.0.0
+      PORT: "3000"
+      WORKER_ENABLED: "true"
+      # Mail links (subscription confirmation, unsubscribe) point to the public page.
+      BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
+      DATABASE_URL: postgres://osp_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}@db:5432/openstatuspage
+    depends_on:
+      db:
+        condition: service_healthy
+      # Start after the admin instance has migrated the schema.
+      admin:
+        condition: service_healthy
+
+volumes:
+  pg:

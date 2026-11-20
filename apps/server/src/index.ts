@@ -1,22 +1,30 @@
 import { buildApp } from './app.js';
 import { ensureInitialAdmin } from './bootstrap.js';
 import { loadConfig } from './config.js';
-import { createDb, migrateToLatest } from './db/index.js';
-import { syncPollers } from './adapters/poller.js';
-import { runMaintenanceTransitions } from './services/maintenance-scheduler.js';
-import { registerBundleTasks } from './services/bundles.js';
-import { registerHistoryImportTasks } from './services/history-import.js';
-import { registerNotificationTasks } from './services/notifications.js';
-import { registerSessionCleanup } from './services/sessions.js';
+import { createDb } from './db/index.js';
+import { roleFeatures } from './role.js';
+import { prepareDatabase, startBackgroundTasks } from './startup.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const features = roleFeatures(config.APP_ROLE);
   const db = await createDb(config);
-  await migrateToLatest(db);
+  // Before buildApp, as before: nothing may read the database ahead of the expected schema.
+  await prepareDatabase(db, config, {
+    info: (obj, msg) => console.log(`${msg} ${JSON.stringify(obj)}`),
+    warn: (obj, msg) => console.warn(`${msg} ${JSON.stringify(obj)}`),
+  });
 
   const app = await buildApp({ config, db });
   const { ctx } = app;
+  app.log.info({ role: config.APP_ROLE, worker: config.WORKER_ENABLED }, 'instance role');
 
+  if (config.APP_ROLE === 'public' && process.env.SECRET_KEY) {
+    app.log.warn(
+      'APP_ROLE=public does not need SECRET_KEY: give the public instance only SUBSCRIPTION_TOKEN_KEY, so a ' +
+        'compromised public host does not hold the key of the monitoring credentials (docs/security-model.md).',
+    );
+  }
   if (config.insecureSecret) {
     app.log.warn('SECRET_KEY is not set: using the public development secret. Never use this in production.');
   }
@@ -29,23 +37,16 @@ async function main(): Promise<void> {
     );
   }
 
-  const admin = await ensureInitialAdmin(db, config);
-  if (admin === 'created') app.log.info({ email: config.ADMIN_EMAIL }, 'initial admin created');
-  if (admin === 'skipped') {
-    app.log.warn('no users exist: set ADMIN_EMAIL and ADMIN_PASSWORD or run `pnpm --filter @openstatuspage/server create-user`');
+  // The users table is only touched where the login exists (never by a public instance).
+  if (features.bootstrapsAdmin) {
+    const admin = await ensureInitialAdmin(db, config);
+    if (admin === 'created') app.log.info({ email: config.ADMIN_EMAIL }, 'initial admin created');
+    if (admin === 'skipped') {
+      app.log.warn('no users exist: set ADMIN_EMAIL and ADMIN_PASSWORD or run `pnpm --filter @openstatuspage/server create-user`');
+    }
   }
 
-  if (config.WORKER_ENABLED) {
-    ctx.worker.schedule('maintenance-transitions', 30_000, async () => {
-      await runMaintenanceTransitions(db, ctx.engine, undefined, ctx.notifications);
-    });
-    registerSessionCleanup(ctx);
-    registerNotificationTasks(ctx);
-    registerBundleTasks(ctx);
-    registerHistoryImportTasks(ctx);
-    await syncPollers(ctx);
-    ctx.worker.start();
-  }
+  await startBackgroundTasks(ctx);
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, 'shutting down');

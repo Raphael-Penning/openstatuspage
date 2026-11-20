@@ -1,0 +1,106 @@
+# The admin instance (APP_ROLE=admin): management UI and API, login and OIDC,
+# ingest endpoints, and the public page for previews. It migrates the schema
+# with the owner role. Background tasks stay in the worker Deployment
+# (WORKER_ENABLED=false). Put the admin domain (BASE_URL below) behind its own
+# restricted Ingress.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openstatuspage-admin
+  labels:
+    app.kubernetes.io/component: admin
+spec:
+  # One replica: it runs the migrations at start. Keep the Recreate strategy
+  # below so two admin pods never migrate at the same time.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: admin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: admin
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" user of the image
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openstatuspage
+          image: ghcr.io/raphael-penning/openstatuspage # tag set in kustomization.yaml
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: APP_ROLE
+              value: admin
+            - name: WORKER_ENABLED
+              value: "false"
+            - name: BASE_URL
+              value: https://status.admin.example.com
+            # Links in subscriber mails and feeds point to the public page.
+            - name: PUBLIC_BASE_URL
+              value: https://status.example.com
+            - name: TRUST_PROXY
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: openstatuspage-admin # SECRET_KEY, SUBSCRIPTION_TOKEN_KEY, DATABASE_URL (osp_app), ADMIN_*, OIDC_*
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openstatuspage-admin
+  labels:
+    app.kubernetes.io/component: admin
+spec:
+  selector:
+    app.kubernetes.io/component: admin
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

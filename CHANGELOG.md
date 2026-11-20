@@ -60,9 +60,76 @@ breaking changes.
     resource: attribute `overall` and `updatedAt`; relationships `services`,
     `activeIncidents` and `activeMaintenances` (resources included). The former
     `services[].group` name is the `service-groups` relationship of each service.
-  - Unchanged: `/api/health` and the RSS/Atom feeds (plain formats, documented in
-    [docs/api.md](docs/api.md)).
+  - Unchanged: `/api/health` (now also reports `role` and `worker`) and the RSS/Atom
+    feeds (plain formats, documented in [docs/api.md](docs/api.md)).
   - Migrating a client: send `Content-Type: application/vnd.api+json` and wrap
     bodies in `data`; read `data.attributes` (or use `deserialize()` from
     `@openstatuspage/shared`); replace `PUT` by `PATCH`; rename list parameters
     to `page[...]`/`filter[...]`; read error details from `errors[]`.
+
+### Added
+
+- **Split deployment** with `APP_ROLE` (`all`, `public`, `admin`, `worker`): on
+  PostgreSQL the public status page, the management side and the background worker
+  can run as separate instances. A `public` instance has no management UI, login,
+  admin or ingest routes, serves a separate public-only web entry (`public.html`)
+  without the management UI chunks, never connects to monitoring systems or sends
+  mail, and never runs migrations (it waits for the expected schema,
+  `SCHEMA_WAIT_SECONDS`). See [docs/configuration.md](docs/configuration.md#split-deployment).
+- **Restricted database role for the public instance** (PostgreSQL): with
+  `DB_PUBLIC_ROLE` (default `osp_public`, created with `deploy/postgres/roles.sql`)
+  a public instance reads only views of public rows and columns (schema
+  `osp_public`) and writes only through checked `SECURITY DEFINER` functions for
+  email subscriptions; row level security policies back this up. Admin and worker
+  instances grant the role on every start. Subscription tokens are additionally
+  stored as SHA-256 hashes so the database can check them. A public instance
+  whose login is not a registered public role refuses to start
+  (`ALLOW_UNRESTRICTED_PUBLIC_DB=true` only warns). `deploy/postgres/roles.sql`
+  also runs the new `deploy/postgres/harden.sql`: advisory locks only for the app
+  role, no large objects or temporary tables for other roles. See
+  [docs/security-model.md](docs/security-model.md).
+  - Upgrading on PostgreSQL: migration `0007_public_role` needs PostgreSQL 11 or
+    newer (15 or newer recommended). The schema `osp_public` also needs `CREATE`
+    on the database for the migrating role. Without it the upgrade still
+    succeeds: the schema is left out and the log says how to add it. It is only
+    needed for `APP_ROLE=public`. After `GRANT CREATE ON DATABASE <database> TO <role>`
+    the next start of an admin, worker or all instance creates it. A failing
+    migration now logs its cause.
+- `PUBLIC_BASE_URL` (default `BASE_URL`): the public URL used for every link in
+  emails and feeds. Admin and worker instances of a split deployment set it, so
+  mails written on the admin instance link to the public page and its one-click
+  unsubscribe endpoint instead of the admin domain.
+- `SUBSCRIPTION_TOKEN_KEY` (default `SECRET_KEY`): the key of the subscription
+  links. A public instance runs with this key alone, so a compromised public host
+  holds neither the key of the monitoring credentials nor the one that signs the
+  OIDC state cookie. The split examples give it only `SUBSCRIPTION_TOKEN_KEY`.
+- `WORKER_ENABLED` defaults to `false` for `APP_ROLE=admin`; contradicting settings
+  stop the server on start.
+- **Several instances with background tasks** on PostgreSQL: every task (and the
+  poll of every monitoring source) runs under a lease in the new `task_leases`
+  table, so it runs on one instance at a time and once per interval across the
+  deployment; an instance that stops is replaced within a minute. Status and
+  bundle recomputes are serialised with advisory locks, and only one history
+  import per source can be active, also across admin instances. Rate limits stay
+  per instance. See [docs/architecture.md](docs/architecture.md#several-instances).
+- `pnpm measure:memory` (`scripts/measure-memory.mjs`) measures the memory of every
+  `APP_ROLE` under light load. The results are in
+  [docs/architecture.md](docs/architecture.md#memory).
+- Split deployment examples: [`deploy/compose/compose.split.yaml`](deploy/compose/compose.split.yaml)
+  (public, admin and worker containers on one PostgreSQL database; the public role
+  and the non-superuser app role `osp_app` of admin and worker are created by
+  [`deploy/postgres/init-roles.sh`](deploy/postgres/init-roles.sh)) and the
+  Kustomize overlay [`deploy/kubernetes/split/`](deploy/kubernetes/split/). See the
+  [split deployment guide](docs/guide/en/02-installation.md#split-deployment).
+
+### Changed
+
+- **Less memory per instance**: about 80–100 MB instead of 100–130 MB with the
+  Docker image (public and worker stay below 100 MB; admin and all peak at about
+  105 MB during password checks, see [docs/architecture.md](docs/architecture.md#memory)). The server build bundles and minifies its dependencies, every role
+  loads only its own routes, and nodemailer, openid-client, argon2 and the history
+  importers load on first use. The image sets `NODE_OPTIONS`
+  (`--max-semi-space-size=1 --max-old-space-size=96`), `MALLOC_ARENA_MAX=2` and
+  `UV_THREADPOOL_SIZE=2`; raise `--max-old-space-size` for large history imports.
+  Its health check no longer starts a second node process. The Kubernetes example
+  requests 128 MiB (limit 256 MiB).

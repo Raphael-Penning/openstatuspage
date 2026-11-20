@@ -5,6 +5,29 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp, redactUrlTokens } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { createDb, migrateToLatest } from '../src/db/index.js';
+import { RATE_LIMIT_KEYS } from '../src/routes/index.js';
+import { createTestApp } from './helpers.js';
+
+describe('rate limits', () => {
+  it('bound the clients every rate-limited route remembers', async () => {
+    const limits: { url: string; config: Record<string, unknown> }[] = [];
+    const t = await createTestApp(
+      {},
+      {
+        onRoute: (route) => {
+          const limit = (route.config as { rateLimit?: Record<string, unknown> } | undefined)?.rateLimit;
+          if (limit) limits.push({ url: route.url, config: limit });
+        },
+      },
+    );
+    try {
+      expect(limits.length).toBeGreaterThan(3);
+      for (const { url, config } of limits) expect(config.cache, url).toBe(RATE_LIMIT_KEYS);
+    } finally {
+      await t.close();
+    }
+  });
+});
 
 describe('loadConfig', () => {
   it('requires SECRET_KEY in production but not for development', () => {

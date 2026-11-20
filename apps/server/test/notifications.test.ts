@@ -98,6 +98,24 @@ async function seedSubscribers() {
 }
 
 describe('incident notifications', () => {
+  it('link to PUBLIC_BASE_URL when sent from an admin instance on its own domain', async () => {
+    await t.close();
+    mailer = new MemoryMailer();
+    const adminDomain = 'https://status.admin.example.com';
+    t = await createTestApp({ APP_ROLE: 'admin', BASE_URL: adminDomain, PUBLIC_BASE_URL: BASE_URL }, { mailer });
+    admin = await adminClient(t);
+    await settings({});
+    await addSubscriber('all@example.com');
+    const created = await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
+    const [mail] = await deliver();
+    expect(mail!.text).toContain(`${BASE_URL}/incidents/${created.json().data.id}`);
+    expect(mail!.text).toContain(`${BASE_URL}/subscription/manage?id=`);
+    expect(mail!.headers!['List-Unsubscribe']).toMatch(new RegExp(`^<${BASE_URL}/api/public/subscriptions/`));
+    for (const part of [mail!.text, mail!.html, JSON.stringify(mail!.headers)]) {
+      expect(part).not.toContain('status.admin.example.com');
+    }
+  });
+
   it('selects recipients by affected public services', async () => {
     await seedSubscribers();
     const created = await admin.post('/api/admin/incidents', {
@@ -383,6 +401,58 @@ describe('maintenance notifications', () => {
 });
 
 describe('outbox delivery', () => {
+  it('renders confirmation and manage mails that were queued without content', async () => {
+    // As queued by the database functions of the restricted public role (0007_public_role).
+    const pending = await addSubscriber('pending@example.com', { confirmed: false, locale: 'de' });
+    const confirmed = await addSubscriber('confirmed@example.com');
+    const now = new Date().toISOString();
+    for (const [subscriber_id, recipient, kind] of [
+      [pending, 'pending@example.com', 'confirm'],
+      [confirmed, 'confirmed@example.com', 'manage'],
+    ] as const) {
+      await t.db
+        .insertInto('email_outbox')
+        .values({
+          id: newId(),
+          subscriber_id,
+          recipient,
+          kind,
+          subject: '',
+          text_body: '',
+          html_body: '',
+          headers: JSON.stringify({ 'Auto-Submitted': 'auto-generated' }),
+          status: 'pending',
+          attempts: 0,
+          next_attempt_at: now,
+          last_error: null,
+          last_attempt_at: null,
+          created_at: now,
+          sent_at: null,
+        })
+        .execute();
+    }
+
+    const mails = await deliver();
+    const byTo = new Map(mails.map((m) => [m.to, m]));
+    const subs = await t.db.selectFrom('subscribers').select(['id', 'token_salt']).execute();
+    const salt = (id: string) => subs.find((s) => s.id === id)!.token_salt;
+
+    const confirmMail = byTo.get('pending@example.com')!;
+    expect(confirmMail.subject).toBe('[Example Status] Bitte bestätige dein Abonnement');
+    const confirmToken = subscriptionToken(t.config.SECRET_KEY, 'confirm', pending, salt(pending));
+    expect(confirmMail.text).toContain(`${BASE_URL}/subscription/confirm?id=${pending}#token=${confirmToken}`);
+    expect(confirmMail.headers).toEqual({ 'Auto-Submitted': 'auto-generated' });
+
+    const manageMail = byTo.get('confirmed@example.com')!;
+    const manageToken = subscriptionToken(t.config.SECRET_KEY, 'manage', confirmed, salt(confirmed));
+    expect(manageMail.text).toContain(`${BASE_URL}/subscription/manage?id=${confirmed}#token=${manageToken}`);
+    expect(manageMail.text).not.toContain(TOKEN_PLACEHOLDERS.manage);
+
+    // The status view keeps the subject the mail was sent with.
+    const rows = await t.db.selectFrom('email_outbox').select(['subject', 'status', 'text_body']).execute();
+    expect(rows.every((r) => r.status === 'sent' && r.subject !== '' && r.text_body === '')).toBe(true);
+  });
+
   it('retries with backoff, marks failed after the last attempt and can be retried', async () => {
     await addSubscriber('all@example.com');
     await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
@@ -417,6 +487,37 @@ describe('outbox delivery', () => {
     const after = data<NotificationStatus>(await admin.get('/api/admin/notifications/status'));
     expect(after.queue).toEqual({ pending: 0, failed: 0 });
     expect(after.lastSentAt).toEqual(expect.any(String));
+  });
+
+  it('never sends to a recipient that is not exactly one plain address', async () => {
+    const { notifications } = t.app.ctx;
+    const now = new Date().toISOString();
+    await t.db
+      .insertInto('email_outbox')
+      .values(
+        ['victim@example.com,a', 'Victim <victim@example.com>', 'victim@example.com;other@example.com'].map((recipient, i) => ({
+          id: `bad-${i}`,
+          subscriber_id: null,
+          recipient,
+          kind: 'test',
+          subject: 's',
+          text_body: 't',
+          html_body: 'h',
+          headers: null,
+          status: 'pending' as const,
+          attempts: 0,
+          next_attempt_at: now,
+          last_error: null,
+          last_attempt_at: null,
+          created_at: now,
+          sent_at: null,
+        })) as never,
+      )
+      .execute();
+    expect(await notifications.deliverDue()).toEqual({ sent: 0, retried: 0, failed: 3 });
+    expect(mailer.sent).toEqual([]);
+    const rows = await t.db.selectFrom('email_outbox').select(['status', 'last_error']).execute();
+    expect(rows.every((r) => r.status === 'failed' && r.last_error === 'Invalid recipient address')).toBe(true);
   });
 
   it('uses the time of each row, not the batch start, for backoff and timestamps', async () => {

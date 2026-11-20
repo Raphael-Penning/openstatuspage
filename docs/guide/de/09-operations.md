@@ -231,6 +231,24 @@ nötig.
 - Das Kubernetes-Beispiel nutzt ihn für die Readiness- und Liveness-Probes.
 - Nutze ihn für Health-Checks von Load Balancern und Container-Orchestrierung.
 
+## Arbeitsspeicher
+
+Eine Instanz braucht im normalen Betrieb etwa 80–100 MB Arbeitsspeicher; eine
+Passwortprüfung oder die erste Abfrage eines Prozesses kommt kurz mit 10–20 MB
+dazu. Ein Speicherlimit von 128 MB pro Container lässt genug Luft. Das
+Docker-Image setzt dafür die Optionen von Node.js und dem Speicher-Allocator
+(`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`). Ohne das Image setzt
+du sie selbst:
+
+```sh
+NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
+MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node apps/server/dist/index.js
+```
+
+Erhöhe `--max-old-space-size` (z. B. auf `256`) auf der Instanz, die einen
+großen Verlaufsimport ausführt. Messwerte pro Rolle:
+[architecture.md](../../architecture.md#memory).
+
 ## Die Statusseite überwachen
 
 Eine Statusseite wird gerade dann gebraucht, wenn deine Infrastruktur Probleme
@@ -277,30 +295,39 @@ URL (Ingest, Links aus E-Mails) werden erst ab Level `warn` protokolliert.
 ## Mehrere Instanzen betreiben
 
 Für die meisten Setups reicht eine Instanz. Betreibst du mehrere (z. B. für
-Hochverfügbarkeit):
+Hochverfügbarkeit oder das [getrennte Deployment](../../configuration.md#split-deployment)
+mit eigenen Public-, Admin- und Worker-Instanzen):
 
 - Nutze **PostgreSQL**. SQLite lässt sich nicht zwischen Instanzen teilen.
-- Setze `WORKER_ENABLED=false` auf allen Instanzen außer **einer**. Der Worker
-  übernimmt Monitoring-Abfragen, automatischen Start und Abschluss von
-  Wartungen, E-Mail-Versand, Erinnerungen und Aufräumarbeiten; liefe er auf
-  mehreren Instanzen, würde alles doppelt erledigt.
-- Verwende auf allen Instanzen denselben `SECRET_KEY` und dieselbe
-  `BASE_URL`.
-- Rate Limits zählen pro Instanz.
+- Hintergrundaufgaben dürfen auf mehreren Instanzen laufen.
+  Monitoring-Abfragen, automatischer Start und Abschluss von Wartungen,
+  E-Mail-Versand, Erinnerungen und Aufräumarbeiten werden über die Datenbank
+  abgestimmt: Jede Aufgabe läuft immer nur auf einer Instanz und einmal pro
+  Intervall, jede Quelle wird einmal pro Intervall abgefragt, und jede E-Mail
+  geht einmal raus. Hält eine Worker-Instanz an, übernimmt eine andere ihre
+  Aufgaben nach spätestens etwa einer Minute.
+- Verwende auf allen Instanzen einer Rolle denselben `SECRET_KEY` und
+  dieselbe `BASE_URL`, überall denselben `SUBSCRIPTION_TOKEN_KEY` und dieselbe
+  `PUBLIC_BASE_URL`. Eine öffentliche Instanz bekommt nur
+  `SUBSCRIPTION_TOKEN_KEY`, nie `SECRET_KEY`. Anmeldungen funktionieren auf
+  jeder Admin-Instanz (Sitzungen liegen in der Datenbank).
+- Rate Limits zählen pro Instanz: Mit drei Instanzen hinter einem
+  Load Balancer kann ein Client bis zu dreimal so oft einen Login versuchen.
+  Ist dir das wichtig, lass den Proxy jeden Client zur selben Instanz
+  schicken (Sticky Sessions nach Client-IP) oder begrenze Anfragen am Proxy.
+- Starte nach einem Update die neue Version zuerst auf einer Instanz; sie
+  migriert die Datenbank. Instanzen dürfen auch gleichzeitig starten: Nur
+  eine von ihnen migriert.
 
-Fällt die Worker-Instanz aus, funktionieren Seite und Verwaltung weiter, aber
-Abfragen, automatische Wartungswechsel und E-Mails pausieren, bis sie wieder
-läuft.
+Sind alle Instanzen mit Hintergrundaufgaben ausgefallen, funktionieren Seite
+und Verwaltung weiter, aber Abfragen, automatische Wartungswechsel und
+E-Mails pausieren, bis wieder eine läuft.
 
-Das gilt genauso für **Kubernetes-Replikate**. Das Beispiel-Deployment läuft
-mit einem Replikat, und alle Pods eines Deployments teilen sich dieselbe
-Umgebung. Erhöhe also nicht einfach `replicas`. Lass dieses Deployment
-stattdessen mit einem Replikat als Worker laufen und betreib die weiteren
-Pods in einem zweiten Deployment mit `WORKER_ENABLED=false` (mit eigenem
-Selector und einem Service-Selector, der die Pods beider erfasst). Die
-zusätzlichen Pods brauchen mit PostgreSQL kein `/data`-Volume; das
-Beispiel-Volume ist `ReadWriteOnce` und lässt sich nur auf einem Node
-einbinden.
+Mit **Kubernetes** kannst du `replicas` des Beispiel-Deployments erhöhen,
+sobald es PostgreSQL nutzt. Die Pods brauchen dann kein `/data`-Volume, und
+das Beispiel-Volume ist `ReadWriteOnce` (nur auf einem Node einbindbar):
+Entferne das Volume `data` samt Mount aus `deployment.yaml` und `pvc.yaml`
+aus `kustomization.yaml`.
 
 ## SECRET_KEY
 

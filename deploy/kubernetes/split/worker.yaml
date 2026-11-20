@@ -1,0 +1,86 @@
+# The worker (APP_ROLE=worker): polling of the monitoring systems, mails,
+# maintenance, bundle evaluation, history imports and cleanup. Its HTTP port
+# serves /api/health only, and no Service or Ingress points at it. Background
+# tasks are coordinated through the database, so more replicas are safe on
+# PostgreSQL; the default is one.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openstatuspage-worker
+  labels:
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" user of the image
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openstatuspage
+          image: ghcr.io/raphael-penning/openstatuspage # tag set in kustomization.yaml
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: APP_ROLE
+              value: worker
+            - name: WORKER_ENABLED
+              value: "true"
+            # Mail links (subscription confirmation, unsubscribe) point to the public page.
+            - name: BASE_URL
+              value: https://status.example.com
+            - name: PUBLIC_BASE_URL
+              value: https://status.example.com
+          envFrom:
+            - secretRef:
+                name: openstatuspage-worker # SECRET_KEY, SUBSCRIPTION_TOKEN_KEY, DATABASE_URL (osp_app), SMTP_*
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

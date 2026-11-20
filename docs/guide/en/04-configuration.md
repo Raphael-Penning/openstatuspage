@@ -17,6 +17,7 @@ The complete reference with every option lives in
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `BASE_URL` | `http://localhost:3000` | Public URL without trailing slash. See [Reverse proxy](03-reverse-proxy.md#base_url). |
+| `PUBLIC_BASE_URL` | `BASE_URL` | Split deployment: the public URL on admin and worker instances, used for all links in emails and feeds. |
 | `SECRET_KEY` | – | Required in production, at least 32 characters. See [Operations](09-operations.md#secret_key). |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` or `postgres://user:password@host:5432/database`. |
 | `TRUST_PROXY` | `false` | Number of reverse proxies in front of the app, or their addresses. See [Reverse proxy](03-reverse-proxy.md#trust_proxy). |
@@ -27,7 +28,9 @@ The complete reference with every option lives in
 | `SESSION_MAX_AGE_HOURS` | `720` | Maximum session lifetime from the login, even for active sessions (at least `SESSION_TTL_HOURS`). |
 | `LOCAL_LOGIN_ENABLED` | `true` | `false` allows single sign-on only. |
 | `OIDC_*` | – | Single sign-on, see [Users and access](08-users-and-access.md#single-sign-on-oidc). |
-| `WORKER_ENABLED` | `true` | Background jobs; `false` on additional replicas. |
+| `APP_ROLE` | `all` | `all`, or with PostgreSQL `public`, `admin` or `worker` to run the status page and the management side as separate instances. See [Split deployment](../../configuration.md#split-deployment). |
+| `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL login of the `public` instance. It can only read public data and manage subscriptions through checked functions. Create it with `deploy/postgres/roles.sql`; see [Security model](../../security-model.md). |
+| `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; on PostgreSQL several instances may run them (coordinated through the database). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | Email delivery, see [Email subscriptions](07-email-subscriptions.md#mail-server). |
 
 Rules that apply to all variables:

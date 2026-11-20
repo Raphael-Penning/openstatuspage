@@ -1,0 +1,58 @@
+# Optional split deployment on Kubernetes: the public status page, the admin
+# instance and the background worker as three Deployments on one PostgreSQL
+# database. The single-instance example in deploy/kubernetes/ stays unchanged.
+# Guide: docs/guide/en/02-installation.md#split-deployment
+#
+#   1. Create the namespace and the three secrets (never commit them):
+#        kubectl apply -f namespace.yaml
+#        TOKEN_KEY="$(openssl rand -base64 48)"   # the key of the subscription links
+#        kubectl -n openstatuspage create secret generic openstatuspage-public \
+#          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
+#          --from-literal=DATABASE_URL='postgres://osp_public:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
+#          --from-literal=MAIL_TRANSPORT=smtp --from-literal=SMTP_FROM='Example Status <status@example.com>'
+#        kubectl -n openstatuspage create secret generic openstatuspage-admin \
+#          --from-literal=SECRET_KEY="$(openssl rand -base64 48)" \
+#          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
+#          --from-literal=DATABASE_URL='postgres://osp_app:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
+#          --from-literal=ADMIN_EMAIL=admin@example.com \
+#          --from-literal=ADMIN_PASSWORD='a-long-password'
+#        kubectl -n openstatuspage create secret generic openstatuspage-worker \
+#          --from-literal=SECRET_KEY="<the SECRET_KEY of the admin secret>" \
+#          --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY" \
+#          --from-literal=DATABASE_URL='postgres://osp_app:CHANGE-ME@postgres.example.com:5432/openstatuspage' \
+#          --from-literal=SMTP_HOST=smtp.example.com --from-literal=SMTP_USER=status@example.com \
+#          --from-literal=SMTP_PASSWORD='...' --from-literal=SMTP_FROM='Example Status <status@example.com>'
+#   2. Create the database roles first (deploy/postgres/roles.sql with
+#      public_password and app_password: osp_public and the non-superuser osp_app
+#      of admin and worker) and set the host names, the domains (BASE_URL and
+#      PUBLIC_BASE_URL in the Deployments) and the image tag below.
+#   3. Route the domains with one Ingress per instance (see ../ingress.yaml for
+#      an example). Restrict the admin domain, for example with an IP allowlist.
+#   4. kubectl apply -k deploy/kubernetes/split
+#
+# The public Deployment holds only the public role's database URL and the key of
+# the subscription links, never SECRET_KEY. The public pod never connects to
+# monitoring systems: the worker polls them, and the admin pod connects for
+# manual actions (poll now, connection tests) and history imports, so allow
+# egress to them from those two only. Replicas: public is stateless and
+# can scale out; admin and worker run one replica each by default (several worker
+# replicas are safe on PostgreSQL, see docs/guide/en/09-operations.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: openstatuspage
+labels:
+  - pairs:
+      app.kubernetes.io/name: openstatuspage
+      app.kubernetes.io/instance: openstatuspage-split
+    includeSelectors: true
+resources:
+  - namespace.yaml
+  - public.yaml
+  - admin.yaml
+  - worker.yaml
+# Secrets are created by hand (see above) and deliberately not listed here.
+images:
+  - name: ghcr.io/raphael-penning/openstatuspage
+    # Pin a release (X.Y.Z). "latest" = newest stable release, "edge" = current
+    # main (not for production; the only tag before the first release).
+    newTag: latest

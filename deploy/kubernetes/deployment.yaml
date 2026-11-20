@@ -5,8 +5,9 @@ kind: Deployment
 metadata:
   name: openstatuspage
 spec:
-  # Keep exactly one replica with SQLite. Several replicas need PostgreSQL and
-  # WORKER_ENABLED=false on all but one (docs/guide/en/09-operations.md).
+  # Keep exactly one replica with SQLite. Several replicas need PostgreSQL (and
+  # no data volume); they coordinate background tasks through the database
+  # (docs/guide/en/09-operations.md).
   replicas: 1
   # The volume is ReadWriteOnce and SQLite allows one writer: stop the old pod
   # before the new one starts.
@@ -59,12 +60,14 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 4
+          # About 80-100 MB in steady use with the image's NODE_OPTIONS; short peaks
+          # (a password check, the first poll) add 10-20 MB (docs/architecture.md#memory).
           resources:
             requests:
               cpu: 100m
-              memory: 192Mi
+              memory: 128Mi
             limits:
-              memory: 512Mi
+              memory: 256Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

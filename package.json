@@ -15,7 +15,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "db:migrate": "pnpm --filter @openstatuspage/server db:migrate",
-    "db:seed": "pnpm --filter @openstatuspage/server db:seed"
+    "db:seed": "pnpm --filter @openstatuspage/server db:seed",
+    "measure:memory": "node scripts/measure-memory.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
