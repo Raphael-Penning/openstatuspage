@@ -22,6 +22,11 @@ const PAGES: [name: string, path: string][] = [
   ['subscription confirm', `/subscription/confirm?id=sub-1#token=${SUBSCRIPTION_TOKEN}`],
   ['subscription manage', `/subscription/manage?id=sub-1#token=${SUBSCRIPTION_TOKEN}`],
   ['subscription invalid link', '/subscription/manage'],
+  ['subscription confirm (query token)', `/subscription/confirm?id=sub-1&token=${SUBSCRIPTION_TOKEN}`],
+  ['subscription unsubscribe step', `/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}&unsubscribe=1&confirmed=1`],
+  ['subscribed', '/subscribe?sent=1'],
+  ['unsubscribed', '/subscription/manage?unsubscribed=1'],
+  ['services filtered', '/services?q=api&status=operational'],
   ['unknown incident', '/incidents/missing'],
   ['not found', '/does-not-exist'],
 ];

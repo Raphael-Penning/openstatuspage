@@ -247,7 +247,8 @@
     "sent": {
       "title": "Bitte prüfe dein Postfach",
       "description": "Wir haben eine E-Mail an {{email}} gesendet. Öffne den Link darin, um dein Abonnement zu bestätigen.",
-      "hint": "Nichts angekommen? Sieh im Spam-Ordner nach. Ist die Adresse bereits angemeldet, erhältst du stattdessen einen Link zur Verwaltung deines Abonnements. Unbestätigte Anmeldungen werden nach 7 Tagen gelöscht."
+      "hint": "Nichts angekommen? Sieh im Spam-Ordner nach. Ist die Adresse bereits angemeldet, erhältst du stattdessen einen Link zur Verwaltung deines Abonnements. Unbestätigte Anmeldungen werden nach 7 Tagen gelöscht.",
+      "descriptionGeneric": "Wir haben dir eine E-Mail an die eingegebene Adresse geschickt. Öffne den Link darin, um dein Abonnement zu bestätigen."
     },
     "unavailable": {
       "title": "E-Mail-Benachrichtigungen sind nicht verfügbar",
@@ -266,14 +267,18 @@
       "scopeServices_one": "Wir informieren {{email}} über Vorfälle und Wartungen, die den ausgewählten Dienst betreffen.",
       "scopeServices_other": "Wir informieren {{email}} über Vorfälle und Wartungen, die die {{count}} ausgewählten Dienste betreffen.",
       "hint": "Jede E-Mail enthält einen Link, um deine Einstellungen zu ändern oder dich abzumelden.",
-      "manage": "Einstellungen verwalten"
+      "manage": "Einstellungen verwalten",
+      "intro": "Bestätige, dass du E-Mail-Benachrichtigungen dieser Statusseite erhalten möchtest.",
+      "button": "Abonnement bestätigen",
+      "needsScript": "Dieser Link funktioniert nur mit JavaScript. Nutze den Link einer neueren E-Mail oder abonniere erneut, um einen neuen zu erhalten."
     },
     "manage": {
       "title": "Deine E-Mail-Benachrichtigungen",
       "subtitle": "Lege fest, worüber du informiert wirst, oder melde dich ab.",
       "pending": "Dieses Abonnement ist noch nicht bestätigt. Öffne den Link in der Bestätigungs-E-Mail, um Benachrichtigungen zu erhalten.",
       "save": "Einstellungen speichern",
-      "saved": "Einstellungen gespeichert."
+      "saved": "Einstellungen gespeichert.",
+      "confirmed": "Dein Abonnement ist bestätigt. Du kannst es hier jederzeit anpassen."
     },
     "unsubscribe": {
       "title": "Abmelden",
@@ -284,7 +289,8 @@
       "cancel": "Abonnement behalten",
       "done": "Du wurdest abgemeldet",
       "doneDescription": "{{email}} erhält keine E-Mails mehr von uns und wurde gelöscht.",
-      "subscribeAgain": "Erneut abonnieren"
+      "subscribeAgain": "Erneut abonnieren",
+      "doneDescriptionGeneric": "Deine E-Mail-Adresse erhält keine E-Mails mehr von uns und wurde gelöscht."
     },
     "errors": {
       "email": "Gib eine gültige E-Mail-Adresse ein, zum Beispiel name@example.com.",
@@ -292,7 +298,9 @@
       "servicesInvalid": "Einige ausgewählte Dienste sind nicht mehr verfügbar. Bitte lade die Seite neu und versuche es erneut.",
       "invalid": "Bitte prüfe deine Eingaben und versuche es erneut.",
       "rateLimited": "Zu viele Versuche. Bitte warte eine Minute und versuche es erneut.",
-      "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+      "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+      "summary": "Bitte korrigiere Folgendes:",
+      "titlePrefix": "Fehler: {{title}}"
     }
   }
 }
