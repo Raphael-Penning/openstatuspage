@@ -19,7 +19,9 @@
  *   Escape hides it (WCAG 1.4.13). On touch screens the first tap on a day
  *   shows its tooltip (with a link to the day), a second tap opens the day; a
  *   screen reader's activation of the focused day opens it at once.
- * - Day links are rel="nofollow" (day pages are noindex).
+ * - Day links carry no rel="nofollow": 15 bytes on up to 90 links per bar
+ *   cost more page weight and render memory than crawlers would save (day
+ *   pages are noindex and in no sitemap anyway).
  *
  * Days corrected afterwards carry a small marker below the segment and say so
  * (with the public notes) in the link name and the tooltip.
@@ -278,8 +280,6 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
             <a
               key={d.date}
               href={dayHref(d.date)}
-              // Day pages are noindex; crawlers need not walk up to 90 of them per bar.
-              rel="nofollow"
               tabIndex={i === tabbable ? 0 : -1}
               aria-label={describe(d)}
               className={clsx(
@@ -421,9 +421,7 @@ export function UptimeDayTable({ uptime, label, dayHref }: { uptime: DailyUptime
               return (
                 <tr key={day.date}>
                   <th scope="row">
-                    <a href={dayHref(day.date)} rel="nofollow">
-                      {f.utcDay(day.date)}
-                    </a>
+                    <a href={dayHref(day.date)}>{f.utcDay(day.date)}</a>
                   </th>
                   <td>
                     {day.status === null ? (
