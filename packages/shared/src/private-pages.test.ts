@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { serviceDayPath } from './days.js';
-import { isPrivatePageToken, normalizePrivatePageToken, privatePageBase, PrivatePageInput } from './private-pages.js';
+import { isPrivatePageToken, normalizePrivatePageToken, privatePageBase } from './private-pages.js';
+import { PrivatePageInput } from './schemas.js';
 
 describe('private page tokens and paths', () => {
   it('accepts only 32 characters of lower-case base32', () => {
