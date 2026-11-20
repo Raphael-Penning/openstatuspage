@@ -7,6 +7,7 @@ import { registerLocationAndGroupRoutes } from './locations.js';
 import { registerMaintenanceRoutes } from './maintenances.js';
 import { registerMonitoringRoutes } from './monitoring.js';
 import { registerOverviewRoutes } from './overview.js';
+import { registerPrivatePageRoutes } from './private-pages.js';
 import { registerServiceRoutes } from './services.js';
 import { registerSubscriberRoutes } from './subscribers.js';
 import { registerUserRoutes } from './users.js';
@@ -24,4 +25,5 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   await registerHistoryImportRoutes(app);
   await registerUserRoutes(app);
   await registerSubscriberRoutes(app);
+  await registerPrivatePageRoutes(app);
 }
