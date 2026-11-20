@@ -10,6 +10,10 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { axeViolations, installBrowserStubs, renderPublic, settle, type Rendered } from './harness';
 import { API_TODAY, API_YESTERDAY, PRIVATE_TOKEN, SUBSCRIPTION_TOKEN } from './fixtures';
 
+// axe walks every node; the overview has hundreds of day links and needs
+// more than vitest's 5 s default on slow CI runners.
+const AXE_TIMEOUT_MS = 30_000;
+
 const PAGES: [name: string, path: string][] = [
   ['overview', '/'],
   ['services', '/services'],
@@ -78,7 +82,7 @@ describe.each(VARIANTS)('public pages ($lang, $theme)', ({ lang, theme }) => {
     // WCAG 2.4.2: every page has a title naming the page and the site.
     expect(document.title).toMatch(/Example Status|Status/);
     expect(await axeViolations()).toEqual([]);
-  });
+  }, AXE_TIMEOUT_MS);
 });
 
 describe('the check itself', () => {
