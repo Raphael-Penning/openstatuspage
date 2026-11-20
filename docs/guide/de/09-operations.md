@@ -249,6 +249,14 @@ NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
 MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node --max-opt=2 apps/server/dist/index.js
 ```
 
+Bei Überlast (eine Seite wird gerade gerendert, höchstens vier warten)
+beantwortet eine öffentliche Instanz eine Seite mit der zuletzt gerenderten
+Fassung, auch mit einer abgelaufenen bis zu 10 Minuten alten (Header
+`X-Cache: STALE`). Gibt es keine, antwortet sie mit `503`, `Retry-After: 5`
+und einer kurzen Seite „vorübergehend ausgelastet“; persönliche
+Abo-Links bekommen immer die 503. Siehst du oft `503` oder die Warnung
+„Too many pages waiting“ im Log, starte eine weitere öffentliche Instanz.
+
 Erhöhe `--max-old-space-size` (z. B. auf `256`) auf der Instanz, die einen
 großen Verlaufsimport ausführt. Messwerte pro Rolle:
 [architecture.md](../../architecture.md#memory).
