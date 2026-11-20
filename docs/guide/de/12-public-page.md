@@ -237,8 +237,8 @@ Was du wissen solltest:
   die Personen weiter, für die er gedacht ist, so wie ein Passwort.
 - Vorfälle und Wartungen erscheinen auf einer privaten Seite nur, wenn sie
   öffentlich sind, mit ihrem öffentlichen Text. Von den betroffenen Diensten zeigt
-  die Seite nur ihre eigenen. Die Titel führen zur Vorfall- oder Wartungsseite der
-  öffentlichen Statusseite.
+  die Seite nur ihre eigenen. Die Titel öffnen den Vorfall oder die Wartung auf
+  der privaten Seite selbst, Besucher verlassen sie also nicht.
 - Private Seiten werden nie indexiert (`noindex, nofollow`, auch bei „nicht
   gefunden“), nie zwischengespeichert, stehen weder in den Sitemaps noch in
   `llms.txt` oder der `robots.txt`, laden nie das Statistik-Skript
