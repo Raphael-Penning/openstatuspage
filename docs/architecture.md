@@ -344,8 +344,9 @@ visitor's time zone). The rules:
   collapsible service groups and the daily uptime table open without scripts.
   With JavaScript the `Disclosure` component also closes them on Escape and on
   a click outside.
-- **Tooltips have a visible equivalent.** The days of an uptime bar are listed in
-  a table on the service page; the world map's markers are drawn on the server
+- **Tooltips have a visible equivalent.** Every day of an uptime bar is a plain
+  link to its server-rendered day page (`/services/<slug>/days/<YYYY-MM-DD>`), and
+  the days are listed in a table on the service page; the world map's markers are drawn on the server
   (`StaticWorldMap`: the country shapes of `/world-map.svg` as a CSS mask in the
   theme color, the markers with the fixed projection of
   `public/utils/map-projection.ts`); the location list below it has every
@@ -401,8 +402,10 @@ agents. Everything is built from the page settings and public data only.
     unsubscribe), which have no canonical URL either; `noindex, follow` without
     a canonical URL for variants of a page: a filtered, searched or later
     history page (`?type=`, `?page=2` ...), a searched or filtered service list,
-    `/?upcoming=all` and the states of the subscribe page (`?sent=1`,
-    `?error=`, the answer to a form),
+    `/?upcoming=all`, the states of the subscribe page (`?sent=1`,
+    `?error=`, the answer to a form) and the day pages of the uptime bars
+    (`/services/<slug>/days/<date>`: thin, one per service and day; their
+    canonical URL is their own, and they are in no sitemap),
   - `canonical`: the path without query, lower case and without a trailing
     slash (the server answers other spellings of a path with a `301` to this
     one); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
