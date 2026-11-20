@@ -8,7 +8,7 @@
  *
  * The feeds are not JSON:API (stable formats for feed readers).
  */
-import { PRIVATE_PAGE_TOKEN_HEADER } from '@openstatuspage/shared';
+import { PRIVATE_PAGE_REQUESTS_PER_MINUTE, PRIVATE_PAGE_TOKEN_HEADER } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { parse } from '../lib/http.js';
@@ -24,7 +24,7 @@ const IdParams = z.object({ id: z.string().min(1).max(64) });
 const ServiceDayParams = IdOrSlugParams.extend({ date: z.string().min(1).max(32) });
 
 /** Requests per minute and client to private pages (API and HTML), against guessing tokens. */
-export const PRIVATE_PAGE_RATE_LIMIT = { max: 60, timeWindow: '1 minute' };
+const PRIVATE_PAGE_RATE_LIMIT = { max: PRIVATE_PAGE_REQUESTS_PER_MINUTE, timeWindow: '1 minute' };
 
 /** The token of the X-Private-Page-Token header ('' when missing: answered like a wrong one). */
 function privatePageToken(req: FastifyRequest): string {

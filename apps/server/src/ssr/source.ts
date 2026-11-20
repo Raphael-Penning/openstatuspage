@@ -7,6 +7,7 @@
 import type { DataDocument, PublicDocumentSource, SourceError } from '@openstatuspage/shared';
 import { HttpError } from '../lib/errors.js';
 import type { DocumentRequest } from '../lib/jsonapi.js';
+import type { PrivatePageDocuments } from '../services/private-page-documents.js';
 import type { PublicDocuments } from '../services/public-documents.js';
 
 function sourceError(status: number, message: string): SourceError {
@@ -32,6 +33,39 @@ const SUBSCRIPTION_PREFIX = '/api/public/subscriptions/';
 export interface SourceExtras {
   /** The subscription for its manage token (APP_ROLE with the public API). */
   subscription?: (id: string, token: string) => Promise<DataDocument>;
+  /** Private pages: the token comes as the `token` query value (over HTTP it is a header). */
+  privatePages?: PrivatePageDocuments;
+}
+
+/** Paths of the private page API in the source (routes/public.ts). */
+const PRIVATE_PAGE_PATH = '/api/public/private-page';
+const PRIVATE_SERVICE_PATH = /^\/api\/public\/private-page\/services\/([^/]+)$/;
+const PRIVATE_DAY_PATH = /^\/api\/public\/private-page\/services\/([^/]+)\/days\/([^/]+)$/;
+
+/** A private page document for `path`, or undefined when the path is none of them. */
+async function privatePageDocument(
+  docs: PrivatePageDocuments,
+  path: string,
+  query: Record<string, string>,
+): Promise<DataDocument | undefined> {
+  if (path !== PRIVATE_PAGE_PATH && !path.startsWith(`${PRIVATE_PAGE_PATH}/`)) return undefined;
+  // The token never becomes part of the request URL (self links, logs).
+  const { token = '', ...rest } = query;
+  const qs = new URLSearchParams(rest).toString();
+  const req: DocumentRequest = { url: qs ? `${path}?${qs}` : path, query: rest };
+  if (token.length > 64) throw sourceError(404, 'Not found');
+  if (path === PRIVATE_PAGE_PATH) return docs.page(req, token);
+  const day = PRIVATE_DAY_PATH.exec(path);
+  if (day) {
+    const id = segment(day[1]!, 100);
+    const date = segment(day[2]!, 32);
+    if (id === null || date === null) throw sourceError(404, 'Not found');
+    return docs.day(req, token, id, date);
+  }
+  const service = PRIVATE_SERVICE_PATH.exec(path);
+  const id = service ? segment(service[1]!, 100) : null;
+  if (id === null) throw sourceError(404, 'Not found');
+  return docs.service(req, token, id);
 }
 
 export function publicDocumentSource(docs: PublicDocuments, extras: SourceExtras = {}): PublicDocumentSource {
@@ -57,6 +91,10 @@ export function publicDocumentSource(docs: PublicDocuments, extras: SourceExtras
       const qs = new URLSearchParams(query).toString();
       const req: DocumentRequest = { url: qs ? `${path}?${qs}` : path, query };
       try {
+        if (extras.privatePages) {
+          const doc = await privatePageDocument(extras.privatePages, path, query);
+          if (doc) return doc;
+        }
         const build = fixed[path];
         if (build) return await build(req);
         if (path.startsWith(SUBSCRIPTION_PREFIX) && extras.subscription) {

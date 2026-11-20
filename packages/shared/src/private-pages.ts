@@ -18,7 +18,10 @@ export const PRIVATE_PAGE_PREFIX = '/p';
 /** HTTP header that carries the token to the private page API (never the URL of an API request). */
 export const PRIVATE_PAGE_TOKEN_HEADER = 'x-private-page-token';
 
-/** Shape of a token: 32 characters of lower-case base32 (160 bits). */
+/** Requests per minute and client to private pages (API and HTML), against guessing tokens. */
+export const PRIVATE_PAGE_REQUESTS_PER_MINUTE = 60;
+
+/** Shape of a token:32 characters of lower-case base32 (160 bits). */
 export const PRIVATE_PAGE_TOKEN_PATTERN = /^[a-z2-7]{32}$/;
 
 /** Whether `value` looks like a private page token (anything else is "not found" without asking the database). */
