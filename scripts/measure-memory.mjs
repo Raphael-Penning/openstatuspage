@@ -9,10 +9,10 @@
  *   peak     highest RSS seen during the light load below
  *   after    RSS once the load is over and the process settled
  *
- * Light load: the demo seed, a few hundred requests to the public pages, API and
- * feeds (public, admin, all), a login and the main admin lists plus a monitoring
- * source that is polled from a local fake Uptime Kuma (admin, all), and at least
- * one polling cycle of that source (worker, all).
+ * Light load: the demo seed, a few hundred requests to the server-rendered public
+ * pages (both languages), API and feeds (public, admin, all), a login and the main
+ * admin lists plus a monitoring source that is polled from a local fake Uptime Kuma
+ * (admin, all), and at least one polling cycle of that source (worker, all).
  *
  * Usage (build first: pnpm -r build):
  *
@@ -182,13 +182,25 @@ async function waitForHealth(base, child) {
   throw new Error('no /api/health within 120 s');
 }
 
-/** Public pages, API and feeds, `count` requests with 8 in parallel. */
+/** Public pages (server-rendered), API and feeds, `count` requests with 8 in parallel. */
 async function publicLoad(base, count) {
   const paths = ['/', '/api/public/status', '/api/public/summary', '/api/public/services', '/api/public/locations',
     '/api/public/history', '/api/public/settings', '/feed.rss', '/feed.atom'];
+  // Server-rendered pages, in both languages (a rendered page is cached for a few seconds per URL and language).
+  for (const page of ['/services', '/locations', '/history', '/history?type=incident', '/subscribe', '/does-not-exist']) {
+    paths.push(page, `${page}${page.includes('?') ? '&' : '?'}lang=de`);
+  }
   const services = await request(base, '/api/public/services');
   if (services.status === 200) {
-    for (const s of JSON.parse(services.body.toString()).data.slice(0, 5)) paths.push(`/api/public/services/${s.id}`);
+    for (const s of JSON.parse(services.body.toString()).data.slice(0, 5)) {
+      paths.push(`/api/public/services/${s.id}`, `/services/${s.attributes.slug}`);
+    }
+  }
+  const history = await request(base, '/api/public/history');
+  if (history.status === 200) {
+    for (const item of JSON.parse(history.body.toString()).data.slice(0, 5)) {
+      paths.push(item.type === 'incidents' ? `/incidents/${item.id}` : `/maintenance/${item.id}`);
+    }
   }
   const index = await request(base, '/');
   for (const m of index.body.toString().matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)) paths.push(m[1]);
