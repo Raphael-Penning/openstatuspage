@@ -9,8 +9,8 @@
  */
 import { geoNaturalEarth1, geoPath, type ExtendedFeature, type ExtendedFeatureCollection } from 'd3-geo';
 import { feature } from 'topojson-client';
-import world from 'world-atlas/countries-110m.json';
-import { MAP_HEIGHT, MAP_SCALE, MAP_TRANSLATE, MAP_WIDTH } from '../src/public/utils/map-projection';
+import world from 'world-atlas/countries-110m.json' with { type: 'json' };
+import { MAP_HEIGHT, MAP_SCALE, MAP_TRANSLATE, MAP_WIDTH } from '../src/public/utils/map-projection.ts';
 
 /** Antarctica only takes space on a map of data centers. */
 const ANTARCTICA = '010';

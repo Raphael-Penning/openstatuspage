@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
-import { worldMapSvg } from './tools/world-map';
+import { worldMapSvg } from './tools/world-map.ts';
 
 const apiTarget = process.env.API_URL ?? 'http://localhost:3000';
 const require = createRequire(import.meta.url);
