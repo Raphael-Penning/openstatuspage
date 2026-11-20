@@ -9,6 +9,7 @@
  * server runs it before rendering the page (see loaders.ts).
  */
 import type { RouteObject } from 'react-router';
+import { isUptimeDay } from '@openstatuspage/shared';
 import { publicQueries } from './hooks/queries';
 import { subscriptionQuery } from './hooks/subscriptions';
 import type { PublicRouteHandle } from './loaders';
@@ -18,6 +19,7 @@ import { LocationsPage } from './pages/LocationsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { NotFoundState } from './pages/NotFoundState';
 import { OverviewPage } from './pages/OverviewPage';
+import { ServiceDayPage } from './pages/ServiceDayPage';
 import { ServiceDetailPage } from './pages/ServiceDetailPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { SubscribePage } from './pages/SubscribePage';
@@ -49,6 +51,17 @@ export const publicRoutes: RouteObject[] = [
           prefetch: async ({ params, settings, load, get }) => {
             const service = await load(publicQueries.service(params.slug ?? '', get));
             if (settings.showLocations && (service?.locationIds.length ?? 0) > 0) await load(publicQueries.locations(get));
+          },
+        }),
+      },
+      {
+        // One day of the uptime bar (UTC). A malformed date is "not found" without asking the API.
+        path: 'services/:slug/days/:date',
+        element: <ServiceDayPage />,
+        handle: handle({
+          prefetch: async ({ params, load, get }) => {
+            const date = params.date ?? '';
+            if (isUptimeDay(date)) await load(publicQueries.serviceDay(params.slug ?? '', date, get));
           },
         }),
       },
