@@ -26,13 +26,29 @@ describe('isOutboundUrl', () => {
 describe('outboundHref', () => {
   it('appends the configured UTM parameters to outbound links', () => {
     expect(outboundHref('https://example.com/imprint', UTM, SITE)).toBe(
-      'https://example.com/imprint?utm_source=status+page&utm_medium=referral&utm_campaign=footer',
+      'https://example.com/imprint?utm_source=status%20page&utm_medium=referral&utm_campaign=footer',
     );
   });
 
   it('keeps existing query parameters and the fragment', () => {
     expect(outboundHref('https://example.com/p?a=1#top', UTM, SITE)).toBe(
-      'https://example.com/p?a=1&utm_source=status+page&utm_medium=referral&utm_campaign=footer#top',
+      'https://example.com/p?a=1&utm_source=status%20page&utm_medium=referral&utm_campaign=footer#top',
+    );
+  });
+
+  it('keeps the existing query string exactly as entered', () => {
+    const utm = '&utm_source=status%20page&utm_medium=referral&utm_campaign=footer';
+    expect(outboundHref('https://ex.com/imp?a=b%20c&flag&x=~;y#top', UTM, SITE)).toBe(`https://ex.com/imp?a=b%20c&flag&x=~;y${utm}#top`);
+    expect(outboundHref('https://ex.com/imp?flag', UTM, SITE)).toBe(`https://ex.com/imp?flag${utm}`);
+    expect(outboundHref('https://ex.com/imp?a=b+c', UTM, SITE)).toBe(`https://ex.com/imp?a=b+c${utm}`);
+    expect(outboundHref('https://ex.com/imp?sig=a~b;c', UTM, SITE)).toBe(`https://ex.com/imp?sig=a~b;c${utm}`);
+    expect(outboundHref('https://ex.com/imp?', UTM, SITE)).toBe(`https://ex.com/imp?${utm.slice(1)}`);
+    expect(outboundHref('https://ex.com/imp?a=1&', UTM, SITE)).toBe(`https://ex.com/imp?a=1${utm}`);
+  });
+
+  it('encodes the UTM values with encodeURIComponent', () => {
+    expect(outboundHref('https://ex.com/', { utmEnabled: true, utmSource: 'a&b=c+d/é' }, SITE)).toBe(
+      'https://ex.com/?utm_source=a%26b%3Dc%2Bd%2F%C3%A9',
     );
   });
 
