@@ -10,7 +10,8 @@
  * state block are filled in.
  *
  * Memory (public instances stay below 100 MB, docs/architecture.md#memory): at
- * most two pages render at a time, the others wait. A rendered page is kept for a
+ * most two pages render at a time, the others wait; beyond 32 waiting pages a
+ * request gets the plain page at once (graceful degradation under a flood). A rendered page is kept for a
  * few seconds per URL and language/theme input as UTF-8 bytes (a bounded map:
  * entries and bytes; concurrent requests for the same key share one render) and
  * is sent with an ETag and a short shared Cache-Control. Any error is logged and
@@ -55,6 +56,8 @@ export interface SsrPagesOptions {
   cacheBytes?: number;
   /** Pages rendered at the same time (default 2). */
   concurrency?: number;
+  /** Pages waiting for a render at most; more get the plain page at once (default 32). */
+  maxWaiting?: number;
 }
 
 interface RenderedPage {
@@ -133,21 +136,38 @@ export function composePage(template: PageTemplate, page: SsrRenderResult): stri
 
 const etagOf = (body: Buffer) => `W/"${createHash('sha1').update(body).digest('base64url')}"`;
 
-/** Counting semaphore: at most `limit` holders, the others wait in order. */
-class Limiter {
+/** Thrown when too many pages wait for a render: the caller sends the plain page. */
+export class RenderQueueFull extends Error {
+  constructor() {
+    super('Too many pages waiting for server-side rendering');
+    this.name = 'RenderQueueFull';
+  }
+}
+
+/** Counting semaphore: at most `limit` holders, at most `maxWaiting` waiting in order. */
+export class Limiter {
   private active = 0;
   private readonly waiting: (() => void)[] = [];
 
-  constructor(private readonly limit: number) {}
+  constructor(
+    private readonly limit: number,
+    private readonly maxWaiting: number,
+  ) {}
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
-    this.active++;
+    if (this.active < this.limit) {
+      this.active++;
+    } else {
+      if (this.waiting.length >= this.maxWaiting) throw new RenderQueueFull();
+      // The slot is handed over by the holder that finishes (active stays the same).
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    }
     try {
       return await fn();
     } finally {
-      this.active--;
-      this.waiting.shift()?.();
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.active--;
     }
   }
 }
@@ -171,7 +191,7 @@ export class SsrPages {
     this.ttlMs = (options.cacheSeconds ?? 5) * 1000;
     this.maxEntries = options.cacheEntries ?? 16;
     this.maxBytes = options.cacheBytes ?? 1024 * 1024;
-    this.limiter = new Limiter(options.concurrency ?? 2);
+    this.limiter = new Limiter(options.concurrency ?? 2, options.maxWaiting ?? 32);
   }
 
   /** Whether the web build has a render bundle at all. */
@@ -201,7 +221,8 @@ export class SsrPages {
     try {
       page = await this.render(req);
     } catch (err) {
-      req.log.error({ err }, 'Server-side rendering failed; sending the client-rendered page');
+      if (err instanceof RenderQueueFull) req.log.warn(err.message);
+      else req.log.error({ err }, 'Server-side rendering failed; sending the client-rendered page');
       return false;
     }
 

@@ -12,7 +12,7 @@ import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import type { RenderModule } from '../src/ssr/pages.js';
+import { Limiter, RenderQueueFull, type RenderModule } from '../src/ssr/pages.js';
 import { adminClient, BASE_URL, createTestApp, seedChecks, type TestApp } from './helpers.js';
 
 /** The web client's render entry, from source (a URL, so the server's typecheck does not compile the web sources). */
@@ -290,3 +290,55 @@ async function publicApp(other: TestApp) {
   await app.ready();
   return app;
 }
+
+describe('render limits', () => {
+  it('runs at most `limit` renders at once and refuses beyond the queue', async () => {
+    const limiter = new Limiter(2, 1);
+    let active = 0;
+    let most = 0;
+    const releases: (() => void)[] = [];
+    const task = () =>
+      limiter.run(async () => {
+        active++;
+        most = Math.max(most, active);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        active--;
+      });
+    const runs = [task(), task(), task()];
+    await expect(task()).rejects.toBeInstanceOf(RenderQueueFull);
+    while (releases.length > 0 || active > 0) {
+      releases.shift()?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await Promise.all(runs);
+    expect(most).toBe(2);
+  });
+
+  it('renders a page once per key while it is cached, and once for concurrent requests', async () => {
+    let renders = 0;
+    const real = await renderFromSource();
+    t = await createTestApp(
+      {},
+      {
+        web: {
+          dir: webDir,
+          ssrModule: async () => ({
+            cacheKey: real.cacheKey,
+            render: async (input) => {
+              renders++;
+              return real.render(input);
+            },
+          }),
+        },
+      },
+    );
+    await Promise.all([get('/services'), get('/services'), get('/services')]);
+    expect(renders).toBe(1);
+    await get('/services');
+    expect(renders).toBe(1);
+    await get('/services', { 'accept-language': 'de' });
+    await get('/history');
+    expect(renders).toBe(3);
+    await t.close();
+  });
+});
