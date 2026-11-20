@@ -61,6 +61,9 @@ const PATTERN_CLASS = {
   outline: 'bg-transparent ring-1 ring-status-nodata ring-inset',
 } as const;
 
+/** A click this soon after a touch or pen press is a tap (not a click of assistive technology). */
+const TAP_MS = 1000;
+
 /** Media query classes per screen width: phone (< 640 px), tablet (< 1024 px), wide. */
 const ONLY = { phone: 'sm:hidden', tablet: 'max-sm:hidden lg:hidden', wide: 'max-lg:hidden' } as const;
 type Width = keyof typeof ONLY;
@@ -80,8 +83,8 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
   const [dismissed, setDismissed] = useState(false);
   /** The day in the tab order (roving tabindex); null: the newest. */
   const [cursor, setCursor] = useState<number | null>(null);
-  /** Kind of the last pointer that pressed on the bar (a tap selects first, a click opens). */
-  const pointerKind = useRef<string>('mouse');
+  /** The last pointer that pressed on the bar and when (a tap selects first, a click opens). */
+  const pointer = useRef({ kind: 'mouse', at: -Infinity });
   const wrapperRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const openLink = useClientLinks();
@@ -136,16 +139,18 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
     setDismissed(false);
   }
 
-  /** Index of the day link an event came from (data-i), or null. */
+  /** Index of the day link an event came from (the links are the bar's only children), or null. */
   function indexOf(target: EventTarget | null): number | null {
-    const i = (target as HTMLElement | null)?.closest?.('[data-i]')?.getAttribute('data-i');
-    return i == null ? null : Number(i);
+    const bar = barRef.current;
+    const link = (target as Element | null)?.closest?.('a');
+    if (!bar || !link || link.parentElement !== bar) return null;
+    return Array.prototype.indexOf.call(bar.children, link);
   }
 
   function focusDay(index: number) {
     setCursor(index);
     select(index);
-    barRef.current?.querySelector<HTMLElement>(`[data-i="${index}"]`)?.focus();
+    (barRef.current?.children[index] as HTMLElement | undefined)?.focus();
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -164,23 +169,27 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
   }
 
   /**
-   * A click anywhere on the bar opens the day under the pointer (the whole bar
-   * is one target); a tap on a day whose tooltip is not shown yet shows it
-   * first. Enter on a focused day and clicks with modifier keys go to its link.
+   * A click on a day opens it, a click between two days opens the day under
+   * the pointer (the whole bar is one target). A tap on a day whose tooltip is
+   * not shown yet shows it first. Enter, assistive technology and clicks with
+   * modifier keys act on the link itself.
    */
   function onClick(e: MouseEvent<HTMLDivElement>) {
-    if (e.detail === 0 || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
-      openLink(e);
-      return;
-    }
-    const index = indexAt(e);
-    if (pointerKind.current !== 'mouse' && (index !== active || dismissed)) {
+    const link = indexOf(e.target);
+    const index = link ?? indexAt(e);
+    const tap = e.detail > 0 && pointer.current.kind !== 'mouse' && e.timeStamp - pointer.current.at < TAP_MS;
+    if (tap && (index !== active || dismissed)) {
       e.preventDefault();
       select(index);
       return;
     }
-    e.preventDefault();
     setCursor(index);
+    if (link !== null) {
+      openLink(e);
+      return;
+    }
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
     void navigate(dayHref(shown[index]!.date));
   }
 
@@ -228,7 +237,7 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
           if (!wrapperRef.current?.contains(e.relatedTarget as Node | null)) hide();
         }}
         onPointerDown={(e) => {
-          pointerKind.current = e.pointerType || 'mouse';
+          pointer.current = { kind: e.pointerType || 'mouse', at: e.timeStamp };
         }}
         onPointerMove={(e) => {
           if (e.pointerType !== 'mouse') return;
@@ -246,7 +255,6 @@ export function UptimeBar({ uptime, days, phoneDays = 30, tabletDays = 60, label
             <a
               key={d.date}
               href={dayHref(d.date)}
-              data-i={i}
               tabIndex={i === tabbable ? 0 : -1}
               aria-label={describe(d)}
               className={clsx(
