@@ -349,6 +349,8 @@ describe('private pages', () => {
     // No navigation to the main pages; the logo leads to the private page itself.
     expect(page.container.querySelector('nav a[href="/history"]')).toBeNull();
     expect(page.container.querySelector(`header a[href="${base}"]`)).not.toBeNull();
+    // The footer leaves out the main page's status API and feeds.
+    expect(page.container.querySelector('footer a[href="/api/public/status"], footer a[href^="/feed."]')).toBeNull();
     expect(document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? 'noindex, nofollow').toBe('noindex, nofollow');
   });
 
