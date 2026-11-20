@@ -138,8 +138,7 @@ export function renderLlms(i: LlmsInput): string {
     '',
     `This is the public status page of ${inline(i.siteName)} with ${i.serviceCount} public ` +
       `${i.serviceCount === 1 ? 'service' : 'services'}. It shows the current status of every service, ` +
-      'active incidents, scheduled maintenance and the history of past incidents. Times are UTC (ISO 8601). ' +
-      `The current status as Markdown: ${u('/llms-full.txt')}.`,
+      'active incidents, scheduled maintenance and the history of past incidents. Times are UTC (ISO 8601).',
     '',
     '## Pages',
     '',
@@ -172,9 +171,9 @@ export function renderLlms(i: LlmsInput): string {
   return lines.join('\n');
 }
 
-function serviceLine(baseUrl: string, s: PublicService, showUptime: boolean): string {
+function serviceLine(baseUrl: string, s: PublicService, uptimeDays: number | null): string {
   const url = `${baseUrl}/services/${encodeURIComponent(s.slug || s.id)}`;
-  const uptime = showUptime && s.uptimePercent !== null ? ` (uptime ${s.uptimePercent.toFixed(2)} %)` : '';
+  const uptime = uptimeDays && s.uptimePercent !== null ? ` (uptime ${s.uptimePercent.toFixed(2)} % over ${uptimeDays} days)` : '';
   return `- ${link(s.name, url)}: ${STATUS[s.status]}${uptime}`;
 }
 
@@ -209,6 +208,7 @@ function maintenanceBlock(baseUrl: string, m: PublicMaintenance): string[] {
 
 export function renderLlmsFull(baseUrl: string, c: CurrentStatus): string {
   const { settings, catalog } = c;
+  const uptimeDays = settings.showUptime ? settings.uptimeDays : null;
   const overall = catalog.services.length ? STATUS[overallStatus(catalog.services.map((s) => s.status))] : 'No public services';
   const section = (title: string, blocks: string[][], none: string) => [`## ${title}`, '', ...(blocks.length ? blocks.flat() : [none, ''])];
   const lines = [
@@ -224,11 +224,11 @@ export function renderLlmsFull(baseUrl: string, c: CurrentStatus): string {
   ];
   if (!catalog.services.length) lines.push('No services have been published yet.', '');
   for (const group of catalog.groups) {
-    lines.push(`### ${inline(group.name)}`, '', ...group.services.map((s) => serviceLine(baseUrl, s, settings.showUptime)), '');
+    lines.push(`### ${inline(group.name)}`, '', ...group.services.map((s) => serviceLine(baseUrl, s, uptimeDays)), '');
   }
   if (catalog.ungrouped.length) {
     if (catalog.groups.length) lines.push('### Other services', '');
-    lines.push(...catalog.ungrouped.map((s) => serviceLine(baseUrl, s, settings.showUptime)), '');
+    lines.push(...catalog.ungrouped.map((s) => serviceLine(baseUrl, s, uptimeDays)), '');
   }
   lines.push('## More', '', `- ${link('Incident history', `${baseUrl}/history`)}`, `- ${link('Status API', `${baseUrl}/api/public/status`)}`, '');
   return lines.join('\n');
