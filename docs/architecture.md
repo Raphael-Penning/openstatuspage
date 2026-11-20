@@ -262,11 +262,11 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   `handle.prefetch` (`public/routes.tsx`, types in `public/loaders.ts`). The
   settings query always runs first.
 - **Page head.** Every page calls `usePageHead({ title, description, canonical,
-  robots, jsonLd, status })` (`public/head.tsx`). The server writes the result
+  robots, status, home, breadcrumbs, article })` (`public/head.tsx`). The server writes the result
   into `<head>` and uses `status` as the HTTP status (404 for unknown pages,
   services, incidents and maintenance windows); in the browser the same store
-  keeps `document.head` in sync after navigations. Canonical paths become
-  absolute with `PUBLIC_BASE_URL`.
+  keeps `document.head` in sync after navigations. URLs are absolute with
+  `PUBLIC_BASE_URL`. See [Search engines and AI agents](#search-engines-and-ai-agents).
 - **Deterministic first render.** The server renders against its render time,
   in UTC and with ICU-free formatting (`neutral` in `public/utils/time.ts`:
   ISO dates, 24-hour times, SI-style durations, country codes); the theme comes
@@ -297,6 +297,60 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   `entry-server.tsx` must never import `./admin`. Neither `.vite/` nor `.ssr/`
   is ever served as a file.
 
+## Search engines and AI agents
+
+The public page describes itself for search engines, link previews and AI
+agents. Everything is built from the page settings and public data only.
+
+- **Page head** (`apps/web/src/public/head.tsx`, `seo.ts`; the element list is
+  `headElements()` in `packages/shared/src/ssr.ts`, used by the server's HTML and
+  the browser's DOM alike):
+  - `<title>` "Page · Site" (the overview: the site name), a description of at
+    most 160 characters (the service description, the latest incident update,
+    the maintenance description, else a generated sentence; the overview uses
+    the page description of the settings),
+  - `robots`: `index, follow`; `noindex` for 404 pages and the subscription
+    links (confirm, manage, unsubscribe), which have no canonical URL either,
+  - `canonical`: the path without query; `?lang=xx` is kept, because every
+    language version is a page of its own. The `hreflang` alternates list
+    `?lang=xx` for every language and the plain path (language from cookie,
+    `Accept-Language` or the page default) as `x-default`. A service's
+    canonical path is its slug.
+  - Open Graph and Twitter card (`summary`): site name, title, description, URL,
+    `og:locale` (`en_US`, `de_DE`) with the other languages as alternates, and
+    the logo of the settings as image (no image tags without a logo);
+    `theme-color` is the accent color.
+- **JSON-LD** (schema.org), only on indexable pages: `WebSite` and
+  `Organization` (name, URL, logo) on the overview, `BreadcrumbList` on every
+  other page, `Article` on incident and maintenance pages (headline,
+  `datePublished` = start of the incident / creation of the maintenance window,
+  `dateModified`, author and publisher = the organization). No `Event` markup:
+  an outage is not an event anybody attends. Escaped with `scriptJson`.
+- **Discovery files** (`apps/server/src/routes/discovery.ts`, data from
+  `services/site-index.ts`; registered before the web client, never rendered):
+
+  | Path | Roles | Content |
+  | --- | --- | --- |
+  | `/robots.txt` | public, all | `Allow: /`, `Disallow: /api/`, `/admin`, `/subscription/`, `Sitemap:` |
+  | `/robots.txt` | admin | `Disallow: /` (a preview, not the status page) |
+  | `/sitemap.xml` | public, all | sitemap index of the files below |
+  | `/sitemap-pages.xml` | public, all | overview, services, history, locations and subscribe (when switched on) |
+  | `/sitemap-incidents-N.xml` | public, all | public incidents, then public maintenance windows, with `lastmod` |
+  | `/sitemap-services-N.xml` | public, all | public service pages, `lastmod` = last change or status change |
+  | `/llms.txt` | public, all | [llmstxt.org](https://llmstxt.org) summary: pages, JSON:API, feeds |
+  | `/llms-full.txt` | public, all | the current status as Markdown: overall status, active incidents, maintenance, services |
+
+  A sitemap file holds at most 5,000 URLs (`SITEMAP_PAGE_SIZE`, the protocol
+  allows 50,000), which keeps a response well below a megabyte. Responses are
+  cached by clients and proxies (`Cache-Control`: robots 1 h, sitemaps 15 min,
+  llms.txt 5 min, llms-full.txt 1 min). On PostgreSQL a public instance reads
+  them through the `osp_public` views like every other public query. Admin text
+  is XML-escaped in sitemaps and cannot add Markdown headings or links to the
+  llms files (titles are single lines with escaped brackets, messages are block
+  quotes). New form handlers outside `/api/` belong into `DISALLOWED_PATHS`.
+  The web build must not contain files with these names (`@fastify/static`
+  would register the same routes).
+
 ## Memory
 
 Target: less than 100 MB resident memory (RSS) per instance. Measured with
@@ -305,16 +359,16 @@ linux/arm64, the production image) against PostgreSQL 17 with the demo seed. The
 script starts the production build once per role, one instance at a time, and
 puts light load on it: a login and the main admin lists (admin, all), 400 public
 requests with 8 in parallel (server-rendered pages of every kind in both
-languages, the public API, feeds and assets) plus three subscriptions (public,
+languages, the public API, feeds, sitemaps, llms.txt and assets) plus three subscriptions (public,
 admin, all), and a monitoring source polled every 10 s from a local fake Uptime
 Kuma for 40 s (worker, all). "After load" is read after 15 s without requests.
 
 | Role | After start | Peak under load | After load | Kernel peak (VmHWM) |
 | --- | --- | --- | --- | --- |
-| public | 76 MB | 94 MB | 80 MB | 94 MB |
-| admin | 83 MB | 101 MB | 90 MB | 104 MB |
-| worker | 74 MB | 93 MB | 78 MB | 93 MB |
-| all | 78 MB | 100 MB | 93 MB | 111 MB |
+| public | 76 MB | 92 MB | 81 MB | 92 MB |
+| admin | 83 MB | 101 MB | 89 MB | 104 MB |
+| worker | 74 MB | 78 MB | 76 MB | 89 MB |
+| all | 78 MB | 102 MB | 93 MB | 107 MB |
 
 Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
 after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
@@ -324,7 +378,7 @@ include it.
 What the target covers: `public` and `worker` stay below 100 MB at every
 point, also at their kernel peak. `admin` and `all` stay below it after start and
 at steady state, but exceed it briefly under load: up to 101 MB (admin) and
-100 MB (all) in the samples, 104–111 MB at the kernel peak, mostly while a
+102 MB (all) in the samples, 104–107 MB at the kernel peak, mostly while a
 password is checked (see below). Size memory limits for these peaks, not for the
 target: the Kubernetes examples request 128 MiB and limit at 256 MiB, and
 `deploy/compose/compose.split.yaml` sets the same limits.

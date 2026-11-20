@@ -224,6 +224,14 @@ Weitere Möglichkeiten, den Status anderswo anzuzeigen:
 - `GET /api/public/status`: kompakter, maschinenlesbarer Status als
   JSON:API-Dokument (Gesamtstatus, öffentliche Services, aktive Vorfälle und Wartungen).
 - `/feed.rss` und `/feed.atom`: Vorfälle und Wartungen als Feed.
+- `/llms.txt` und `/llms-full.txt`: die Seite und ihr aktueller Status als
+  Markdown für KI-Assistenten und -Agenten.
+
+Suchmaschinen finden die öffentlichen Seiten über `/robots.txt` und
+`/sitemap.xml`. Alle Links darin verwenden `PUBLIC_BASE_URL` (oder `BASE_URL`);
+das muss also die Adresse sein, die deine Besucher aufrufen. Leite diese Pfade
+unverändert durch den Proxy und lass den `X-Robots-Tag`-Header stehen, den die
+App für `/admin` sendet.
 
 ## Checkliste
 

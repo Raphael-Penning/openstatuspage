@@ -336,6 +336,9 @@ error documents like everywhere else.
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok", "role": "all", "worker": true }` (`application/json`) for liveness/readiness probes; `role` is the instance's `APP_ROLE`, `worker` whether it runs the background tasks. Exists in every role. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
+| GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages without `/api/`, `/admin` and `/subscription/`, plus the sitemap; `Disallow: /` on an `admin` instance |
+| GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
+| GET | `/llms.txt`, `/llms-full.txt` | Summary of the status page for language models ([llmstxt.org](https://llmstxt.org)) and the current status as Markdown (`text/plain`). Roles `public` and `all`. |
 | GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | `302` to `/admin` after login, or `/admin/login?error=<code>` |
 | GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | `303` to the manage page with the unsubscribe confirmation (never deletes) |

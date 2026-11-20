@@ -219,6 +219,13 @@ Other ways to show the status elsewhere:
 - `GET /api/public/status`: compact machine-readable status as a JSON:API
   document (overall status, public services, active incidents and maintenance).
 - `/feed.rss` and `/feed.atom`: incidents and maintenance as feeds.
+- `/llms.txt` and `/llms-full.txt`: the page and its current status as
+  Markdown for AI assistants and agents.
+
+Search engines find the public pages through `/robots.txt` and `/sitemap.xml`.
+All links in them use `PUBLIC_BASE_URL` (or `BASE_URL`), so it must be the
+address visitors use. Pass these paths through the proxy unchanged, and keep
+the `X-Robots-Tag` header the app sends for `/admin`.
 
 ## Checklist
 
