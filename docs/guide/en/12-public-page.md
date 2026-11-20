@@ -233,7 +233,11 @@ What to know:
   log, which the app cannot redact. Limit who can read those logs, keep them
   short, or configure the proxy to log `/p/` without what follows it.
 - Every client may open 60 private pages per minute; a wrong link is just "not
-  found".
+  found". Beyond that the visitor sees a short "Too many requests" page. Behind a
+  reverse proxy set [`TRUST_PROXY`](03-reverse-proxy.md#trust_proxy), otherwise
+  every visitor counts as the proxy and all of them share these 60.
+- Private pages cannot be embedded in other sites (no `iframe`), unlike the
+  public page.
 - There are no feeds and no email subscriptions for private pages.
 - On a split deployment the public instance reads a private page only through
   database functions that need its link; it cannot list private pages or hidden
