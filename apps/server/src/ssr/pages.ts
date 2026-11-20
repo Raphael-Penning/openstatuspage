@@ -83,6 +83,9 @@ interface RenderedPage {
   expires: number;
 }
 
+/** A full render queue is logged at most this often. */
+const QUEUE_WARNING_MS = 10_000;
+
 /** Longest URL that is rendered; longer ones get the plain page. */
 const MAX_URL = 2048;
 
@@ -232,6 +235,9 @@ export class SsrPages {
   private readonly limiter: Limiter;
   /** Set when the bundle cannot be loaded: every page is the plain one, logged once. */
   private unavailable = false;
+  /** Requests answered with the plain page (full queue) since the last warning, and when it was logged. */
+  private queueFullCount = 0;
+  private queueWarnedAt = -Infinity;
 
   constructor(private readonly options: SsrPagesOptions) {
     this.source = publicDocumentSource(options.docs, { subscription: options.subscription });
@@ -268,7 +274,7 @@ export class SsrPages {
     try {
       page = await this.render(req);
     } catch (err) {
-      if (err instanceof RenderQueueFull) req.log.warn(err.message);
+      if (err instanceof RenderQueueFull) this.queueFull(req.log);
       else req.log.error({ err }, 'Server-side rendering failed; sending the client-rendered page');
       return false;
     }
@@ -299,7 +305,7 @@ export class SsrPages {
       const module = await this.module_();
       rendered = await this.limiter.run(() => this.renderPage(module, { ...this.inputOf(req), url: page.url, form: page.form }));
     } catch (err) {
-      if (err instanceof RenderQueueFull) req.log.warn(err.message);
+      if (err instanceof RenderQueueFull) this.queueFull(req.log);
       else req.log.error({ err }, 'Server-side rendering of a form answer failed');
       return false;
     }
@@ -309,6 +315,20 @@ export class SsrPages {
       .header('Vary', 'Accept-Language, Cookie, Accept-Encoding');
     await sendPage(req, reply, rendered);
     return true;
+  }
+
+  /**
+   * Counts a request that got the plain page because the queue was full and logs
+   * it at most once per QUEUE_WARNING_MS with the count (a flood of thousands of
+   * requests is one line, not thousands).
+   */
+  private queueFull(log: FastifyBaseLogger): void {
+    this.queueFullCount++;
+    const now = Date.now();
+    if (now - this.queueWarnedAt < QUEUE_WARNING_MS) return;
+    log.warn({ requests: this.queueFullCount }, 'Too many pages waiting for server-side rendering; sent client-rendered pages');
+    this.queueWarnedAt = now;
+    this.queueFullCount = 0;
   }
 
   private async module_(): Promise<RenderModule> {
