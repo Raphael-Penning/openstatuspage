@@ -450,7 +450,8 @@ agents. Everything is built from the page settings and public data only.
     `/?upcoming=all`, the states of the subscribe page (`?sent=1`,
     `?error=`, the answer to a form) and the day pages of the uptime bars
     (`/services/<slug>/days/<date>`: thin, one per service and day, in no
-    sitemap, and the bars link them with `rel="nofollow"`),
+    sitemap; the bar links carry no `rel="nofollow"`, which would add about
+    10 kB to an overview of seven services),
   - `canonical`: the path without query, lower case and without a trailing
     slash (the server answers other spellings of a path with a `301` to this
     one); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
