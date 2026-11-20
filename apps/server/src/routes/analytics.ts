@@ -19,7 +19,8 @@
  *   the route answers an empty script, so a page never logs an error when
  *   Umami is down.
  * - Events: JSON only, at most SEND_BODY_LIMIT, rate limited per client, at
- *   most MAX_IN_FLIGHT forwarded at a time, SEND_TIMEOUT_MS each. Only events
+ *   most MAX_IN_FLIGHT forwarded at a time (MAX_IN_FLIGHT_PER_CLIENT per
+ *   client address; more are dropped at once), SEND_TIMEOUT_MS each. Only events
  *   for the configured website ID are forwarded, with the payload fields of
  *   Umami's tracker only. Events of personal pages (subscription links) are
  *   dropped; page and referrer URLs lose their fragment and `token`
@@ -54,8 +55,14 @@ export const SEND_BODY_LIMIT = 16 * 1024;
 /** Largest answer of Umami to an event that is passed on (a small JSON object). */
 const SEND_RESPONSE_MAX_BYTES = 8 * 1024;
 export const SEND_TIMEOUT_MS = 3000;
-/** Events forwarded at the same time; more are dropped (204). */
+/**
+ * Events forwarded at the same time by this instance; more are dropped at once
+ * (204), so a slow Umami never holds more than this many sockets and buffers,
+ * and never delays the pages.
+ */
 export const MAX_IN_FLIGHT = 8;
+/** Events of one client address forwarded at the same time, so a few clients cannot take every slot. */
+export const MAX_IN_FLIGHT_PER_CLIENT = 2;
 
 /** Browsers cache the script for an hour and may use it a day longer while they check it. */
 const SCRIPT_CACHE_CONTROL = 'public, max-age=3600, stale-while-revalidate=86400';
@@ -295,6 +302,8 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, options: Uma
   const sendUrl = `${options.upstream}/api/send`;
   const sendTimeout = options.sendTimeoutMs ?? SEND_TIMEOUT_MS;
   let inFlight = 0;
+  // Holds at most MAX_IN_FLIGHT addresses: an entry lives only while its events are forwarded.
+  const perClient = new Map<string, number>();
 
   await app.register(async (scope) => {
     scope.get(ANALYTICS_PATHS.script, { config: SCRIPT_LIMIT }, async (req, reply) => {
@@ -315,7 +324,9 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, options: Uma
       if (!analyticsActive(page)) return dropped(reply);
       if (page.analyticsRespectDnt && (header(req, 'dnt') === '1' || header(req, 'sec-gpc') === '1')) return dropped(reply);
       const event = cleanEvent(req.body, page.analyticsWebsiteId!, options.baseUrl);
-      if (!event || inFlight >= MAX_IN_FLIGHT) return dropped(reply);
+      const client = req.ip;
+      const ofClient = perClient.get(client) ?? 0;
+      if (!event || inFlight >= MAX_IN_FLIGHT || ofClient >= MAX_IN_FLIGHT_PER_CLIENT) return dropped(reply);
 
       const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' };
       const ua = header(req, 'user-agent');
@@ -326,6 +337,7 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, options: Uma
       if (page.analyticsForwardIp) headers['x-forwarded-for'] = req.ip;
 
       inFlight++;
+      perClient.set(client, ofClient + 1);
       try {
         const res = await upstream({
           url: sendUrl,
@@ -341,6 +353,9 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, options: Uma
         return dropped(reply);
       } finally {
         inFlight--;
+        const left = (perClient.get(client) ?? 1) - 1;
+        if (left > 0) perClient.set(client, left);
+        else perClient.delete(client);
       }
     });
   });
