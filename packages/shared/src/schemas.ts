@@ -35,6 +35,11 @@ import {
   type OverallStatus,
 } from './status.js';
 
+// In the browser the pages run under a Content-Security-Policy without
+// 'unsafe-eval': no compiled parsers (zod would probe `new Function` and the
+// browser report a violation). Must run before the first schema is created.
+if ('window' in globalThis) z.config({ jitless: true });
+
 // ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
