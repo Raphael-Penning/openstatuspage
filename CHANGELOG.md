@@ -74,16 +74,20 @@ breaking changes.
   links, not found) is rendered on the server and hydrated in the browser, so
   it works without JavaScript and search engines get the content. Unknown pages,
   services, incidents and maintenance windows answer `404`. The language comes
-  from the `osp-lang` cookie (set by the language switcher), `?lang=`,
+  from `?lang=`, the `osp-lang` cookie (set by the language switcher),
   `Accept-Language` or the page default; times are rendered in UTC and switch to
-  the visitor's time zone after loading. Rendered pages are cached for 5 s and
-  sent with an `ETag`. The management UI stays client-rendered and carries
-  `X-Robots-Tag: noindex, nofollow`. See
+  the visitor's time zone after loading. Rendered pages are cached for 5 s
+  (keyed on the query parameters the pages read) and sent with an `ETag`; one
+  page renders at a time, at most four wait, and further requests get the
+  client-rendered page. The management UI stays client-rendered and carries
+  `X-Robots-Tag: noindex, nofollow`, as does every page of an `admin` instance. See
   [docs/architecture.md](docs/architecture.md#server-side-rendering).
 - **The public pages work without JavaScript.** Every control is a link or a
   form: the history filters and pages, the service search and status filter
   (`?q=`, `?status=`), the theme (a form, `POST /preferences/theme`) and the
-  language (links, `GET /preferences/language`, each setting its cookie), the
+  language (links, `GET /preferences/language`; a form posting there on the
+  personal subscription pages, so their token stays out of URLs and logs; each
+  setting its cookie), the
   subscribe menu and the collapsible service groups (`<details>`). The world map
   is drawn on the server (`/world-map.svg`), every day of an uptime bar is listed
   in a table on the service page, the `system` theme follows the OS dark mode in
@@ -100,10 +104,12 @@ breaking changes.
   description from its content, a canonical URL and `hreflang` alternates
   (`?lang=xx`, `x-default`) from `PUBLIC_BASE_URL`, Open Graph and Twitter card
   tags (the logo as image), `theme-color` and robots rules (`noindex` for 404
-  pages and subscription links). JSON-LD: `WebSite` and `Organization` on the
+  pages and subscription links, `noindex, follow` for filtered, searched and
+  later pages). Other spellings of a page path (`/Services/`) get a `301` to the
+  canonical one. JSON-LD: `WebSite` and `Organization` on the
   overview, `BreadcrumbList` on the other pages, `Article` for incidents and
-  maintenance windows. New files: `/robots.txt` (per role; `Disallow: /` on
-  `admin` instances), the sitemap index `/sitemap.xml` with pages, incidents and
+  maintenance windows. New files: `/robots.txt` (per role; the read-only
+  `/api/public/` is allowed for agents; `Disallow: /` on `admin` instances), the sitemap index `/sitemap.xml` with pages, incidents and
   services, `/llms.txt` and `/llms-full.txt` (the current status as Markdown).
   See [docs/architecture.md](docs/architecture.md#search-engines-and-ai-agents).
 - **Public API**: maintenance windows have `createdAt` and `updatedAt`.
@@ -192,8 +198,9 @@ breaking changes.
   which saves 10–15 MB per instance. Start the server the same way when you run it
   without the image.
 - **Less memory per instance**: about 80–100 MB instead of 100–130 MB with the
-  Docker image (public and worker stay below 100 MB; admin and all peak at about
-  105 MB during password checks, see [docs/architecture.md](docs/architecture.md#memory)). The server build bundles and minifies its dependencies, every role
+  Docker image (worker stays below 100 MB, public too under bursts of up to 64
+  concurrent connections, so limit connections at the proxy; admin and all peak
+  at about 105–110 MB during password checks and bursts, see [docs/architecture.md](docs/architecture.md#memory)). The server build bundles and minifies its dependencies, every role
   loads only its own routes, and nodemailer, openid-client, argon2 and the history
   importers load on first use. The image sets `NODE_OPTIONS`
   (`--max-semi-space-size=1 --max-old-space-size=96`), `MALLOC_ARENA_MAX=2` and
