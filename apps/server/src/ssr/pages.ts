@@ -22,7 +22,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  scriptJson,
+  headElements,
   SSR_STATE_ID,
   type PageHead,
   type SsrModule,
@@ -81,10 +81,13 @@ const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 /** Head elements of a page (the same ones the browser updates, see apps/web/src/public/head.tsx). */
 export function headTags(head: PageHead, hoisted: string): string {
   const tags = [`<title>${escapeHtml(head.title)}</title>`];
-  if (head.description) tags.push(`<meta name="description" content="${escapeHtml(head.description)}">`);
-  if (head.robots) tags.push(`<meta name="robots" content="${escapeHtml(head.robots)}">`);
-  if (head.canonical) tags.push(`<link rel="canonical" href="${escapeHtml(head.canonical)}">`);
-  for (const obj of head.jsonLd ?? []) tags.push(`<script type="application/ld+json" data-osp-head>${scriptJson(obj)}</script>`);
+  for (const el of headElements(head)) {
+    const attrs = Object.entries(el.attrs)
+      .map(([name, value]) => (value === '' ? ` ${name}` : ` ${name}="${escapeHtml(value)}"`))
+      .join('');
+    // Script text is JSON escaped with scriptJson (no `<`): it cannot end the element.
+    tags.push(el.tag === 'script' ? `<script${attrs}>${el.text ?? ''}</script>` : `<${el.tag}${attrs}>`);
+  }
   if (hoisted) tags.push(hoisted);
   return tags.join('');
 }

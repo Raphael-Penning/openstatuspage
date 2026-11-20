@@ -150,7 +150,7 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     const res = await get('/services');
     expect(res.body.startsWith('<!doctype html>\n<html lang="en" dir="ltr">')).toBe(true);
     expect(res.body).toContain('<title>Services &amp; Sites · Status</title>');
-    expect(res.body).toContain(`<link rel="canonical" href="${BASE_URL}/services">`);
+    expect(res.body).toContain(`<link rel="canonical" href="${BASE_URL}/services" data-osp-head>`);
     expect(res.body).not.toContain('Template description');
     expect(res.body.match(/<title>/g)).toHaveLength(1);
     expect(res.body).toContain('<script type="module" crossorigin src="/assets/public.js"></script>');
@@ -188,10 +188,35 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
       const res = await get(url);
       expect(res.statusCode, url).toBe(404);
       expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
-      expect(res.body).toContain('<meta name="robots" content="noindex">');
+      expect(res.body).toContain('<meta name="robots" content="noindex" data-osp-head>');
+      expect(res.body).not.toContain('hreflang');
+      expect(res.body).not.toContain('application/ld+json');
       expect(res.body).not.toContain('rel="canonical"');
       expect(rootOf(res)).toContain('Page not found');
     }
+  });
+
+  it('writes the page head: robots, language versions, link preview, JSON-LD', async () => {
+    const res = await get(`/incidents/${ids.incident}`);
+    const head = /<head>([\s\S]*)<\/head>/.exec(res.body)![1]!;
+    const url = `${BASE_URL}/incidents/${ids.incident}`;
+    expect(head).toContain('<meta name="robots" content="index, follow" data-osp-head>');
+    expect(head).toContain(`<link rel="alternate" hreflang="de" href="${url}?lang=de" data-osp-head>`);
+    expect(head).toContain(`<link rel="alternate" hreflang="x-default" href="${url}" data-osp-head>`);
+    expect(head).toContain('<meta property="og:type" content="article" data-osp-head>');
+    expect(head).toContain(`<meta property="og:url" content="${url}" data-osp-head>`);
+    expect(head).toContain('<meta name="twitter:card" content="summary" data-osp-head>');
+    expect(head).toContain('<meta property="og:description" content="We are investigating." data-osp-head>');
+    // Admin content is escaped in attributes and in JSON-LD.
+    expect(head).toContain('content="Database latency &lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt; · Status"');
+    expect(head).not.toContain('<script>alert(1)');
+    const blocks = [...head.matchAll(/<script type="application\/ld\+json" data-osp-head>([^<]*)<\/script>/g)].map(
+      (m) => JSON.parse(m[1]!) as { '@type': string; headline?: string },
+    );
+    expect(blocks.map((b) => b['@type'])).toEqual(['Article', 'BreadcrumbList']);
+    expect(blocks[0]!.headline).toBe(INCIDENT_TITLE);
+    // The head elements come before the assets of the template.
+    expect(res.body.indexOf('data-osp-head')).toBeLessThan(res.body.indexOf('/assets/public.js'));
   });
 
   it('renders in the language of the cookie, ?lang= or Accept-Language', async () => {
