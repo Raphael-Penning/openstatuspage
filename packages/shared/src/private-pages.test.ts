@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { serviceDayPath } from './days.js';
-import { isPrivatePageToken, privatePageBase, PrivatePageInput } from './private-pages.js';
+import { isPrivatePageToken, normalizePrivatePageToken, privatePageBase, PrivatePageInput } from './private-pages.js';
 
 describe('private page tokens and paths', () => {
   it('accepts only 32 characters of lower-case base32', () => {
@@ -9,6 +9,11 @@ describe('private page tokens and paths', () => {
     expect(isPrivatePageToken('abcdefghijklmnopqrstuvwxyz23456')).toBe(false);
     expect(isPrivatePageToken('abcdefghijklmnopqrstuvwxyz234568')).toBe(false);
     expect(isPrivatePageToken('')).toBe(false);
+  });
+
+  it('treats a token in upper case as the same token', () => {
+    expect(normalizePrivatePageToken('ABCDEFGHIJKLMNOPQRSTUVWXYZ234567')).toBe('abcdefghijklmnopqrstuvwxyz234567');
+    expect(isPrivatePageToken(normalizePrivatePageToken('AbCdEfGhIjKlMnOpQrStUvWxYz234567'))).toBe(true);
   });
 
   it('builds the link base of the service and day links', () => {
