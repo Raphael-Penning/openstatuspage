@@ -201,6 +201,59 @@ describe('private page API', () => {
     expect((await api(`/api/public/services/${ids.hiddenSlug}/days/${yesterday}`)).statusCode).toBe(404);
   });
 
+  it('serves the page’s incidents and maintenance windows with only its own services', async () => {
+    const page = await createPage({ name: 'Partner', serviceIds: [ids.hidden] });
+    const other = await createPage({ name: 'Other', serviceIds: [ids.otherHidden] });
+    const incident = data<Any>(
+      await admin.post('/api/admin/incidents', {
+        title: 'Backend outage',
+        message: 'We are on it.',
+        affectedServices: [
+          { serviceId: ids.hidden, status: 'major_outage' },
+          { serviceId: ids.publicService, status: 'partial_outage' },
+        ],
+      }),
+    );
+    const start = new Date(Date.now() + 86_400_000).toISOString();
+    const end = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    const maintenance = data<Any>(
+      await admin.post('/api/admin/maintenances', {
+        title: 'Backend upgrade',
+        description: 'Planned.',
+        scheduledStart: start,
+        scheduledEnd: end,
+        serviceIds: [ids.hidden],
+      }),
+    );
+
+    const res = await api(`/api/public/private-page/incidents/${incident.id}`, page.token);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
+    expect(res.json().data.links.self).toBe(`/api/public/private-page/incidents/${incident.id}`);
+    const i = deserializeDocument<Any>(res.json()).data;
+    expect(i).toMatchObject({ title: 'Backend outage' });
+    expect(i.affectedServices.map((s: Any) => s.id)).toEqual([ids.hidden]);
+    expect(i.updates.map((u: Any) => u.message)).toEqual(['We are on it.']);
+
+    const m = await api(`/api/public/private-page/maintenances/${maintenance.id}`, page.token);
+    expect(m.statusCode).toBe(200);
+    expect(deserializeDocument<Any>(m.json()).data).toMatchObject({ title: 'Backend upgrade', affectedServices: [{ id: ids.hidden }] });
+
+    // Not for another page, a wrong token or an unknown id: the same 404.
+    const answers = [
+      await api(`/api/public/private-page/incidents/${incident.id}`, other.token),
+      await api(`/api/public/private-page/incidents/${incident.id}`, newPrivatePageToken()),
+      await api(`/api/public/private-page/incidents/${incident.id}`),
+      await api('/api/public/private-page/incidents/missing', page.token),
+      await api(`/api/public/private-page/maintenances/${maintenance.id}`, other.token),
+    ];
+    for (const a of answers) {
+      expect(a.statusCode).toBe(404);
+      expect(a.body).toBe(answers[0]!.body);
+    }
+  });
+
   it('is rate limited per client', async () => {
     const token = newPrivatePageToken();
     let last = 0;
