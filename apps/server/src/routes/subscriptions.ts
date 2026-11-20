@@ -22,7 +22,8 @@ import {
   SubscriptionConfirmInput,
   SubscriptionPreferencesInput,
 } from '@openstatuspage/shared';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { AppContext } from '../context.js';
 import { z } from 'zod';
 import { notFound } from '../lib/errors.js';
 import { IdParams, parse } from '../lib/http.js';
@@ -80,6 +81,21 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
   });
 }
 
+/**
+ * Starts a subscription (serviceIds already checked) once the answer to the request
+ * has been sent. What happens, and how long it takes, depends on whether the
+ * address is new, pending or confirmed; running it afterwards means neither the
+ * answer nor its timing reveals whether an address is subscribed. Used by the
+ * JSON:API and the HTML form (forms/subscriptions.ts).
+ */
+export function subscribeAfterAnswer(ctx: AppContext, reply: FastifyReply, input: SubscribeInput): void {
+  const answered = new Promise<void>((resolve) => reply.raw.once('close', () => resolve()));
+  ctx.worker.runDetached('subscribe', async () => {
+    await answered;
+    await startSubscription(ctx, input);
+  });
+}
+
 type ManageRoute = { config: { rateLimit: { max: number; timeWindow: string } } };
 
 /** The JSON:API routes (everything except the browser redirect). */
@@ -102,14 +118,7 @@ function registerSubscriptionApi(
       if (input.website) return reply.status(202).send(accepted());
       // Checked before answering (400 on unknown or hidden services); does not look at subscribers.
       const serviceIds = input.allServices ? [] : await assertPublicServices(ctx.db, input.serviceIds);
-      // What happens next, and how long it takes, depends on whether the address is
-      // new, pending or confirmed. It runs once the answer has been sent, so neither
-      // the answer nor its timing reveals whether an address is subscribed.
-      const answered = new Promise<void>((resolve) => reply.raw.once('close', () => resolve()));
-      ctx.worker.runDetached('subscribe', async () => {
-        await answered;
-        await startSubscription(ctx, { ...input, serviceIds });
-      });
+      subscribeAfterAnswer(ctx, reply, { ...input, serviceIds });
       return reply.status(202).send(accepted());
     },
   );
