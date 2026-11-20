@@ -223,6 +223,9 @@ self-hostable analytics server without cookies. The browser never talks to Umami
 the status page serves the tracker script and takes its events under its own
 paths and forwards them, so the page's Content-Security-Policy stays
 `script-src 'self'; connect-src 'self'` and the Umami server can stay internal.
+Umami 2.0 or later is needed (its `script.js` and `/api/send`; Umami 1 used other
+paths). Versions that answer an event with JSON and older 2.x versions that
+answer the session token as plain text both work.
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -237,6 +240,9 @@ optional domains (`data-domains`), "Respect Do Not Track and Global Privacy
 Control" (on by default) and "Pass visitors' IP addresses to Umami" (off by
 default). Analytics runs only when `UMAMI_URL` is set **and** it is on with a
 website ID; `GET /api/public/settings` reports `analyticsEnabled: true` only then.
+`GET /api/admin/settings` carries the read-only `analyticsAvailable` (whether the
+instance that answers has `UMAMI_URL`), and the settings page warns while
+analytics is switched on without it.
 
 Paths (served by `all`, `public` and `admin`, only with `UMAMI_URL`; they avoid the
 names blocking lists look for, and `robots.txt` disallows them):
@@ -244,23 +250,33 @@ names blocking lists look for, and `robots.txt` disallows them):
 | Path | Upstream | Behaviour |
 | --- | --- | --- |
 | `GET /pulse/p.js` | `UMAMI_URL/script.js` | The tracker script. Fetched at most once an hour and kept in memory (one copy, at most 64 KiB, plus its gzip copy); an expired copy keeps answering while it is refreshed or when Umami is down (retry after a minute). Without any copy the answer is an empty script (`200`, `no-store`), so pages never log an error. 404 while analytics is off. Browsers cache it for an hour. 60 requests per minute per client. |
-| `POST /pulse/api/send` | `UMAMI_URL/api/send` | One tracker event. `application/json` only (else `415`), at most 16 KiB (`413`), 120 requests per minute per client (`429`), at most 8 forwarded at a time (more are dropped), 3 s timeout. Answers Umami's JSON on success and `204` without content in every other case (analytics off, event dropped, Umami slow, failing or redirecting). |
+| `POST /pulse/api/send` | `UMAMI_URL/api/send` | One tracker event. `application/json` only (else `415`), at most 16 KiB (`413`), 120 requests per minute per client (`429`), at most 8 forwarded at a time by the instance and 2 per client address (more are dropped at once with `204`, so a slow Umami holds at most 8 connections and never delays the pages), 3 s timeout. Answers Umami's JSON on success (or, for older 2.x versions, its plain-text session token when it looks like one) and `204` without content in every other case (analytics off, event dropped, Umami slow, failing or redirecting). |
 
 What reaches Umami:
 
 - Only events for the configured website ID. Events of the personal subscription
-  pages (`/subscription/...`) are dropped, and `token` query parameters are
-  removed from the page URL and the referrer (a referrer on a subscription page
-  becomes the site root). Rendered subscription pages carry no tracker at all.
-- The JSON body, the visitor's `User-Agent` and Umami's own `x-umami-cache`
-  session header. Never cookies or other request headers. Redirects are never
-  followed.
+  pages (`/subscription/...`) are dropped. The page URL and the referrer lose
+  their `#fragment` and their `token` query parameters, together with the `id`
+  next to a token (a referrer on a subscription page becomes the site root).
+  Rendered subscription pages carry no tracker at all.
+- The event with the payload fields of Umami's tracker only (`website`,
+  `hostname`, `url`, `referrer`, `title`, `language`, `screen`, `name`, `data`
+  without a `token` key, `tag`), the visitor's `User-Agent` and Umami's own
+  `x-umami-cache` session header. Never cookies or other request headers.
+  Redirects are never followed.
 - With "Respect Do Not Track" on, requests with `DNT: 1` or `Sec-GPC: 1` are
   dropped, and the tracker gets `data-do-not-track`.
 - The visitor's IP address only with "Pass visitors' IP addresses to Umami" on,
   as `X-Forwarded-For` (the client address as the server sees it, so set
   `TRUST_PROXY` behind a reverse proxy; a header the client sends is never
   passed on).
+
+**Limits of the counts.** The website ID is public (it is in every page), so
+anyone can send made-up page views through the proxy, as with any Umami
+tracker; the per-client rate limit only slows that down. While Umami is slow,
+events beyond the 8 forwarded at a time are dropped, so a few busy clients can
+crowd out real page views until Umami answers again (the cap of 2 per client
+address keeps any single one from taking every slot).
 
 **Umami's location and visitor counts.** Umami looks up the country and city of
 an event from the client IP address (its GeoIP database, or headers such as
@@ -278,9 +294,13 @@ Visitors turn statistics off with **Disable statistics** in the footer (in the
 `analytics=off` to `/preferences/analytics` and works without JavaScript. It
 sets the cookie `osp-analytics=off` (one year, `SameSite=Lax`, no other data),
 after which the pages are rendered without the tracker and say "Statistics are
-disabled." with **Enable statistics** to undo it (removes the cookie). With
-JavaScript the footer also sets Umami's own switch `localStorage["umami.disabled"]`,
-so the tracker of the page that is open stops at once. Rendered pages are cached
+disabled." with **Enable statistics** to undo it (removes the cookie). The cookie
+is the only source of truth: with JavaScript the footer keeps Umami's own switch
+`localStorage["umami.disabled"]` in line with it (set while opted out, removed
+otherwise, on every page load and on submit), so the tracker of the page that is
+open stops at once, and a lost cookie never leaves the tracker silently off. To
+keep your own visits out of the statistics, use the footer switch in your
+browser rather than setting `umami.disabled` by hand. Rendered pages are cached
 per opt-out state, and `Vary: Cookie` tells shared caches the same. The
 management UI (`/admin`) never loads the tracker.
 
