@@ -9,7 +9,7 @@ import { Unlink } from 'lucide-react';
 import { useEffect, useId, useRef, type ReactNode, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { LANGUAGES } from '../../lib/i18n';
+import { LANGUAGES } from '../../lib/languages';
 import { selectionState, setSelected, type ServiceSection } from '../utils/subscription';
 import { Card } from './ui';
 

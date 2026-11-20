@@ -2,12 +2,13 @@
  * Header controls: time zone toggle, language switcher, theme switcher and
  * the subscribe menu (email, feeds, status API).
  */
+import { LANG_COOKIE } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { Braces, ChevronDown, Clock, Globe, Mail, Monitor, Moon, Rss, Sun } from 'lucide-react';
 import { useCallback, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { LANGUAGES } from '../../lib/i18n';
+import { LANGUAGES, writePreferenceCookie } from '../../lib/languages';
 import { useTheme, type ThemePreference } from '../../lib/theme';
 import { useDismiss } from '../hooks/dom';
 import { usePreferences } from '../hooks/preferences';
@@ -55,6 +56,8 @@ export function LanguageSwitcher() {
           } catch {
             /* storage unavailable */
           }
+          // Server-rendered pages read the choice from the cookie.
+          writePreferenceCookie(LANG_COOKIE, e.target.value);
           void i18n.changeLanguage(e.target.value);
         }}
         className="cursor-pointer appearance-none bg-transparent pr-4 text-sm focus:outline-none"
