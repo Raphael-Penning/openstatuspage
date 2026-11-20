@@ -150,6 +150,8 @@ describe.each(['all', 'public'] as const)('discovery files (APP_ROLE=%s)', (role
     expect(all).not.toContain(ids.hiddenIncident);
     expect(all).not.toContain(ids.hiddenService);
     expect(all).not.toMatch(/subscription|\/api\/|\/admin/);
+    // Day pages (/services/<slug>/days/<date>) are thin and noindex: never in a sitemap.
+    expect(all).not.toContain('/days/');
   });
 
   it('gives incidents and services a lastmod', async () => {
