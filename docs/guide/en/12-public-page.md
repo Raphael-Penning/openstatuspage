@@ -226,6 +226,11 @@ What to know:
   appear in the sitemaps or `llms.txt`, never load the statistics script and send
   no referrer to other sites. The server log writes `/p/[REDACTED]` instead of the
   link.
+- **Treat the link like a password.** Whoever holds it can read the page, and
+  the link is in the address of every visit. A reverse proxy or load balancer in
+  front of the instance usually writes the full request path to its own access
+  log, which the app cannot redact. Limit who can read those logs, keep them
+  short, or configure the proxy to log `/p/` without what follows it.
 - Every client may open 60 private pages per minute; a wrong link is just "not
   found".
 - There are no feeds and no email subscriptions for private pages.
