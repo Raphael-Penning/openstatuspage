@@ -95,6 +95,25 @@ describe('GET /preferences/language', () => {
     expect(cross.headers['set-cookie']).toBeUndefined();
   });
 
+  it('accepts the same fields as a form post (personal pages)', async () => {
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/preferences/language',
+      headers: { 'content-type': FORM, ...SAME_ORIGIN },
+      payload: `lang=de&return=${encodeURIComponent('/subscription/manage?id=1&token=abc')}`,
+    });
+    expect(res.statusCode).toBe(303);
+    expect(res.headers.location).toBe('/subscription/manage?id=1&token=abc');
+    expect(String(res.headers['set-cookie'])).toMatch(/^osp-lang=de; Path=\/;/);
+    const cross = await t.app.inject({
+      method: 'POST',
+      url: '/preferences/language',
+      headers: { 'content-type': FORM, 'sec-fetch-site': 'cross-site' },
+      payload: 'lang=de&return=/',
+    });
+    expect(cross.headers['set-cookie']).toBeUndefined();
+  });
+
   it('the next page is rendered in the chosen language', async () => {
     const res = await get('/preferences/language?lang=de&return=/');
     const cookie = String(res.headers['set-cookie']).split(';')[0]!;

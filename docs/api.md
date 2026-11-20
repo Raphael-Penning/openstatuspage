@@ -890,10 +890,11 @@ same subscription flow and rate limits, and answer with Post/Redirect/Get:
 | POST | `/subscription/unsubscribe` | `id`, `token` (manage token) | `303` to `/subscription/manage?unsubscribed=1` | wrong link: `303` to `/subscription/manage?error=invalid` |
 | POST | `/preferences/theme` | `theme` (`system`, `light`, `dark`), `return` (local path) | `303` to `return`, sets the `osp-theme` cookie | – |
 | GET | `/preferences/language?lang=<code>&return=<path>` | – | `303` to `return`, sets the `osp-lang` cookie | – |
+| POST | `/preferences/language` | `lang`, `return` (local path) | the same as the `GET`; personal pages (subscription links) use it so their token never ends up in a URL | – |
 
 A rate-limited form is answered with the page (`429`) and a message. Posts from
 other sites (`Sec-Fetch-Site` other than `same-origin`, or a foreign `Origin`)
-get `403`. Without the server-side rendering bundle, invalid input redirects to
+get `403` (the language handler sends them back without setting the cookie). Without the server-side rendering bundle, invalid input redirects to
 the page with `?error=invalid` (or `rate_limited`) instead.
 
 Examples:
