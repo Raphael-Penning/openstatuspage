@@ -26,3 +26,5 @@ export const MAINTENANCE_DOCUMENT: DocumentOptions = {
 };
 export const MAINTENANCE_UPDATE_DOCUMENT: DocumentOptions = { type: 'maintenance-updates' };
 export const CORRECTION_DOCUMENT: DocumentOptions = { type: 'corrections', relationships: { serviceIds: 'services' } };
+/** Services of a private page are a relationship (in display order). */
+export const PRIVATE_PAGE_DOCUMENT: DocumentOptions = { type: 'private-pages', relationships: { serviceIds: 'services' } };

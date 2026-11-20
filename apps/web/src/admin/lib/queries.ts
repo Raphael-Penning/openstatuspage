@@ -4,6 +4,7 @@
  */
 import type {
   AdminApiToken,
+  AdminPrivatePage,
   AdminCheckBundle,
   AdminCorrection,
   AdminHistoryImport,
@@ -89,6 +90,7 @@ export const keys = {
   settings: ['admin', 'settings'] as const,
   users: ['admin', 'users'] as const,
   tokens: ['admin', 'api-tokens'] as const,
+  privatePages: ['admin', 'private-pages'] as const,
   audit: (page: number, entityType: string) => ['admin', 'audit-log', page, entityType] as const,
   subscribers: (query: SubscriberListQuery) => ['admin', 'subscribers', query] as const,
   notificationStatus: ['admin', 'notifications', 'status'] as const,
@@ -202,6 +204,7 @@ export const useBundleCandidates = (type: ConfigurableSourceType | '') =>
 export const useSettings = () => useAdminQuery<AdminPageSettings>(keys.settings, '/api/admin/settings');
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
+export const usePrivatePages = () => useAdminQuery<AdminPrivatePage[]>(keys.privatePages, '/api/admin/private-pages');
 export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
   useQuery({
     queryKey: keys.audit(page, entityType),
