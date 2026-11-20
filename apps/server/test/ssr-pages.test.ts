@@ -423,7 +423,7 @@ describe('render limits', () => {
     await t.close();
   });
 
-  it('sends the plain page beyond the queue and logs that once, with a count', async () => {
+  it('answers 503 beyond the queue when no earlier version exists and logs that once, with a count', async () => {
     const real = await renderFromSource();
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => (release = resolve));
@@ -444,13 +444,24 @@ describe('render limits', () => {
     );
     const warnings: unknown[] = [];
     t.app.log.warn = ((obj: unknown) => warnings.push(obj)) as typeof t.app.log.warn;
-    // 1 renders, 4 wait, the rest gets the plain page at once.
+    // 1 renders, 4 wait, the rest gets 503 at once (no earlier version of these pages).
     const pending = Array.from({ length: 10 }, (_, i) => get(`/services?q=${i}`));
     await new Promise((resolve) => setTimeout(resolve, 50));
     release();
     const pages = await Promise.all(pending);
-    expect(pages.filter((p) => p.body.includes('<title>management</title>')).length).toBe(5);
-    expect(warnings).toEqual([{ requests: 1 }]);
+    const busy = pages.filter((p) => p.statusCode === 503);
+    expect(busy).toHaveLength(5);
+    expect(pages.filter((p) => p.statusCode === 200)).toHaveLength(5);
+    for (const res of busy) {
+      expect(res.headers['retry-after']).toBe('5');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.headers['x-robots-tag']).toBe('noindex');
+      expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
+      expect(res.body).toContain('<meta name="robots" content="noindex">');
+      expect(res.body).toContain('<h1>Temporarily busy</h1>');
+      expect(res.body).not.toContain('<script');
+    }
+    expect(warnings).toEqual([{ requests: 1, stale: 0 }]);
     await t.close();
   });
 });
