@@ -284,5 +284,15 @@
       "rateLimited": "Zu viele Versuche. Bitte warte eine Minute und versuche es erneut.",
       "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
     }
+  },
+  "seo": {
+    "default": "Aktueller Status, Vorfälle und Wartungen von {{site}}.",
+    "services": "Aktueller Status und Verfügbarkeit aller Dienste und Websites von {{site}}.",
+    "service": "Aktueller Status, Verfügbarkeit und Vorfälle von {{name}} bei {{site}}.",
+    "history": "Vergangene Vorfälle und Wartungen von {{site}}.",
+    "locations": "Status der Standorte von {{site}} weltweit.",
+    "subscribe": "Erhalte eine E-Mail, wenn {{site}} Vorfälle oder Wartungen veröffentlicht.",
+    "incident": "Vorfallbericht von {{site}}: {{title}}.",
+    "maintenance": "Wartung von {{site}}: {{title}}."
   }
 }

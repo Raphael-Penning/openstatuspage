@@ -1,8 +1,10 @@
 /**
  * Page head API of the public pages: title, description, canonical URL,
- * robots, JSON-LD and the HTTP status.
+ * robots, language alternates, link previews (Open Graph, Twitter card),
+ * JSON-LD and the HTTP status.
  *
- *   usePageHead({ title: incident.title, description: summary, jsonLd: [...] });
+ *   usePageHead({ title: service.name, description, breadcrumbs: [...] });
+ *   usePageHead({ title: incident.title, article: { ... }, breadcrumbs: [...] });
  *   usePageHead({ title: t('notFound.title'), status: 404, robots: 'noindex' });
  *
  * Every page calls usePageHead once. On the server the calls are collected while
@@ -10,23 +12,53 @@
  * (entry-server.tsx). In the browser the active page keeps document.head in sync.
  * When several heads are active (a page renders <NotFoundState>, which sets its
  * own), an error status (>= 400) wins, otherwise the one registered last.
+ *
+ * Defaults from the page settings: site name (title suffix, og:site_name),
+ * description, logo (og:image, Organization logo) and accent color (theme-color).
+ * URLs are absolute with the public base URL (state.baseUrl; the page's origin
+ * in a client-only render).
  */
-import type { PageHead } from '@openstatuspage/shared';
+import { HEAD_ATTR, headElements, LANG_QUERY, type HeadElement, type PageHead } from '@openstatuspage/shared';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router';
+import { DEFAULT_LANGUAGE, isLanguage, LANGUAGES } from '../lib/languages';
+import { useSsr } from '../lib/ssr';
 import { usePublicSettings } from './hooks/queries';
+import {
+  absoluteUrl,
+  articleLd,
+  breadcrumbLd,
+  languageAlternates,
+  organizationLd,
+  summarize,
+  websiteLd,
+  withLang,
+  type Crumb,
+  type SiteInfo,
+} from './seo';
 
 export interface PageHeadInput {
   /** Page title without the site name; null/undefined: the site name alone (overview). */
   title?: string | null;
-  /** Meta description; default: the page description of the settings. */
-  description?: string;
-  /** Canonical path or URL; default: the current path without query. null: none. */
+  /** Meta description (shortened to 160 characters); empty: the page description of the settings. */
+  description?: string | null;
+  /**
+   * Canonical path of the page; default: the current path. `?lang=` of the request
+   * is kept (each language version is its own canonical page). null: none.
+   */
   canonical?: string | null;
+  /** Meta robots; default `index, follow`, or `noindex` for an error status. */
   robots?: string;
+  /** Extra JSON-LD objects. */
   jsonLd?: Record<string, unknown>[];
   status?: number;
+  /** Overview page: WebSite and Organization markup. */
+  home?: boolean;
+  /** Pages between the overview and this page, this page last (BreadcrumbList). */
+  breadcrumbs?: Crumb[];
+  /** Incident and maintenance reports: Article markup and og:type article. */
+  article?: { datePublished: string; dateModified: string };
 }
 
 /** Collects the heads of the rendered pages; applies the winner in the browser. */
@@ -34,7 +66,7 @@ export class HeadStore {
   private readonly heads = new Map<number, PageHead>();
   private seq = 0;
 
-  constructor(private readonly onChange?: (head: PageHead) => void) {}
+  constructor(private readonly onChange?: (head: PageHead | null) => void) {}
 
   register(head: PageHead): () => void {
     const id = ++this.seq;
@@ -56,8 +88,7 @@ export class HeadStore {
   }
 
   private changed(): void {
-    const head = this.current();
-    if (head && this.onChange) this.onChange(head);
+    this.onChange?.(this.current());
   }
 }
 
@@ -69,21 +100,69 @@ export function HeadProvider({ store, server = false, children }: { store: HeadS
   return <HeadContext.Provider value={value}>{children}</HeadContext.Provider>;
 }
 
-/** Full head of a page: site name in the title, defaults from the settings. */
-export function usePageHead(input: PageHeadInput): void {
+/** Public base URL: the server's (render and hydration), else the page's origin. */
+export function useBaseUrl(): string {
+  const ssr = useSsr();
+  if (ssr) return ssr.baseUrl;
+  return typeof window === 'undefined' ? '' : window.location.origin;
+}
+
+/** Site name of the settings (page titles, descriptions). */
+export function useSiteName(): string {
   const { t } = useTranslation('public');
   const { data: settings } = usePublicSettings();
-  const { pathname } = useLocation();
+  return settings?.siteName ?? t('fallbackSiteName');
+}
+
+/** Full head of a page: site name in the title, defaults from the settings. */
+export function usePageHead(input: PageHeadInput): void {
+  const { t, i18n } = useTranslation('public');
+  const { data: settings } = usePublicSettings();
+  const { pathname, search } = useLocation();
+  const baseUrl = useBaseUrl();
   const context = useContext(HeadContext);
+
   const site = settings?.siteName ?? t('fallbackSiteName');
+  const lang = isLanguage(i18n.language) ? i18n.language : DEFAULT_LANGUAGE;
+  const status = input.status ?? 200;
+  const indexable = status < 400 && !(input.robots ?? '').includes('noindex');
+  const description = summarize(input.description || settings?.description || t('seo.default', { site }));
+  // The page's path (a page with several URLs passes its preferred one); null: no canonical URL.
+  const path = input.canonical === undefined ? pathname : input.canonical;
+  const queryLang = new URLSearchParams(search).get(LANG_QUERY);
+  const canonical = path ? absoluteUrl(withLang(path, isLanguage(queryLang) ? queryLang : null), baseUrl) : null;
+  const info: SiteInfo = {
+    name: site,
+    baseUrl,
+    lang,
+    ...(settings?.logoUrl ? { logo: absoluteUrl(settings.logoUrl, baseUrl) } : {}),
+    ...(settings?.description ? { description: summarize(settings.description) } : {}),
+  };
+
+  const jsonLd: Record<string, unknown>[] = [];
+  if (indexable) {
+    if (input.home) jsonLd.push(websiteLd(info), organizationLd(info));
+    if (input.article && canonical) {
+      jsonLd.push(articleLd(info, { headline: input.title ?? site, description, url: canonical, ...input.article }));
+    }
+    if (input.breadcrumbs?.length) jsonLd.push(breadcrumbLd(info, input.breadcrumbs));
+    if (input.jsonLd) jsonLd.push(...input.jsonLd);
+  }
 
   const head: PageHead = {
     title: input.title ? `${input.title} · ${site}` : site,
-    description: input.description ?? settings?.description ?? undefined,
-    canonical: input.canonical === undefined ? pathname : input.canonical,
-    ...(input.robots ? { robots: input.robots } : {}),
-    ...(input.jsonLd?.length ? { jsonLd: input.jsonLd } : {}),
+    description,
+    canonical,
+    robots: input.robots ?? (indexable ? 'index, follow' : 'noindex'),
+    ...(jsonLd.length ? { jsonLd } : {}),
     ...(input.status ? { status: input.status } : {}),
+    siteName: site,
+    type: input.article ? 'article' : 'website',
+    locale: LANGUAGES.find((l) => l.code === lang)!.ogLocale,
+    localeAlternates: LANGUAGES.filter((l) => l.code !== lang).map((l) => l.ogLocale),
+    ...(info.logo ? { image: info.logo } : {}),
+    ...(settings?.accentColor ? { themeColor: settings.accentColor } : {}),
+    ...(indexable && path ? { alternates: languageAlternates(path, baseUrl) } : {}),
   };
   const key = JSON.stringify(head);
 
@@ -97,59 +176,32 @@ export function usePageHead(input: PageHeadInput): void {
   }, [context, key]);
 }
 
-const HEAD_ATTR = 'data-osp-head';
+function matches(el: Element, spec: HeadElement): boolean {
+  if (el.tagName.toLowerCase() !== spec.tag) return false;
+  const names = Object.keys(spec.attrs);
+  if (el.attributes.length !== names.length || names.some((n) => el.getAttribute(n) !== spec.attrs[n])) return false;
+  return spec.text === undefined || el.textContent === spec.text;
+}
 
-function upsert(selector: string, create: () => HTMLElement): HTMLElement {
-  let el = document.head.querySelector<HTMLElement>(selector);
-  if (!el) {
-    el = create();
+/**
+ * Writes a head into document.head: the title and the elements the server
+ * renders (marked with data-osp-head). Without a head (no public page shown any
+ * more) the elements are removed.
+ */
+export function applyHead(head: PageHead | null): void {
+  if (head && document.title !== head.title) document.title = head.title;
+  const next = head ? headElements(head) : [];
+  const current = [...document.head.querySelectorAll(`[${HEAD_ATTR}]`)];
+  if (current.length === next.length && current.every((el, i) => matches(el, next[i]!))) return;
+  for (const el of current) el.remove();
+  // The description of the client-rendered template (no server render).
+  for (const el of document.head.querySelectorAll('meta[name="description"]')) el.remove();
+  for (const spec of next) {
+    const el = document.createElement(spec.tag);
+    for (const [name, value] of Object.entries(spec.attrs)) el.setAttribute(name, value);
+    if (spec.text !== undefined) el.textContent = spec.text;
     document.head.appendChild(el);
   }
-  return el;
 }
 
-function meta(name: string, content: string | undefined): void {
-  const selector = `meta[name="${name}"]`;
-  if (content === undefined) {
-    document.head.querySelector(selector)?.remove();
-    return;
-  }
-  upsert(selector, () => Object.assign(document.createElement('meta'), { name })).setAttribute('content', content);
-}
-
-/** Writes a head into document.head (the same elements the server renders). */
-export function applyHead(head: PageHead, baseUrl: string): void {
-  if (document.title !== head.title) document.title = head.title;
-  meta('description', head.description);
-  meta('robots', head.robots);
-  const canonical = head.canonical ? absoluteUrl(head.canonical, baseUrl) : null;
-  if (canonical) {
-    upsert('link[rel="canonical"]', () => Object.assign(document.createElement('link'), { rel: 'canonical' })).setAttribute(
-      'href',
-      canonical,
-    );
-  } else {
-    document.head.querySelector('link[rel="canonical"]')?.remove();
-  }
-  const ldSelector = `script[type="application/ld+json"][${HEAD_ATTR}]`;
-  const next = (head.jsonLd ?? []).map((obj) => JSON.stringify(obj));
-  const current = [...document.head.querySelectorAll(ldSelector)];
-  if (current.map((el) => el.textContent).join('\n') !== next.join('\n')) {
-    for (const el of current) el.remove();
-    for (const json of next) {
-      const script = document.createElement('script');
-      script.type = 'application/ld+json';
-      script.setAttribute(HEAD_ATTR, '');
-      script.textContent = json;
-      document.head.appendChild(script);
-    }
-  }
-}
-
-/** Absolute URL of a canonical path below the public base URL. */
-export function absoluteUrl(pathOrUrl: string, baseUrl: string): string {
-  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-  return `${baseUrl.replace(/\/+$/, '')}/${pathOrUrl.replace(/^\/+/, '')}`;
-}
-
-export { HEAD_ATTR };
+export { absoluteUrl, HEAD_ATTR };
