@@ -11,6 +11,7 @@ import type {
   PublicMaintenance,
   PublicPageSettings,
   PublicService,
+  PublicServiceDay,
   PublicServiceGroup,
   RelationshipObject,
   ResourceObject,
@@ -30,6 +31,7 @@ export const PUBLIC_TYPES = {
   incidentUpdate: 'incident-updates',
   maintenance: 'maintenances',
   maintenanceUpdate: 'maintenance-updates',
+  serviceDay: 'service-days',
 } as const;
 
 /** Singleton id of the site settings resource. */
@@ -97,5 +99,27 @@ export function maintenanceResource(maintenance: PublicMaintenance, included?: I
       updates: toMany(PUBLIC_TYPES.maintenanceUpdate, updates.map((u) => u.id)),
     },
     links: { self: `${BASE}/maintenances/${maintenance.id}` },
+  });
+}
+
+/**
+ * One day of a service (`service-days`): the bucket of the uptime bar with the
+ * status periods of the day. The service, incidents and maintenance windows
+ * are relationships (their resources go to `included` by the caller).
+ */
+export function serviceDayResource(
+  day: PublicServiceDay,
+  service: Pick<PublicService, 'id' | 'slug'>,
+  incidentIds: string[],
+  maintenanceIds: string[],
+): ResourceObject {
+  const { id, ...attributes } = day;
+  return resource(PUBLIC_TYPES.serviceDay, id, attributes, {
+    relationships: {
+      service: toOne(PUBLIC_TYPES.service, service.id),
+      incidents: toMany(PUBLIC_TYPES.incident, incidentIds),
+      maintenances: toMany(PUBLIC_TYPES.maintenance, maintenanceIds),
+    },
+    links: { self: `${BASE}/services/${encodeURIComponent(service.slug || service.id)}/days/${day.date}` },
   });
 }
