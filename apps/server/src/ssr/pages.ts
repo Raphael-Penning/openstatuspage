@@ -24,7 +24,9 @@ import { pathToFileURL } from 'node:url';
 import {
   scriptJson,
   SSR_STATE_ID,
+  type DataDocument,
   type PageHead,
+  type SsrFormState,
   type SsrModule,
   type SsrRenderInput,
   type SsrRenderResult,
@@ -45,6 +47,8 @@ export interface SsrPagesOptions {
   webDir: string;
   baseUrl: string;
   docs: PublicDocuments;
+  /** A subscription for its manage token (the manage page without JavaScript); rejects with a 404 HttpError. */
+  subscription?: (id: string, token: string) => Promise<DataDocument>;
   log: FastifyBaseLogger;
   /** Loads the render bundle (default: dist/.ssr/entry-server.mjs of webDir). Tests pass the source module. */
   loadModule?: () => Promise<RenderModule>;
@@ -73,8 +77,20 @@ const MAX_URL = 2048;
 
 /** Cache-Control of rendered pages: short, shared, served stale while a fresh one renders. */
 export const PAGE_CACHE_CONTROL = 'public, max-age=10, stale-while-revalidate=60';
-/** Personal links (subscription confirm/manage): never stored. */
+/** Personal links (subscription confirm/manage) and answers to forms: never stored. */
 const PRIVATE_CACHE_CONTROL = 'private, no-store';
+
+/** Pages with a personal link token in the URL: rendered for every request, never kept. */
+const isPersonal = (url: string) => (url.split('?')[0] ?? '').startsWith('/subscription/');
+
+/** A page answering a form submission (see sendForm). */
+export interface FormPage {
+  /** Page (path and query) to render, e.g. "/subscribe". */
+  url: string;
+  form: SsrFormState;
+  /** HTTP status (422 for invalid input, 429 when rate limited). */
+  status: number;
+}
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -126,6 +142,8 @@ export function composePage(template: PageTemplate, page: SsrRenderResult): stri
     `${template.beforeHtml}<html lang="${escapeHtml(page.lang)}" dir="${page.dir}"${theme}>` +
     template.headStart +
     headTags(page.head, page.hoisted) +
+    // The accent color before the stylesheet (it is more specific); never a way out of <style>.
+    (page.css ? `<style>${page.css.replace(/</g, '')}</style>` : '') +
     template.headRestAndBodyStart +
     page.html +
     // Data, not code: type=application/json is never executed.
@@ -187,7 +205,7 @@ export class SsrPages {
   private unavailable = false;
 
   constructor(private readonly options: SsrPagesOptions) {
-    this.source = publicDocumentSource(options.docs);
+    this.source = publicDocumentSource(options.docs, { subscription: options.subscription });
     this.ttlMs = (options.cacheSeconds ?? 5) * 1000;
     this.maxEntries = options.cacheEntries ?? 16;
     this.maxBytes = options.cacheBytes ?? 1024 * 1024;
@@ -226,8 +244,7 @@ export class SsrPages {
       return false;
     }
 
-    const path = req.url.split('?')[0] ?? '';
-    const personal = path.startsWith('/subscription/');
+    const personal = isPersonal(req.url);
     reply
       .header('Cache-Control', personal ? PRIVATE_CACHE_CONTROL : PAGE_CACHE_CONTROL)
       // Language and theme come from these headers.
@@ -241,20 +258,60 @@ export class SsrPages {
     return true;
   }
 
-  private async render(req: FastifyRequest): Promise<RenderedPage> {
-    let module: RenderModule;
+  /**
+   * Answers a form submission with the page itself (submitted values, errors),
+   * rendered for this request only. Resolves false when it cannot be rendered;
+   * the caller then redirects to the plain page with an error code.
+   */
+  async sendForm(req: FastifyRequest, reply: FastifyReply, page: FormPage): Promise<boolean> {
+    if (this.unavailable) return false;
+    let rendered: RenderedPage;
     try {
-      module = await this.loadModule();
+      const module = await this.module_();
+      rendered = await this.limiter.run(() => this.renderPage(module, { ...this.inputOf(req), url: page.url, form: page.form }));
+    } catch (err) {
+      if (err instanceof RenderQueueFull) req.log.warn(err.message);
+      else req.log.error({ err }, 'Server-side rendering of a form answer failed');
+      return false;
+    }
+    await reply
+      .status(page.status)
+      .header('Cache-Control', PRIVATE_CACHE_CONTROL)
+      .header('Vary', 'Accept-Language, Cookie')
+      .type('text/html; charset=utf-8')
+      .send(rendered.body);
+    return true;
+  }
+
+  private async module_(): Promise<RenderModule> {
+    try {
+      return await this.loadModule();
     } catch (err) {
       this.unavailable = true;
       this.options.log.error({ err }, 'Cannot load the server-side rendering bundle; serving client-rendered pages');
       throw err;
     }
+  }
+
+  private inputOf(req: FastifyRequest) {
     const header = (name: string) => {
       const v = req.headers[name];
       return Array.isArray(v) ? v.join(', ') : v;
     };
-    const input = { url: req.url, cookie: header('cookie'), acceptLanguage: header('accept-language') };
+    return { url: req.url, cookie: header('cookie'), acceptLanguage: header('accept-language') };
+  }
+
+  private async renderPage(module: RenderModule, input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptLanguage' | 'form'>): Promise<RenderedPage> {
+    const result = await module.render({ ...input, source: this.source, baseUrl: this.options.baseUrl, now: Date.now() });
+    const body = Buffer.from(composePage(this.loadTemplate(), result));
+    return { status: result.status, body, etag: etagOf(body), expires: Date.now() + this.ttlMs };
+  }
+
+  private async render(req: FastifyRequest): Promise<RenderedPage> {
+    const module = await this.module_();
+    const input = this.inputOf(req);
+    // Personal pages (a token in the URL) are neither kept nor shared between requests.
+    if (isPersonal(input.url)) return this.limiter.run(() => this.renderPage(module, input));
     const key = module.cacheKey(input);
     const now = Date.now();
 
@@ -265,11 +322,7 @@ export class SsrPages {
     let pending = this.inFlight.get(key);
     if (!pending) {
       pending = this.limiter
-        .run(async () => {
-          const result = await module.render({ ...input, source: this.source, baseUrl: this.options.baseUrl, now: Date.now() });
-          const body = Buffer.from(composePage(this.loadTemplate(), result));
-          return { status: result.status, body, etag: etagOf(body), expires: Date.now() + this.ttlMs };
-        })
+        .run(() => this.renderPage(module, input))
         .then((page) => {
           this.remember(key, page);
           return page;

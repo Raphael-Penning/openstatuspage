@@ -101,8 +101,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   // customers; the management UI and the API may not.
   app.addHook('onSend', async (req, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     const path = normalizePath(req.url);
+    // Subscription pages have a token in their URL: it never leaves as a referrer.
+    reply.header('Referrer-Policy', path.startsWith('/subscription/') ? 'no-referrer' : 'strict-origin-when-cross-origin');
     const admin = path === '/admin' || path.startsWith('/admin/');
     if (admin || isApiPath(path)) {
       reply.header('X-Frame-Options', 'DENY');
@@ -135,21 +136,25 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // the render bundle and the role serves the public web client.
     let ssr: SsrPages | null = null;
     if (roleFeatures(config.APP_ROLE).publicWeb) {
-      const [{ SsrPages }, { PublicDocuments }] = await Promise.all([
+      const [{ SsrPages }, { PublicDocuments }, forms] = await Promise.all([
         import('./ssr/pages.js'),
         import('./services/public-documents.js'),
+        import('./forms/index.js'),
       ]);
       if (ssrModule || SsrPages.available(webDir)) {
         ssr = new SsrPages({
           webDir,
           baseUrl: config.PUBLIC_BASE_URL,
           docs: new PublicDocuments(ctx.db, ctx.mailer),
+          subscription: (id, token) => forms.subscriptionDocument(app, id, token),
           log: app.log,
           loadModule: ssrModule,
         });
       } else {
         app.log.warn(`The web build in ${webDir} has no server-side rendering bundle; public pages render in the browser only`);
       }
+      // HTML forms of the public pages (preferences, email subscription): they work without JavaScript.
+      await forms.registerFormRoutes(app, ssr);
     }
 
     // Client routes (GET/HEAD, not /api, no file extension): public pages are rendered

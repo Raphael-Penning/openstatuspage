@@ -11,10 +11,11 @@
  * When several heads are active (a page renders <NotFoundState>, which sets its
  * own), an error status (>= 400) wins, otherwise the one registered last.
  */
-import type { PageHead } from '@openstatuspage/shared';
+import { LANG_QUERY, type PageHead } from '@openstatuspage/shared';
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router';
+import { isLanguage } from '../lib/languages';
 import { usePublicSettings } from './hooks/queries';
 
 export interface PageHeadInput {
@@ -22,7 +23,7 @@ export interface PageHeadInput {
   title?: string | null;
   /** Meta description; default: the page description of the settings. */
   description?: string;
-  /** Canonical path or URL; default: the current path without query. null: none. */
+  /** Canonical path or URL; default: the current path without query (but with a valid ?lang=). null: none. */
   canonical?: string | null;
   robots?: string;
   jsonLd?: Record<string, unknown>[];
@@ -73,14 +74,14 @@ export function HeadProvider({ store, server = false, children }: { store: HeadS
 export function usePageHead(input: PageHeadInput): void {
   const { t } = useTranslation('public');
   const { data: settings } = usePublicSettings();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const context = useContext(HeadContext);
   const site = settings?.siteName ?? t('fallbackSiteName');
 
   const head: PageHead = {
     title: input.title ? `${input.title} · ${site}` : site,
     description: input.description ?? settings?.description ?? undefined,
-    canonical: input.canonical === undefined ? pathname : input.canonical,
+    canonical: input.canonical === undefined ? languagePath(pathname, new URLSearchParams(search).get(LANG_QUERY)) : input.canonical,
     ...(input.robots ? { robots: input.robots } : {}),
     ...(input.jsonLd?.length ? { jsonLd: input.jsonLd } : {}),
     ...(input.status ? { status: input.status } : {}),
@@ -144,6 +145,14 @@ export function applyHead(head: PageHead, baseUrl: string): void {
       document.head.appendChild(script);
     }
   }
+}
+
+/**
+ * The page in one language (`?lang=de`, see the hreflang alternates of the
+ * layout); without a supported language the path alone (x-default).
+ */
+export function languagePath(pathname: string, lang: string | null | undefined): string {
+  return isLanguage(lang) ? `${pathname}?${LANG_QUERY}=${lang}` : pathname;
 }
 
 /** Absolute URL of a canonical path below the public base URL. */

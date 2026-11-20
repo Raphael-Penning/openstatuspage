@@ -80,6 +80,22 @@ breaking changes.
   sent with an `ETag`. The management UI stays client-rendered and carries
   `X-Robots-Tag: noindex, nofollow`. See
   [docs/architecture.md](docs/architecture.md#server-side-rendering).
+- **The public pages work without JavaScript.** Every control is a link or a
+  form: the history filters and pages, the service search and status filter
+  (`?q=`, `?status=`), the theme (a form, `POST /preferences/theme`) and the
+  language (links, `GET /preferences/language`, each setting its cookie), the
+  subscribe menu and the collapsible service groups (`<details>`). The world map
+  is drawn on the server (`/world-map.svg`), every day of an uptime bar is listed
+  in a table on the service page, the `system` theme follows the OS dark mode in
+  CSS and the configured accent color is in the page head. Pages list their
+  other languages as `hreflang` alternates. See
+  [docs/architecture.md](docs/architecture.md#without-javascript).
+- **The email subscription as HTML forms**: `POST /subscribe`,
+  `/subscription/confirm`, `/subscription/manage` and `/subscription/unsubscribe`
+  (form-urlencoded, outside the JSON:API) with the same flow and rate limits as
+  the API, Post/Redirect/Get, server-side validation errors with an error summary,
+  and a same-origin check (`Sec-Fetch-Site`/`Origin`) against cross-site posts.
+  See [docs/security-model.md](docs/security-model.md#html-forms).
 - **Split deployment** with `APP_ROLE` (`all`, `public`, `admin`, `worker`): on
   PostgreSQL the public status page, the management side and the background worker
   can run as separate instances. A `public` instance has no management UI, login,
@@ -134,6 +150,13 @@ breaking changes.
   [split deployment guide](docs/guide/en/02-installation.md#split-deployment).
 
 ### Changed
+
+- **Links in subscription emails carry the token in the query string**
+  (`?id=…&token=…`) instead of the URL fragment, so the confirm and manage pages
+  work without JavaScript. The server log redacts it, the pages send no referrer
+  and are never cached; links of older emails keep working in browsers with
+  JavaScript. Confirming now takes a click on **Confirm subscription** (link
+  scanners of mail providers no longer confirm by opening the link).
 
 - The Docker image and `pnpm start` run Node.js with `--max-opt=2` (no TurboFan),
   which saves 10–15 MB per instance. Start the server the same way when you run it

@@ -3,6 +3,7 @@ import { MapPin } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CounterCards } from '../components/CounterCards';
+import { StaticWorldMap } from '../components/StaticWorldMap';
 import { StatusMarkerIcon } from '../components/StatusMarker';
 import { Card, EmptyState, ErrorState, PageTitle, Skeleton, SkeletonList, StatusPill } from '../components/ui';
 import { useHydrated } from '../../lib/ssr';
@@ -23,7 +24,6 @@ export function LocationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const countryName = useCountryName();
   const hydrated = useHydrated();
-  const mapPlaceholder = <Skeleton className="aspect-[2/1] w-full rounded-xl" />;
   usePageHead({ title: t('nav.locations') });
 
   if (settings && !settings.showLocations) return <NotFoundState />;
@@ -40,7 +40,7 @@ export function LocationsPage() {
               <Skeleton key={i} className="h-28 rounded-2xl" />
             ))}
           </div>
-          <Skeleton className="aspect-[2/1] w-full rounded-2xl" />
+          <Skeleton className="aspect-[960/418] w-full rounded-2xl" />
           <SkeletonList rows={3} />
         </>
       ) : isError ? (
@@ -53,13 +53,13 @@ export function LocationsPage() {
 
           <Card as="section" className="overflow-hidden p-2 sm:p-4">
             <h2 className="sr-only">{t('locations.map')}</h2>
-            {/* The map is loaded lazily in the browser; the server renders its placeholder. */}
+            {/* The server renders the static map (also without JavaScript); the interactive one loads lazily in the browser. */}
             {hydrated ? (
-              <Suspense fallback={mapPlaceholder}>
+              <Suspense fallback={<StaticWorldMap locations={data.locations} />}>
                 <WorldMap locations={data.locations} selectedId={selectedId} onSelect={setSelectedId} />
               </Suspense>
             ) : (
-              mapPlaceholder
+              <StaticWorldMap locations={data.locations} />
             )}
             <MapLegend />
           </Card>
@@ -92,10 +92,10 @@ export function LocationsPage() {
                       );
                       const row = 'flex w-full items-center gap-3 px-4 py-3 text-left sm:px-5';
                       // This list is the text alternative of the map: every location with its status.
-                      // Locations with coordinates can be highlighted on the map.
+                      // Locations with coordinates can be highlighted on the interactive map (with JavaScript).
                       return (
                         <li key={l.id}>
-                          {onMap ? (
+                          {onMap && hydrated ? (
                             <button
                               type="button"
                               aria-pressed={selectedId === l.id}

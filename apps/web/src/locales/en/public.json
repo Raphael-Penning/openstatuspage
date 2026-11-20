@@ -7,7 +7,8 @@
     "home": "Go to the overview",
     "timeZone": "Time zone: {{current}}. Click to switch.",
     "language": "Language",
-    "theme": "Color theme"
+    "theme": "Color theme",
+    "timeZoneUtc": "Times are shown in UTC"
   },
   "nav": {
     "label": "Status page sections",
@@ -98,7 +99,9 @@
     "ungrouped": "Other services",
     "openSite": "Open {{name}} in a new tab",
     "empty": "No services have been published yet.",
-    "noMatches": "No services match your search."
+    "noMatches": "No services match your search.",
+    "groupToggle": "Show or hide the services of {{name}}",
+    "searchSubmit": "Search"
   },
   "service": {
     "back": "All services",
@@ -126,7 +129,13 @@
     "corrected": "Corrected afterwards",
     "correctedLegend": "Marked days were corrected afterwards",
     "correctedCount_one": "{{count}} day was corrected afterwards.",
-    "correctedCount_other": "{{count}} days were corrected afterwards."
+    "correctedCount_other": "{{count}} days were corrected afterwards.",
+    "ariaLabelStatic": "{{name}}, last {{days}} days: {{uptime}}.",
+    "dailyDetails": "Show every day",
+    "dailyCaption": "Uptime of {{name}} per day, last {{count}} days, newest first",
+    "day": "Day (UTC)",
+    "status": "Status",
+    "notOperational": "Not operational"
   },
   "locations": {
     "title": "Locations",
@@ -171,7 +180,8 @@
     "pagination": "Pagination",
     "previous": "Newer",
     "next": "Older",
-    "pageOf": "Page {{page}} of {{total}}"
+    "pageOf": "Page {{page}} of {{total}}",
+    "apply": "Apply filters"
   },
   "detail": {
     "back": "History",
@@ -237,7 +247,8 @@
     "sent": {
       "title": "Check your inbox",
       "description": "We sent an email to {{email}}. Open the link in it to confirm your subscription.",
-      "hint": "Nothing arrived? Check your spam folder. If this address is already subscribed, you will get a link to manage your subscription instead. Unconfirmed subscriptions are removed after 7 days."
+      "hint": "Nothing arrived? Check your spam folder. If this address is already subscribed, you will get a link to manage your subscription instead. Unconfirmed subscriptions are removed after 7 days.",
+      "descriptionGeneric": "We sent an email to the address you entered. Open the link in it to confirm your subscription."
     },
     "unavailable": {
       "title": "Email notifications are not available",
@@ -256,14 +267,18 @@
       "scopeServices_one": "We will email {{email}} about incidents and maintenance affecting the selected service.",
       "scopeServices_other": "We will email {{email}} about incidents and maintenance affecting the {{count}} selected services.",
       "hint": "Every email contains a link to change your preferences or unsubscribe.",
-      "manage": "Manage preferences"
+      "manage": "Manage preferences",
+      "intro": "Confirm that you want to receive email notifications from this status page.",
+      "button": "Confirm subscription",
+      "needsScript": "This link only works with JavaScript. Use the link of a newer email, or subscribe again to get a new one."
     },
     "manage": {
       "title": "Your email notifications",
       "subtitle": "Choose what you hear about, or unsubscribe.",
       "pending": "This subscription is not confirmed yet. Open the link in the confirmation email to start receiving notifications.",
       "save": "Save preferences",
-      "saved": "Preferences saved."
+      "saved": "Preferences saved.",
+      "confirmed": "Your subscription is confirmed. You can adjust it here at any time."
     },
     "unsubscribe": {
       "title": "Unsubscribe",
@@ -274,7 +289,8 @@
       "cancel": "Keep my subscription",
       "done": "You have been unsubscribed",
       "doneDescription": "{{email}} will not receive any more emails from us and has been deleted.",
-      "subscribeAgain": "Subscribe again"
+      "subscribeAgain": "Subscribe again",
+      "doneDescriptionGeneric": "Your email address will not receive any more emails from us and has been deleted."
     },
     "errors": {
       "email": "Enter a valid email address, for example name@example.com.",
@@ -282,7 +298,9 @@
       "servicesInvalid": "Some selected services are no longer available. Please reload the page and try again.",
       "invalid": "Please check your input and try again.",
       "rateLimited": "Too many attempts. Please wait a minute and try again.",
-      "generic": "Something went wrong. Please try again."
+      "generic": "Something went wrong. Please try again.",
+      "summary": "Please correct the following:",
+      "titlePrefix": "Error: {{title}}"
     }
   }
 }

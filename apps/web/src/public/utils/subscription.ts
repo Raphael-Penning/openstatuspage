@@ -6,6 +6,7 @@ import {
   SUBSCRIPTION_LOCALES,
   type PublicService,
   type PublicServiceGroup,
+  type SsrFormState,
   type SubscriptionLocale,
 } from '@openstatuspage/shared';
 
@@ -94,9 +95,9 @@ export interface LinkParams {
 
 /**
  * Reads `id` and `token` of a confirmation or manage link; null when one is
- * missing or blank. The id comes from the query, the token from the URL
- * fragment (`#token=…`, never sent to the server, proxies or logs). A token in
- * the query is still accepted as a fallback for older links.
+ * missing or blank. The id comes from the query, the token from the query too
+ * (the links of the emails, so the pages work without JavaScript) or from the
+ * URL fragment (`#token=…`, links of older emails), which wins.
  */
 export function linkParams(params: URLSearchParams, hash = ''): LinkParams | null {
   const id = params.get('id')?.trim();
@@ -104,11 +105,14 @@ export function linkParams(params: URLSearchParams, hash = ''): LinkParams | nul
   return id && token ? { id, token } : null;
 }
 
-/** Path of the manage page for a subscription; the token goes into the fragment. */
+/**
+ * Path of the manage page for a subscription, with the token in the query: the
+ * page and its forms are rendered by the server, without JavaScript, too.
+ */
 export function managePath(id: string, token: string, options: { unsubscribe?: boolean } = {}): string {
-  const query = new URLSearchParams({ id });
+  const query = new URLSearchParams({ id, token });
   if (options.unsubscribe) query.set('unsubscribe', '1');
-  return `/subscription/manage?${query.toString()}#token=${encodeURIComponent(token)}`;
+  return `/subscription/manage?${query.toString()}`;
 }
 
 /** Form fields of the subscription forms that can carry an error. */
@@ -142,4 +146,47 @@ export function subscriptionErrors(issues: unknown): SubscriptionErrors {
     }
   }
   return Object.keys(out).length > 0 ? out : { form: 'subscription.errors.invalid' };
+}
+
+/** Message key of a form-level error code (form answer of the server, or ?error= of a redirect). */
+function formErrorKey(code: string | null | undefined): string | null {
+  switch (code) {
+    case 'rate_limited':
+      return 'subscription.errors.rateLimited';
+    case 'invalid':
+      return 'subscription.errors.invalid';
+    case 'generic':
+      return 'subscription.errors.generic';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Errors of a form the server answered (submitted without JavaScript): its
+ * validation issues, or the error code of the answer or of `?error=` in the URL.
+ */
+export function serverFormErrors(form: SsrFormState | null, queryError: string | null): SubscriptionErrors {
+  if (form?.issues?.length) return subscriptionErrors(form.issues);
+  const key = formErrorKey(form?.error ?? queryError);
+  return key ? { form: key } : {};
+}
+
+/** One value of a submitted form ('' when absent). */
+export function formValue(form: SsrFormState | null, name: string): string {
+  const v = form?.values[name];
+  return (Array.isArray(v) ? v[0] : v) ?? '';
+}
+
+function formValues(form: SsrFormState | null, name: string): string[] {
+  const v = form?.values[name];
+  return v === undefined ? [] : Array.isArray(v) ? v : [v];
+}
+
+/** The scope of a submitted form: checked services plus every service of a checked group. */
+export function formScope(form: SsrFormState, sections: ServiceSection[]): { allServices: boolean; serviceIds: string[] } {
+  if (formValue(form, 'scope') !== 'selected') return { allServices: true, serviceIds: [] };
+  const groups = new Set(formValues(form, 'group'));
+  const fromGroups = sections.filter((s) => s.id !== null && groups.has(s.id)).flatMap((s) => s.services.map((x) => x.id));
+  return { allServices: false, serviceIds: knownServiceIds(setSelected(formValues(form, 'service'), fromGroups, true), sections) };
 }

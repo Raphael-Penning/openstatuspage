@@ -35,6 +35,7 @@ import { absoluteUrl, HeadStore } from './public/head';
 import { isNotFound, publicQueries, type GetDocument } from './public/hooks/queries';
 import type { LoaderArgs, PublicRouteHandle } from './public/loaders';
 import { encodeQueries, type SsrState } from './public/ssr-state';
+import { accentCss } from './public/utils/accent';
 
 export type { SsrRenderInput, SsrRenderResult } from '@openstatuspage/shared';
 
@@ -120,7 +121,7 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
     if (context instanceof Response) throw new Error(`Unexpected response ${context.status} from the static handler`);
     const router = createStaticRouter(handler.dataRoutes, context);
 
-    const ssr = { now, theme, baseUrl: input.baseUrl };
+    const ssr = { now, theme, baseUrl: input.baseUrl, form: input.form };
     const heads = new HeadStore();
     const markup = renderToString(
       <PublicApp queryClient={queryClient} ssr={ssr} head={heads} server i18n={publicI18n(lang)}>
@@ -144,6 +145,7 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
       theme,
       now,
       baseUrl: input.baseUrl,
+      ...(input.form ? { form: input.form } : {}),
       queries: encodeQueries(
         dehydrate(queryClient, {
           shouldDehydrateQuery: (q) => q.state.status === 'success' || isNotFound(q.state.error),
@@ -160,6 +162,7 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
       dir: languageDir(lang),
       theme,
       state: scriptJson(state),
+      css: accentCss(settings.accentColor),
     };
   } finally {
     queryClient.clear();

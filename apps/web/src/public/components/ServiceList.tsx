@@ -2,23 +2,21 @@
  * Service catalog: collapsible group cards with service rows and uptime bars.
  */
 import type { PublicService, PublicServiceGroup } from '@openstatuspage/shared';
-import { clsx } from 'clsx';
 import { ChevronDown, ExternalLink } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { useViewportWidth } from '../hooks/dom';
 import { usePublicSettings } from '../hooks/queries';
-import { barDaysForWidth } from '../utils/uptime';
 import { Card, StatusPill } from './ui';
 import { UptimeBar } from './UptimeBar';
 
-/** Days an uptime bar shows at the current viewport width. */
+/**
+ * Days an uptime bar shows on a wide screen: the configured range, at most 90.
+ * Narrow screens show fewer (UptimeBar hides them with media queries).
+ */
 export function useBarDays(): number {
-  const width = useViewportWidth();
   const { data } = usePublicSettings();
-  const max = data?.uptimeDays ?? 90;
-  return barDaysForWidth(width, max, Math.min(max, 90));
+  return Math.min(data?.uptimeDays ?? 90, 90);
 }
 
 export function ServiceRow({ service, days }: { service: PublicService; days: number }) {
@@ -68,42 +66,47 @@ interface GroupCardProps {
   headingLevel?: 2 | 3;
 }
 
+/**
+ * A group of services that collapses: a <details> disclosure, so it opens and
+ * closes without JavaScript, too. Its summary is stretched over the card
+ * (behind the services), and the group heading stays a real heading outside
+ * the summary, which would hide it from the heading outline.
+ */
 export function ServiceGroupCard({ group, days, forceOpen, headingLevel = 3 }: GroupCardProps) {
   const Heading = headingLevel === 2 ? 'h2' : 'h3';
   const { t } = useTranslation('public');
   const [open, setOpen] = useState(!group.collapsedByDefault);
-  const contentId = useId();
   const expanded = forceOpen || open;
 
   return (
-    <Card as="section" className="overflow-hidden">
-      <Heading>
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={contentId}
-          onClick={() => setOpen(!expanded)}
-          className="flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus sm:px-5"
-        >
-          <ChevronDown
-            aria-hidden
-            className={clsx('size-4 shrink-0 text-muted motion-safe:transition-transform', !expanded && '-rotate-90')}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block font-semibold break-words">{group.name}</span>
-            <span className="block text-xs text-muted">{t('services.count', { count: group.services.length })}</span>
-          </span>
-          <StatusPill status={group.status} />
-        </button>
-      </Heading>
-      <div id={contentId} hidden={!expanded}>
-        {group.description && <p className="border-t border-border px-4 py-2 text-sm text-muted sm:px-5">{group.description}</p>}
-        <ul className="divide-y divide-border border-t border-border">
-          {group.services.map((s) => (
-            <ServiceRow key={s.id} service={s} days={days} />
-          ))}
-        </ul>
+    <Card as="section" className="osp-group relative overflow-hidden">
+      <div className="osp-group-head flex w-full items-center gap-3 px-4 py-4 sm:px-5">
+        <ChevronDown aria-hidden className="osp-chevron size-4 shrink-0 text-muted motion-safe:transition-transform" />
+        <Heading className="min-w-0 flex-1">
+          <span className="block font-semibold break-words">{group.name}</span>
+          <span className="block text-xs font-normal text-muted">{t('services.count', { count: group.services.length })}</span>
+        </Heading>
+        <StatusPill status={group.status} />
       </div>
+      <details
+        open={expanded}
+        onToggle={(e) => {
+          if (!forceOpen) setOpen(e.currentTarget.open);
+        }}
+      >
+        <summary className="absolute inset-0 cursor-pointer list-none rounded-2xl focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+          <span className="sr-only">{t('services.groupToggle', { name: group.name })}</span>
+        </summary>
+        {/* Above the stretched summary: the services stay clickable. */}
+        <div className="relative z-10 bg-surface">
+          {group.description && <p className="border-t border-border px-4 py-2 text-sm text-muted sm:px-5">{group.description}</p>}
+          <ul className="divide-y divide-border border-t border-border">
+            {group.services.map((s) => (
+              <ServiceRow key={s.id} service={s} days={days} />
+            ))}
+          </ul>
+        </div>
+      </details>
     </Card>
   );
 }

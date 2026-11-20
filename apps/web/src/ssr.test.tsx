@@ -5,7 +5,7 @@
  * hydrates without a single hydration warning or recoverable error, in both
  * languages, and the browser then switches to the visitor's time zone.
  */
-import type { DataDocument, PublicDocumentSource, SsrRenderResult } from '@openstatuspage/shared';
+import type { DataDocument, PublicDocumentSource, SsrFormState, SsrRenderResult } from '@openstatuspage/shared';
 import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cacheKey, render } from './entry-server';
@@ -36,7 +36,13 @@ const PAGES: [name: string, url: string, status: number][] = [
   ['maintenance', '/maintenance/m-1', 200],
   ['subscribe', '/subscribe', 200],
   ['subscription confirm', `/subscription/confirm?id=sub-1#token=${SUBSCRIPTION_TOKEN}`, 200],
+  ['subscription confirm (query token)', `/subscription/confirm?id=sub-1&token=${SUBSCRIPTION_TOKEN}`, 200],
   ['subscription manage', '/subscription/manage?id=sub-1', 200],
+  ['subscription manage (query token)', `/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}&saved=1`, 200],
+  ['subscription manage (unsubscribe)', `/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}&unsubscribe=1`, 200],
+  ['subscribed', '/subscribe?sent=1', 200],
+  ['services filtered', '/services?q=api&status=operational', 200],
+  ['history page 2', '/history?type=all&service=&month=&page=2', 200],
   ['not found', '/does-not-exist', 404],
 ];
 
@@ -46,7 +52,10 @@ afterEach(() => {
   localStorage.clear();
 });
 
-async function serverRender(url: string, init: { cookie?: string; acceptLanguage?: string } = {}): Promise<SsrRenderResult> {
+async function serverRender(
+  url: string,
+  init: { cookie?: string; acceptLanguage?: string; form?: SsrFormState } = {},
+): Promise<SsrRenderResult> {
   return render({ url: url.split('#')[0]!, source, baseUrl: BASE_URL, ...init });
 }
 
@@ -86,6 +95,16 @@ describe('server rendering', () => {
     expect(detail.head.canonical).toBe(`${BASE_URL}/incidents/inc-1`);
     const missing = await serverRender('/incidents/missing');
     expect(missing.head).toMatchObject({ status: 404, robots: 'noindex', canonical: null });
+  });
+
+  it('renders the uptime bars of every screen width, narrow ones by media query', async () => {
+    const services = await serverRender('/services');
+    const bar = /aria-roledescription="uptime bar"[^>]*>([\s\S]*?)<\/div><\/div>/.exec(services.html)?.[1] ?? '';
+    const segments = bar.match(/<div class="[^"]*"/g) ?? [];
+    expect(segments.length).toBeGreaterThan(30);
+    // The newest 30 days show on phones, the newest 60 on tablets: no re-render after hydration.
+    expect(segments.filter((s) => !s.includes('max-sm:hidden'))).toHaveLength(30);
+    expect(segments.filter((s) => !s.includes('max-lg:hidden')).length).toBe(Math.min(60, segments.length));
   });
 
   it('moves hoisted elements to the head', async () => {
@@ -142,6 +161,34 @@ describe('hydration', () => {
     expect(problems).toEqual([]);
     expect(document.documentElement.lang).toBe(lang);
     expect(root.textContent).toContain('API');
+  });
+
+  it('hydrates a page that answers a form with its values and errors', async () => {
+    const form: SsrFormState = {
+      values: { email: 'not-an-email', locale: 'de', scope: 'selected', service: [] },
+      issues: [
+        { path: ['email'], code: 'invalid_format' },
+        { path: ['serviceIds'], code: 'custom' },
+      ],
+    };
+    const result = await serverRender('/subscribe', { form });
+    expect(result.head.title).toMatch(/^Error: /);
+    expect(result.html).toContain('value="not-an-email"');
+    expect(result.html).toContain('aria-invalid="true"');
+    const { root, problems } = await hydrateResult('/subscribe', result);
+    expect(problems).toEqual([]);
+    const email = root.querySelector<HTMLInputElement>('input[name="email"]')!;
+    expect(email.value).toBe('not-an-email');
+    expect(root.querySelector('[role="alert"] a[href="#subscription-email"]')).not.toBeNull();
+    expect(root.querySelector<HTMLInputElement>('input[name="scope"][value="selected"]')!.checked).toBe(true);
+  });
+
+  it('renders the manage page of a query token on the server', async () => {
+    const result = await serverRender(`/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}`);
+    expect(result.html).toContain('action="/subscription/manage"');
+    expect(result.html).toContain(`name="token" value="${SUBSCRIPTION_TOKEN}"`);
+    const confirm = await serverRender(`/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}&unsubscribe=1`);
+    expect(confirm.html).toContain('action="/subscription/unsubscribe"');
   });
 
   it('switches to the visitor time zone after hydration', async () => {

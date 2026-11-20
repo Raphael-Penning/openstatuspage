@@ -19,6 +19,7 @@ import {
   subscriptionTokenHashes,
   tokenHash,
 } from '../src/services/subscriptions.js';
+import { createWebDir, elements, formHtml, renderFromSource, rootOf } from '../test/web-fixture.js';
 import { BASE_URL, createTestDatabase, TOKEN_KEY, type PgTestDatabase } from './setup.js';
 
 const NOW = new Date().toISOString();
@@ -859,7 +860,7 @@ describe('a public instance', () => {
     await workerApp.ctx.notifications.deliverDue();
     const mail = mailer.sent.find((m) => m.to === 'flow@example.com');
     expect(mail?.subject).toBe('[Example Status] Confirm your subscription');
-    const match = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)#token=([A-Za-z0-9_-]+)`).exec(mail!.text)!;
+    const match = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)&token=([A-Za-z0-9_-]+)`).exec(mail!.text)!;
     const [, subId, token] = match;
 
     const wrong = await publicApp.inject({
@@ -908,12 +909,91 @@ describe('a public instance', () => {
 
     const redirect = await publicApp.inject({ url: `/api/public/subscriptions/${subId}/unsubscribe?token=${manageToken}` });
     expect(redirect.statusCode).toBe(303);
-    expect(redirect.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${subId}&unsubscribe=1#token=${manageToken}`);
+    expect(redirect.headers.location).toBe(`${BASE_URL}/subscription/manage?id=${subId}&token=${manageToken}&unsubscribe=1`);
 
     const deleted = await publicApp.inject({ method: 'DELETE', url: `/api/public/subscriptions/${subId}`, headers: manageHeaders });
     expect(deleted.statusCode).toBe(204);
     const again = await publicApp.inject({ method: 'DELETE', url: `/api/public/subscriptions/${subId}`, headers: manageHeaders });
     expect(again.statusCode).toBe(404);
     expect(await ownerRows(`select id from subscribers where id = '${subId}'`)).toEqual([]);
+  });
+
+  it('runs the subscription forms (no JavaScript) through the database functions', async () => {
+    const web = createWebDir();
+    const formApp = await buildApp({ config: { ...pgdb.config('public'), WEB_DIST_DIR: web.dir }, db: pub, ssrModule: renderFromSource });
+    try {
+      await formApp.ready();
+      const post = (url: string, fields: [string, string][]) =>
+        formApp.inject({
+          method: 'POST',
+          url,
+          headers: { 'content-type': 'application/x-www-form-urlencoded', 'sec-fetch-site': 'same-origin' },
+          payload: new URLSearchParams(fields).toString(),
+        });
+
+      // The group checkbox selects the public services of the group, read through the views.
+      const subscribed = await post('/subscribe', [
+        ['email', 'form@example.com'],
+        ['scope', 'selected'],
+        ['group', ids.group],
+        ['group', ids.hiddenGroup],
+      ]);
+      expect(subscribed.statusCode).toBe(303);
+      expect(subscribed.headers.location).toBe('/subscribe?sent=1');
+      await formApp.ctx.worker.idle();
+      const invalid = await post('/subscribe', [
+        ['email', 'form@example.com'],
+        ['scope', 'selected'],
+        ['service', ids.hiddenService],
+      ]);
+      expect(invalid.statusCode).toBe(422);
+      expect(rootOf(invalid)).toContain('no longer available');
+
+      await workerApp.ctx.notifications.deliverDue();
+      const mail = mailer.sent.find((m) => m.to === 'form@example.com')!;
+      const [, subId, token] = new RegExp(`${BASE_URL}/subscription/confirm\\?id=([^&#\\s]+)&token=([A-Za-z0-9_-]+)`).exec(mail.text)!;
+      // Only the public service of the public group (the hidden group selects nothing).
+      expect(await ownerRows(`select service_id as id from subscriber_services where subscriber_id = '${subId}'`)).toEqual([{ id: ids.service }]);
+
+      const confirmed = await post('/subscription/confirm', [
+        ['id', subId!],
+        ['token', token!],
+      ]);
+      expect(confirmed.statusCode).toBe(303);
+      const managePage = confirmed.headers.location as string;
+      expect(managePage).toMatch(/^\/subscription\/manage\?id=.+&token=.+&confirmed=1$/);
+      const manageToken = new URL(managePage, BASE_URL).searchParams.get('token')!;
+
+      // The manage page is rendered on the server, its subscription read through subscription_get.
+      const page = await formApp.inject({ url: managePage });
+      expect(page.statusCode).toBe(200);
+      const form = formHtml(rootOf(page), '/subscription/manage')!;
+      expect(form).toContain('form@example.com');
+      expect(elements(form, 'input').find((i) => i.name === 'service' && i.value === ids.service)).toHaveProperty('checked');
+
+      const saved = await post('/subscription/manage', [
+        ['id', subId!],
+        ['token', manageToken],
+        ['locale', 'de'],
+        ['scope', 'all'],
+      ]);
+      expect(saved.headers.location).toBe(`/subscription/manage?id=${subId}&token=${manageToken}&saved=1`);
+      expect(await ownerRows(`select locale, all_services from subscribers where id = '${subId}'`)).toEqual([{ locale: 'de', all_services: 1 }]);
+
+      const wrong = await post('/subscription/unsubscribe', [
+        ['id', subId!],
+        ['token', token!],
+      ]);
+      expect(wrong.headers.location).toBe('/subscription/manage?error=invalid');
+      const gone = await post('/subscription/unsubscribe', [
+        ['id', subId!],
+        ['token', manageToken],
+      ]);
+      expect(gone.headers.location).toBe('/subscription/manage?unsubscribed=1');
+      expect(await ownerRows(`select id from subscribers where id = '${subId}'`)).toEqual([]);
+    } finally {
+      await formApp.close();
+      web.remove();
+    }
   });
 });

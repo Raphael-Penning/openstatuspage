@@ -204,6 +204,40 @@ warning when it gets `SECRET_KEY` anyway. When the token key changes, the admin
 and worker instances refresh the stored hashes on their next start (existing
 mail links stop working).
 
+## HTML forms
+
+The public pages work without JavaScript, so the email subscription also runs
+through plain HTML forms (`apps/server/src/forms/`, every instance that serves
+the public pages): `POST /subscribe`, `/subscription/confirm`,
+`/subscription/manage` and `/subscription/unsubscribe` with
+`application/x-www-form-urlencoded` bodies, next to the JSON:API (which they
+leave unchanged). They call the same subscription flow, so a public instance on
+PostgreSQL uses the `osp_public` functions above, and they have the same rate
+limits per client IP (5 subscribe requests, 30 confirm, manage and unsubscribe
+requests per minute; the forms and the API count separately).
+
+- **Cross-site requests.** The forms carry no cookie (the public role sets
+  none), but another site could still make a visitor's browser post one, for
+  example to subscribe an address. Browsers say where a request comes from:
+  a form handler accepts it only with `Sec-Fetch-Site: same-origin`, or, from
+  browsers without that header, with an `Origin` of the request's own origin or
+  of `PUBLIC_BASE_URL`; anything else gets `403`. A request without either header
+  does not come from a browser page and cannot be forged through one. The same
+  check guards the theme form (`POST /preferences/theme`); the language links
+  (`GET /preferences/language`) set no cookie for requests from other sites.
+- **Tokens in links.** For the confirm and manage pages to work without
+  JavaScript, the server has to see the token, so the links in the emails carry
+  it in the query string (`?id=…&token=…`) instead of the URL fragment, and the
+  forms send it in the body. The server's request log redacts every `token=`
+  value, `/subscription/*` answers with `Referrer-Policy: no-referrer` and
+  `Cache-Control: private, no-store`, and these pages are never kept in the
+  render cache. A reverse proxy that logs full URLs does see the token: keep its
+  access log private or strip query strings from it. A leaked manage token lets
+  someone change or end that one subscription, nothing else; confirming takes a
+  click on a form, so a mail scanner that opens the link confirms nothing.
+- **Open redirects.** The preference handlers redirect only to a path of the
+  site (`/…`, no `//`, no scheme, no control characters), everything else to `/`.
+
 ## Threat model
 
 ### A compromised public instance

@@ -40,14 +40,18 @@ server and how to operate and troubleshoot delivery.
   right away. The one-click header URL unsubscribes on `POST` (what mail clients
   send); opening it in a browser (`GET`) only redirects (`303`) to the manage page
   with the unsubscribe confirmation and never deletes anything.
-- Links in the email body carry their token in the URL fragment, so the token never
-  reaches the server, proxies or access logs:
-  - confirm: `${BASE_URL}/subscription/confirm?id=<id>#token=<confirmToken>`
-  - manage: `${BASE_URL}/subscription/manage?id=<id>#token=<manageToken>`
-  - unsubscribe: `${BASE_URL}/subscription/manage?id=<id>&unsubscribe=1#token=<manageToken>`
+- Links in the email body carry their token in the query string, so the server
+  renders the confirm and manage pages and they work without JavaScript (see
+  [security-model.md](security-model.md#html-forms)):
+  - confirm: `${BASE_URL}/subscription/confirm?id=<id>&token=<confirmToken>`
+  - manage: `${BASE_URL}/subscription/manage?id=<id>&token=<manageToken>`
+  - unsubscribe: `${BASE_URL}/subscription/manage?id=<id>&token=<manageToken>&unsubscribe=1`
 
-  Only the `List-Unsubscribe` header uses the API URL with `?token=` (mail clients
-  post to it directly); the server log redacts it as `token=[REDACTED]`.
+  The confirm page asks for one click (a form), so link scanners of mail
+  providers confirm nothing. Links of older emails with the token in the URL
+  fragment (`#token=`) keep working in browsers with JavaScript. The
+  `List-Unsubscribe` header uses the API URL with `?token=` (mail clients post to
+  it directly). The server log redacts every token as `token=[REDACTED]`.
 
 ### Who receives what
 

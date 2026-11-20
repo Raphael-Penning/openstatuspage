@@ -31,6 +31,14 @@ Server-side rendering and hydration are covered by `apps/web/src/ssr.test.tsx`
 `apps/server/test/ssr-pages.test.ts` (status codes, head, caching, fallback).
 See [docs/architecture.md](docs/architecture.md#server-side-rendering).
 
+Every public page must also work **without JavaScript** (check it in the
+production build with JavaScript turned off): a new control is a link or a form
+whose state is in the URL, a menu or an expander is a `<details>`, a submit
+button only browsers without JavaScript need goes into `<NoScript>`, and a form
+posts to a form handler in `apps/server/src/forms/` (never to `/api`).
+`apps/server/test/nojs-pages.test.ts` fails on a button, field or tab stop that
+needs a script. See [docs/architecture.md](docs/architecture.md#without-javascript).
+
 ## Checks
 
 ```bash

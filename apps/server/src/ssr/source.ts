@@ -26,7 +26,15 @@ function segment(raw: string, max: number): string | null {
 
 type Builder = (req: DocumentRequest, id: string) => Promise<DataDocument>;
 
-export function publicDocumentSource(docs: PublicDocuments): PublicDocumentSource {
+/** Path of a subscription in the source: the manage token comes as the `token` query value (never over HTTP). */
+const SUBSCRIPTION_PREFIX = '/api/public/subscriptions/';
+
+export interface SourceExtras {
+  /** The subscription for its manage token (APP_ROLE with the public API). */
+  subscription?: (id: string, token: string) => Promise<DataDocument>;
+}
+
+export function publicDocumentSource(docs: PublicDocuments, extras: SourceExtras = {}): PublicDocumentSource {
   const fixed: Record<string, (req: DocumentRequest) => Promise<DataDocument>> = {
     '/api/public/settings': (req) => docs.settings(req),
     '/api/public/summary': (req) => docs.summary(req),
@@ -48,6 +56,12 @@ export function publicDocumentSource(docs: PublicDocuments): PublicDocumentSourc
       try {
         const build = fixed[path];
         if (build) return await build(req);
+        if (path.startsWith(SUBSCRIPTION_PREFIX) && extras.subscription) {
+          const id = segment(path.slice(SUBSCRIPTION_PREFIX.length), 64);
+          const token = query.token ?? '';
+          if (id === null || id.includes('/') || !token || token.length > 256) throw sourceError(404, 'Not found');
+          return await extras.subscription(id, token);
+        }
         for (const [prefix, max, buildOne] of byId) {
           if (!path.startsWith(prefix)) continue;
           const id = segment(path.slice(prefix.length), max);

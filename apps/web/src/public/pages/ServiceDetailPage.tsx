@@ -3,9 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { IncidentSummary, MaintenanceSummary } from '../components/Events';
 import { RelativeTime } from '../components/Time';
-import { UptimeBar } from '../components/UptimeBar';
+import { UptimeBar, UptimeDayTable } from '../components/UptimeBar';
 import { Card, EmptyState, ErrorState, SectionHeader, Skeleton, SkeletonList, StatusPill } from '../components/ui';
-import { useViewportWidth } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useLocations, usePublicSettings, useService } from '../hooks/queries';
 import { averageUptime, correctedDays, lastDays } from '../utils/uptime';
@@ -16,7 +15,6 @@ export function ServiceDetailPage() {
   const { slug = '' } = useParams();
   const { t } = useTranslation('public');
   const f = useFormat();
-  const width = useViewportWidth();
   const { data: settings } = usePublicSettings();
   const showLocations = settings?.showLocations !== false;
   const { data, isPending, isError, error, refetch, dataUpdatedAt } = useService(slug);
@@ -41,7 +39,6 @@ export function ServiceDetailPage() {
     );
   }
 
-  const days = width < 640 ? Math.min(90, data.uptime.length) : data.uptime.length;
   const serviceLocations = (locations?.locations ?? []).filter((l) => data.locationIds.includes(l.id));
   const stats = [7, 30]
     .filter((n) => n < data.uptime.length)
@@ -93,7 +90,17 @@ export function ServiceDetailPage() {
       {settings?.showUptime !== false && data.uptime.length > 0 && (
         <Card as="section" className="p-5 sm:p-6">
           <h2 className="mb-4 font-semibold">{t('service.uptime')}</h2>
-          <UptimeBar uptime={data.uptime} days={days} label={data.name} percent={data.uptimePercent} size="lg" />
+          {/* Every day on wide and medium screens, at most 90 on phones. */}
+          <UptimeBar
+            uptime={data.uptime}
+            days={data.uptime.length}
+            tabletDays={data.uptime.length}
+            phoneDays={90}
+            label={data.name}
+            percent={data.uptimePercent}
+            size="lg"
+          />
+          <UptimeDayTable uptime={data.uptime} label={data.name} />
           <dl className="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
             {stats.map((s) => (
               <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-3 sm:px-4">
