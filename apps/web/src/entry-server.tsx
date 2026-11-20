@@ -120,7 +120,7 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
     if (context instanceof Response) throw new Error(`Unexpected response ${context.status} from the static handler`);
     const router = createStaticRouter(handler.dataRoutes, context);
 
-    const ssr = { now, theme, baseUrl: input.baseUrl };
+    const ssr = { now, theme, baseUrl: input.baseUrl, form: input.form };
     const heads = new HeadStore();
     const markup = renderToString(
       <PublicApp queryClient={queryClient} ssr={ssr} head={heads} server i18n={publicI18n(lang)}>
@@ -144,6 +144,7 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
       theme,
       now,
       baseUrl: input.baseUrl,
+      ...(input.form ? { form: input.form } : {}),
       queries: encodeQueries(
         dehydrate(queryClient, {
           shouldDehydrateQuery: (q) => q.state.status === 'success' || isNotFound(q.state.error),

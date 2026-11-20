@@ -6,8 +6,9 @@
  * must not read browser-only state (localStorage, window size, the URL fragment,
  * Date.now()) during the first render; they use these hooks instead.
  */
-import type { ThemePreference } from '@openstatuspage/shared';
+import type { SsrFormState, ThemePreference } from '@openstatuspage/shared';
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react';
+import { useLocation } from 'react-router';
 
 export interface SsrInfo {
   /** Render time on the server (ms since epoch). */
@@ -16,6 +17,8 @@ export interface SsrInfo {
   theme: ThemePreference;
   /** Effective public base URL without trailing slash. */
   baseUrl: string;
+  /** The page answers a form submission (values and errors the server checked). */
+  form?: SsrFormState;
 }
 
 const SsrContext = createContext<SsrInfo | null>(null);
@@ -27,6 +30,17 @@ export function SsrProvider({ value, children }: { value: SsrInfo; children: Rea
 /** Inputs of the server render; null in a client-only render (vite dev, management UI). */
 export function useSsr(): SsrInfo | null {
   return useContext(SsrContext);
+}
+
+/**
+ * The form state the server rendered this page with (a form that was sent
+ * without JavaScript and came back with errors). Only for the page the browser
+ * loaded: after navigating away and back the form starts empty again.
+ */
+export function useServerForm(): SsrFormState | null {
+  const ssr = useSsr();
+  const { key } = useLocation();
+  return ssr?.form && key === 'default' ? ssr.form : null;
 }
 
 const subscribe = () => () => {};

@@ -4,7 +4,7 @@
  * cache. "Not found" answers are part of it, so a page that rendered its 404
  * state hydrates into the same state; ApiError instances travel as plain data.
  */
-import type { ThemePreference } from '@openstatuspage/shared';
+import type { SsrFormState, ThemePreference } from '@openstatuspage/shared';
 import type { DehydratedState } from '@tanstack/react-query';
 import { ApiError } from '../lib/api';
 import type { LanguageCode } from '../lib/languages';
@@ -17,6 +17,8 @@ export interface SsrState {
   now: number;
   baseUrl: string;
   queries: DehydratedState;
+  /** Form state of a page that answers a form submission. */
+  form?: SsrFormState;
 }
 
 interface EncodedApiError {
