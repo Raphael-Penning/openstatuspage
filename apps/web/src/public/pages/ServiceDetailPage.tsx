@@ -10,12 +10,14 @@ import { isNotFound, useLocations, usePublicSettings, useService } from '../hook
 import { averageUptime, correctedDays, lastDays } from '../utils/uptime';
 import { NotFoundState } from './NotFoundState';
 import { usePageHead, useSiteName } from '../head';
+import { useOutboundHref } from '../components/OutboundLink';
 
 export function ServiceDetailPage() {
   const { slug = '' } = useParams();
   const { t } = useTranslation('public');
   const f = useFormat();
   const { data: settings } = usePublicSettings();
+  const outbound = useOutboundHref();
   const showLocations = settings?.showLocations !== false;
   const { data, isPending, isError, error, refetch, dataUpdatedAt } = useService(slug);
   const { data: locations } = useLocations(showLocations && (data?.locationIds.length ?? 0) > 0);
@@ -71,9 +73,10 @@ export function ServiceDetailPage() {
         {data.description && <p className="mt-3 max-w-3xl text-muted">{data.description}</p>}
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
           {data.kind === 'site' && data.url && (
-            <a href={data.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+            <a href={outbound(data.url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
               <ExternalLink aria-hidden className="size-4" />
               {data.url.replace(/^https?:\/\//, '')}
+              <span className="sr-only"> {t('link.newTab')}</span>
             </a>
           )}
           {serviceLocations.length > 0 && (
