@@ -69,6 +69,19 @@ breaking changes.
 
 ### Added
 
+- **Clickable days with a detail page**: every day of an uptime bar (overview,
+  services, service page) and of the service page's day table is a link to
+  `/services/<slug>/days/<YYYY-MM-DD>`, server-rendered and complete without
+  JavaScript: status and uptime of the UTC day, its status periods with start,
+  end and duration, corrections with their public notes, the incidents and
+  maintenance windows of the day, and the previous and next day. A bar stays
+  one tab stop (roving tabindex: arrow keys, Home, End move between the day
+  links, Enter opens one); with JavaScript the whole bar is one pointer target.
+  Day pages are `noindex, follow` and in no sitemap. Data comes from the new
+  `GET /api/public/services/{idOrSlug}/days/{date}` (`service-days`), built from
+  the same corrected history as the uptime bars; `400` for a malformed date,
+  `404` outside the uptime range. Links take a base path (`LinkBaseProvider`),
+  so pages served below a prefix can reuse them.
 - **Server-side rendered public pages**: every public page (overview, services,
   service, locations, history, incident, maintenance, subscribe, subscription
   links, not found) is rendered on the server and hydrated in the browser, so
