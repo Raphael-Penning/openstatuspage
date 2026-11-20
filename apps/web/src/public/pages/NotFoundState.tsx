@@ -1,12 +1,12 @@
 import { SearchX } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { useDocumentTitle } from '../hooks/dom';
+import { usePageHead } from '../head';
 
 /** In-layout "not found" state for unknown routes and entities. */
 export function NotFoundState({ message }: { message?: string }) {
   const { t } = useTranslation('public');
-  useDocumentTitle(t('notFound.title'));
+  usePageHead({ title: t('notFound.title'), robots: 'noindex', canonical: null, status: 404 });
   return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 text-center">
       <SearchX aria-hidden className="size-10 text-muted" />

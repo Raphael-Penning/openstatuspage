@@ -5,11 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { CounterCards } from '../components/CounterCards';
 import { StatusMarkerIcon } from '../components/StatusMarker';
 import { Card, EmptyState, ErrorState, PageTitle, Skeleton, SkeletonList, StatusPill } from '../components/ui';
+import { useHydrated } from '../../lib/ssr';
 import { useCountryName } from '../hooks/countries';
-import { useDocumentTitle } from '../hooks/dom';
 import { useLocations, usePublicSettings } from '../hooks/queries';
 import { groupByRegion, toCounters } from '../utils/status';
 import { NotFoundState } from './NotFoundState';
+import { usePageHead } from '../head';
 
 const WorldMap = lazy(() => import('../components/WorldMap'));
 
@@ -21,7 +22,9 @@ export function LocationsPage() {
   const { data, isPending, isError, refetch } = useLocations(enabled);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const countryName = useCountryName();
-  useDocumentTitle(t('nav.locations'));
+  const hydrated = useHydrated();
+  const mapPlaceholder = <Skeleton className="aspect-[2/1] w-full rounded-xl" />;
+  usePageHead({ title: t('nav.locations') });
 
   if (settings && !settings.showLocations) return <NotFoundState />;
   if (!settings && settingsError) return <ErrorState onRetry={() => void refetchSettings()} />;
@@ -50,9 +53,14 @@ export function LocationsPage() {
 
           <Card as="section" className="overflow-hidden p-2 sm:p-4">
             <h2 className="sr-only">{t('locations.map')}</h2>
-            <Suspense fallback={<Skeleton className="aspect-[2/1] w-full rounded-xl" />}>
-              <WorldMap locations={data.locations} selectedId={selectedId} onSelect={setSelectedId} />
-            </Suspense>
+            {/* The map is loaded lazily in the browser; the server renders its placeholder. */}
+            {hydrated ? (
+              <Suspense fallback={mapPlaceholder}>
+                <WorldMap locations={data.locations} selectedId={selectedId} onSelect={setSelectedId} />
+              </Suspense>
+            ) : (
+              mapPlaceholder
+            )}
             <MapLegend />
           </Card>
 

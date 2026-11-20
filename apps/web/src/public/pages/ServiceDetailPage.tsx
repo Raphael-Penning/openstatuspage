@@ -5,12 +5,13 @@ import { IncidentSummary, MaintenanceSummary } from '../components/Events';
 import { RelativeTime } from '../components/Time';
 import { UptimeBar } from '../components/UptimeBar';
 import { Card, EmptyState, ErrorState, SectionHeader, Skeleton, SkeletonList, StatusPill } from '../components/ui';
-import { useDocumentTitle, useViewportWidth } from '../hooks/dom';
+import { useViewportWidth } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useLocations, usePublicSettings, useService } from '../hooks/queries';
 import { formatUtcDay } from '../utils/time';
 import { averageUptime, correctedDays, formatPercent, lastDays } from '../utils/uptime';
 import { NotFoundState } from './NotFoundState';
+import { usePageHead } from '../head';
 
 export function ServiceDetailPage() {
   const { slug = '' } = useParams();
@@ -21,7 +22,7 @@ export function ServiceDetailPage() {
   const showLocations = settings?.showLocations !== false;
   const { data, isPending, isError, error, refetch, dataUpdatedAt } = useService(slug);
   const { data: locations } = useLocations(showLocations && (data?.locationIds.length ?? 0) > 0);
-  useDocumentTitle(data?.name ?? t('nav.services'));
+  usePageHead({ title: data?.name ?? t('nav.services') });
 
   if (isPending) {
     return (

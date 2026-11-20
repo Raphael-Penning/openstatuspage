@@ -4,9 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { CounterCards } from '../components/CounterCards';
 import { ServiceCatalog } from '../components/ServiceList';
 import { EmptyState, ErrorState, PageTitle, Skeleton, SkeletonList } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useServices } from '../hooks/queries';
 import { filterServices, toCounters, type CounterKey } from '../utils/status';
+import { usePageHead } from '../head';
 
 export function ServicesPage() {
   const { t } = useTranslation('public');
@@ -14,7 +14,7 @@ export function ServicesPage() {
   const [query, setQuery] = useState('');
   const [counter, setCounter] = useState<CounterKey | null>(null);
   const searchId = useId();
-  useDocumentTitle(t('nav.services'));
+  usePageHead({ title: t('nav.services') });
 
   const filtered = useMemo(
     () => (data ? filterServices(data.groups, data.ungrouped, { query, counter }) : null),

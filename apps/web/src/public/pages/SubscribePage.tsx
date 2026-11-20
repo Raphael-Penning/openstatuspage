@@ -17,7 +17,6 @@ import {
   secondaryButton,
 } from '../components/Subscription';
 import { Card, ErrorState, PageTitle, Skeleton } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useSummary } from '../hooks/queries';
 import { useSubscribe } from '../hooks/subscriptions';
 import {
@@ -28,10 +27,11 @@ import {
   type ServiceSection,
   type SubscriptionErrors,
 } from '../utils/subscription';
+import { usePageHead } from '../head';
 
 export function SubscribePage() {
   const { t } = useTranslation('public');
-  useDocumentTitle(t('subscription.title'));
+  usePageHead({ title: t('subscription.title') });
   const summary = useSummary();
   const [unavailable, setUnavailable] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);

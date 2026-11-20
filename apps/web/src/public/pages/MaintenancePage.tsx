@@ -4,17 +4,17 @@ import { BackToHistory, DetailSkeleton, Fact, LocationNames } from '../component
 import { MaintenanceIcon, MaintenanceStatusBadge, Timeline } from '../components/Events';
 import { DateTime, TimeRange } from '../components/Time';
 import { Card, ErrorState } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useMaintenance } from '../hooks/queries';
 import { NotFoundState } from './NotFoundState';
+import { usePageHead } from '../head';
 
 export function MaintenancePage() {
   const { id = '' } = useParams();
   const { t } = useTranslation('public');
   const f = useFormat();
   const { data, isPending, isError, error, refetch } = useMaintenance(id);
-  useDocumentTitle(data?.title ?? t('maintenance.title'));
+  usePageHead({ title: data?.title ?? t('maintenance.title') });
 
   if (isPending) return <DetailSkeleton />;
   if (isError) {

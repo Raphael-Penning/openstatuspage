@@ -6,8 +6,8 @@ import { FeedMenu } from '../components/Controls';
 import { ServiceCatalog } from '../components/ServiceList';
 import { StatusHero } from '../components/StatusHero';
 import { EmptyState, ErrorState, PageTitle, SectionHeader, Skeleton, SkeletonList } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useSummary } from '../hooks/queries';
+import { usePageHead } from '../head';
 
 const UPCOMING_PREVIEW = 3;
 
@@ -15,7 +15,7 @@ export function OverviewPage() {
   const { t } = useTranslation('public');
   const { data, isPending, isError, refetch } = useSummary();
   const [allUpcoming, setAllUpcoming] = useState(false);
-  useDocumentTitle(null);
+  usePageHead({});
 
   if (isPending) return <OverviewSkeleton />;
   if (isError) return <ErrorState onRetry={() => void refetch()} />;

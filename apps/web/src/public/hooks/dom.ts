@@ -2,18 +2,6 @@
  * Small DOM related hooks of the public page.
  */
 import { useEffect, useSyncExternalStore, type RefObject } from 'react';
-import { useTranslation } from 'react-i18next';
-import { usePublicSettings } from './queries';
-
-/** Sets document.title to "<page> · <site name>" (or just the site name). */
-export function useDocumentTitle(page?: string | null): void {
-  const { t } = useTranslation('public');
-  const { data } = usePublicSettings();
-  const site = data?.siteName ?? t('fallbackSiteName');
-  useEffect(() => {
-    document.title = page ? `${page} · ${site}` : site;
-  }, [page, site]);
-}
 
 function subscribeResize(cb: () => void): () => void {
   window.addEventListener('resize', cb);

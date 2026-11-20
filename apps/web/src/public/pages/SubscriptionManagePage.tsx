@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { ApiError } from '../../lib/api';
+import { useHydrated } from '../../lib/ssr';
 import {
   dangerButton,
   InvalidLinkState,
@@ -22,7 +23,6 @@ import {
   secondaryButton,
 } from '../components/Subscription';
 import { Card, ErrorState, PageTitle, Skeleton } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { isNotFound, useSummary } from '../hooks/queries';
 import { useDeleteSubscription, useSubscription, useUpdateSubscription } from '../hooks/subscriptions';
 import {
@@ -33,17 +33,23 @@ import {
   type ServiceSection,
   type SubscriptionErrors,
 } from '../utils/subscription';
+import { usePageHead } from '../head';
 
 export function SubscriptionManagePage() {
   const { t } = useTranslation('public');
-  useDocumentTitle(t('subscription.manage.title'));
+  // Personal links: never indexed.
+  usePageHead({ title: t('subscription.manage.title'), robots: 'noindex', canonical: null });
   const [params] = useSearchParams();
   const { hash } = useLocation();
-  const link = linkParams(params, hash);
+  // The token is in the fragment, which the server never sees: decide after hydration.
+  const hydrated = useHydrated();
+  const link = hydrated ? linkParams(params, hash) : null;
   return (
     <>
       <NoReferrer />
-      {link ? (
+      {!hydrated ? (
+        <ManageSkeleton />
+      ) : link ? (
         <Manage
           key={`${link.id}:${link.token}`}
           id={link.id}

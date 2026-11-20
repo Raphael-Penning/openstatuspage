@@ -11,11 +11,11 @@ import {
 } from '../components/Events';
 import { DateTime } from '../components/Time';
 import { Card, EmptyState, ErrorState, PageTitle, SkeletonList } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { useHistory, useLocations, usePublicSettings, useServices } from '../hooks/queries';
 import { flattenServices, maintenanceEnd, maintenanceStart } from '../utils/status';
 import { formatMonth, monthKey, recentMonths } from '../utils/time';
+import { usePageHead } from '../head';
 
 const PAGE_SIZE = 20;
 const TYPES = ['all', 'incident', 'maintenance'] as const;
@@ -23,6 +23,23 @@ type HistoryType = (typeof TYPES)[number];
 
 function parseType(value: string | null): HistoryType {
   return TYPES.includes(value as HistoryType) ? (value as HistoryType) : 'all';
+}
+
+/**
+ * Query of the history list from the URL (?type, ?service, ?location, ?month,
+ * ?page). Shared with the route loader so the server prefetches the same key.
+ */
+export function historyQuery(params: URLSearchParams, showLocations: boolean): Partial<HistoryQuery> {
+  const location = showLocations ? (params.get('location') ?? '') : '';
+  const month = /^\d{4}-\d{2}$/.test(params.get('month') ?? '') ? params.get('month')! : '';
+  return {
+    type: parseType(params.get('type')),
+    serviceId: params.get('service') || undefined,
+    locationId: location || undefined,
+    month: month || undefined,
+    page: Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1),
+    pageSize: PAGE_SIZE,
+  };
 }
 
 export function HistoryPage() {
@@ -33,22 +50,13 @@ export function HistoryPage() {
   const showLocations = settings?.showLocations !== false;
   const services = useServices();
   const locations = useLocations(showLocations);
-  useDocumentTitle(t('nav.history'));
+  usePageHead({ title: t('nav.history') });
 
-  const type = parseType(params.get('type'));
-  const serviceId = params.get('service') ?? '';
-  const locationId = showLocations ? (params.get('location') ?? '') : '';
-  const month = /^\d{4}-\d{2}$/.test(params.get('month') ?? '') ? params.get('month')! : '';
-  const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
-
-  const query: Partial<HistoryQuery> = {
-    type,
-    serviceId: serviceId || undefined,
-    locationId: locationId || undefined,
-    month: month || undefined,
-    page,
-    pageSize: PAGE_SIZE,
-  };
+  const query = historyQuery(params, showLocations);
+  const { type, page } = query as { type: HistoryType; page: number };
+  const serviceId = query.serviceId ?? '';
+  const locationId = query.locationId ?? '';
+  const month = query.month ?? '';
   const { data, isPending, isError, isPlaceholderData, refetch } = useHistory(query);
 
   function update(key: string, value: string) {
@@ -59,7 +67,8 @@ export function HistoryPage() {
     setParams(next, { replace: key !== 'page' });
   }
 
-  const months = useMemo(() => recentMonths(new Date(), 24), []);
+  const currentMonth = monthKey(new Date(f.now));
+  const months = useMemo(() => recentMonths(new Date(`${currentMonth}-01T00:00:00Z`), 24), [currentMonth]);
   const serviceOptions = services.data ? flattenServices(services.data.groups, services.data.ungrouped) : [];
   const filtered = type !== 'all' || serviceId || locationId || month;
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;

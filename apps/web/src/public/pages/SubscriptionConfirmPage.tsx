@@ -7,23 +7,43 @@ import { Loader2, MailCheck, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { InvalidLinkState, NoReferrer, primaryButton, ResultState, secondaryButton } from '../components/Subscription';
+import { useHydrated } from '../../lib/ssr';
 import { ErrorState } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { isNotFound } from '../hooks/queries';
 import { useConfirmSubscription } from '../hooks/subscriptions';
 import { linkParams, managePath } from '../utils/subscription';
+import { usePageHead } from '../head';
 
 export function SubscriptionConfirmPage() {
   const { t } = useTranslation('public');
-  useDocumentTitle(t('subscription.confirm.title'));
+  // Personal links: never indexed.
+  usePageHead({ title: t('subscription.confirm.title'), robots: 'noindex', canonical: null });
   const [params] = useSearchParams();
   const { hash } = useLocation();
-  const link = linkParams(params, hash);
+  // The token is in the fragment, which the server never sees: decide after hydration.
+  const hydrated = useHydrated();
+  const link = hydrated ? linkParams(params, hash) : null;
   return (
     <>
       <NoReferrer />
-      {link ? <Confirm key={`${link.id}:${link.token}`} id={link.id} token={link.token} /> : <InvalidLinkState />}
+      {!hydrated ? (
+        <Checking />
+      ) : link ? (
+        <Confirm key={`${link.id}:${link.token}`} id={link.id} token={link.token} />
+      ) : (
+        <InvalidLinkState />
+      )}
     </>
+  );
+}
+
+function Checking() {
+  const { t } = useTranslation('public');
+  return (
+    <ResultState
+      icon={<Loader2 aria-hidden className="size-10 motion-safe:animate-spin text-muted" />}
+      title={t('subscription.confirm.loading')}
+    />
   );
 }
 
@@ -32,14 +52,7 @@ function Confirm({ id, token }: { id: string; token: string }) {
   const navigate = useNavigate();
   const confirm = useConfirmSubscription(id, token);
 
-  if (confirm.isPending) {
-    return (
-      <ResultState
-        icon={<Loader2 aria-hidden className="size-10 motion-safe:animate-spin text-muted" />}
-        title={t('subscription.confirm.loading')}
-      />
-    );
-  }
+  if (confirm.isPending) return <Checking />;
   if (confirm.isError) {
     if (isNotFound(confirm.error)) return <InvalidLinkState />;
     return <ErrorState className="mx-auto max-w-xl" onRetry={() => void confirm.refetch()} />;

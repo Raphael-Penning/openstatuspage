@@ -4,17 +4,17 @@ import { BackToHistory, DetailSkeleton, Fact, LocationNames } from '../component
 import { ImpactBadge, IncidentIcon, IncidentStatusBadge, Timeline } from '../components/Events';
 import { DateTime } from '../components/Time';
 import { Card, ErrorState, StatusPill } from '../components/ui';
-import { useDocumentTitle } from '../hooks/dom';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useIncident } from '../hooks/queries';
 import { NotFoundState } from './NotFoundState';
+import { usePageHead } from '../head';
 
 export function IncidentPage() {
   const { id = '' } = useParams();
   const { t } = useTranslation('public');
   const f = useFormat();
   const { data, isPending, isError, error, refetch } = useIncident(id);
-  useDocumentTitle(data?.title ?? t('incident.title'));
+  usePageHead({ title: data?.title ?? t('incident.title') });
 
   if (isPending) return <DetailSkeleton />;
   if (isError) {
