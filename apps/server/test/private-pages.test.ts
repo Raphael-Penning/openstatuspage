@@ -144,7 +144,6 @@ describe('private page API', () => {
       await api('/api/public/private-page'),
       await api('/api/public/private-page', ''),
       await api('/api/public/private-page', newPrivatePageToken()),
-      await api('/api/public/private-page', page.token.toUpperCase()),
       await api('/api/public/private-page', 'x'.repeat(500)),
       await api('/api/public/private-page', disabled.token),
       await api('/api/public/private-page', expired.token),
@@ -156,6 +155,8 @@ describe('private page API', () => {
     }
     // The token is never read from the URL.
     expect((await api(`/api/public/private-page?token=${page.token}`)).statusCode).toBe(404);
+    // Base32 is case-insensitive: the token in upper case is the same token.
+    expect((await api('/api/public/private-page', page.token.toUpperCase())).statusCode).toBe(200);
   });
 
   it('serves the service and day of a page’s hidden service, nothing of other services', async () => {

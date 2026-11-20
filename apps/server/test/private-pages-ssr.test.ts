@@ -167,6 +167,16 @@ describe('private page', () => {
     expect((await get(`/p/${newPrivatePageToken()}/incidents/${incident.id}`)).statusCode).toBe(404);
   });
 
+  it('opens a link that was rewritten in upper case, with its links in lower case', async () => {
+    const res = await get(`/P/${page.token.toUpperCase()}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    const root = rootOf(res);
+    expect(root).toContain('Partner backend');
+    expect(elements(root, 'a').map((a) => a.href!)).toContain(`/p/${page.token}/services/${ids.hiddenSlug}`);
+    expect((await get(`/p/${page.token.toUpperCase()}/services/${ids.hiddenSlug}`)).statusCode).toBe(200);
+  });
+
   it('is rendered for every request, never from a cache', async () => {
     expect(rootOf(await get(`/p/${page.token}`))).toContain('ACME status');
     await admin.patch(`/api/admin/private-pages/${page.id}`, { name: 'Renamed page' });
