@@ -122,7 +122,8 @@ Das Grundversprechen lautet: **Kunden sehen Services, niemals Infrastruktur.**
 3. Prüfe die [Konfiguration](04-configuration.md) und die Einstellungsseite.
 4. Binde dein [Monitoring](05-monitoring.md) an und lege Services an.
 5. Lerne die [tägliche Arbeit](06-daily-work.md) mit Vorfällen und Wartungen
-   kennen.
+   kennen und wie die [öffentliche Seite](12-public-page.md) Suchmaschinen und
+   Besucher ohne JavaScript erreicht.
 6. Plane [Sicherungen, Updates und die Überwachung](09-operations.md) der
    Statusseite selbst und geh die [Sicherheits-Checkliste](11-security-checklist.md)
    durch.
