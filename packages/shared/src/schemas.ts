@@ -76,6 +76,33 @@ export const zHttpUrlOrPath = z
   .max(500)
   .refine((v) => (v.startsWith('/') && !v.startsWith('//')) || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path');
 
+/**
+ * Path on this site for links (`/about`): a single leading slash, no `//` or
+ * backslash (browsers read both as another host), no whitespace or control
+ * characters (the URL parser drops tabs and newlines), so it never leaves the site.
+ */
+export const zSitePath = z
+  .string()
+  .max(500)
+  .regex(/^\/(?![/\\])[^\s\\\u0000-\u001f\u007f]*$/, 'must be a path on this site starting with a single /');
+/** Link target: an http(s) URL or a path on this site ({@link zSitePath}). */
+export const zLinkTarget = z
+  .string()
+  .max(500)
+  .refine((v) => zSitePath.safeParse(v).success || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path starting with /');
+/** Optional single-line label; empty means the translated default. */
+const zLinkLabel = z
+  .string()
+  .max(60)
+  .regex(/^[^\u0000-\u001f\u007f]*$/, 'single line')
+  .default('');
+/** Value of a UTM parameter (plain text, no control characters). */
+const zUtmValue = z
+  .string()
+  .max(100)
+  .regex(/^[^\u0000-\u001f\u007f]*$/, 'single line')
+  .default('');
+
 /** Value the server returns in place of stored secrets. Sending it back keeps the stored value. */
 export const SECRET_MASK = '••••••••';
 
@@ -112,6 +139,32 @@ export const SettingsInput = z.object({
   emailSubscriptionsEnabled: z.boolean().default(false),
   /** Hours before a scheduled maintenance to remind subscribers; 0 disables reminders. */
   maintenanceReminderHours: z.number().int().min(0).max(168).default(24),
+
+  // Legal links in the footer (external pages only); hidden without URL. Empty label: translated default.
+  imprintUrl: zHttpUrl.nullish(),
+  imprintLabel: zLinkLabel,
+  privacyUrl: zHttpUrl.nullish(),
+  privacyLabel: zLinkLabel,
+  accessibilityUrl: zHttpUrl.nullish(),
+  accessibilityLabel: zLinkLabel,
+  /** Copyright / brand notice as plain text; `{year}` becomes the current year. Empty: "© <year> <site name>". */
+  copyrightText: z
+    .string()
+    .max(200)
+    .regex(/^[^\u0000-\u001f\u007f]*$/, 'single line')
+    .default(''),
+  /** Optional link of the copyright notice (the organisation's website). */
+  brandUrl: zHttpUrl.nullish(),
+  /** Show the "Powered by OpenStatusPage" line in the footer. */
+  showPoweredBy: z.boolean().default(true),
+  /** Extra link in the header navigation ("What does the status mean?"); hidden without URL. */
+  infoLinkUrl: zLinkTarget.nullish(),
+  infoLinkLabel: zLinkLabel,
+  /** Append UTM parameters to the outbound links the admin configured (see outboundHref). */
+  utmEnabled: z.boolean().default(false),
+  utmSource: zUtmValue,
+  utmMedium: zUtmValue,
+  utmCampaign: zUtmValue,
 });
 export type SettingsInput = z.infer<typeof SettingsInput>;
 export type PublicPageSettings = SettingsInput;
