@@ -69,6 +69,24 @@ breaking changes.
 
 ### Added
 
+- **Private status pages** at `/p/<link>`: a status page with a secret link for
+  chosen services, also ones hidden from the public page, with the look of the
+  public page (overall status, uptime bars with day pages, service pages, active
+  incidents, running and upcoming maintenance), server-rendered and complete
+  without JavaScript. Managed by admins under *Administration → Private pages*
+  and `/api/admin/private-pages` (name, description, services, expiry, enabled;
+  audit log entries). The link carries 160 random bits, is shown once after
+  creating or renewing it ("New link" invalidates the old one) and stored only as
+  its SHA-256 hash (migration `0009_private_pages`). Visitors' API:
+  `/api/public/private-page…` with the token in the `X-Private-Page-Token` header.
+  Private pages are `noindex, nofollow` (meta and header), never cached or served
+  stale, carry no Umami tag, send no referrer, are disallowed in `robots.txt` and
+  absent from the sitemaps and `llms.txt`; the request log redacts the link, 60
+  requests per minute and client, and wrong, disabled and expired links get the
+  same 404. On PostgreSQL the public role holds no privilege on the private page
+  tables and reads a page only through token-scoped `SECURITY DEFINER` functions
+  in `osp_public`. Feeds and email subscriptions of private pages are not part of
+  this release.
 - **Clickable days with a detail page**: every day of an uptime bar (overview,
   services, service page) and of the service page's day table is a link to
   `/services/<slug>/days/<YYYY-MM-DD>`, server-rendered and complete without
