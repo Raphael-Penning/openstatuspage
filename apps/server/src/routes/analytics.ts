@@ -54,7 +54,7 @@ export const SEND_BODY_LIMIT = 16 * 1024;
 const SEND_RESPONSE_MAX_BYTES = 8 * 1024;
 export const SEND_TIMEOUT_MS = 3000;
 /** Events forwarded at the same time; more are dropped (204). */
-export const MAX_IN_FLIGHT = 16;
+export const MAX_IN_FLIGHT = 8;
 
 /** Browsers cache the script for an hour and may use it a day longer while they check it. */
 const SCRIPT_CACHE_CONTROL = 'public, max-age=3600, stale-while-revalidate=86400';
