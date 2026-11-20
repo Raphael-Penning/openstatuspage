@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalPath, isPersonalPath, normalizePath } from '@openstatuspage/shared';
+import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath, PRIVATE_PAGE_REQUESTS_PER_MINUTE } from '@openstatuspage/shared';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -11,7 +11,9 @@ import { FRAMELESS_PAGE_CSP, PERMISSIONS_POLICY, PUBLIC_PAGE_CSP } from './lib/s
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
-import { registerRoutes } from './routes/index.js';
+import { TokenBucketLimiter } from './adapters/rate-limit.js';
+import { RATE_LIMIT_KEYS, registerRoutes } from './routes/index.js';
+import { sendTooManyRequests } from './ssr/busy.js';
 import type { RenderModule, SsrPages } from './ssr/pages.js';
 import { staticCacheControl, webAssetPolicy } from './web-assets.js';
 
@@ -48,6 +50,32 @@ export function redactUrlTokens(url: string): string {
   return url.slice(0, query) + url.slice(query).replace(TOKEN_PARAM, '$1[REDACTED]');
 }
 
+/**
+ * Replaces the token of a private page path in any spelling (`/p/<token>/...`,
+ * `/P//<token>`, `/%70/<token>`, `/x/../p/<token>`): "/p/abc/services/web" →
+ * "/p/[REDACTED]/services/web". A path with dot segments is logged resolved.
+ */
+export function redactPrivatePagePath(url: string): string {
+  const end = url.search(/[?#]/);
+  const path = end === -1 ? url : url.slice(0, end);
+  if (hasDotSegments(path)) return redactPrivatePagePath(normalizePath(path) + (end === -1 ? '' : url.slice(end)));
+  const parts = path.split('/');
+  const first = parts.findIndex((part) => part !== '');
+  if (first === -1 || safeDecode(parts[first]!).toLowerCase() !== 'p') return url;
+  const token = parts.findIndex((part, i) => i > first && part !== '');
+  if (token === -1) return url;
+  parts[token] = '[REDACTED]';
+  return parts.join('/') + (end === -1 ? '' : url.slice(end));
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 interface LoggedRequest {
   method: string;
   url: string;
@@ -58,12 +86,12 @@ interface LoggedRequest {
 
 /**
  * Request serializer for the log (fields as Fastify's default). Tokens in query strings
- * (e.g. the RFC 8058 one-click URL) never end up in the log.
+ * (e.g. the RFC 8058 one-click URL) and in private page paths never end up in the log.
  */
 export function serializeRequest(req: LoggedRequest) {
   return {
     method: req.method,
-    url: redactUrlTokens(req.url),
+    url: redactPrivatePagePath(redactUrlTokens(req.url)),
     host: req.host,
     remoteAddress: req.ip,
     remotePort: req.socket?.remotePort,
@@ -121,7 +149,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // Subscription pages have a token in their URL: it never leaves as a referrer.
     reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
     const admin = path === '/admin' || path.startsWith('/admin/');
-    const framed = !(admin || isApiPath(path));
+    // Private pages are not embeddable either: whoever holds a link could otherwise show it on any site.
+    const framed = !(admin || isApiPath(path) || isPrivatePagePath(path));
     if (!framed) reply.header('X-Frame-Options', 'DENY');
     // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
     const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
@@ -134,7 +163,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     }
     // The management UI is never indexed by search engines, nor is any page of an
     // admin instance (its public pages are a preview; the status page is elsewhere).
-    if (admin || (adminInstance && html)) reply.header('X-Robots-Tag', 'noindex, nofollow');
+    // Private pages (/p/<token>) are never indexed nor followed, wherever they are served.
+    if (admin || (adminInstance && html) || isPrivatePagePath(path)) reply.header('X-Robots-Tag', 'noindex, nofollow');
   });
 
   registerJsonApi(app);
@@ -162,14 +192,22 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         if (cacheControl) reply.header('Cache-Control', cacheControl);
       },
     });
+    // Page views of private pages per client, like the rate limit of their API (routes/public.ts).
+    const privatePageLimiter = new TokenBucketLimiter({
+      capacity: PRIVATE_PAGE_REQUESTS_PER_MINUTE,
+      refillPerSecond: PRIVATE_PAGE_REQUESTS_PER_MINUTE / 60,
+      maxKeys: RATE_LIMIT_KEYS,
+    });
     // Public pages are rendered on the server (ssr/pages.ts) where the web build has
     // the render bundle and the role serves the public web client.
     let ssr: SsrPages | null = null;
     if (roleFeatures(config.APP_ROLE).publicWeb) {
-      const [{ SsrPages }, { PublicDocuments }, forms] = await Promise.all([
+      const [{ SsrPages }, { PublicDocuments }, forms, { PrivatePageDocuments }, { createPrivatePages }] = await Promise.all([
         import('./ssr/pages.js'),
         import('./services/public-documents.js'),
         import('./forms/index.js'),
+        import('./services/private-page-documents.js'),
+        import('./services/private-pages.js'),
       ]);
       if (ssrModule || SsrPages.available(webDir)) {
         ssr = new SsrPages({
@@ -177,6 +215,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
           baseUrl: config.PUBLIC_BASE_URL,
           docs: new PublicDocuments(ctx.db, ctx.mailer, { analytics: Boolean(config.UMAMI_URL) }),
           subscription: (id, token) => forms.subscriptionDocument(app, id, token),
+          privatePages: new PrivatePageDocuments(createPrivatePages(ctx.db, config)),
           log: app.log,
           loadModule: ssrModule,
         });
@@ -193,6 +232,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // after a deploy. A public instance answers /admin/... with 404.
     app.setNotFoundHandler(async (req, reply) => {
       const path = req.url.split('?')[0] ?? '';
+      // Browsers resolve "." and ".." before sending a request; a path that still has them
+      // (/./p/<token>, /a/../p/<token>) is hand-made and gets nothing but a plain 404.
+      if (hasDotSegments(path)) return routeNotFound(reply.header('Cache-Control', 'no-store'));
       const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
         // One URL per page for search engines: /SERVICES/ → 301 /services. Not personal
@@ -200,6 +242,14 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         const preferred = canonicalPath(path);
         if (preferred !== path && !isAdminPath(path) && !isPersonalPath(path)) {
           return reply.header('Cache-Control', CANONICAL_REDIRECT_CACHE).redirect(preferred + req.url.slice(path.length), 301);
+        }
+        // Private pages: as many page views per client as their API allows (against guessing tokens).
+        if (isPrivatePagePath(path)) {
+          const retryAfter = privatePageLimiter.take(req.ip);
+          if (retryAfter > 0) {
+            await sendTooManyRequests(req, reply, retryAfter);
+            return reply;
+          }
         }
         if (ssr && !isAdminPath(path) && (await ssr.send(req, reply))) return reply;
         return reply.type('text/html').header('Cache-Control', 'no-cache').sendFile(web.index, { cacheControl: false });
@@ -232,6 +282,12 @@ function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((
 function isAdminPath(path: string): boolean {
   const normalized = normalizePath(path);
   return normalized === '/admin' || normalized.startsWith('/admin/');
+}
+
+/** A private page (/p/<token>...) in any spelling of the path. */
+function isPrivatePagePath(path: string): boolean {
+  const normalized = normalizePath(path);
+  return normalized === '/p' || normalized.startsWith('/p/');
 }
 
 function isApiPath(path: string): boolean {

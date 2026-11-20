@@ -85,6 +85,9 @@ describe('a migrating role without CREATE on the database', () => {
     try {
       expect(await connectionRestricted(pub)).toBe(true);
       expect((await schemaStatus(pub)).applied).toBe(EXPECTED_MIGRATION);
+      // Later additions to osp_public come with the schema (0009: the private page functions).
+      const page = await sql`select * from osp_public.private_page(${'a'.repeat(32)})`.execute(pub);
+      expect(page.rows).toEqual([]);
     } finally {
       await pub.destroy();
     }

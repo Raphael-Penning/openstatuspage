@@ -51,6 +51,7 @@ import {
   type SsrRenderResult,
 } from '@openstatuspage/shared';
 import type { FastifyBaseLogger, FastifyReply, FastifyRequest } from 'fastify';
+import type { PrivatePageDocuments } from '../services/private-page-documents.js';
 import type { PublicDocuments } from '../services/public-documents.js';
 import { sendBusy } from './busy.js';
 import { publicDocumentSource } from './source.js';
@@ -71,6 +72,8 @@ export interface SsrPagesOptions {
   docs: PublicDocuments;
   /** A subscription for its manage token (the manage page without JavaScript); rejects with a 404 HttpError. */
   subscription?: (id: string, token: string) => Promise<DataDocument>;
+  /** Private pages at /p/<token> (rendered for each request, never cached). */
+  privatePages?: PrivatePageDocuments;
   log: FastifyBaseLogger;
   /** Loads the render bundle (default: dist/.ssr/entry-server.mjs of webDir). Tests pass the source module. */
   loadModule?: () => Promise<RenderModule>;
@@ -287,7 +290,7 @@ export class SsrPages {
   private queueWarnedAt = -Infinity;
 
   constructor(private readonly options: SsrPagesOptions) {
-    this.source = publicDocumentSource(options.docs, { subscription: options.subscription });
+    this.source = publicDocumentSource(options.docs, { subscription: options.subscription, privatePages: options.privatePages });
     this.ttlMs = (options.cacheSeconds ?? 5) * 1000;
     this.staleMs = (options.staleSeconds ?? 600) * 1000;
     this.maxEntries = options.cacheEntries ?? 16;

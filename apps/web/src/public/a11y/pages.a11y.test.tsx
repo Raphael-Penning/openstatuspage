@@ -8,12 +8,19 @@
 import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { axeViolations, installBrowserStubs, renderPublic, settle, type Rendered } from './harness';
-import { SUBSCRIPTION_TOKEN } from './fixtures';
+import { API_TODAY, API_YESTERDAY, PRIVATE_TOKEN, SUBSCRIPTION_TOKEN } from './fixtures';
+
+// axe walks every node; the overview has hundreds of day links and needs
+// more than vitest's 5 s default on slow CI runners.
+const AXE_TIMEOUT_MS = 30_000;
 
 const PAGES: [name: string, path: string][] = [
   ['overview', '/'],
   ['services', '/services'],
   ['service detail', '/services/api'],
+  ['service day', `/services/api/days/${API_YESTERDAY}`],
+  ['service day (today)', `/services/api/days/${API_TODAY}`],
+  ['unknown service day', '/services/api/days/2001-01-01'],
   ['locations', '/locations'],
   ['history', '/history'],
   ['incident', '/incidents/inc-1'],
@@ -29,6 +36,12 @@ const PAGES: [name: string, path: string][] = [
   ['services filtered', '/services?q=api&status=operational'],
   ['unknown incident', '/incidents/missing'],
   ['not found', '/does-not-exist'],
+  ['private page', `/p/${PRIVATE_TOKEN}`],
+  ['private service', `/p/${PRIVATE_TOKEN}/services/backend`],
+  ['private service day', `/p/${PRIVATE_TOKEN}/services/api/days/${API_YESTERDAY}`],
+  ['private incident', `/p/${PRIVATE_TOKEN}/incidents/inc-1`],
+  ['private maintenance', `/p/${PRIVATE_TOKEN}/maintenance/m-1`],
+  ['private page (wrong link)', '/p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
 ];
 
 const VARIANTS = [
@@ -69,7 +82,7 @@ describe.each(VARIANTS)('public pages ($lang, $theme)', ({ lang, theme }) => {
     // WCAG 2.4.2: every page has a title naming the page and the site.
     expect(document.title).toMatch(/Example Status|Status/);
     expect(await axeViolations()).toEqual([]);
-  });
+  }, AXE_TIMEOUT_MS);
 });
 
 describe('the check itself', () => {
@@ -190,23 +203,78 @@ describe('interactive states', () => {
     expect(details.open).toBe(false);
   });
 
-  it('uptime bar with its tooltip, keyboard navigation and Escape', async () => {
+  it('uptime bar: one tab stop, arrow keys move between day links, tooltip and Escape', async () => {
     page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'dark' });
     const bar = page.container.querySelector<HTMLElement>('[aria-roledescription="uptime bar"]')!;
     expect(bar).not.toBeNull();
-    await act(async () => bar.focus());
+    const links = [...bar.querySelectorAll<HTMLAnchorElement>('a')];
+    expect(links.length).toBe(90);
+    // Roving tabindex: one tab stop, the newest day.
+    expect(links.filter((a) => a.tabIndex === 0)).toEqual([links.at(-1)]);
+    expect(links.at(-1)!.getAttribute('href')).toBe(`/services/api/days/${API_TODAY}`);
+    expect(links.at(-1)!.getAttribute('aria-label')).toMatch(/Operational, 100% uptime/);
+    await act(async () => links.at(-1)!.focus());
     await settle();
-    const tooltipId = bar.getAttribute('aria-describedby');
-    expect(tooltipId).toBeTruthy();
-    expect(document.getElementById(tooltipId!)?.textContent).toContain('Operational');
-    await key(bar, 'ArrowLeft');
-    const live = bar.parentElement!.querySelector('[aria-live="polite"]');
-    expect(live?.textContent).not.toBe('');
+    const tooltip = () => bar.parentElement!.querySelector('[aria-hidden="true"].absolute');
+    expect(tooltip()?.textContent).toContain('Operational');
+    await key(links.at(-1)!, 'ArrowLeft');
+    expect(document.activeElement).toBe(links.at(-2));
+    expect(links.at(-2)!.tabIndex).toBe(0);
+    expect(links.at(-1)!.tabIndex).toBe(-1);
+    await key(links.at(-2)!, 'Home');
+    expect(document.activeElement).toBe(links[0]);
+    await key(links[0]!, 'End');
+    expect(document.activeElement).toBe(links.at(-1));
     expect(await axeViolations()).toEqual([]);
     // WCAG 1.4.13: Escape hides the tooltip without moving the focus.
-    await key(bar, 'Escape');
-    expect(bar.getAttribute('aria-describedby')).toBeNull();
-    expect(document.activeElement).toBe(bar);
+    await key(links.at(-1)!, 'Escape');
+    expect(tooltip()).toBeNull();
+    expect(document.activeElement).toBe(links.at(-1));
+    // Enter (a click without a pointer) opens the day in the client.
+    await click(links.at(-2)!);
+    expect(page.container.querySelector('h1 time')?.getAttribute('datetime')).toBe(API_YESTERDAY);
+    expect(await axeViolations()).toEqual([]);
+  });
+
+  it('uptime bar on touch screens: the first tap shows the day, the second opens it', async () => {
+    page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'light' });
+    const bar = page.container.querySelector<HTMLElement>('[aria-roledescription="uptime bar"]')!;
+    const day = bar.children[bar.children.length - 2] as HTMLAnchorElement;
+    const tap = async () => {
+      await act(async () => {
+        const down = new MouseEvent('pointerdown', { bubbles: true });
+        Object.defineProperty(down, 'pointerType', { value: 'touch' });
+        day.dispatchEvent(down);
+        day.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+      });
+      await settle();
+    };
+    await tap();
+    const tooltip = bar.parentElement!.querySelector('[aria-hidden="true"].absolute');
+    expect(tooltip?.textContent).toContain(API_YESTERDAY.slice(0, 4));
+    // The tooltip offers the day as a link, too (out of the tab order: the day link itself is in it).
+    expect(tooltip?.querySelector('a')?.getAttribute('href')).toBe(`/services/api/days/${API_YESTERDAY}`);
+    expect(tooltip?.querySelector('a')?.tabIndex).toBe(-1);
+    expect(page.container.querySelector('h1 time')).toBeNull();
+    await tap();
+    expect(page.container.querySelector('h1 time')?.getAttribute('datetime')).toBe(API_YESTERDAY);
+  });
+
+  it('uptime bar with a screen reader: activating the focused day opens it at once', async () => {
+    page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'light' });
+    const bar = page.container.querySelector<HTMLElement>('[aria-roledescription="uptime bar"]')!;
+    const day = bar.children[bar.children.length - 2] as HTMLAnchorElement;
+    // VoiceOver / TalkBack move the focus to the link, a double tap sends a touch press and a click.
+    await act(async () => day.focus());
+    await settle();
+    await act(async () => {
+      const down = new MouseEvent('pointerdown', { bubbles: true });
+      Object.defineProperty(down, 'pointerType', { value: 'touch' });
+      day.dispatchEvent(down);
+      day.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    await settle();
+    expect(page.container.querySelector('h1 time')?.getAttribute('datetime')).toBe(API_YESTERDAY);
   });
 
   it('days that were not fully operational are not marked by color alone', async () => {
@@ -225,6 +293,8 @@ describe('interactive states', () => {
     expect(details.open).toBe(true);
     const rows = details.querySelectorAll('tbody tr');
     expect(rows.length).toBe(page.container.querySelector('[aria-roledescription]')!.children.length);
+    // Every day links to its page.
+    expect([...rows].map((r) => r.querySelector('th a')?.getAttribute('href'))).toContain(`/services/api/days/${API_YESTERDAY}`);
     expect(await axeViolations()).toEqual([]);
   });
 
@@ -283,5 +353,53 @@ describe('interactive states', () => {
     await click(link);
     await settle(50);
     expect(document.activeElement?.id).toBe('main');
+  });
+});
+
+describe('private pages', () => {
+  const base = `/p/${PRIVATE_TOKEN}`;
+
+  it('keep every service, bar day and service chip link on the private page', async () => {
+    page = await renderPublic({ path: base, lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main h1')?.textContent).toBe('ACME status');
+    expect(page.container.textContent).toContain('Partner backend');
+    const hrefs = [...page.container.querySelectorAll('main a[href^="/services"], main .osp-bar a')].map((a) => a.getAttribute('href'));
+    expect(hrefs.filter((h) => h?.startsWith('/services'))).toEqual([]);
+    expect(page.container.querySelector(`main a[href="${base}/services/backend"]`)).not.toBeNull();
+    expect(page.container.querySelector(`.osp-bar a[href^="${base}/services/backend/days/"]`)).not.toBeNull();
+    // No navigation to the main pages; the logo leads to the private page itself.
+    expect(page.container.querySelector('nav a[href="/history"]')).toBeNull();
+    expect(page.container.querySelector(`header a[href="${base}"]`)).not.toBeNull();
+    // The footer leaves out the main page's status API and feeds.
+    expect(page.container.querySelector('footer a[href="/api/public/status"], footer a[href^="/feed."]')).toBeNull();
+    expect(document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? 'noindex, nofollow').toBe('noindex, nofollow');
+  });
+
+  it('a service page goes back to the private page', async () => {
+    page = await renderPublic({ path: `${base}/services/backend`, lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main h1')?.textContent).toBe('Partner backend');
+    expect(page.container.querySelector(`main a[href="${base}"]`)).not.toBeNull();
+    expect(page.container.querySelector('main a[href^="/history"]')).toBeNull();
+  });
+
+  it('incidents and maintenance windows open below the private page and lead back to it', async () => {
+    page = await renderPublic({ path: base, lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main a[href^="/incidents/"], main a[href^="/maintenance/"]')).toBeNull();
+    expect(page.container.querySelector(`main a[href="${base}/incidents/inc-1"]`)).not.toBeNull();
+    expect(page.container.querySelector(`main a[href="${base}/maintenance/m-1"]`)).not.toBeNull();
+
+    for (const path of [`${base}/incidents/inc-1`, `${base}/maintenance/m-1`]) {
+      page.unmount();
+      page = await renderPublic({ path, lang: 'en', theme: 'light' });
+      expect(page.container.querySelector('main h1')?.textContent, path).not.toBe('Page not found');
+      expect(page.container.querySelector(`main a[href="${base}"]`), path).not.toBeNull();
+      expect(page.container.querySelector('main a[href^="/history"], main a[href^="/services/"]'), path).toBeNull();
+      expect(page.container.querySelector(`main a[href="${base}/services/api"]`), path).not.toBeNull();
+    }
+  });
+
+  it('a wrong link is "not found"', async () => {
+    page = await renderPublic({ path: '/p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', lang: 'en', theme: 'light' });
+    expect(page.container.querySelector('main h1')?.textContent).toBe('Page not found');
   });
 });

@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router';
 import { DEFAULT_LANGUAGE, isLanguage, LANGUAGES } from '../lib/languages';
 import { useSsr } from '../lib/ssr';
+import { usePrivatePageToken } from './hooks/private-page';
 import { usePublicSettings } from './hooks/queries';
 import {
   absoluteUrl,
@@ -130,14 +131,18 @@ export function usePageHead(input: PageHeadInput): void {
   const baseUrl = useBaseUrl();
   const context = useContext(HeadContext);
 
+  // Pages of a private page (/p/<token>) are never indexed nor followed, have no canonical
+  // URL (it would repeat the token), no language alternates and no structured data.
+  const isPrivate = usePrivatePageToken() !== null;
+
   const site = settings?.siteName ?? t('fallbackSiteName');
   const lang = isLanguage(i18n.language) ? i18n.language : DEFAULT_LANGUAGE;
   const status = input.status ?? 200;
-  const indexable = status < 400 && !(input.robots ?? '').includes('noindex');
+  const indexable = !isPrivate && status < 400 && !(input.robots ?? '').includes('noindex');
   const description = summarize(input.description || settings?.description || t('seo.default', { site }));
   // The page's path in its preferred spelling (/SERVICES/ → /services; a page with
   // several URLs passes its preferred one); null: no canonical URL.
-  const path = input.canonical === undefined ? canonicalPath(pathname) : input.canonical;
+  const path = isPrivate ? null : input.canonical === undefined ? canonicalPath(pathname) : input.canonical;
   const queryLang = new URLSearchParams(search).get(LANG_QUERY);
   const canonical = path ? absoluteUrl(withLang(path, isLanguage(queryLang) ? queryLang : null), baseUrl) : null;
   const info: SiteInfo = {
@@ -163,7 +168,7 @@ export function usePageHead(input: PageHeadInput): void {
     title: input.title ? `${input.title} · ${site}` : site,
     description,
     canonical,
-    robots: input.robots ?? (indexable ? 'index, follow' : 'noindex'),
+    robots: isPrivate ? 'noindex, nofollow' : (input.robots ?? (indexable ? 'index, follow' : 'noindex')),
     ...(jsonLd.length ? { jsonLd } : {}),
     ...(input.status ? { status: input.status } : {}),
     siteName: site,

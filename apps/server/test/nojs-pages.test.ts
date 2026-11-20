@@ -92,12 +92,18 @@ function expectWorksWithoutScript(html: string, url: string) {
 describe('public pages without JavaScript', () => {
   it('none of them needs a script', async () => {
     const sub = await subscriber();
+    const secret = (await admin.post('/api/admin/private-pages', { name: 'Partner', serviceIds: [ids.service] })).json().data.attributes
+      .token as string;
     for (const url of [
+      `/p/${secret}`,
+      `/p/${secret}/services/${ids.slug}`,
+      `/p/${secret}/services/${ids.slug}/days/${new Date().toISOString().slice(0, 10)}`,
       '/',
       '/?upcoming=all',
       '/services',
       '/services?q=api&status=operational',
       `/services/${ids.slug}`,
+      `/services/${ids.slug}/days/${new Date().toISOString().slice(0, 10)}`,
       '/locations',
       '/history',
       '/history?type=incident&page=2',
@@ -213,7 +219,45 @@ describe('public pages without JavaScript', () => {
   it('service detail: every day of the uptime bar is in a table', async () => {
     const { root } = await page(`/services/${ids.slug}`);
     expect(root).toMatch(/<details[^>]*><summary[^>]*>Show every day<\/summary>[\s\S]*<table/);
-    expect(root).toMatch(/<th scope="row"[^>]*>\d{4}-\d{2}-\d{2}<\/th>/);
+    expect(root).toMatch(/<th scope="row"[^>]*><a href="\/services\/[^/"]+\/days\/\d{4}-\d{2}-\d{2}">\d{4}-\d{2}-\d{2}<\/a><\/th>/);
+  });
+
+  it('uptime bars: every day is a link to its page, one tab stop per bar', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const url of ['/', '/services', `/services/${ids.slug}`]) {
+      const { root } = await page(url);
+      const bars = [...root.matchAll(/aria-roledescription="uptime bar"[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1]!);
+      expect(bars.length, url).toBeGreaterThan(0);
+      for (const bar of bars) {
+        const links = elements(bar, 'a');
+        expect(links.length, url).toBe(90);
+        expect(links.every((a) => /^\/services\/[^/]+\/days\/\d{4}-\d{2}-\d{2}$/.test(a.href!)), url).toBe(true);
+        expect(links.filter((a) => a.tabindex === '0'), url).toHaveLength(1);
+        expect(links.at(-1)!.href!.endsWith(`/days/${today}`)).toBe(true);
+      }
+    }
+  });
+
+  it('day page: rendered by the server, not indexed, with links back and to the previous day', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const res = await get(`/services/${ids.slug}/days/${today}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('public, max-age=10, stale-while-revalidate=60');
+    expect(res.body).toContain('<meta name="robots" content="noindex, follow"');
+    // No canonical URL on a noindex page (it would contradict the noindex).
+    expect(res.body).not.toContain('rel="canonical"');
+    expect(res.body).not.toContain('application/ld+json');
+    const root = rootOf(res);
+    expect(root).toContain('Public API');
+    const hrefs = elements(root, 'a').map((a) => a.href);
+    expect(hrefs).toContain(`/services/${ids.slug}`);
+    expect(hrefs).toContain(`/services/${ids.slug}/days/${yesterday}`);
+    for (const url of [`/services/${ids.slug}/days/2001-01-01`, `/services/${ids.slug}/days/2026-02-30`, `/services/missing/days/${today}`]) {
+      const missing = await get(url);
+      expect(missing.statusCode, url).toBe(404);
+      expect(missing.body, url).toContain('<meta name="robots" content="noindex"');
+    }
   });
 
   it('locations: the map is rendered on the server', async () => {

@@ -5,6 +5,7 @@
 import { sql } from 'kysely';
 import type { DB } from './index.js';
 import { createPublicSchema } from './migrations/0007_public_role.js';
+import { createPrivatePageFunctions } from './migrations/0009_private_pages.js';
 
 /** Schema with the views and functions of the public role; its search_path. */
 export const PUBLIC_SCHEMA = 'osp_public';
@@ -30,7 +31,10 @@ export async function ensurePublicSchema(db: DB): Promise<PublicSchemaState> {
   return db.transaction().execute(async (trx) => {
     await sql`select pg_advisory_xact_lock(hashtext('osp_create_public_schema'))`.execute(trx);
     if (await publicSchemaExists(trx)) return 'exists';
-    return (await createPublicSchema(trx)) ? 'created' : 'missing';
+    if (!(await createPublicSchema(trx))) return 'missing';
+    // Later migrations that add to osp_public (they skip it while the schema is missing).
+    await createPrivatePageFunctions(trx);
+    return 'created';
   });
 }
 

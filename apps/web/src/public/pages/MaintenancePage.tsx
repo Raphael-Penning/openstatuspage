@@ -4,6 +4,7 @@ import { BackToHistory, DetailSkeleton, Fact, LocationNames } from '../component
 import { MaintenanceIcon, MaintenanceStatusBadge, Timeline } from '../components/Events';
 import { DateTime, TimeRange } from '../components/Time';
 import { Card, ErrorState } from '../components/ui';
+import { useServicePaths } from '../hooks/links';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useMaintenance } from '../hooks/queries';
 import { NotFoundState } from './NotFoundState';
@@ -15,6 +16,8 @@ export function MaintenancePage() {
   const f = useFormat();
   const { data, isPending, isError, error, refetch } = useMaintenance(id);
   const site = useSiteName();
+  // Below the link base: on a private page the service links stay on it.
+  const paths = useServicePaths();
   usePageHead({
     title: data?.title ?? t('maintenance.title'),
     description: data ? data.description || data.updates[0]?.message || t('seo.maintenance', { site, title: data.title }) : undefined,
@@ -84,7 +87,7 @@ export function MaintenancePage() {
               {data.affectedServices.map((s) => (
                 <li key={s.id}>
                   <Link
-                    to={`/services/${s.id}`}
+                    to={paths.service({ id: s.id })}
                     className="inline-flex min-h-6 items-center rounded-full border border-border bg-surface-2 px-3 py-1 text-sm hover:border-accent"
                   >
                     {s.name}

@@ -26,6 +26,9 @@ The core promise: **customers see services, never infrastructure.**
   and masked in admin responses.
 - Ingest tokens and session/API tokens are stored as SHA-256 hashes only.
 - Subscription tokens are not stored at all (HMAC of `SUBSCRIPTION_TOKEN_KEY`, default `SECRET_KEY`, and a salt).
+- Private page links (`/p/<token>`) carry 160 random bits; only the SHA-256 of the
+  token is stored. A private page shows hidden services only to holders of its
+  link (see [Private pages](#private-pages)).
 - Optional page view statistics (Umami, off by default) go through the app's own
   proxy: no third-party request from the visitor's browser, no IP address
   forwarded unless the settings say so, no tracker on subscription links, and a
@@ -344,8 +347,9 @@ visitor's time zone). The rules:
   collapsible service groups and the daily uptime table open without scripts.
   With JavaScript the `Disclosure` component also closes them on Escape and on
   a click outside.
-- **Tooltips have a visible equivalent.** The days of an uptime bar are listed in
-  a table on the service page; the world map's markers are drawn on the server
+- **Tooltips have a visible equivalent.** Every day of an uptime bar is a plain
+  link to its server-rendered day page (`/services/<slug>/days/<YYYY-MM-DD>`), and
+  the days are listed in a table on the service page; the world map's markers are drawn on the server
   (`StaticWorldMap`: the country shapes of `/world-map.svg` as a CSS mask in the
   theme color, the markers with the fixed projection of
   `public/utils/map-projection.ts`); the location list below it has every
@@ -384,6 +388,48 @@ visitor's time zone). The rules:
   control is a link or a form with its action, method and field names, and that
   no button, field or tab stop depends on a script.
 
+## Private pages
+
+A private page (`/p/<token>`) shows the services an admin chose, also ones hidden
+from the main page, with the look of the main page: overall status, uptime bars
+with day pages (`/p/<token>/services/<slug>/days/<date>`), service pages
+(`/p/<token>/services/<slug>`), active incidents and running and upcoming
+maintenance of those services (public ones only) with their own pages
+(`/p/<token>/incidents/<id>`, `/p/<token>/maintenance/<id>`).
+
+```
+/p/<token>/…  ─▶ app.ts: rate limit (60/min per client, 429 page of ssr/busy.ts) ─▶ ssr/pages.ts (personal path: no cache, never stale)
+  └─ routes.tsx  /p/:token ─▶ PrivatePageProvider (token, link base /p/<token>) ─▶ PublicLayout
+       └─ privateQueries.*(token, get) ─▶ ssr/source.ts ─▶ PrivatePageDocuments ─▶ PrivatePages
+            └─ PrivatePageStore: tables (SQLite, admin/worker/all) | osp_public.private_page*() (public role)
+browser: the same queries over HTTP, token in the X-Private-Page-Token header
+```
+
+- **One code path.** `services/private-pages.ts` builds the view from the rows of
+  a `PrivatePageStore` (`services/private-page-store.ts`) with the functions of the
+  main page (`uptimeOf`, `buildCorrectionLayers`, `daySegments`), so bars and days
+  match the main page exactly. On a public PostgreSQL instance the rows come from
+  the token-scoped functions of `osp_public` (see
+  [security-model.md](security-model.md#what-the-public-role-cannot-do)), elsewhere
+  from the tables.
+- **Links.** Inside `PrivatePageProvider` every service, bar day, day table,
+  incident, maintenance window, affected service and back link starts with
+  `/p/<token>` (`hooks/links.tsx`); the logo leads to the private page, the
+  navigation of the main page is replaced by a notice. The incident and
+  maintenance pages read the private page API, so they list only the page's
+  services, even when the incident also affects hidden or other services.
+- **Never stored or indexed.** `isPersonalPath` covers `/p/`: the render cache
+  is skipped, an overload is a `503` (never a stale copy), `Cache-Control: private,
+  no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, meta
+  robots `noindex, nofollow`, no canonical URL, no language alternates, no JSON-LD,
+  no Umami tag and no analytics choice in the footer. Sitemaps and `llms.txt`
+  never list them; `robots.txt` deliberately does not disallow them (a crawler
+  kept out would never see the `noindex` and could still list a leaked link). The request
+  log writes `/p/[REDACTED]/…`.
+- **No oracle.** Unknown, disabled, expired and malformed tokens get the same 404
+  page and API answer; a token is checked by one indexed lookup of its hash.
+- **Out of scope:** feeds and email subscriptions of private pages.
+
 ## Search engines and AI agents
 
 The public page describes itself for search engines, link previews and AI
@@ -401,8 +447,11 @@ agents. Everything is built from the page settings and public data only.
     unsubscribe), which have no canonical URL either; `noindex, follow` without
     a canonical URL for variants of a page: a filtered, searched or later
     history page (`?type=`, `?page=2` ...), a searched or filtered service list,
-    `/?upcoming=all` and the states of the subscribe page (`?sent=1`,
-    `?error=`, the answer to a form),
+    `/?upcoming=all`, the states of the subscribe page (`?sent=1`,
+    `?error=`, the answer to a form) and the day pages of the uptime bars
+    (`/services/<slug>/days/<date>`: thin, one per service and day, in no
+    sitemap; the bar links carry no `rel="nofollow"`, which would add about
+    10 kB to an overview of seven services),
   - `canonical`: the path without query, lower case and without a trailing
     slash (the server answers other spellings of a path with a `301` to this
     one); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
@@ -483,6 +532,17 @@ measured the same way, had public 76 / 95 / 83 MB (kernel peak 97 MB): the
 compressed copy of a page in the render cache and the compression itself cost
 about 1 MB. The pages working without JavaScript were paid for by moving the
 layout of the uptime bar segments into the stylesheet.
+
+Day links and private pages (measured the same way, three runs each against
+the build before them in alternation): public 78 / 95–96 / 98–101 / 85 MB,
+kernel peak 101–103 MB, against 78 / 94–96 / 95–96 / 82–83 MB and 98 MB
+before. The overview of the demo seed grew from 126 to 200 kB because every
+day of a bar is a named link now (630 links); rendering and compressing the
+larger pages costs the 2–5 MB. The public instance is at its target under the
+burst and slightly above it at the kernel peak, so limiting concurrent
+connections at the proxy (below) matters more now. Zod must stay out of the
+public bundles (it once came in through a schema in `private-pages.ts` and
+grew the render bundle from 439 to 556 kB).
 
 Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
 after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The

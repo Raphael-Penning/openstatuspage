@@ -303,13 +303,15 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
 | --- | --- |
 | `/api/public/*` | none (only public data) |
 | `/api/public/subscriptions/:id` | header `X-Subscription-Token: <manageToken>` (from the manage link) |
+| `/api/public/private-page*` | header `X-Private-Page-Token: <token>` (from the private page link) |
 | `/api/auth/*` | session cookie `osp_session` after login |
 | `/api/admin/*` | session cookie **or** `Authorization: Bearer <api token>` (`osp_…`) |
 | `/api/ingest/*` | `Authorization: Bearer <ingest token>` of the source, or `?token=` |
 
 - Roles: `editor` may manage incidents, maintenance and history corrections and
   read the catalog; `admin` may additionally manage services, groups, locations,
-  monitoring sources, check bundles, settings, users, API tokens and subscribers.
+  monitoring sources, check bundles, settings, users, API tokens, private pages and
+  subscribers.
   Missing credentials are `401`, a missing role is `403`.
 - Cookie-authenticated mutating requests must send the header
   `X-Requested-With: openstatuspage` (simple CSRF protection; the web client always
@@ -375,6 +377,7 @@ outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age
 | GET | `/api/public/settings` | `settings/site` (`PublicPageSettings`) | – |
 | GET | `/api/public/services` | `services[]` in display order (grouped services in group order, then ungrouped), `meta.counts: Record<ServiceStatus, number>` | the `service-groups` |
 | GET | `/api/public/services/:idOrSlug` | `services` incl. `uptime: DailyUptime[]`; relationships `incidents` (last 90 days and unresolved), `maintenances` (active and upcoming) | `include`: `incidents`, `incidents.updates`, `maintenances`, `maintenances.updates` (default: all) |
+| GET | `/api/public/services/:idOrSlug/days/:date` | `service-days`: one UTC day (`YYYY-MM-DD`) of the service's uptime bar in detail (see below); relationships `service`, `incidents`, `maintenances` (public ones overlapping the day). `400` (`invalid_date`) for a malformed date, `404` for days outside the uptime range (`uptimeDays`, ending today), hidden services and while `showUptime` is off | `include`: `service`, `incidents`, `incidents.updates`, `maintenances`, `maintenances.updates` (default: all) |
 | GET | `/api/public/locations` | `locations[]` (relationship `services`), `meta.counts`; `404` when `showLocations` is disabled | – |
 | GET | `/api/public/incidents/:id` | `incidents` (relationships `locations`, `updates`) | `include`: `updates` (default) |
 | GET | `/api/public/maintenances/:id` | `maintenances` (relationships `services`, `locations`, `updates`) | `include`: `updates` (default) |
@@ -386,6 +389,21 @@ outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age
   `correctionNotes: string[]` (the public notes, possibly empty). Where a newer
   correction replaces a public one, that part no longer marks the day. The internal
   reason of a correction is never returned by public endpoints.
+- A **service day** (`service-days`, id `<service id>:<YYYY-MM-DD>`) has the values of
+  that day's `DailyUptime` bucket of the service (`date`, `status`, `uptime`, `minutes`,
+  `corrected`, `correctionNotes`, identical to the bar) plus `startsAt` / `endsAt` (the
+  UTC day, end exclusive), `complete` (`false` for today), `previousDate` / `nextDate`
+  (neighbours inside the uptime range, `null` at its ends) and `segments`: the status
+  periods of the corrected history clipped to the day, in time order, operational ones
+  included: `{ status, startedAt, endedAt, corrected? }`. `endedAt` is `null` while the
+  period lasts (today); `corrected: true` marks periods set by a public correction.
+  Neither the origin of other periods (measured, retroactive maintenance, unpublished
+  corrections) nor any correction id or reason is returned. Incidents overlap the day
+  when they started before its end and were not resolved before its start; maintenance
+  windows by their actual times where known (a running window lasts at least until
+  now, cancelled ones never count). The service in `included` carries no `uptime`
+  bars. The web client shows the day at `/services/<slug>/days/<YYYY-MM-DD>`
+  (`noindex, follow`, not in the sitemaps).
 - Upcoming maintenance: `status = scheduled` and `scheduled_end > now`. Active
   maintenance: `status = in_progress`. Active incidents: `status != resolved`.
 - The summary attribute `emailSubscriptions` is `true` when email subscriptions are
@@ -434,6 +452,52 @@ Content-Type: application/vnd.api+json
       },
       "links": {"self": "/api/public/settings"}
     }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>GET /api/public/services/api/days/2026-11-19</code></summary>
+
+```http
+GET /api/public/services/api/days/2026-11-19
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "service-days", "id": "33ea…:2026-11-19",
+    "attributes": {
+      "date": "2026-11-19", "status": "major_outage", "uptime": 95.83,
+      "minutes": {"major_outage": 60},
+      "corrected": true, "correctionNotes": ["False alarm of the monitoring."],
+      "startsAt": "2026-11-19T00:00:00.000Z", "endsAt": "2026-11-20T00:00:00.000Z",
+      "complete": true,
+      "segments": [
+        {"status": "operational", "startedAt": "2026-11-19T00:00:00.000Z", "endedAt": "2026-11-19T10:00:00.000Z"},
+        {"status": "operational", "startedAt": "2026-11-19T10:00:00.000Z", "endedAt": "2026-11-19T11:00:00.000Z", "corrected": true},
+        {"status": "major_outage", "startedAt": "2026-11-19T11:00:00.000Z", "endedAt": "2026-11-19T12:00:00.000Z"},
+        {"status": "operational", "startedAt": "2026-11-19T12:00:00.000Z", "endedAt": "2026-11-20T00:00:00.000Z"}
+      ],
+      "previousDate": "2026-11-18", "nextDate": "2026-11-20"
+    },
+    "relationships": {
+      "service": {"data": {"type": "services", "id": "33ea…"}},
+      "incidents": {"data": [{"type": "incidents", "id": "6c02…"}]},
+      "maintenances": {"data": []}
+    },
+    "links": {"self": "/api/public/services/api/days/2026-11-19"}
+  },
+  "links": {"self": "/api/public/services/api/days/2026-11-19"},
+  "included": [
+    {"type": "services", "id": "33ea…", "attributes": {"slug": "api", "name": "API", "status": "operational", "uptimePercent": 99.95, "…": "…"}},
+    {"type": "incidents", "id": "6c02…", "attributes": {"title": "Elevated error rates", "status": "resolved", "…": "…"}}
   ]
 }
 ```
@@ -822,6 +886,83 @@ Content-Type: application/vnd.api+json
 
 </details>
 
+
+### Private pages
+
+A private page (`/p/<token>`, see [the guide](guide/en/12-public-page.md#private-pages))
+shows chosen services, also ones hidden from the public page, to whoever has its
+link. Its API needs the token of the link in the `X-Private-Page-Token` header; a
+token in the URL or query is never read.
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| GET | `/api/public/private-page` | the page (`private-pages`) |
+| GET | `/api/public/private-page/services/{idOrSlug}` | a service of the page (`services`) with `incidents` and `maintenances` |
+| GET | `/api/public/private-page/services/{idOrSlug}/days/{date}` | a day of a service of the page (`service-days`) |
+| GET | `/api/public/private-page/incidents/{id}` | an incident the page shows (`incidents`) |
+| GET | `/api/public/private-page/maintenances/{id}` | a maintenance window the page shows (`maintenances`) |
+
+- `private-pages` attributes: `name`, `description`, `overall`, `counts`,
+  `generatedAt`; relationships `services` (with their uptime bars), `activeIncidents`,
+  `activeMaintenances` and `upcomingMaintenances`, all in `included` (no `include`
+  parameter).
+- The service and day documents have the shape of `GET /api/public/services/{idOrSlug}`
+  and `GET /api/public/services/{idOrSlug}/days/{date}` (same `include` paths, `400
+  invalid_date` for a malformed date), limited to the services of the page. Their
+  `links.self` point below `/api/public/private-page`.
+- Incidents and maintenance windows are the public ones (`isPublic`) that affect a
+  service of the page; `affectedServices` lists only services of the page. The
+  incident and maintenance documents have the shape of `GET /api/public/incidents/{id}`
+  and `GET /api/public/maintenances/{id}` (`include=updates` by default) and answer
+  what the page links to: unresolved or upcoming ones, and those of the last 90
+  days or the uptime range, whichever is longer.
+- A missing, wrong, disabled or expired token, a service, incident or maintenance
+  window that is not on the page and a day outside the uptime range are the same
+  `404 not_found`, so the answer never tells which it was.
+- Answers carry `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`.
+  60 requests per minute and client (`429` beyond, like the HTML pages at `/p/`,
+  which answer with a small page in the visitor's language). The client is
+  `req.ip`: behind a reverse proxy set `TRUST_PROXY`, or every visitor shares one
+  budget.
+- Feeds and email subscriptions of a private page do not exist.
+
+```http
+GET /api/public/private-page
+X-Private-Page-Token: 4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "private-pages",
+    "id": "1b6f…",
+    "attributes": {
+      "name": "ACME status",
+      "description": "The services we run for ACME.",
+      "overall": "operational",
+      "counts": { "operational": 2, "degraded": 0, "partial_outage": 0, "major_outage": 0, "maintenance": 0 },
+      "generatedAt": "2026-11-20T09:00:00.000Z"
+    },
+    "relationships": {
+      "services": { "data": [{ "type": "services", "id": "8c2e…" }, { "type": "services", "id": "c41a…" }] },
+      "activeIncidents": { "data": [] },
+      "activeMaintenances": { "data": [] },
+      "upcomingMaintenances": { "data": [] }
+    },
+    "links": { "self": "/api/public/private-page" }
+  },
+  "included": [
+    {
+      "type": "services",
+      "id": "8c2e…",
+      "attributes": { "slug": "partner-backend", "name": "Partner backend", "status": "operational", "uptimePercent": 100, "uptime": ["…"] },
+      "links": { "self": "/api/public/private-page/services/partner-backend" }
+    }
+  ],
+  "links": { "self": "/api/public/private-page" }
+}
+```
 
 ## Email subscriptions
 
@@ -4054,6 +4195,62 @@ Content-Type: application/vnd.api+json
 
 </details>
 
+
+### Private pages (admin)
+
+Role `admin`. Resource type `private-pages`; `services` is a relationship (in
+display order, any service, also hidden ones). Attributes: `name`, `description`,
+`expiresAt` (or null), `enabled`, read-only `expired`, `tokenCreatedAt`,
+`createdAt`, `updatedAt`. Input: `PrivatePageInput`. Answers are `Cache-Control: no-store`.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/admin/private-pages` | all pages, newest first |
+| POST | `/api/admin/private-pages` | `201` with `token` and `url` (shown only here) |
+| GET | `/api/admin/private-pages/:id` | |
+| PATCH | `/api/admin/private-pages/:id` | partial update; the link stays the same |
+| DELETE | `/api/admin/private-pages/:id` | `204`; the link stops working |
+| POST | `/api/admin/private-pages/:id/regenerate-token` | `200` with the new `token` and `url`; the old link stops working |
+
+- The token is 160 random bits as 32 characters of lower-case base32, generated by
+  the server. Only its SHA-256 hash is stored (like the subscription tokens), so it
+  cannot be shown again: renew the link when it is lost. `url` is
+  `PUBLIC_BASE_URL/p/<token>`.
+- Audit log: `private_page.create`, `.update`, `.delete`, `.regenerate_token`
+  (name and number of services, never the token).
+
+```http
+POST /api/admin/private-pages
+Content-Type: application/vnd.api+json
+
+{ "data": { "type": "private-pages", "attributes": { "name": "ACME status", "expiresAt": null },
+  "relationships": { "services": { "data": [{ "type": "services", "id": "8c2e…" }] } } } }
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "private-pages",
+    "id": "1b6f…",
+    "attributes": {
+      "name": "ACME status",
+      "description": null,
+      "expiresAt": null,
+      "enabled": true,
+      "expired": false,
+      "createdAt": "2026-11-20T09:00:00.000Z",
+      "updatedAt": "2026-11-20T09:00:00.000Z",
+      "tokenCreatedAt": "2026-11-20T09:00:00.000Z",
+      "token": "4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj",
+      "url": "https://status.example.com/p/4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj"
+    },
+    "relationships": { "services": { "data": [{ "type": "services", "id": "8c2e…" }] } },
+    "links": { "self": "/api/admin/private-pages/1b6f…" }
+  },
+  "links": { "self": "/api/admin/private-pages" }
+}
+```
 
 ### Side effects the server must apply
 

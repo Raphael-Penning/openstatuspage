@@ -16,7 +16,8 @@ management area.
 ## Features
 
 - **Overview**: current incidents, active and upcoming maintenance, overall status
-- **Services & Sites**: grouped services with 90-day uptime bars
+- **Services & Sites**: grouped services with 90-day uptime bars; every day links to a day page with its status periods, corrections, incidents and maintenance
+- **Private status pages**: a page with a secret link for chosen services, also hidden ones, managed in the admin UI; never indexed or cached
 - **Locations**: data center / PoP locations on a map with live status
 - **History**: filterable archive of incidents and maintenance
 - **Monitoring adapters**: Icinga 2, Uptime Kuma, openITCockpit, generic webhook (pull and push)

@@ -83,6 +83,7 @@ async function seed(): Promise<void> {
   ids['check-bundles'] = (await created('/api/admin/check-bundles', { name: 'Bundle', members: [{ checkId: ids.checks }] })).id;
   ids.users = (await created('/api/admin/users', { email: 'editor@example.com', name: 'Editor', role: 'editor' })).id;
   ids['api-tokens'] = (await created('/api/admin/api-tokens', { name: 'CI', role: 'editor' })).id;
+  ids['private-pages'] = (await created('/api/admin/private-pages', { name: 'Partner', serviceIds: [ids.services] })).id;
 }
 
 /** Fills the path parameters with the seeded resource of the preceding segment ("missing" otherwise). */

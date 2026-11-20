@@ -31,18 +31,18 @@ what has to be checked by hand before a release, and the known limitations.
 | Brand color | 1.4.3, 1.4.11 | Any accent color can be configured. The page derives a text/focus variant that reaches 4.5:1 on every background of the current theme and a button variant with readable text (white or dark). Emails do the same for their button. |
 | Resize and reflow | 1.4.4, 1.4.10 | Relative font sizes; the navigation wraps instead of scrolling sideways; long names wrap instead of being cut off. No horizontal scrolling at 320 CSS px. |
 | Text spacing | 1.4.12 | Controls use minimum heights instead of fixed heights. |
-| Hover and focus content | 1.4.13 | Uptime bar and map tooltips can be hovered without disappearing, stay until the pointer or focus leaves, and **Escape** hides them. On touch screens, tapping a day shows its details. The service page also lists every day of the bar in a table ("Show every day"), so no detail needs a pointer, a tooltip or JavaScript. |
-| Keyboard | 2.1.1, 2.1.2 | Everything works with the keyboard: uptime bars are one tab stop each (arrow keys, Home, End), map markers are buttons, the map has zoom and pan buttons, menus close with Escape and return focus. No keyboard traps. |
+| Hover and focus content | 1.4.13 | Uptime bar and map tooltips can be hovered without disappearing, stay until the pointer or focus leaves, and **Escape** hides them. On touch screens, the first tap on a day shows its details (with a link to the day), a second tap opens the day; a day link that already has the focus (a screen reader's double tap) opens at once. Every day is also a link to its own page (`/services/<slug>/days/<date>`), and the service page lists every day of the bar in a table ("Show every day") with the same links, so no detail needs a pointer, a tooltip or JavaScript. |
+| Keyboard | 2.1.1, 2.1.2 | Everything works with the keyboard: uptime bars are one tab stop each (a roving tabindex over the day links: arrow keys, Home, End move the focus, Enter opens the day), map markers are buttons, the map has zoom and pan buttons, menus close with Escape and return focus. No keyboard traps. |
 | Skip link, titles, focus | 2.4.1, 2.4.2, 2.4.3 | "Skip to content" link; every page has a title "Page · Site name"; after a client-side navigation the focus moves to the main content; after a form error the focus moves to the first invalid field. |
 | Focus visible | 2.4.7, 2.4.11 | A 2 px focus outline in the contrast-safe accent on every interactive element. There is no sticky header that could cover the focus. |
-| Dragging, target size | 2.5.7, 2.5.8 | Panning the map by dragging has button alternatives. Targets are at least 24×24 px or have enough spacing; the whole uptime bar is a single target (the day follows from the pointer position); map markers have an equivalent in the location list. |
+| Dragging, target size | 2.5.7, 2.5.8 | Panning the map by dragging has button alternatives. Targets are at least 24×24 px or have enough spacing; with JavaScript the whole uptime bar is a single target (the day follows from the pointer position; without JavaScript each day is a plain link and the day table of the service page offers the same links as full-size targets); map markers have an equivalent in the location list. |
 | Language | 3.1.1, 3.1.2 | `<html lang>` and `dir` follow the selected UI language; the language names in the language selectors carry their own `lang`. |
 | Consistent help | 3.2.6 | The support link (if configured) is always in the footer at the same place. |
 | Errors | 3.3.1, 3.3.3 | Errors are shown as text next to the field, linked with `aria-describedby`, the field is marked `aria-invalid` and the message suggests a fix (for example `name@example.com`). An error summary above the form links to each field. A form sent without JavaScript comes back from the server with the values, the summary, the field errors and "Error:" in the page title. |
 | Redundant entry, authentication | 3.3.7, 3.3.8 | The manage page shows the stored address instead of asking again; there is no CAPTCHA (a hidden honeypot field filters bots). |
 | Name, role, value | 4.1.2 | Native elements where possible; toggle buttons use `aria-pressed`, menus and collapsible groups are native `<details>` disclosures, the current language and status filter are marked `aria-current`. |
 | Without JavaScript | (robustness) | Every public page works without JavaScript: the server renders the content, every control is a link or a form (filters, search, pagination, language, theme, the subscription forms), menus and groups are `<details>`, the world map is drawn on the server and the location list is its text alternative. Hydration changes nothing in the layout. Without JavaScript the page does not refresh itself (no `<meta http-equiv="refresh">`, which would move the reader); it says when the status was last updated. See [architecture.md](architecture.md#without-javascript). |
-| Status messages | 4.1.3 | Polite live regions for search results, filter results, the saved state and status changes of the overview. The uptime bar announces the selected day only on keyboard navigation, so moving the mouse or the 60 s auto refresh do not flood screen readers. |
+| Status messages | 4.1.3 | Polite live regions for search results, filter results, the saved state and status changes of the overview. The uptime bar needs no live region: keyboard navigation moves the focus to a day link, whose name (date, status, uptime, non-operational time, corrections) is read; moving the mouse or the 60 s auto refresh announce nothing. |
 | Motion | 2.3.3 (AAA, best effort) | `prefers-reduced-motion` turns off animations and transitions (spinners, skeleton pulse). |
 
 ### Emails
@@ -64,7 +64,7 @@ All of these run in the CI job **check** (`pnpm -r test`):
 
 | Test | What it checks |
 | --- | --- |
-| `apps/web/src/public/a11y/pages.a11y.test.tsx` | Renders every public page (13 routes and states, including error and "not found" states) in **light and dark theme** and in **English and German** in jsdom with a fake API and runs **axe-core** with all WCAG 2.0, 2.1 and 2.2 A/AA rules plus a few structural best practices (landmarks, heading order). Any violation fails the test. It also checks interactive states: the open subscribe menu (Escape returns focus), the uptime tooltip (keyboard, live region, Escape), the map with a selected location and pan controls, form errors (focus, `aria-invalid`, suggestion), the success message and focus after navigation. |
+| `apps/web/src/public/a11y/pages.a11y.test.tsx` | Renders every public page (13 routes and states, including error and "not found" states) in **light and dark theme** and in **English and German** in jsdom with a fake API and runs **axe-core** with all WCAG 2.0, 2.1 and 2.2 A/AA rules plus a few structural best practices (landmarks, heading order). Any violation fails the test. It also checks interactive states: the open subscribe menu (Escape returns focus), the uptime tooltip (keyboard, live region, Escape), the map with a selected location and pan controls, form errors (focus, `aria-invalid`, suggestion), the success message and focus after navigation. Private pages (`/p/<token>`: overview, service, day and a wrong link) are checked the same way, and that all their links stay below `/p/<token>`. |
 | `apps/web/src/ssr.test.tsx`, `apps/server/test/ssr-pages.test.ts` | Every public page is rendered on the server (`<html lang>`/`dir` of the visitor's language, content in the HTML, so it works without JavaScript) and hydrates without a single hydration warning in both languages, also a page that answers a form with errors; unknown pages answer 404. |
 | `apps/server/test/nojs-pages.test.ts`, `forms-subscriptions.test.ts`, `forms-preferences.test.ts` | Without JavaScript: every control of every public page is a link or a form with its action, method and field names, no button, field or tab stop needs a script; every form handler on success, invalid input (values, error summary, `aria-invalid`, `aria-describedby`), cross-site posts and rate limits. |
 | `apps/web/src/tokens.test.ts` | Contrast of the design tokens in `styles.css` for both themes: text and muted text (4.5:1), status text (4.5:1), status fills, the no-data outline and field borders (3:1), accent text and focus color (4.5:1), and that the default accent variants match the runtime calculation. jsdom has no layout, so axe's `color-contrast` rule is disabled in the page tests and covered here instead. |
@@ -85,8 +85,9 @@ theme, with demo data (`pnpm db:seed`).
 - [ ] The first Tab shows "Skip to content"; Enter moves to the main content.
 - [ ] Every link, button, select, uptime bar and map control can be reached in
   a sensible order, and the focus is always clearly visible and never hidden.
-- [ ] In an uptime bar, ←/→/Home/End move through the days, the tooltip follows,
-  Escape hides it, Tab moves on.
+- [ ] In an uptime bar, ←/→/Home/End move the focus through the days, the
+  tooltip follows, Escape hides it, Enter opens the day page, Tab moves on (one
+  tab stop per bar).
 - [ ] On the locations page, the map markers, zoom and pan buttons work; the
   focus never gets stuck in the map.
 - [ ] The subscribe menu opens with Enter/Space and closes with Escape; the
@@ -102,8 +103,10 @@ macOS/iOS):
 - [ ] The headings list (NVDA: H / Insert+F7, VoiceOver: rotor) gives a useful
   outline of every page.
 - [ ] Status pills, counters and the hero are read with their status text.
-- [ ] Uptime bar: name, number of days and uptime are read on focus; arrow keys
-  announce the selected day once, without repeating while the page refreshes.
+- [ ] Uptime bar: each day link is read with its date, status and uptime; the
+  bar's name, number of days and uptime are read when entering it; nothing
+  repeats while the page refreshes. On iOS (VoiceOver) and Android (TalkBack) a
+  double tap on a day opens it at once, not after a second activation.
 - [ ] The location list below the map is read with every location and status.
 - [ ] Subscribing announces the confirmation; the manage page announces "saved".
 
@@ -112,6 +115,9 @@ macOS/iOS):
 - [ ] Every page shows its content; the theme and language switchers, the
   history filters and pages, the service search and status counters, the
   subscribe menu and the collapsible groups work.
+- [ ] Clicking a day of an uptime bar (or a day in the "Show every day" table)
+  opens the day page with its timeline, incidents and maintenance; the previous
+  and next day links work.
 - [ ] Subscribing with an invalid address shows the error summary and the field
   error, with the address still filled in; a valid one shows "Check your inbox".
 - [ ] The links of the confirmation and the manage email work: confirm, change

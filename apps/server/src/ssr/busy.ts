@@ -2,12 +2,21 @@
  * The answer of a public page when the server is too busy to render it and has
  * no earlier version of it (ssr/pages.ts): 503 with Retry-After and a tiny,
  * static page that works without JavaScript. Never stored, never indexed.
+ * The same page, with its own text, answers a client that opened too many
+ * private pages (429, app.ts).
  */
 import { LANG_COOKIE, LANG_QUERY, PAGE_LANGUAGES } from '@openstatuspage/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /** Seconds a client should wait before asking again. */
 export const BUSY_RETRY_SECONDS = 5;
+
+interface PageText {
+  title: string;
+  message: string;
+  retry: string;
+  link: string;
+}
 
 const TEXT = {
   en: {
@@ -22,7 +31,23 @@ const TEXT = {
     retry: 'Bitte versuche es in ein paar Sekunden erneut.',
     link: 'Erneut versuchen',
   },
-} satisfies Record<(typeof PAGE_LANGUAGES)[number], Record<string, string>>;
+} satisfies Record<(typeof PAGE_LANGUAGES)[number], PageText>;
+
+/** Text of the 429 page (too many private pages opened from one connection). */
+const TOO_MANY_TEXT = {
+  en: {
+    title: 'Too many requests',
+    message: 'This page was opened too often from your connection in a short time.',
+    retry: 'Please wait a minute and try again.',
+    link: 'Try again',
+  },
+  de: {
+    title: 'Zu viele Anfragen',
+    message: 'Diese Seite wurde in kurzer Zeit zu oft von deiner Verbindung aus geöffnet.',
+    retry: 'Bitte warte eine Minute und versuche es dann erneut.',
+    link: 'Erneut versuchen',
+  },
+} satisfies Record<(typeof PAGE_LANGUAGES)[number], PageText>;
 
 type Lang = keyof typeof TEXT;
 
@@ -52,8 +77,7 @@ export function busyLanguage(url: string, cookie: string | undefined, acceptLang
 }
 
 /** The page: no scripts, no external files, the system's colors in both themes. */
-export function busyPage(lang: Lang): string {
-  const t = TEXT[lang];
+export function busyPage(lang: Lang, t: PageText = TEXT[lang]): string {
   return (
     `<!doctype html><html lang="${lang}" dir="ltr"><head><meta charset="utf-8">` +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -66,13 +90,17 @@ export function busyPage(lang: Lang): string {
   );
 }
 
-/** Answers 503 with the busy page. */
-export async function sendBusy(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+function requestLanguage(req: FastifyRequest): Lang {
   const header = (name: string) => {
     const v = req.headers[name];
     return Array.isArray(v) ? v.join(', ') : v;
   };
-  const lang = busyLanguage(req.url, header('cookie'), header('accept-language'));
+  return busyLanguage(req.url, header('cookie'), header('accept-language'));
+}
+
+/** Answers 503 with the busy page. */
+export async function sendBusy(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const lang = requestLanguage(req);
   await reply
     .status(503)
     .header('Retry-After', String(BUSY_RETRY_SECONDS))
@@ -81,4 +109,17 @@ export async function sendBusy(req: FastifyRequest, reply: FastifyReply): Promis
     .header('Vary', 'Accept-Language, Cookie')
     .type('text/html; charset=utf-8')
     .send(busyPage(lang));
+}
+
+/** Answers 429 with the page in the visitor's language: retry after `retryAfter` seconds. */
+export async function sendTooManyRequests(req: FastifyRequest, reply: FastifyReply, retryAfter: number): Promise<void> {
+  const lang = requestLanguage(req);
+  await reply
+    .status(429)
+    .header('Retry-After', String(retryAfter))
+    .header('Cache-Control', 'no-store')
+    .header('X-Robots-Tag', 'noindex')
+    .header('Vary', 'Accept-Language, Cookie')
+    .type('text/html; charset=utf-8')
+    .send(busyPage(lang, TOO_MANY_TEXT[lang]));
 }

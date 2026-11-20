@@ -1328,6 +1328,18 @@ export interface NotificationStatus {
   lastError: { message: string; at: string } | null;
 }
 
+/** Input of the admin API of private pages (create and full update; see private-pages.ts). */
+export const PrivatePageInput = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().max(2000).nullish(),
+  /** Services shown on the page, in this order; any service, also hidden ones. */
+  serviceIds: z.array(zId).max(500).default([]),
+  /** The link stops working at this time; null: never. */
+  expiresAt: zTimestamp.nullish(),
+  enabled: z.boolean().default(true),
+});
+export type PrivatePageInput = z.infer<typeof PrivatePageInput>;
+
 /** POST /api/admin/notifications/test (admin only). */
 export const TestEmailInput = z.object({ to: z.email().max(254) });
 export type TestEmailInput = z.infer<typeof TestEmailInput>;

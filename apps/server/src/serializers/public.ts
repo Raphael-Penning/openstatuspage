@@ -10,7 +10,9 @@ import type {
   PublicLocation,
   PublicMaintenance,
   PublicPageSettings,
+  PublicPrivatePage,
   PublicService,
+  PublicServiceDay,
   PublicServiceGroup,
   RelationshipObject,
   ResourceObject,
@@ -30,6 +32,8 @@ export const PUBLIC_TYPES = {
   incidentUpdate: 'incident-updates',
   maintenance: 'maintenances',
   maintenanceUpdate: 'maintenance-updates',
+  serviceDay: 'service-days',
+  privatePage: 'private-pages',
 } as const;
 
 /** Singleton id of the site settings resource. */
@@ -97,5 +101,60 @@ export function maintenanceResource(maintenance: PublicMaintenance, included?: I
       updates: toMany(PUBLIC_TYPES.maintenanceUpdate, updates.map((u) => u.id)),
     },
     links: { self: `${BASE}/maintenances/${maintenance.id}` },
+  });
+}
+
+/**
+ * One day of a service (`service-days`): the bucket of the uptime bar with the
+ * status periods of the day. The service, incidents and maintenance windows
+ * are relationships (their resources go to `included` by the caller).
+ */
+export function serviceDayResource(
+  day: PublicServiceDay,
+  service: Pick<PublicService, 'id' | 'slug'>,
+  incidentIds: string[],
+  maintenanceIds: string[],
+): ResourceObject {
+  const { id, ...attributes } = day;
+  return resource(PUBLIC_TYPES.serviceDay, id, attributes, {
+    relationships: {
+      service: toOne(PUBLIC_TYPES.service, service.id),
+      incidents: toMany(PUBLIC_TYPES.incident, incidentIds),
+      maintenances: toMany(PUBLIC_TYPES.maintenance, maintenanceIds),
+    },
+    links: { self: `${BASE}/services/${encodeURIComponent(service.slug || service.id)}/days/${day.date}` },
+  });
+}
+
+/** Base path of the private page API (the token travels in a header, never in the URL). */
+export const PRIVATE_PAGE_API = `${BASE}/private-page`;
+
+/** A service of a private page: like a public service, with its link below the private page API. */
+export function privateServiceResource(service: PublicService, extra: Record<string, RelationshipObject> = {}): ResourceObject {
+  return {
+    ...serviceResource(service, extra),
+    links: { self: `${PRIVATE_PAGE_API}/services/${encodeURIComponent(service.slug || service.id)}` },
+  };
+}
+
+/**
+ * A private page as its visitors see it (`private-pages`). Services, incidents
+ * and maintenance windows are relationships; their resources (and the updates)
+ * go to `included`.
+ */
+export function privatePageResource(page: PublicPrivatePage, included: Included): ResourceObject {
+  const { services, activeIncidents, activeMaintenances, upcomingMaintenances, ...attributes } = page;
+  included.add(...services.map((s) => privateServiceResource(s)));
+  for (const i of activeIncidents) included.add(incidentResource(i, included));
+  for (const m of [...activeMaintenances, ...upcomingMaintenances]) included.add(maintenanceResource(m, included));
+  const ids = (list: { id: string }[]) => list.map((x) => x.id);
+  return resource(PUBLIC_TYPES.privatePage, page.id, attributes, {
+    relationships: {
+      services: toMany(PUBLIC_TYPES.service, ids(services)),
+      activeIncidents: toMany(PUBLIC_TYPES.incident, ids(activeIncidents)),
+      activeMaintenances: toMany(PUBLIC_TYPES.maintenance, ids(activeMaintenances)),
+      upcomingMaintenances: toMany(PUBLIC_TYPES.maintenance, ids(upcomingMaintenances)),
+    },
+    links: { self: PRIVATE_PAGE_API },
   });
 }

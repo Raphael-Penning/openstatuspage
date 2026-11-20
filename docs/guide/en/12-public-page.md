@@ -65,6 +65,7 @@ Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
 Disallow: /preferences/
+Disallow: /pulse/
 
 Sitemap: https://status.example.com/sitemap.xml
 ```
@@ -79,6 +80,9 @@ Sitemap: https://status.example.com/sitemap.xml
 - `Disallow` stops crawling, not necessarily indexing. The `noindex` header and
   meta tag are what keep a page out of search results, which is why the pages
   that must stay out carry both.
+- Private pages (`/p/…`) are not in `robots.txt` on purpose. A crawler that is
+  kept out never sees their `noindex` and may still list a leaked link as a bare
+  address; the line would also tell everyone where private pages live.
 
 If you need rules for particular crawlers (for example to block AI training
 bots), serve your own `robots.txt` at the reverse proxy instead; the app's file is
@@ -131,8 +135,10 @@ accepts the same address.
 | Overview, services, service, history, incident, maintenance, locations | yes | Listed in the sitemaps. |
 | Subscribe | yes, when email subscriptions are offered | Listed in the pages sitemap. |
 | Filtered, searched or later pages, "sent" and error states of the subscribe page | no | `noindex, follow`, no canonical address. |
+| Day pages of the uptime bars (`/services/<service>/days/<date>`) | no | `noindex, follow`, no canonical address: one thin page per service and day. Not in a sitemap. |
 | Not found (404), also a history page beyond the last one | no | `noindex`. |
 | Confirm, manage, unsubscribe links | no | `noindex`, not in a sitemap, disallowed in `robots.txt`. |
+| Private pages (`/p/<link>`) | no | `noindex, nofollow` (meta tag and header), no canonical address, not in a sitemap or `llms.txt`. Not disallowed in `robots.txt`, on purpose: a crawler has to fetch the page to see `noindex`. See [Private pages](#private-pages). |
 | `/admin` on an instance that serves it | no | The response carries `X-Robots-Tag: noindex, nofollow`. |
 | Every page of an `admin` instance | no | `Disallow: /` in `robots.txt` and `X-Robots-Tag: noindex, nofollow`. |
 
@@ -178,6 +184,10 @@ more comfortable. Without them:
 - **Maps and bars have text equivalents.** The world map is drawn by the server
   as a picture of the countries with its markers. The day-by-day uptime bars have
   a table with the same days on the service page.
+- **Every day of an uptime bar is a link.** It opens the day page: status and
+  uptime of that day, when the service was down, degraded or in maintenance,
+  the incidents and maintenance windows of the day, corrections with their
+  public notes, and links to the previous and next day.
 - **Times are in UTC.** The server shows times in UTC. A browser with JavaScript
   switches them to the visitor's own time zone and local format after loading.
 - **Subscriptions work with forms.** Subscribing, confirming and managing
@@ -187,6 +197,51 @@ more comfortable. Without them:
 What needs JavaScript: the live update of the status every 60 seconds, the
 interactive map, the time zone switch and the closing of menus by a click outside
 or the Escape key.
+
+## Private pages
+
+A private page is a status page with a secret link, for example for one
+customer or partner. It shows the services you choose, also services that are
+hidden from the public page, and looks like the public page: overall status,
+uptime bars with their day pages, a page per service, active incidents and
+running and upcoming maintenance of those services.
+
+**Create one** under *Administration → Private pages* (admins only): give it a
+name, an optional description, choose the services, optionally an expiry date,
+and save. The dialog then shows the full link
+(`https://status.example.com/p/<link>`, built from `PUBLIC_BASE_URL`) with a copy
+button. **The link is shown only this once**: only a hash of it is stored. If it
+gets lost or should no longer work, choose *New link*: the old link stops working
+at once and the dialog shows the new one. Disable a page, let it expire or delete
+it to close it; all three answer like a link that never existed.
+
+What to know:
+
+- Everyone who has the link can see the page, without signing in. Share it only
+  with the people it is meant for, as you would share a password.
+- Incidents and maintenance windows appear on a private page only when they are
+  public, with their public text. Of the services they affect, the page shows only
+  its own. The titles open the incident or maintenance on the private page
+  itself, so visitors never leave it.
+- Private pages are never indexed (`noindex, nofollow`, also on "not found"),
+  never cached, never appear in the sitemaps, `llms.txt` or `robots.txt`, never load the statistics script and send
+  no referrer to other sites. The server log writes `/p/[REDACTED]` instead of the
+  link.
+- **Treat the link like a password.** Whoever holds it can read the page, and
+  the link is in the address of every visit. A reverse proxy or load balancer in
+  front of the instance usually writes the full request path to its own access
+  log, which the app cannot redact. Limit who can read those logs, keep them
+  short, or configure the proxy to log `/p/` without what follows it.
+- Every client may open 60 private pages per minute; a wrong link is just "not
+  found". Beyond that the visitor sees a short "Too many requests" page. Behind a
+  reverse proxy set [`TRUST_PROXY`](03-reverse-proxy.md#trust_proxy), otherwise
+  every visitor counts as the proxy and all of them share these 60.
+- Private pages cannot be embedded in other sites (no `iframe`), unlike the
+  public page.
+- There are no feeds and no email subscriptions for private pages.
+- On a split deployment the public instance reads a private page only through
+  database functions that need its link; it cannot list private pages or hidden
+  services (see the [security model](../../security-model.md)).
 
 ## Troubleshooting
 

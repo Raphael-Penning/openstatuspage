@@ -4,6 +4,7 @@ import { BackToHistory, DetailSkeleton, Fact, LocationNames } from '../component
 import { ImpactBadge, IncidentIcon, IncidentStatusBadge, Timeline } from '../components/Events';
 import { DateTime } from '../components/Time';
 import { Card, ErrorState, StatusPill } from '../components/ui';
+import { useServicePaths } from '../hooks/links';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useIncident } from '../hooks/queries';
 import { NotFoundState } from './NotFoundState';
@@ -15,6 +16,8 @@ export function IncidentPage() {
   const f = useFormat();
   const { data, isPending, isError, error, refetch } = useIncident(id);
   const site = useSiteName();
+  // Below the link base: on a private page the service links stay on it.
+  const paths = useServicePaths();
   usePageHead({
     title: data?.title ?? t('incident.title'),
     // The latest update says best what the incident is about.
@@ -68,7 +71,7 @@ export function IncidentPage() {
             <ul className="divide-y divide-border">
               {data.affectedServices.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 py-2">
-                  <Link to={`/services/${s.id}`} className="min-w-0 text-sm break-words hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+                  <Link to={paths.service({ id: s.id })} className="min-w-0 text-sm break-words hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
                     {s.name}
                   </Link>
                   <StatusPill status={s.status} />

@@ -20,9 +20,11 @@ export const PAGE_LANGUAGES = ['en', 'de'] as const;
 /** Query parameter that selects the language of a page (`?lang=de`). */
 export const LANG_QUERY = 'lang';
 /**
- * Request path as the client router sees it: percent-decoded, lower-cased and
- * with repeated slashes collapsed (react-router matches routes case-insensitively).
- * Malformed escapes keep the raw path, which the router does not decode either.
+ * Request path as the client router sees it: percent-decoded, lower-cased,
+ * with repeated slashes collapsed (react-router matches routes case-insensitively)
+ * and dot segments resolved ("/./p/x", "/a/../p/x" and "/%2e/p/x" are "/p/x",
+ * as for the router and every browser). Malformed escapes keep the raw path,
+ * which the router does not decode either.
  */
 export function normalizePath(url: string): string {
   const raw = url.split(/[?#]/)[0] ?? '';
@@ -32,7 +34,41 @@ export function normalizePath(url: string): string {
   } catch {
     // keep the raw path
   }
-  return path.toLowerCase().replace(/\/{2,}/g, '/');
+  return resolveDotSegments(path.toLowerCase().replace(/\/{2,}/g, '/'));
+}
+
+/**
+ * True when a path has a "." or ".." segment, also percent-encoded ("%2e",
+ * "..%2f"). Browsers resolve them before sending a request, so only hand-made
+ * requests carry them.
+ */
+export function hasDotSegments(url: string): boolean {
+  const raw = url.split(/[?#]/)[0] ?? '';
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    decoded = raw.replace(/%2e/gi, '.').replace(/%2f/gi, '/');
+  }
+  return [raw.replace(/%2e/gi, '.'), decoded].some((path) => path.split('/').some((part) => part === '.' || part === '..'));
+}
+
+/** RFC 3986 remove_dot_segments for an absolute path (never above "/"). */
+function resolveDotSegments(path: string): string {
+  if (!path.split('/').some((part) => part === '.' || part === '..')) return path;
+  const parts = path.split('/');
+  const out: string[] = [];
+  for (const [i, part] of parts.entries()) {
+    const last = i === parts.length - 1;
+    if (part === '.' || part === '..') {
+      if (part === '..' && out.length > 1) out.pop();
+      if (last) out.push('');
+    } else {
+      out.push(part);
+    }
+  }
+  const resolved = out.join('/');
+  return resolved.startsWith('/') ? resolved : `/${resolved}`;
 }
 
 /**
@@ -47,11 +83,13 @@ export function canonicalPath(pathname: string): string {
 
 /**
  * Pages with a personal link token in their URL (subscription confirm and
- * manage), in any spelling of the path: never cached, never indexed, and their
- * query never copied into other URLs.
+ * manage, private pages at /p/<token>), in any spelling of the path: never
+ * cached, never served stale, never indexed, without analytics, and their path
+ * and query never copied into other URLs.
  */
 export function isPersonalPath(url: string): boolean {
-  return normalizePath(url).startsWith('/subscription/');
+  const path = normalizePath(url);
+  return path.startsWith('/subscription/') || path === '/p' || path.startsWith('/p/');
 }
 
 /** Id of the non-executable JSON block with the dehydrated state (`<script type="application/json">`). */

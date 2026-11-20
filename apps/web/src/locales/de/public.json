@@ -127,7 +127,7 @@
   },
   "uptime": {
     "roleDescription": "Verfügbarkeitsleiste",
-    "ariaLabel": "{{name}}, letzte {{days}} Tage: {{uptime}}. Mit den Pfeiltasten einzelne Tage anzeigen.",
+    "ariaLabel": "{{name}}, letzte {{days}} Tage: {{uptime}}. Jeder Tag verlinkt auf seine Details; mit den Pfeiltasten wechselst du zwischen den Tagen.",
     "percent": "{{value}} Verfügbarkeit",
     "noData": "Keine Daten",
     "noDowntime": "Keine Ausfallzeit erfasst.",
@@ -138,12 +138,41 @@
     "correctedLegend": "Markierte Tage wurden nachträglich korrigiert",
     "correctedCount_one": "{{count}} Tag wurde nachträglich korrigiert.",
     "correctedCount_other": "{{count}} Tage wurden nachträglich korrigiert.",
-    "ariaLabelStatic": "{{name}}, letzte {{days}} Tage: {{uptime}}.",
+    "ariaLabelStatic": "{{name}}, letzte {{days}} Tage: {{uptime}}. Jeder Tag verlinkt auf seine Details.",
     "dailyDetails": "Alle Tage anzeigen",
     "dailyCaption": "Verfügbarkeit von {{name}} pro Tag, letzte {{count}} Tage, neueste zuerst",
     "day": "Tag (UTC)",
     "status": "Status",
-    "notOperational": "Nicht betriebsbereit"
+    "notOperational": "Nicht betriebsbereit",
+    "openDay": "Diesen Tag anzeigen"
+  },
+  "day": {
+    "back": "Zurück zu {{name}}",
+    "title": "{{name}} am {{date}}",
+    "utcNote": "Der Tag reicht von 00:00 bis 24:00 UTC, wie die Tage der Verfügbarkeitsleiste.",
+    "incomplete": "Dieser Tag ist noch nicht vorbei: Die Werte gelten bis jetzt.",
+    "summary": "Zusammenfassung des Tages",
+    "status": "Status",
+    "uptime": "Verfügbarkeit",
+    "notOperational": "Nicht betriebsbereit",
+    "none": "Keine",
+    "timeline": "Zeitverlauf",
+    "timelineLabel": "Status von {{name}} über den Tag, von 00:00 bis 24:00 UTC",
+    "period": "Zeitraum",
+    "duration": "Dauer",
+    "ongoing": "dauert an",
+    "noData": "Für diesen Tag gibt es keine Daten.",
+    "corrected": "nachträglich korrigiert",
+    "corrections": "Nachträglich korrigiert",
+    "correctionsIntro": "Die Daten dieses Tages wurden nachträglich korrigiert, zum Beispiel nach einem Fehlalarm des Monitorings. Die Werte oben enthalten die Korrektur bereits.",
+    "incidents": "Vorfälle an diesem Tag",
+    "noIncidents": "Keine Vorfälle an diesem Tag.",
+    "maintenance": "Wartungen an diesem Tag",
+    "noMaintenance": "Keine Wartungen an diesem Tag.",
+    "navigation": "Weitere Tage",
+    "previous": "Vorheriger Tag",
+    "next": "Nächster Tag",
+    "notFound": "Für diesen Tag gibt es nichts anzuzeigen: Das Datum ist ungültig oder liegt außerhalb des Zeitraums dieser Seite."
   },
   "locations": {
     "title": "Standorte",
@@ -319,9 +348,19 @@
     "locations": "Status der Standorte von {{site}} weltweit.",
     "subscribe": "Erhalte eine E-Mail, wenn {{site}} Vorfälle oder Wartungen veröffentlicht.",
     "incident": "Vorfallbericht von {{site}}: {{title}}.",
-    "maintenance": "Wartung von {{site}}: {{title}}."
+    "maintenance": "Wartung von {{site}}: {{title}}.",
+    "day": "Status, Verfügbarkeit, Vorfälle und Wartungen von {{name}} am {{date}} bei {{site}}."
   },
   "link": {
     "newTab": "(öffnet in einem neuen Tab)"
+  },
+  "private": {
+    "badge": "Private Statusseite",
+    "notice": "Nur Personen mit dem Link können diese Seite sehen. Bitte gib den Link nicht weiter.",
+    "services": "Dienste",
+    "empty": "Diese Seite zeigt noch keine Dienste.",
+    "notFound": "Diese private Statusseite gibt es nicht oder sie ist nicht mehr verfügbar.",
+    "back": "Zurück zur Übersicht",
+    "home": "Übersicht dieser privaten Statusseite"
   }
 }

@@ -11,7 +11,7 @@ import {
   type PublicPageSettings,
 } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
-import { Activity, Earth, Info, LayoutDashboard, RotateCcwClock, Server } from 'lucide-react';
+import { Activity, Earth, Info, LayoutDashboard, LockKeyhole, RotateCcwClock, Server } from 'lucide-react';
 import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router';
@@ -21,7 +21,9 @@ import { ThemeProvider, useAccentColor, useTheme } from '../lib/theme';
 import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle, useReturnPath } from './components/Controls';
 import { OutboundLink } from './components/OutboundLink';
 import { Skeleton } from './components/ui';
+import { useLinkBase } from './hooks/links';
 import { PreferencesProvider, usePreferences } from './hooks/preferences';
+import { usePrivatePageToken } from './hooks/private-page';
 import { usePublicSettings } from './hooks/queries';
 import { readableOnAll, solidAccent } from './utils/color';
 
@@ -121,11 +123,13 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
   const mainRef = useRef<HTMLElement>(null);
   useFocusOnNavigation(mainRef);
+  // A private page (/p/<token>): no navigation to the main pages and no feeds of them.
+  const isPrivate = usePrivatePageToken() !== null;
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-fg">
       {/* React 19 hoists these into <head>. */}
-      <link rel="alternate" type="application/rss+xml" title={t('feeds.rss')} href="/feed.rss" />
-      <link rel="alternate" type="application/atom+xml" title={t('feeds.atom')} href="/feed.atom" />
+      {!isPrivate && <link rel="alternate" type="application/rss+xml" title={t('feeds.rss')} href="/feed.rss" />}
+      {!isPrivate && <link rel="alternate" type="application/atom+xml" title={t('feeds.atom')} href="/feed.atom" />}
 
       <a
         href="#main"
@@ -135,10 +139,14 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
       </a>
 
       <Header settings={settings} />
-      <NavTabs
-        showLocations={settings?.showLocations !== false}
-        info={settings ? { url: settings.infoLinkUrl, label: settings.infoLinkLabel } : undefined}
-      />
+      {isPrivate ? (
+        <PrivateNotice />
+      ) : (
+        <NavTabs
+          showLocations={settings?.showLocations !== false}
+          info={settings ? { url: settings.infoLinkUrl, label: settings.infoLinkLabel } : undefined}
+        />
+      )}
 
       <main ref={mainRef} id="main" tabIndex={-1} className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-8 pb-16 focus:outline-none sm:px-6">
         <Outlet />
@@ -169,9 +177,12 @@ function useFocusOnNavigation(mainRef: RefObject<HTMLElement | null>) {
 function Header({ settings }: { settings: PublicPageSettings | undefined }) {
   const { t } = useTranslation('public');
   const { isError } = usePublicSettings();
+  // The logo leads to the start of the private page when inside one.
+  const base = useLinkBase();
+  const home = base || '/';
   return (
     <header className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center justify-between gap-3 px-4 pt-5 sm:px-6">
-      <Link to="/" className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-focus">
+      <Link to={home} className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-focus">
         {settings?.logoUrl ? (
           <img src={settings.logoUrl} alt="" className="h-8 w-auto max-w-32 object-contain" />
         ) : (
@@ -184,7 +195,7 @@ function Header({ settings }: { settings: PublicPageSettings | undefined }) {
         ) : (
           <Skeleton className="h-5 w-32" />
         )}
-        <span className="sr-only">{t('header.home')}</span>
+        <span className="sr-only">{base ? t('private.home') : t('header.home')}</span>
       </Link>
       <div className="flex items-center gap-2">
         <TimeZoneToggle />
@@ -192,6 +203,20 @@ function Header({ settings }: { settings: PublicPageSettings | undefined }) {
         <ThemeSwitcher />
       </div>
     </header>
+  );
+}
+
+/** In place of the navigation on a private page: what it is and that its link is not for everyone. */
+function PrivateNotice() {
+  const { t } = useTranslation('public');
+  return (
+    <aside aria-label={t('private.badge')} className="mx-auto mt-6 w-full max-w-[1100px] px-4 sm:px-6">
+      <p className="mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-3xl border border-border bg-surface px-4 py-2 text-center text-sm text-muted">
+        <LockKeyhole aria-hidden className="size-4 shrink-0" />
+        <strong className="font-medium text-fg">{t('private.badge')}</strong>
+        <span>{t('private.notice')}</span>
+      </p>
+    </aside>
   );
 }
 
@@ -266,7 +291,9 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
   const copyright = settings?.copyrightText
     ? formatCopyright(settings.copyrightText, year)
     : t('footer.copyright', { year, name: settings?.siteName ?? t('fallbackSiteName') });
-  const analytics = analyticsActive(settings);
+  // Analytics never runs on private pages (entry-server.tsx), so there is nothing to choose there.
+  const isPrivate = usePrivatePageToken() !== null;
+  const analytics = !isPrivate && analyticsActive(settings);
   const legal = LEGAL_LINKS.flatMap(([key, urlKey, labelKey]) => {
     const url = settings?.[urlKey];
     return url ? [{ key, url, label: settings[labelKey] || t(`footer.${key}`) }] : [];
@@ -277,39 +304,46 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
     <footer className="border-t border-border">
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-4 py-8 text-sm text-muted sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <nav aria-label={t('footer.label')}>
-            <ul className="flex flex-wrap gap-x-5 gap-y-2">
-              <li>
-                <a href="/api/public/status" className={linkClass}>
-                  {t('footer.statusApi')}
-                </a>
-              </li>
-              <li>
-                <a href="/feed.rss" className={linkClass}>
-                  {t('feeds.rss')}
-                </a>
-              </li>
-              <li>
-                <a href="/feed.atom" className={linkClass}>
-                  {t('feeds.atom')}
-                </a>
-              </li>
-              {settings?.supportUrl && (
-                <li>
-                  <OutboundLink href={settings.supportUrl} className={linkClass}>
-                    {t('footer.support')}
-                  </OutboundLink>
-                </li>
-              )}
-              {settings?.footerLinks.map((l) => (
-                <li key={`${l.label}-${l.url}`}>
-                  <OutboundLink href={l.url} className={linkClass}>
-                    {l.label}
-                  </OutboundLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          {/* A private page has no status API or feeds of its own: those of the main page stay out. */}
+          {(!isPrivate || settings?.supportUrl || (settings?.footerLinks.length ?? 0) > 0) && (
+            <nav aria-label={t('footer.label')}>
+              <ul className="flex flex-wrap gap-x-5 gap-y-2">
+                {!isPrivate && (
+                  <>
+                    <li>
+                      <a href="/api/public/status" className={linkClass}>
+                        {t('footer.statusApi')}
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/feed.rss" className={linkClass}>
+                        {t('feeds.rss')}
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/feed.atom" className={linkClass}>
+                        {t('feeds.atom')}
+                      </a>
+                    </li>
+                  </>
+                )}
+                {settings?.supportUrl && (
+                  <li>
+                    <OutboundLink href={settings.supportUrl} className={linkClass}>
+                      {t('footer.support')}
+                    </OutboundLink>
+                  </li>
+                )}
+                {settings?.footerLinks.map((l) => (
+                  <li key={`${l.label}-${l.url}`}>
+                    <OutboundLink href={l.url} className={linkClass}>
+                      {l.label}
+                    </OutboundLink>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
           {/* Legal pages (external links) and, when analytics runs, the visitor's statistics choice. */}
           {(legal.length > 0 || analytics) && (
             <nav aria-label={t('footer.legal')}>

@@ -6,6 +6,7 @@ import { ChevronDown, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { useServicePaths } from '../hooks/links';
 import { usePublicSettings } from '../hooks/queries';
 import { Card, StatusPill } from './ui';
 import { useOutboundHref } from './OutboundLink';
@@ -24,12 +25,13 @@ export function ServiceRow({ service, days }: { service: PublicService; days: nu
   const { t } = useTranslation('public');
   const { data: settings } = usePublicSettings();
   const outbound = useOutboundHref();
+  const paths = useServicePaths();
   const showUptime = settings?.showUptime !== false && (service.uptime?.length ?? 0) > 0;
   return (
     <li className="px-4 py-3.5 sm:px-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Link to={`/services/${service.slug}`} className="font-medium break-words hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
+          <Link to={paths.service(service)} className="font-medium break-words hover:text-[color:var(--osp-accent-text,var(--accent))] hover:underline">
             {service.name}
           </Link>
           {service.kind === 'site' && service.url && (
@@ -52,6 +54,7 @@ export function ServiceRow({ service, days }: { service: PublicService; days: nu
           uptime={service.uptime}
           days={days}
           label={service.name}
+          dayHref={(date) => paths.day(service, date)}
           percent={service.uptimePercent}
         />
       )}

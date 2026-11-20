@@ -42,7 +42,7 @@ export function installBrowserStubs(): void {
   Element.prototype.scrollIntoView = function scrollIntoView() {};
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' ? input : input.toString(), 'http://localhost');
-    const { status, body } = respond(init?.method ?? 'GET', url.pathname);
+    const { status, body } = respond(init?.method ?? 'GET', url.pathname, new Headers(init?.headers));
     return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/vnd.api+json' } });
   };
 }

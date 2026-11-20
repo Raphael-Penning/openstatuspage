@@ -13,6 +13,7 @@ import type {
   AdminIncident,
   AdminLocation,
   AdminMaintenance,
+  AdminPrivatePage,
   AdminService,
   AdminServiceGroup,
   AdminServiceHistory,
@@ -34,6 +35,7 @@ export const CATALOG_TYPES = {
   maintenanceUpdate: 'maintenance-updates',
   correction: 'corrections',
   serviceHistory: 'service-histories',
+  privatePage: 'private-pages',
   /** Request documents of the reorder actions (`attributes.ids` in display order). */
   ordering: 'orderings',
 } as const;
@@ -130,5 +132,17 @@ export function serviceHistoryResource(serviceId: string, history: AdminServiceH
       service: toOne(CATALOG_TYPES.service, serviceId),
       corrections: toMany(CATALOG_TYPES.correction, corrections.map((c) => c.id)),
     },
+  });
+}
+
+/**
+ * A private page (`private-pages`); `services` ↔ serviceIds. `token` and `url`
+ * are only set in the answer that created or regenerated the link.
+ */
+export function adminPrivatePageResource(page: AdminPrivatePage): ResourceObject {
+  const { serviceIds, ...attributes } = page;
+  return resource(CATALOG_TYPES.privatePage, page.id, attributes, {
+    relationships: { services: toMany(CATALOG_TYPES.service, serviceIds) },
+    links: { self: `${BASE}/private-pages/${page.id}` },
   });
 }

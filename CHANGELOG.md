@@ -69,6 +69,39 @@ breaking changes.
 
 ### Added
 
+- **Private status pages** at `/p/<link>`: a status page with a secret link for
+  chosen services, also ones hidden from the public page, with the look of the
+  public page (overall status, uptime bars with day pages, service pages, active
+  incidents, running and upcoming maintenance, each with its own page below the
+  link), server-rendered and complete
+  without JavaScript. Managed by admins under *Administration → Private pages*
+  and `/api/admin/private-pages` (name, description, services, expiry, enabled;
+  audit log entries). The link carries 160 random bits, is shown once after
+  creating or renewing it ("New link" invalidates the old one) and stored only as
+  its SHA-256 hash (migration `0009_private_pages`). Visitors' API:
+  `/api/public/private-page…` with the token in the `X-Private-Page-Token` header.
+  Private pages are `noindex, nofollow` (meta and header), never cached or served
+  stale, carry no Umami tag, send no referrer, are absent from the sitemaps,
+  `llms.txt` and `robots.txt` (crawlers may fetch them, so they see the
+  `noindex`); the request log redacts the link (a reverse proxy's access log may
+  still contain it, so treat the link like a password), 60 requests per minute
+  and client, and wrong, disabled and expired links get the same 404. On PostgreSQL the public role holds no privilege on the private page
+  tables and reads a page only through token-scoped `SECURITY DEFINER` functions
+  in `osp_public`. Feeds and email subscriptions of private pages are not part of
+  this release.
+- **Clickable days with a detail page**: every day of an uptime bar (overview,
+  services, service page) and of the service page's day table is a link to
+  `/services/<slug>/days/<YYYY-MM-DD>`, server-rendered and complete without
+  JavaScript: status and uptime of the UTC day, its status periods with start,
+  end and duration, corrections with their public notes, the incidents and
+  maintenance windows of the day, and the previous and next day. A bar stays
+  one tab stop (roving tabindex: arrow keys, Home, End move between the day
+  links, Enter opens one); with JavaScript the whole bar is one pointer target.
+  Day pages are `noindex, follow` and in no sitemap. Data comes from the new
+  `GET /api/public/services/{idOrSlug}/days/{date}` (`service-days`), built from
+  the same corrected history as the uptime bars; `400` for a malformed date,
+  `404` outside the uptime range. Links take a base path (`LinkBaseProvider`),
+  so pages served below a prefix can reuse them.
 - **Server-side rendered public pages**: every public page (overview, services,
   service, locations, history, incident, maintenance, subscribe, subscription
   links, not found) is rendered on the server and hydrated in the browser, so

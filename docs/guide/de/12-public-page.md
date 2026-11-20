@@ -68,6 +68,7 @@ Disallow: /api/
 Disallow: /admin
 Disallow: /subscription/
 Disallow: /preferences/
+Disallow: /pulse/
 
 Sitemap: https://status.example.com/sitemap.xml
 ```
@@ -84,6 +85,10 @@ Sitemap: https://status.example.com/sitemap.xml
   Der Header und das Meta-Tag `noindex` halten eine Seite aus den
   Suchergebnissen heraus. Deshalb tragen Seiten, die draußen bleiben sollen,
   beides.
+- Private Seiten (`/p/…`) stehen absichtlich nicht in der `robots.txt`. Ein
+  Crawler, der ausgesperrt ist, sieht ihr `noindex` nie und kann einen
+  durchgesickerten Link trotzdem als bloße Adresse listen; die Zeile würde
+  außerdem allen verraten, wo private Seiten liegen.
 
 Wenn du für bestimmte Crawler eigene Regeln brauchst (zum Beispiel um KI-Bots
 das Training zu verbieten), stell eine eigene `robots.txt` auf dem Reverse Proxy
@@ -139,8 +144,10 @@ Index. Prüfe dann, ob der Proxy `/sitemap.xml` unverändert durchreicht und ob
 | Übersicht, Dienste, Dienst, Verlauf, Vorfall, Wartung, Standorte | ja | In den Sitemaps aufgeführt. |
 | Abonnieren | ja, wenn E-Mail-Abos angeboten werden | In der Sitemap der Seiten aufgeführt. |
 | Gefilterte, durchsuchte oder weitere Seiten, Zustände „gesendet“ und Fehler der Abo-Seite | nein | `noindex, follow`, keine kanonische Adresse. |
+| Tagesseiten der Verfügbarkeitsbalken (`/services/<dienst>/days/<datum>`) | nein | `noindex, follow`, keine kanonische Adresse: eine dünne Seite pro Dienst und Tag. In keiner Sitemap. |
 | Nicht gefunden (404), auch eine Verlaufsseite hinter der letzten | nein | `noindex`. |
 | Bestätigen-, Verwalten- und Abmelden-Links | nein | `noindex`, nicht in einer Sitemap, in der `robots.txt` ausgeschlossen. |
+| Private Seiten (`/p/<link>`) | nein | `noindex, nofollow` (Meta-Tag und Header), keine kanonische Adresse, weder in einer Sitemap noch in `llms.txt`. Absichtlich nicht in der `robots.txt` ausgeschlossen: Ein Crawler muss die Seite abrufen, um `noindex` zu sehen. Siehe [Private Seiten](#private-seiten). |
 | `/admin` auf einer Instanz, die sie ausliefert | nein | Die Antwort trägt `X-Robots-Tag: noindex, nofollow`. |
 | Alle Seiten einer Instanz `admin` | nein | `Disallow: /` in der `robots.txt` und `X-Robots-Tag: noindex, nofollow`. |
 
@@ -191,6 +198,11 @@ Skripte machen die Seite nur bequemer. Ohne sie gilt:
 - **Karte und Balken haben einen Textersatz.** Die Weltkarte zeichnet der Server
   als Bild der Länder mit ihren Markierungen. Die Verfügbarkeitsbalken haben auf
   der Dienstseite eine Tabelle mit denselben Tagen.
+- **Jeder Tag eines Verfügbarkeitsbalkens ist ein Link.** Er öffnet die
+  Tagesseite: Status und Verfügbarkeit des Tages, wann der Dienst ausgefallen,
+  eingeschränkt oder in Wartung war, die Vorfälle und Wartungen des Tages,
+  Korrekturen mit ihren öffentlichen Hinweisen und Links zum vorherigen und
+  nächsten Tag.
 - **Zeiten sind in UTC.** Der Server zeigt Zeiten in UTC. Ein Browser mit
   JavaScript stellt sie nach dem Laden auf die Zeitzone und das Format des
   Besuchers um.
@@ -200,6 +212,55 @@ Skripte machen die Seite nur bequemer. Ohne sie gilt:
 Ohne JavaScript fehlen nur: die Live-Aktualisierung des Status alle 60 Sekunden,
 die interaktive Karte, die Umstellung der Zeitzone und das Schließen der Menüs per
 Klick außerhalb oder mit der Escape-Taste.
+
+## Private Seiten
+
+Eine private Seite ist eine Statusseite mit einem geheimen Link, zum Beispiel für
+einen Kunden oder Partner. Sie zeigt die Dienste, die du auswählst, auch solche,
+die auf der öffentlichen Seite verborgen sind, und sieht aus wie die öffentliche
+Seite: Gesamtstatus, Verfügbarkeitsbalken mit ihren Tagesseiten, eine Seite pro
+Dienst, aktuelle Vorfälle sowie laufende und geplante Wartungen dieser Dienste.
+
+**Leg eine an** unter *Administration → Private Seiten* (nur Admins): Gib ihr
+einen Namen und optional eine Beschreibung, wähle die Dienste, optional ein
+Ablaufdatum, und speichere. Danach zeigt der Dialog den vollständigen Link
+(`https://status.example.com/p/<link>`, gebildet aus `PUBLIC_BASE_URL`) mit einem
+Kopieren-Knopf. **Der Link wird nur dieses eine Mal angezeigt**: Gespeichert wird
+nur ein Hash davon. Geht er verloren oder soll er nicht mehr funktionieren, wähle
+*Neuer Link*: Der alte Link funktioniert sofort nicht mehr, und der Dialog zeigt
+den neuen. Um eine Seite zu schließen, deaktiviere sie, lass sie ablaufen oder
+lösche sie; alle drei antworten wie ein Link, den es nie gab.
+
+Was du wissen solltest:
+
+- Jeder, der den Link hat, kann die Seite ohne Anmeldung sehen. Gib ihn nur an
+  die Personen weiter, für die er gedacht ist, so wie ein Passwort.
+- Vorfälle und Wartungen erscheinen auf einer privaten Seite nur, wenn sie
+  öffentlich sind, mit ihrem öffentlichen Text. Von den betroffenen Diensten zeigt
+  die Seite nur ihre eigenen. Die Titel öffnen den Vorfall oder die Wartung auf
+  der privaten Seite selbst, Besucher verlassen sie also nicht.
+- Private Seiten werden nie indexiert (`noindex, nofollow`, auch bei „nicht
+  gefunden“), nie zwischengespeichert, stehen weder in den Sitemaps noch in
+  `llms.txt` oder der `robots.txt`, laden nie das Statistik-Skript
+  und senden keinen Referrer an andere Seiten. Das Server-Log schreibt
+  `/p/[REDACTED]` statt des Links.
+- **Behandle den Link wie ein Passwort.** Wer ihn hat, kann die Seite lesen, und
+  er steht in der Adresse jedes Besuchs. Ein Reverse Proxy oder Load Balancer vor
+  der Instanz schreibt den vollen Pfad meist in sein eigenes Zugriffs-Log, das die
+  App nicht schwärzen kann. Beschränke, wer diese Logs lesen darf, halte sie kurz
+  oder stelle den Proxy so ein, dass er `/p/` ohne den Teil danach protokolliert.
+- Jeder Client darf 60 private Seiten pro Minute öffnen; ein falscher Link ist
+  einfach „nicht gefunden“. Darüber hinaus sieht der Besucher eine kurze Seite
+  „Zu viele Anfragen“. Hinter einem Reverse Proxy setz
+  [`TRUST_PROXY`](03-reverse-proxy.md#trust_proxy), sonst zählt jeder Besucher als
+  der Proxy und alle teilen sich diese 60.
+- Private Seiten lassen sich, anders als die öffentliche Seite, nicht in andere
+  Websites einbetten (kein `iframe`).
+- Für private Seiten gibt es keine Feeds und keine E-Mail-Abos.
+- In einer geteilten Installation liest die öffentliche Instanz eine private Seite
+  nur über Datenbankfunktionen, die ihren Link brauchen; sie kann weder private
+  Seiten noch verborgene Dienste auflisten (siehe das
+  [Sicherheitsmodell](../../security-model.md)).
 
 ## Fehlersuche
 

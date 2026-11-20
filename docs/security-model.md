@@ -56,6 +56,7 @@ tests) and history imports. The public instance never connects to either.
 | Read the applied schema version (`kysely_migration`) | view |
 | Subscribe an address (double opt-in) | `osp_public.subscribe(...)` |
 | Confirm, read, change and delete one subscription, **only with its token** | `osp_public.subscription_confirm/get/update/delete(...)` |
+| Read **one private page with its token**: its name, its services (also hidden ones), their history and corrections, and the public incidents and maintenance windows that affect them | `osp_public.private_page*(token, ...)` |
 | Check whether its own login is restricted | `osp_public.connection_restricted()` |
 
 The views have the same names as the tables, and the public instance connects
@@ -76,8 +77,17 @@ from `/api/`, `/admin` and the personal subscription links.
   `api_tokens`, `audit_log`, `subscribers`, `subscriber_services`,
   `email_outbox`, `monitor_sources`, `monitor_checks`, `monitor_check_history`,
   `service_checks`, `check_bundles`, `check_bundle_members`, `history_imports`,
-  `history_import_intervals`, `task_leases` and the role registry
-  `osp_public_roles`.
+  `history_import_intervals`, `task_leases`, `private_pages`,
+  `private_page_services` and the role registry `osp_public_roles`.
+- **List private pages or their services.** It cannot read the private page
+  tables, their token hashes or which hidden service is on which page. The
+  `osp_public.private_page*` functions (migration `0009`, `SECURITY DEFINER`,
+  `search_path` pinned, not executable by `PUBLIC`) take the token, hash it
+  themselves (SHA-256, like the subscription tokens) and return only the rows of
+  that one enabled, unexpired page: its services, their status history and
+  corrections (public notes only), and the public incidents and maintenance
+  windows of those services, each with links to the page's services only. A wrong
+  token returns nothing. Guessing is hopeless (160-bit tokens) and rate limited.
 - **Read hidden rows**: hidden services, groups, locations, incidents and
   maintenance, and everything linked only to them, are not in the views.
 - **Read internal columns**: e.g. how a service status is made (`status_mode`,
@@ -263,8 +273,9 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   so analytics needs no exception either.
 - `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns
   off camera, microphone, geolocation, payment and USB.
-- Framing: public pages may be embedded by other sites; the management UI and
-  the API add `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+- Framing: public pages may be embedded by other sites; the management UI, the
+  API and private pages (`/p/<token>`) add `frame-ancestors 'none'` and
+  `X-Frame-Options: DENY`.
 
 HSTS is left to the reverse proxy that terminates TLS.
 
@@ -292,6 +303,9 @@ execution) and holds its environment: the public database login and
     chooses for new subscribers, confirm them; mails still only go to the given
     address and are throttled. Rotate the token key (and the public role's
     password) after a compromise.
+  - Private pages whose links pass through the instance while it is compromised
+    can be read with those links. Renew the links (admin: "New link") after a
+    compromise; the others stay out of reach.
   - The public host never holds `SECRET_KEY`: the monitoring credentials stay
     encrypted with a key it does not have, and it cannot forge the signed OIDC
     state cookie of the admin instance.

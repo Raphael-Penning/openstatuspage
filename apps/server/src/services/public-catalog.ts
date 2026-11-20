@@ -17,7 +17,7 @@ import {
 } from '@openstatuspage/shared';
 import type { DB } from '../db/index.js';
 import type { Service } from '../db/types.js';
-import { loadCorrectionLayers } from './corrections.js';
+import { loadCorrectionLayers, type ServiceCorrections } from './corrections.js';
 import { applyCorrections, markCorrectedDays, rangeStart } from './history-corrections.js';
 import { averageUptime, computeDailyUptime, type StatusSegment } from './uptime.js';
 
@@ -86,6 +86,34 @@ export async function loadUptime(
     loadSegments(db, serviceIds, from),
     loadCorrectionLayers(db, serviceIds, from.toISOString(), now.toISOString()),
   ]);
+  return uptimeOf(serviceIds, segments, corrections, days, now);
+}
+
+/** Groups history rows by service (rows ordered by started_at). */
+export function segmentsByService(
+  rows: readonly { service_id: string; status: ServiceStatus; started_at: string; ended_at: string | null }[],
+): Map<string, StatusSegment[]> {
+  const result = new Map<string, StatusSegment[]>();
+  for (const r of rows) {
+    const list = result.get(r.service_id) ?? [];
+    list.push({ status: r.status, started_at: r.started_at, ended_at: r.ended_at });
+    result.set(r.service_id, list);
+  }
+  return result;
+}
+
+/**
+ * Daily buckets and average uptime of each service from its loaded history
+ * (from rangeStart(days, now) on) and corrections, as loadUptime computes them.
+ */
+export function uptimeOf(
+  serviceIds: readonly string[],
+  segments: ReadonlyMap<string, StatusSegment[]>,
+  corrections: ReadonlyMap<string, ServiceCorrections>,
+  days: number,
+  now: Date,
+): Map<string, { uptime: DailyUptime[]; percent: number | null }> {
+  const from = rangeStart(days, now);
   const result = new Map<string, { uptime: DailyUptime[]; percent: number | null }>();
   for (const id of serviceIds) {
     const c = corrections.get(id);
