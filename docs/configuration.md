@@ -18,14 +18,14 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `HOST` | `0.0.0.0` | Interface the HTTP server binds to. |
 | `PORT` | `3000` | HTTP port. |
 | `BASE_URL` | `http://localhost:3000` | URL of this instance, without trailing slash: the public URL of the status page, or the admin domain of an `admin` instance. Used for OIDC redirect URIs and ingest URLs, and for feed and email links unless `PUBLIC_BASE_URL` is set. When it starts with `https://` cookies are marked `Secure`. |
-| `PUBLIC_BASE_URL` | `BASE_URL` | Public URL of the status page, used for every link in feeds and emails (incident and maintenance pages, confirm, manage and one-click unsubscribe links). Set it on `admin` and `worker` instances of a [split deployment](#split-deployment), so mails sent from the admin domain still link to the public page. |
+| `PUBLIC_BASE_URL` | `BASE_URL` | Public URL of the status page, used for every link in feeds and emails (incident and maintenance pages, confirm, manage and one-click unsubscribe links). Set it on `admin` and `worker` instances of a [split deployment](#split-deployment), so mails sent from the admin domain still link to the public page. The canonical links of the server-rendered public pages use it too. |
 | `TRUST_PROXY` | `false` | Behind a reverse proxy (nginx, Traefik, Caddy, ...) client IPs (rate limiting, session metadata) and the protocol are taken from `X-Forwarded-*` headers. Set the number of proxies in front of the app (`1` for a single proxy; `true` means `1`) or a comma separated list of trusted proxy addresses/CIDRs (e.g. `10.0.0.0/8,127.0.0.1`). Entries further left in `X-Forwarded-For` are set by the client and are never trusted. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
 | `WEB_DIST_DIR` | – | Directory with the built web client. By default the server looks for `apps/web/dist`. |
 
 The Docker image also sets `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=96`,
-`MALLOC_ARENA_MAX=2` and `UV_THREADPOOL_SIZE=2`, which keep an instance below about
-100 MB. Override `NODE_OPTIONS` to give a large history import more heap; see
+`MALLOC_ARENA_MAX=2` and `UV_THREADPOOL_SIZE=2` and starts `node --max-opt=2`, which
+keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large history import more heap; see
 [architecture.md](architecture.md#memory).
 
 ## Security

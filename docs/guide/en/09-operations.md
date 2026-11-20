@@ -222,12 +222,12 @@ database answers, otherwise an error status. It needs no authentication.
 An instance needs about 80–100 MB of memory in normal use; a password check or
 the first poll of a process briefly adds 10–20 MB. A memory limit of 128 MB per
 container leaves enough room. The Docker image sets the Node.js and allocator
-options for this (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`).
-Without the image, set them yourself:
+options for this (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, `UV_THREADPOOL_SIZE`) and
+starts Node.js with `--max-opt=2`. Without the image, set them yourself:
 
 ```sh
 NODE_OPTIONS="--max-semi-space-size=1 --max-old-space-size=96" \
-MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node apps/server/dist/index.js
+MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node --max-opt=2 apps/server/dist/index.js
 ```
 
 Raise `--max-old-space-size` (e.g. to `256`) on the instance that runs a large
