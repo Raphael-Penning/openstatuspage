@@ -5,6 +5,7 @@
  */
 import type {
   AdminApiToken,
+  AdminPageSettings,
   AdminService,
   AdminSubscriber,
   AdminUser,
@@ -61,8 +62,10 @@ export function apiTokenResource(token: AdminApiToken): ResourceObject {
   return resource(AUTH_TYPES.apiToken, token.id, token, { links: { self: `/api/admin/api-tokens/${token.id}` } });
 }
 
-export function adminSettingsResource(settings: PublicPageSettings): ResourceObject {
-  return resource(AUTH_TYPES.settings, SITE_SETTINGS_ID, settings, { links: { self: '/api/admin/settings' } });
+/** The page settings for the management UI, plus `analyticsAvailable` (whether this instance has UMAMI_URL). */
+export function adminSettingsResource(settings: PublicPageSettings, instance: { analyticsAvailable: boolean }): ResourceObject {
+  const attributes: AdminPageSettings = { ...settings, analyticsAvailable: instance.analyticsAvailable };
+  return resource(AUTH_TYPES.settings, SITE_SETTINGS_ID, attributes, { links: { self: '/api/admin/settings' } });
 }
 
 /** Audit entry; the acting user is a relationship (`userName` stays: users may be deleted). */
