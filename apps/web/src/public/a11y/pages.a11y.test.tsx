@@ -8,12 +8,15 @@
 import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { axeViolations, installBrowserStubs, renderPublic, settle, type Rendered } from './harness';
-import { SUBSCRIPTION_TOKEN } from './fixtures';
+import { API_TODAY, API_YESTERDAY, SUBSCRIPTION_TOKEN } from './fixtures';
 
 const PAGES: [name: string, path: string][] = [
   ['overview', '/'],
   ['services', '/services'],
   ['service detail', '/services/api'],
+  ['service day', `/services/api/days/${API_YESTERDAY}`],
+  ['service day (today)', `/services/api/days/${API_TODAY}`],
+  ['unknown service day', '/services/api/days/2001-01-01'],
   ['locations', '/locations'],
   ['history', '/history'],
   ['incident', '/incidents/inc-1'],
@@ -190,23 +193,37 @@ describe('interactive states', () => {
     expect(details.open).toBe(false);
   });
 
-  it('uptime bar with its tooltip, keyboard navigation and Escape', async () => {
+  it('uptime bar: one tab stop, arrow keys move between day links, tooltip and Escape', async () => {
     page = await renderPublic({ path: '/services/api', lang: 'en', theme: 'dark' });
     const bar = page.container.querySelector<HTMLElement>('[aria-roledescription="uptime bar"]')!;
     expect(bar).not.toBeNull();
-    await act(async () => bar.focus());
+    const links = [...bar.querySelectorAll<HTMLAnchorElement>('a')];
+    expect(links.length).toBe(90);
+    // Roving tabindex: one tab stop, the newest day.
+    expect(links.filter((a) => a.tabIndex === 0)).toEqual([links.at(-1)]);
+    expect(links.at(-1)!.getAttribute('href')).toBe(`/services/api/days/${API_TODAY}`);
+    expect(links.at(-1)!.getAttribute('aria-label')).toMatch(/Operational, 100% uptime/);
+    await act(async () => links.at(-1)!.focus());
     await settle();
-    const tooltipId = bar.getAttribute('aria-describedby');
-    expect(tooltipId).toBeTruthy();
-    expect(document.getElementById(tooltipId!)?.textContent).toContain('Operational');
-    await key(bar, 'ArrowLeft');
-    const live = bar.parentElement!.querySelector('[aria-live="polite"]');
-    expect(live?.textContent).not.toBe('');
+    const tooltip = () => bar.parentElement!.querySelector('[aria-hidden="true"].absolute');
+    expect(tooltip()?.textContent).toContain('Operational');
+    await key(links.at(-1)!, 'ArrowLeft');
+    expect(document.activeElement).toBe(links.at(-2));
+    expect(links.at(-2)!.tabIndex).toBe(0);
+    expect(links.at(-1)!.tabIndex).toBe(-1);
+    await key(links.at(-2)!, 'Home');
+    expect(document.activeElement).toBe(links[0]);
+    await key(links[0]!, 'End');
+    expect(document.activeElement).toBe(links.at(-1));
     expect(await axeViolations()).toEqual([]);
     // WCAG 1.4.13: Escape hides the tooltip without moving the focus.
-    await key(bar, 'Escape');
-    expect(bar.getAttribute('aria-describedby')).toBeNull();
-    expect(document.activeElement).toBe(bar);
+    await key(links.at(-1)!, 'Escape');
+    expect(tooltip()).toBeNull();
+    expect(document.activeElement).toBe(links.at(-1));
+    // Enter (a click without a pointer) opens the day in the client.
+    await click(links.at(-2)!);
+    expect(page.container.querySelector('h1 time')?.getAttribute('datetime')).toBe(API_YESTERDAY);
+    expect(await axeViolations()).toEqual([]);
   });
 
   it('days that were not fully operational are not marked by color alone', async () => {
@@ -225,6 +242,8 @@ describe('interactive states', () => {
     expect(details.open).toBe(true);
     const rows = details.querySelectorAll('tbody tr');
     expect(rows.length).toBe(page.container.querySelector('[aria-roledescription]')!.children.length);
+    // Every day links to its page.
+    expect([...rows].map((r) => r.querySelector('th a')?.getAttribute('href'))).toContain(`/services/api/days/${API_YESTERDAY}`);
     expect(await axeViolations()).toEqual([]);
   });
 
