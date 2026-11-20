@@ -20,9 +20,10 @@
  *   Umami is down.
  * - Events: JSON only, at most SEND_BODY_LIMIT, rate limited per client, at
  *   most MAX_IN_FLIGHT forwarded at a time, SEND_TIMEOUT_MS each. Only events
- *   for the configured website ID are forwarded. Events of personal pages
- *   (subscription links) are dropped, `token` parameters removed from page and
- *   referrer URLs. With "respect Do Not Track" on, requests with `DNT: 1` or
+ *   for the configured website ID are forwarded, with the payload fields of
+ *   Umami's tracker only. Events of personal pages (subscription links) are
+ *   dropped; page and referrer URLs lose their fragment and `token`
+ *   parameters (with the `id` next to a token). With "respect Do Not Track" on, requests with `DNT: 1` or
  *   `Sec-GPC: 1` are dropped. Forwarded are the body, the User-Agent and
  *   Umami's own `x-umami-cache` header; never cookies, and the visitor's IP
  *   address (X-Forwarded-For) only when the settings allow it.
@@ -203,15 +204,26 @@ const header = (req: FastifyRequest, name: string): string | undefined => {
   return Array.isArray(v) ? v[0] : v;
 };
 
-/** Removes every `token` query parameter (any case) from a URL object. */
-function dropTokens(url: URL): void {
-  for (const name of [...url.searchParams.keys()]) if (name.toLowerCase() === 'token') url.searchParams.delete(name);
+/**
+ * Removes the personal parts of a URL object: the fragment (the tracker sends
+ * none, `data-exclude-hash`, but a hand-made event can), every `token` query
+ * parameter (any case) and, next to a token, the `id` it belongs to
+ * (subscription links carry `id` and `token`).
+ */
+function dropPersonal(url: URL): void {
+  url.hash = '';
+  const names = [...url.searchParams.keys()];
+  if (!names.some((name) => name.toLowerCase() === 'token')) return;
+  for (const name of names) if (['token', 'id'].includes(name.toLowerCase())) url.searchParams.delete(name);
 }
+
+/** The cleaned URL in the form it came in: absolute stays absolute, a path stays a path. */
+const sameForm = (value: string, url: URL) => (/^[a-z][a-z0-9+.-]*:/i.test(value) ? url.href : `${url.pathname}${url.search}`);
 
 /**
  * A page URL of an event without personal parts: null for a personal page
- * (subscription link), otherwise the URL without `token` parameters, in the
- * form it came in (a path stays a path).
+ * (subscription link), otherwise the URL without fragment and token (see
+ * {@link dropPersonal}).
  */
 export function cleanPageUrl(value: string, baseUrl: string): string | null {
   let url: URL;
@@ -221,11 +233,11 @@ export function cleanPageUrl(value: string, baseUrl: string): string | null {
     return null;
   }
   if (isPersonalPath(url.pathname)) return null;
-  dropTokens(url);
-  return /^[a-z][a-z0-9+.-]*:/i.test(value) ? url.href : `${url.pathname}${url.search}${url.hash}`;
+  dropPersonal(url);
+  return sameForm(value, url);
 }
 
-/** A referrer of an event: this site's personal pages become the site root, `token` parameters are removed. */
+/** A referrer of an event: this site's personal pages become the site root, other URLs lose fragment and token. */
 export function cleanReferrer(value: string, baseUrl: string): string {
   if (!value) return value;
   let url: URL;
@@ -235,18 +247,31 @@ export function cleanReferrer(value: string, baseUrl: string): string {
     return '';
   }
   if (url.origin === new URL(baseUrl).origin && isPersonalPath(url.pathname)) return `${url.origin}/`;
-  dropTokens(url);
-  return /^[a-z][a-z0-9+.-]*:/i.test(value) ? url.href : `${url.pathname}${url.search}${url.hash}`;
+  dropPersonal(url);
+  return sameForm(value, url);
 }
 
 type EventBody = { type: string; payload: Record<string, unknown> };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/**
+ * Payload fields of Umami's tracker that are forwarded; anything else in an
+ * event (hand-made or from another tracker version) is left out.
+ */
+const PAYLOAD_KEYS = ['website', 'hostname', 'url', 'referrer', 'title', 'language', 'screen', 'name', 'data', 'tag'] as const;
+
 /** Checks and cleans an event; null: drop it. */
 export function cleanEvent(body: unknown, websiteId: string, baseUrl: string): EventBody | null {
   if (!isRecord(body) || (body.type !== 'event' && body.type !== 'identify') || !isRecord(body.payload)) return null;
-  const payload = { ...body.payload };
+  const source = body.payload;
+  const payload: Record<string, unknown> = {};
+  for (const key of PAYLOAD_KEYS) if (source[key] !== undefined) payload[key] = source[key];
+  if (payload.data !== undefined) {
+    if (!isRecord(payload.data)) return null;
+    // The pages define no custom event data; never a token, whoever sends one.
+    payload.data = Object.fromEntries(Object.entries(payload.data).filter(([key]) => key.toLowerCase() !== 'token'));
+  }
   if (typeof payload.website !== 'string' || payload.website.toLowerCase() !== websiteId.toLowerCase()) return null;
   if (payload.url !== undefined) {
     if (typeof payload.url !== 'string') return null;
