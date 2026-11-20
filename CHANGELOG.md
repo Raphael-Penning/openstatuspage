@@ -4,7 +4,19 @@ All notable changes to this project are documented here. The project follows
 [Semantic Versioning](https://semver.org/); before 1.0 a minor release may contain
 breaking changes.
 
-## [Unreleased] (0.2.0)
+## [Unreleased]
+
+## [0.2.0] - 2026-11-20
+
+### Upgrading from 0.1.x
+
+- Clients of the HTTP API must switch to JSON:API (see *Breaking changes*).
+- On PostgreSQL, read the upgrade notes of migration `0007_public_role` below
+  before you migrate, and run `deploy/postgres/roles.sql` if you want to split
+  the instance by `APP_ROLE`.
+- Check the new environment variables `PUBLIC_BASE_URL`,
+  `SUBSCRIPTION_TOKEN_KEY` and `UMAMI_URL`. Their defaults keep a single
+  instance working.
 
 ### Breaking changes
 
