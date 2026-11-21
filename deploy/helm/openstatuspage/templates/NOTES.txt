@@ -24,14 +24,6 @@ No Ingress was created. To try it locally:
   curl -fsS http://127.0.0.1:3000/api/health
 {{- end }}
 
-{{- if and .Values.split.enabled .Values.secrets.existingSecret (not .Values.secrets.publicExistingSecret) }}
-
-WARNING: the public pods reference secrets.existingSecret ({{ .Values.secrets.existingSecret }}) for
-SUBSCRIPTION_TOKEN_KEY. The container gets only that key, but the kubelet of
-every node that runs a public pod may read the whole Secret, SECRET_KEY
-included. Put SUBSCRIPTION_TOKEN_KEY into a Secret of its own and set
-secrets.publicExistingSecret.
-{{- end }}
 {{- if and (not $pg) (not .Values.persistence.enabled) }}
 
 WARNING: persistence.enabled=false. The SQLite database lives in an emptyDir and

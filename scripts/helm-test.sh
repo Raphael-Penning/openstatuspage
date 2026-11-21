@@ -192,12 +192,23 @@ check "split: public startup follows SCHEMA_WAIT_SECONDS" has splitwait Deployme
 check "split: admin startup keeps the default" has splitwait Deployment "$APP-admin" 'failureThreshold: 30$'
 check "split: PodDisruptionBudget selects public" has split PodDisruptionBudget "$APP-public" 'component: public'
 check "split: no chart Secret with existing Secrets" bash -c "! grep -q '^kind: Secret\$' '$TMP/split.yaml'"
-check "split: admin reads the token key from existingSecret" has split Deployment "$APP-admin" 'name: openstatuspage$'
-render splitpub -f "$CI/split-values.yaml" --set secrets.publicExistingSecret=openstatuspage-public
 check "split: public references only the public Secrets" \
-  secret_refs_are splitpub "$APP-public" openstatuspage-db-public openstatuspage-public
+  secret_refs_are split "$APP-public" openstatuspage-db-public openstatuspage-public
+check "split: admin references the private Secrets" \
+  secret_refs_are split "$APP-admin" openstatuspage openstatuspage-db openstatuspage-public
+check "split: worker references the private Secrets" \
+  secret_refs_are split "$APP-worker" openstatuspage openstatuspage-db openstatuspage-public
 check "split: admin reads the token key from publicExistingSecret" \
-  bash -c "grep -A3 'name: SUBSCRIPTION_TOKEN_KEY' <(awk '/^  name: $APP-admin\$/,/^---/' '$TMP/splitpub.yaml') | grep -q 'name: openstatuspage-public'"
+  bash -c "grep -A3 'name: SUBSCRIPTION_TOKEN_KEY' <(awk '/^  name: $APP-admin\$/,/^---/' '$TMP/split.yaml') | grep -q 'name: openstatuspage-public'"
+render splitshared -f "$CI/split-values.yaml" --set database.public.existingSecret=openstatuspage-public
+check "split: token key and public URL may share the public Secret" \
+  secret_refs_are splitshared "$APP-public" openstatuspage-public
+render splitmixed -f "$CI/split-values.yaml" --set secrets.existingSecret= \
+  --set secrets.secretKey=test-only-secret-key-0123456789abcdef --set secrets.publicExistingSecret= \
+  --set secrets.subscriptionTokenKey=test-only-token-key-0123456789abcdef
+check "split: values-based token key goes to the chart's public Secret" \
+  secret_refs_are splitmixed "$APP-public" openstatuspage-db-public "$APP-public"
+check "split: chart's public Secret holds only the token key" lacks splitmixed Secret "$APP-public" 'SECRET_KEY:|PASSWORD|ADMIN_|DATABASE_URL'
 
 echo "== split mode with NetworkPolicy and HPA"
 expect_count splitnp NetworkPolicy 3
@@ -251,12 +262,44 @@ expect_failure "split without the public role fails" 'database.public' "${BASE[@
 expect_failure "split without SUBSCRIPTION_TOKEN_KEY fails" 'subscriptionTokenKey' "${BASE[@]}" "${KEY[@]}" \
   --set split.enabled=true --set split.admin.baseUrl=https://status.admin.example.com \
   --set database.existingSecret=db --set database.public.existingSecret=dbp
+SPLIT=(-f "$CI/split-values.yaml")
+expect_failure "split with existingSecret but no publicExistingSecret fails" \
+  'secrets.existingSecret needs secrets.publicExistingSecret' "${SPLIT[@]}" --set secrets.publicExistingSecret=
+expect_failure "split with existingSecret ignores a values token key and still fails" \
+  'needs secrets.publicExistingSecret' "${SPLIT[@]}" --set secrets.publicExistingSecret= \
+  --set secrets.subscriptionTokenKey=test-only-token-key-0123456789abcdef
+expect_failure "publicExistingSecret equal to existingSecret fails" \
+  'secrets.publicExistingSecret must name a Secret of its own: "openstatuspage" is also secrets.existingSecret' \
+  "${SPLIT[@]}" --set secrets.publicExistingSecret=openstatuspage
+expect_failure "publicExistingSecret equal to database.existingSecret fails" \
+  'secrets.publicExistingSecret must name a Secret of its own' \
+  "${SPLIT[@]}" --set secrets.publicExistingSecret=openstatuspage-db
+expect_failure "public database Secret equal to the owner's fails" \
+  'database.public.existingSecret must name a Secret of its own' \
+  "${SPLIT[@]}" --set database.public.existingSecret=openstatuspage-db
+expect_failure "public database Secret equal to existingSecret fails" \
+  'database.public.existingSecret must name a Secret of its own' \
+  "${SPLIT[@]}" --set database.public.existingSecret=openstatuspage
+expect_failure "publicExistingSecret equal to the chart's Secret fails" \
+  "is also the Secret the chart creates" \
+  -f "$CI/split-networkpolicy-hpa-values.yaml" --set secrets.publicExistingSecret="$APP"
+expect_failure "split: extraEnvFrom with the private Secret fails" 'must not reference "openstatuspage"' \
+  "${SPLIT[@]}" --set 'extraEnvFrom[0].secretRef.name=openstatuspage'
+expect_failure "split: public extraEnv with the owner URL fails" 'must not reference "openstatuspage-db"' \
+  "${SPLIT[@]}" --set 'split.public.extraEnv[0].name=X' \
+  --set 'split.public.extraEnv[0].valueFrom.secretKeyRef.name=openstatuspage-db' \
+  --set 'split.public.extraEnv[0].valueFrom.secretKeyRef.key=DATABASE_URL'
+expect_failure "split: extraVolumes with the private Secret fails" 'must not reference "openstatuspage"' \
+  "${SPLIT[@]}" --set 'extraVolumes[0].name=v' --set 'extraVolumes[0].secret.secretName=openstatuspage'
+expect_failure "split: short values token key fails" 'subscriptionTokenKey must be at least 32' \
+  "${SPLIT[@]}" --set secrets.existingSecret= --set secrets.secretKey=test-only-secret-key-0123456789abcdef \
+  --set secrets.publicExistingSecret= --set secrets.subscriptionTokenKey=short
 expect_failure "split without the admin domain fails" 'split.admin.baseUrl' "${BASE[@]}" \
-  --set secrets.existingSecret=s --set split.enabled=true --set database.existingSecret=db --set database.public.existingSecret=dbp
-expect_failure "split on one host fails" 'another host' "${BASE[@]}" --set secrets.existingSecret=s \
+  --set secrets.existingSecret=s --set secrets.publicExistingSecret=sp --set split.enabled=true --set database.existingSecret=db --set database.public.existingSecret=dbp
+expect_failure "split on one host fails" 'another host' "${BASE[@]}" --set secrets.existingSecret=s --set secrets.publicExistingSecret=sp \
   --set split.enabled=true --set split.admin.baseUrl=https://status.example.com \
   --set database.existingSecret=db --set database.public.existingSecret=dbp
-expect_failure "split on one host with another port fails" 'another host' "${BASE[@]}" --set secrets.existingSecret=s \
+expect_failure "split on one host with another port fails" 'another host' "${BASE[@]}" --set secrets.existingSecret=s --set secrets.publicExistingSecret=sp \
   --set split.enabled=true --set split.admin.baseUrl=https://STATUS.example.com:8443 \
   --set database.existingSecret=db --set database.public.existingSecret=dbp
 expect_failure "public role URL equal to the owner URL fails" 'restricted public role' "${BASE[@]}" "${KEY[@]}" \

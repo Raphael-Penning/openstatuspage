@@ -129,12 +129,12 @@ that runs public pods can read nothing else.
 {{/*
 Secret that holds SUBSCRIPTION_TOKEN_KEY. In split mode every instance reads
 it from the same Secret that the public instance references:
-secrets.publicExistingSecret, else secrets.existingSecret, else the chart's
-public Secret.
+secrets.publicExistingSecret, else the chart's public Secret. Never
+secrets.existingSecret (validate refuses that combination).
 */}}
 {{- define "openstatuspage.tokenSecretName" -}}
 {{- if .Values.split.enabled }}
-{{- coalesce .Values.secrets.publicExistingSecret .Values.secrets.existingSecret (include "openstatuspage.publicSecretName" .) }}
+{{- coalesce .Values.secrets.publicExistingSecret (include "openstatuspage.publicSecretName" .) }}
 {{- else }}
 {{- include "openstatuspage.secretName" . }}
 {{- end }}
@@ -153,7 +153,7 @@ or the public role's URL came from values.
 */}}
 {{- define "openstatuspage.createPublicSecret" -}}
 {{- $s := .Values.secrets }}
-{{- if and .Values.split.enabled (or (and (not $s.publicExistingSecret) (not $s.existingSecret)) (and .Values.database.public.url (not .Values.database.public.existingSecret))) }}true{{ end }}
+{{- if and .Values.split.enabled (or (not $s.publicExistingSecret) (and .Values.database.public.url (not .Values.database.public.existingSecret))) }}true{{ end }}
 {{- end }}
 
 {{/*
@@ -227,7 +227,8 @@ by every template that depends on it (through the Deployment template).
 {{- if and (not .Values.secrets.existingSecret) (lt (len .Values.secrets.secretKey) 32) }}
 {{- fail "secrets.secretKey must be at least 32 characters long" }}
 {{- end }}
-{{- if and (not .Values.secrets.existingSecret) .Values.secrets.subscriptionTokenKey (lt (len .Values.secrets.subscriptionTokenKey) 32) }}
+{{- $tokenFromValues := ternary (not .Values.secrets.publicExistingSecret) (not .Values.secrets.existingSecret) .Values.split.enabled }}
+{{- if and $tokenFromValues .Values.secrets.subscriptionTokenKey (lt (len .Values.secrets.subscriptionTokenKey) 32) }}
 {{- fail "secrets.subscriptionTokenKey must be at least 32 characters long" }}
 {{- end }}
 {{- if and (not .Values.secrets.existingSecret) .Values.secrets.adminPassword (lt (len .Values.secrets.adminPassword) 10) }}
@@ -249,8 +250,41 @@ by every template that depends on it (through the Deployment template).
 {{- if and .Values.database.url .Values.database.public.url (eq .Values.database.url .Values.database.public.url) }}
 {{- fail "database.public.url must use the restricted public role, not the same URL as database.url" }}
 {{- end }}
-{{- if and (not .Values.secrets.existingSecret) (not .Values.secrets.publicExistingSecret) (not .Values.secrets.subscriptionTokenKey) }}
-{{- fail "split.enabled=true needs secrets.subscriptionTokenKey (or the key SUBSCRIPTION_TOKEN_KEY in secrets.publicExistingSecret or secrets.existingSecret): the public instance never gets SECRET_KEY" }}
+{{- /* The public pods must reference no Secret that holds SECRET_KEY, ADMIN_*,
+SMTP_PASSWORD, OIDC_CLIENT_SECRET or the owner DATABASE_URL: the kubelet of
+their node may read every Secret they reference, not only the keys they use. */}}
+{{- $s := .Values.secrets }}
+{{- if and $s.existingSecret (not $s.publicExistingSecret) }}
+{{- fail (printf "split.enabled=true with secrets.existingSecret needs secrets.publicExistingSecret, a separate Secret with only the key SUBSCRIPTION_TOKEN_KEY: the public pods must not reference %q, which holds SECRET_KEY (the kubelet of their node may read every Secret they reference). Create it with kubectl create secret generic <name> --from-literal=SUBSCRIPTION_TOKEN_KEY=\"$(openssl rand -base64 48)\"" $s.existingSecret) }}
+{{- end }}
+{{- if and (not $s.publicExistingSecret) (not $s.subscriptionTokenKey) }}
+{{- fail "split.enabled=true needs secrets.subscriptionTokenKey (stored in the chart's public Secret) or secrets.publicExistingSecret (an existing Secret with only the key SUBSCRIPTION_TOKEN_KEY): the public instance never gets SECRET_KEY" }}
+{{- end }}
+{{- $private := dict }}
+{{- with $s.existingSecret }}{{ $_ := set $private . "secrets.existingSecret" }}{{ end }}
+{{- with .Values.database.existingSecret }}{{ $_ := set $private . "database.existingSecret" }}{{ end }}
+{{- if include "openstatuspage.createSecret" . }}{{ $_ := set $private (include "openstatuspage.fullname" .) "the Secret the chart creates from secrets.* and database.url" }}{{ end }}
+{{- range $setting, $name := dict "secrets.publicExistingSecret" $s.publicExistingSecret "database.public.existingSecret" .Values.database.public.existingSecret }}
+{{- if and $name (hasKey $private $name) }}
+{{- fail (printf "%s must name a Secret of its own: %q is also %s, which holds keys the public instance must not reach (SECRET_KEY, ADMIN_*, SMTP_PASSWORD, OIDC_CLIENT_SECRET or the owner DATABASE_URL)" $setting $name (get $private $name)) }}
+{{- end }}
+{{- end }}
+{{- /* extraEnv, extraEnvFrom, extraVolumes and split.public.extraEnv reach the public pods too. */}}
+{{- $extra := list }}
+{{- range concat (.Values.extraEnv | default list) (.Values.split.public.extraEnv | default list) }}
+{{- with .valueFrom }}{{ with .secretKeyRef }}{{ $extra = append $extra .name }}{{ end }}{{ end }}
+{{- end }}
+{{- range .Values.extraEnvFrom }}
+{{- with .secretRef }}{{ $extra = append $extra .name }}{{ end }}
+{{- end }}
+{{- range .Values.extraVolumes }}
+{{- with .secret }}{{ $extra = append $extra .secretName }}{{ end }}
+{{- with .projected }}{{ range .sources }}{{ with .secret }}{{ $extra = append $extra .name }}{{ end }}{{ end }}{{ end }}
+{{- end }}
+{{- range $extra }}
+{{- if and . (hasKey $private .) }}
+{{- fail (printf "split.enabled=true: extraEnv, extraEnvFrom, extraVolumes and split.public.extraEnv reach the public pods, so they must not reference %q (%s)" . (get $private .)) }}
+{{- end }}
 {{- end }}
 {{- if not .Values.split.admin.baseUrl }}
 {{- fail "split.enabled=true needs split.admin.baseUrl, the URL of the admin domain (e.g. https://status.admin.example.com)" }}

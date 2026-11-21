@@ -2,6 +2,8 @@
 baseUrl: https://status.example.com
 secrets:
   existingSecret: openstatuspage
+  # Required with existingSecret in split mode: only SUBSCRIPTION_TOKEN_KEY.
+  publicExistingSecret: openstatuspage-public
 database:
   existingSecret: openstatuspage-db
   public:
