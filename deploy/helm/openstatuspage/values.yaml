@@ -58,14 +58,20 @@ secrets:
   # it, each only in the instances that need it: SECRET_KEY (required),
   # SUBSCRIPTION_TOKEN_KEY (required in split mode), and optionally ADMIN_EMAIL,
   # ADMIN_PASSWORD, SMTP_PASSWORD, OIDC_CLIENT_SECRET. When set, the values
-  # below are ignored.
+  # below are ignored (in split mode SUBSCRIPTION_TOKEN_KEY comes from
+  # publicExistingSecret instead). Split mode with existingSecret requires
+  # publicExistingSecret.
   existingSecret: ""
-  # -- Split mode: existing Secret with only the key SUBSCRIPTION_TOKEN_KEY
-  # (recommended). The public pods reference it instead of existingSecret, so
-  # the nodes that run them cannot read SECRET_KEY and the other keys (the
-  # kubelet may read every Secret its pods reference). Every instance reads
-  # SUBSCRIPTION_TOKEN_KEY from it. Without it, split mode with existingSecret
-  # makes the public pods reference existingSecret.
+  # -- Split mode: existing Secret with only the key SUBSCRIPTION_TOKEN_KEY.
+  # Required when existingSecret is set in split mode; the chart fails without
+  # it. The public pods reference only this Secret and the public database
+  # Secret, never existingSecret, so the nodes that run them cannot read
+  # SECRET_KEY, ADMIN_*, SMTP_PASSWORD, OIDC_CLIENT_SECRET or the owner
+  # DATABASE_URL (the kubelet may read every Secret its pods reference, not
+  # only the keys they use). Every instance reads SUBSCRIPTION_TOKEN_KEY from
+  # it. It must not be existingSecret or database.existingSecret; it may be
+  # database.public.existingSecret. Without existingSecret and without it, the
+  # chart creates <fullname>-public from subscriptionTokenKey.
   publicExistingSecret: ""
   # -- At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts the
   # monitoring credentials: back it up, a new key makes them unreadable. Stored
@@ -73,8 +79,9 @@ secrets:
   secretKey: ""
   # -- Key of the e-mail subscription links, at least 32 characters. Required in
   # split mode (the public instance gets only this key, never SECRET_KEY);
-  # defaults to SECRET_KEY otherwise. In split mode it is stored in a separate
-  # Secret <fullname>-public together with database.public.url.
+  # defaults to SECRET_KEY otherwise. In split mode it is used only without
+  # existingSecret and publicExistingSecret and is then stored in a separate
+  # Secret <fullname>-public, together with database.public.url and nothing else.
   subscriptionTokenKey: ""
   # -- First administrator, only created while the database has no user.
   # Remove it after the first login.
@@ -104,7 +111,10 @@ database:
     # (deploy/postgres/roles.sql), e.g.
     # postgres://osp_public:password@postgres.example.com:5432/openstatuspage.
     url: ""
-    # -- Existing Secret holding the URL of the public role.
+    # -- Existing Secret holding the URL of the public role. The public pods
+    # reference it, so it must not be database.existingSecret or
+    # secrets.existingSecret (the chart fails); secrets.publicExistingSecret is
+    # fine.
     existingSecret: ""
     # -- Key of the URL in database.public.existingSecret.
     existingSecretKey: DATABASE_URL
@@ -328,11 +338,16 @@ priorityClassName: ""
 terminationGracePeriodSeconds: 30
 
 # -- Extra environment variables of every instance ([{name, value}] or valueFrom).
+# In split mode they reach the public instance as well: the chart fails when
+# they reference secrets.existingSecret, database.existingSecret or the chart's
+# own Secret.
 extraEnv: []
 # -- Extra envFrom sources of every instance. Note: in split mode they reach the
-# public instance as well; keep secrets out of them.
+# public instance as well; keep secrets out of them (the chart fails when they
+# reference secrets.existingSecret, database.existingSecret or its own Secret).
 extraEnvFrom: []
-# -- Extra volumes of every pod.
+# -- Extra volumes of every pod (in split mode the public pods too; the same
+# Secrets as for extraEnvFrom are refused).
 extraVolumes: []
 # -- Extra volume mounts of the container.
 extraVolumeMounts: []
@@ -389,7 +404,9 @@ networkPolicy:
       # admin for manual actions and imports, worker). Never the public
       # instance. The chart cannot know these systems: turn it on and list the
       # ports (and ideally the addresses) of every polled API, e.g. 443, 80,
-      # 9090 (Prometheus), 3000 (Grafana). While it is off the app cannot poll.
+      # 9090 (Prometheus), 3000 (Grafana). Off by default on purpose: while
+      # it is off and networkPolicy.enabled=true, every poll fails (NOTES
+      # warns). Without NetworkPolicies this setting has no effect.
       enabled: false
       to: []
       ports:
