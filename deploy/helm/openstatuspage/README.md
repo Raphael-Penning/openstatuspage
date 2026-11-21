@@ -60,14 +60,27 @@ ingest webhooks with 404. The chart creates one Ingress per host (the port of
 an IP allowlist annotation. Monitoring systems that push results use the ingest
 URLs of the admin host.
 
-Keep `SUBSCRIPTION_TOKEN_KEY` in a Secret of its own
-(`secrets.publicExistingSecret`). The kubelet of a node may read every Secret
-that the pods on that node reference, so the public pods should reference no
-Secret that also holds `SECRET_KEY`. With values instead of existing Secrets
-the chart does this itself: it puts `SUBSCRIPTION_TOKEN_KEY` and
-`database.public.url` into `<release>-openstatuspage-public`. If you set only
-`secrets.existingSecret`, the public pods reference that Secret and NOTES
-prints a warning.
+The public pods get a Secret of their own. The kubelet of a node may read
+every Secret that the pods on that node reference (not only the keys they
+use), so the public pods must reference no Secret that holds `SECRET_KEY`,
+`ADMIN_*`, `SMTP_PASSWORD`, `OIDC_CLIENT_SECRET` or the owner `DATABASE_URL`.
+The chart enforces this:
+
+- With `secrets.existingSecret`, `secrets.publicExistingSecret` is
+  **required**: an existing Secret with only `SUBSCRIPTION_TOKEN_KEY`. Without
+  it the install fails.
+- `secrets.publicExistingSecret` and `database.public.existingSecret` must
+  differ from `secrets.existingSecret`, `database.existingSecret` and the
+  Secret the chart creates; they may be the same Secret.
+- `extraEnv`, `extraEnvFrom`, `extraVolumes` and `split.public.extraEnv` reach
+  the public pods too, so they must not reference those private Secrets
+  either.
+- With values instead of existing Secrets the chart creates
+  `<release>-openstatuspage-public` with only `SUBSCRIPTION_TOKEN_KEY` and
+  `database.public.url`; the private keys go into `<release>-openstatuspage`,
+  which the public pods never reference.
+
+NOTES lists the Secrets the public pods reference.
 
 ```bash
 kubectl -n openstatuspage create secret generic openstatuspage \
@@ -106,8 +119,8 @@ ingress:
 ```
 
 Which keys each instance reads from `secrets.existingSecret` (in split mode
-`SUBSCRIPTION_TOKEN_KEY` comes from `secrets.publicExistingSecret` for every
-instance when that is set):
+`SUBSCRIPTION_TOKEN_KEY` comes from `secrets.publicExistingSecret`, or the
+chart's public Secret, for every instance):
 
 | Key | all | public | admin | worker |
 | --- | :---: | :---: | :---: | :---: |
@@ -128,8 +141,8 @@ instance when that is set):
 | `imagePullSecrets` | `[]` | Registry secrets. |
 | `nameOverride`, `fullnameOverride` | `""` | Resource names. |
 | `config` | `TRUST_PROXY: "1"`, `LOG_LEVEL: info` | Non-secret settings (ConfigMap). Keys are the variables of [configuration.md](https://github.com/Raphael-Penning/openstatuspage/blob/main/docs/configuration.md); the schema accepts `TRUST_PROXY`, `LOG_LEVEL`, `SCHEMA_WAIT_SECONDS`, `SESSION_TTL_HOURS`, `SESSION_MAX_AGE_HOURS`, `LOCAL_LOGIN_ENABLED`, `OIDC_*` (except the secret), `BUNDLE_PUSH_STALE_SECONDS`, `MAIL_TRANSPORT`, `SMTP_*` (except the password), `UMAMI_URL` and `ALLOW_UNRESTRICTED_PUBLIC_DB`. |
-| `secrets.existingSecret` | `""` | Existing Secret (recommended), keys see above. |
-| `secrets.publicExistingSecret` | `""` | Split mode: existing Secret with only `SUBSCRIPTION_TOKEN_KEY`, the one Secret besides the public database URL that the public pods reference (recommended). |
+| `secrets.existingSecret` | `""` | Existing Secret (recommended), keys see above. In split mode it requires `secrets.publicExistingSecret`. |
+| `secrets.publicExistingSecret` | `""` | Split mode: existing Secret with only `SUBSCRIPTION_TOKEN_KEY`, the one Secret besides the public database URL that the public pods reference. Required with `secrets.existingSecret`; must differ from it and from `database.existingSecret`. |
 | `secrets.secretKey` | `""` | `SECRET_KEY` (≥ 32 characters) for a chart-created Secret. |
 | `secrets.subscriptionTokenKey` | `""` | `SUBSCRIPTION_TOKEN_KEY` (≥ 32 characters); required in split mode, then stored in the Secret `<fullname>-public`. |
 | `secrets.adminEmail`, `secrets.adminPassword` | `""` | First administrator. |
@@ -137,7 +150,7 @@ instance when that is set):
 | `database.url` | `""` | PostgreSQL URL of the owner role. Empty with `existingSecret` empty = SQLite. |
 | `database.existingSecret`, `database.existingSecretKey` | `""`, `DATABASE_URL` | Secret and key with the owner URL. |
 | `database.public.url` | `""` | Split mode: URL of the restricted public role (stored in the Secret `<fullname>-public`). |
-| `database.public.existingSecret`, `database.public.existingSecretKey` | `""`, `DATABASE_URL` | Secret and key with the public role's URL. |
+| `database.public.existingSecret`, `database.public.existingSecretKey` | `""`, `DATABASE_URL` | Secret and key with the public role's URL. Must differ from `database.existingSecret` and `secrets.existingSecret`. |
 | `database.public.role` | `osp_public` | `DB_PUBLIC_ROLE`. |
 | `persistence.enabled` | `true` | SQLite: keep the database on a claim. `false` uses an emptyDir that loses the data with every pod restart (tests only). |
 | `persistence.existingClaim` | `""` | SQLite: use an existing claim. |
@@ -195,15 +208,20 @@ rules take `enabled: true`, `false` or `auto` (default): `auto` turns the rule
 on when `config.SMTP_HOST`, `config.OIDC_ISSUER_URL` or `config.UMAMI_URL` is
 set and adds `SMTP_PORT` or the port of the URL to its ports.
 
-The chart cannot know the monitoring systems the app polls. With
-`networkPolicy.enabled=true` turn on `networkPolicy.egress.monitoring` and list
-the ports (and ideally the addresses) of every polled API, for example 443, 80,
-9090 for Prometheus or 3000 for Grafana; while it is off, polling fails and
-NOTES prints a warning.
+> **Monitoring egress is off by default.** The chart cannot know the
+> monitoring systems the app polls, so it never opens them by itself. With
+> `networkPolicy.enabled=true` every poll fails until you turn on
+> `networkPolicy.egress.monitoring` and list the ports (and ideally the
+> addresses in `to`) of every polled API, for example 443, 80, 9090 for
+> Prometheus or 3000 for Grafana. NOTES prints a warning while it is off.
 
 ## Development
 
 `scripts/helm-test.sh` lints and renders the chart for the value files in
-`ci/` and checks the output; CI runs the same script. Release tags `vX.Y.Z`
+`ci/` and checks the output; CI runs the same script. With `RENDER_DIR` set it
+also writes every render there; CI then validates them with a pinned
+[kubeconform](https://github.com/yannh/kubeconform) (`-strict`, against the
+minimum Kubernetes version of `kubeVersion`). A local `kubeconform` on the
+`PATH` is used by the script itself. Release tags `vX.Y.Z`
 publish the chart to `oci://ghcr.io/<owner>/charts/openstatuspage`
 ([releasing](https://github.com/Raphael-Penning/openstatuspage/blob/main/docs/releasing.md)).
