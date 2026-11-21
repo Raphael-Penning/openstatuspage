@@ -115,7 +115,8 @@ persistence:
     - ReadWriteOnce
   # -- Size of the created claim.
   size: 1Gi
-  # -- Annotations of the created claim, e.g. helm.sh/resource-policy: keep.
+  # -- Extra annotations of the created claim. It always carries
+  # helm.sh/resource-policy: keep, so "helm uninstall" keeps the data.
   annotations: {}
 
 # -- Replicas of the single instance (APP_ROLE=all). Forced to 1 with SQLite.
