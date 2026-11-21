@@ -4,6 +4,12 @@
   "type": "object",
   "additionalProperties": false,
   "definitions": {
+    "secretName": {
+      "description": "Name of an existing Kubernetes Secret, or empty.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$"
+    },
     "url": {
       "type": "string",
       "pattern": "^(|https?://[^/?#\\s]+)$"
@@ -177,8 +183,14 @@
     "secrets": {
       "type": "object",
       "properties": {
-        "existingSecret": { "type": "string" },
-        "publicExistingSecret": { "type": "string" },
+        "existingSecret": {
+          "description": "Existing Secret with SECRET_KEY and the optional ADMIN_*, SMTP_PASSWORD, OIDC_CLIENT_SECRET. In split mode it requires publicExistingSecret.",
+          "$ref": "#/definitions/secretName"
+        },
+        "publicExistingSecret": {
+          "description": "Split mode: existing Secret with only SUBSCRIPTION_TOKEN_KEY, the only token Secret the public pods reference. Required with existingSecret in split mode; must differ from existingSecret and database.existingSecret.",
+          "$ref": "#/definitions/secretName"
+        },
         "secretKey": { "type": "string" },
         "subscriptionTokenKey": { "type": "string" },
         "adminEmail": { "type": "string" },
@@ -192,13 +204,19 @@
       "type": "object",
       "properties": {
         "url": { "$ref": "#/definitions/postgresUrl" },
-        "existingSecret": { "type": "string" },
+        "existingSecret": {
+          "description": "Existing Secret with the owner role's URL. Never referenced by the public pods.",
+          "$ref": "#/definitions/secretName"
+        },
         "existingSecretKey": { "type": "string", "minLength": 1 },
         "public": {
           "type": "object",
           "properties": {
             "url": { "$ref": "#/definitions/postgresUrl" },
-            "existingSecret": { "type": "string" },
+            "existingSecret": {
+              "description": "Split mode: existing Secret with the public role's URL, referenced by the public pods. Must differ from database.existingSecret and secrets.existingSecret.",
+              "$ref": "#/definitions/secretName"
+            },
             "existingSecretKey": { "type": "string", "minLength": 1 },
             "role": { "type": "string", "pattern": "^[a-z_][a-z0-9_]{0,62}$" }
           },

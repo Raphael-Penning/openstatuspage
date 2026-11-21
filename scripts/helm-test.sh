@@ -313,6 +313,8 @@ expect_failure "split: public extraEnv with the owner URL fails" 'must not refer
   --set 'split.public.extraEnv[0].valueFrom.secretKeyRef.key=DATABASE_URL'
 expect_failure "split: extraVolumes with the private Secret fails" 'must not reference "openstatuspage"' \
   "${SPLIT[@]}" --set 'extraVolumes[0].name=v' --set 'extraVolumes[0].secret.secretName=openstatuspage'
+expect_failure "invalid Secret name fails (schema)" 'publicExistingSecret' \
+  "${SPLIT[@]}" --set secrets.publicExistingSecret=Not_A_Secret
 expect_failure "split: short values token key fails" 'subscriptionTokenKey must be at least 32' \
   "${SPLIT[@]}" --set secrets.existingSecret= --set secrets.secretKey=test-only-secret-key-0123456789abcdef \
   --set secrets.publicExistingSecret= --set secrets.subscriptionTokenKey=short
