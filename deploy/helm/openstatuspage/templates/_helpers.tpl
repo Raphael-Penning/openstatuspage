@@ -265,6 +265,16 @@ by every template that depends on it (through the Deployment template).
 {{- if and (not $pg) .Values.autoscaling.enabled }}
 {{- fail "autoscaling.enabled=true needs PostgreSQL: SQLite runs exactly one replica" }}
 {{- end }}
+{{- with .Values.autoscaling }}
+{{- if .enabled }}
+{{- if gt (int .minReplicas) (int .maxReplicas) }}
+{{- fail (printf "autoscaling.minReplicas (%d) must not be greater than autoscaling.maxReplicas (%d)" (int .minReplicas) (int .maxReplicas)) }}
+{{- end }}
+{{- if not (or .targetCPUUtilizationPercentage .targetMemoryUtilizationPercentage) }}
+{{- fail "autoscaling.enabled=true needs targetCPUUtilizationPercentage or targetMemoryUtilizationPercentage" }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*

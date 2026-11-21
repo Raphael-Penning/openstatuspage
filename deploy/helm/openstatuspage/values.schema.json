@@ -27,6 +27,14 @@
       "type": ["string", "integer"],
       "pattern": "^[0-9]*$"
     },
+    "percentOrEmpty": {
+      "description": "Integer percentage, or empty (off).",
+      "oneOf": [
+        { "type": "integer", "minimum": 1, "maximum": 100 },
+        { "type": "string", "maxLength": 0 },
+        { "type": "null" }
+      ]
+    },
     "list": { "type": "array" },
     "object": { "type": "object" },
     "resources": {
@@ -238,8 +246,8 @@
         "enabled": { "type": "boolean" },
         "minReplicas": { "type": "integer", "minimum": 1 },
         "maxReplicas": { "type": "integer", "minimum": 1 },
-        "targetCPUUtilizationPercentage": { "type": ["integer", "string"] },
-        "targetMemoryUtilizationPercentage": { "type": ["integer", "string"] }
+        "targetCPUUtilizationPercentage": { "$ref": "#/definitions/percentOrEmpty" },
+        "targetMemoryUtilizationPercentage": { "$ref": "#/definitions/percentOrEmpty" }
       },
       "additionalProperties": false
     },

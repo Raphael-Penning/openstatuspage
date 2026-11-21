@@ -248,6 +248,14 @@ expect_failure "public role URL equal to the owner URL fails" 'restricted public
   --set database.url=postgres://u:p@db.example.com/osp --set database.public.url=postgres://u:p@db.example.com/osp
 expect_failure "autoscaling with SQLite fails" 'autoscaling.enabled=true needs PostgreSQL' "${BASE[@]}" "${KEY[@]}" \
   --set autoscaling.enabled=true
+expect_failure "HPA with minReplicas > maxReplicas fails" 'must not be greater' "${BASE[@]}" "${KEY[@]}" --set database.existingSecret=db --set autoscaling.enabled=true \
+  --set autoscaling.minReplicas=5 --set autoscaling.maxReplicas=2
+expect_failure "HPA without a metric fails" 'needs targetCPUUtilizationPercentage' "${BASE[@]}" "${KEY[@]}" --set database.existingSecret=db --set autoscaling.enabled=true \
+  --set autoscaling.targetCPUUtilizationPercentage=null
+expect_failure "HPA target as a string fails (schema)" 'targetCPUUtilizationPercentage' "${BASE[@]}" "${KEY[@]}" --set database.existingSecret=db --set autoscaling.enabled=true \
+  --set-string autoscaling.targetCPUUtilizationPercentage=75
+expect_failure "HPA target above 100 fails (schema)" 'targetCPUUtilizationPercentage' "${BASE[@]}" "${KEY[@]}" --set database.existingSecret=db --set autoscaling.enabled=true \
+  --set autoscaling.targetCPUUtilizationPercentage=150
 expect_failure "SQLite URL in database.url fails" 'PostgreSQL URL|schema' "${BASE[@]}" "${KEY[@]}" \
   --set database.url=sqlite:/data/x.db
 expect_failure "unknown config variable fails (schema)" "additional properties 'NOT_A_SETTING'" "${BASE[@]}" "${KEY[@]}" \
