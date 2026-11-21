@@ -6,7 +6,7 @@ self-hosted status page, on Kubernetes 1.25 or newer. License: AGPL-3.0-only.
 - **Single instance** (default): one Deployment with `APP_ROLE=all`.
 - **Split mode** (`split.enabled=true`): the public page, the admin instance and
   the background worker as three Deployments, each with its own `APP_ROLE` and
-  database role ([split deployment](../../../docs/guide/en/02-installation.md#split-deployment)).
+  database role ([split deployment](https://github.com/Raphael-Penning/openstatuspage/blob/main/docs/guide/en/02-installation.md#split-deployment)).
 - **Database**: an external PostgreSQL (recommended), or SQLite on a
   PersistentVolumeClaim when no PostgreSQL is configured. The chart deploys no
   database. With SQLite the chart runs exactly one replica with the `Recreate`
@@ -15,7 +15,8 @@ self-hosted status page, on Kubernetes 1.25 or newer. License: AGPL-3.0-only.
   `/data` are volumes), no privilege escalation, all capabilities dropped,
   seccomp `RuntimeDefault`, a dedicated ServiceAccount without token, probes on
   `/api/health`, 128Mi request and 256Mi limit. Secrets reach each instance key
-  by key, so the public instance never sees `SECRET_KEY`.
+  by key, so the public instance never sees `SECRET_KEY`. In split mode the
+  public pods reference only Secrets that hold their own two keys (see below).
 
 ## Install
 
@@ -45,24 +46,34 @@ unreadable. The chart never generates secrets.
 Migrations run when the app starts (the single instance, or admin and worker in
 split mode; the public instance waits up to `SCHEMA_WAIT_SECONDS`), so no
 migration Job is needed. Upgrade with `helm upgrade` and a new `--version`
-after a backup ([Operations](../../../docs/guide/en/09-operations.md)).
+after a backup ([Operations](https://github.com/Raphael-Penning/openstatuspage/blob/main/docs/guide/en/09-operations.md)).
 
 ### Split mode
 
 Split mode needs PostgreSQL with the roles of
-[`deploy/postgres/roles.sql`](../../postgres/roles.sql): `osp_app` (owner, no
-superuser) for admin and worker, and the restricted `osp_public` for the public
-instance. Public and admin need **separate host names**: the public instance
+[`deploy/postgres/roles.sql`](https://github.com/Raphael-Penning/openstatuspage/blob/main/deploy/postgres/roles.sql):
+`osp_app` (owner, no superuser) for admin and worker, and the restricted
+`osp_public` for the public instance. Public and admin need **separate host names**: the public instance
 answers the management UI, its assets, login, OIDC, the admin API and the
-ingest webhooks with 404. The chart creates one Ingress per host; restrict the
-admin host, for example with an IP allowlist annotation. Monitoring systems
-that push results use the ingest URLs of the admin host.
+ingest webhooks with 404. The chart creates one Ingress per host (the port of
+`baseUrl` is not part of the host); restrict the admin host, for example with
+an IP allowlist annotation. Monitoring systems that push results use the ingest
+URLs of the admin host.
+
+Keep `SUBSCRIPTION_TOKEN_KEY` in a Secret of its own
+(`secrets.publicExistingSecret`). The kubelet of a node may read every Secret
+that the pods on that node reference, so the public pods should reference no
+Secret that also holds `SECRET_KEY`. With values instead of existing Secrets
+the chart does this itself: it puts `SUBSCRIPTION_TOKEN_KEY` and
+`database.public.url` into `<release>-openstatuspage-public`. If you set only
+`secrets.existingSecret`, the public pods reference that Secret and NOTES
+prints a warning.
 
 ```bash
-TOKEN_KEY="$(openssl rand -base64 48)"
 kubectl -n openstatuspage create secret generic openstatuspage \
-  --from-literal=SECRET_KEY="$(openssl rand -base64 48)" \
-  --from-literal=SUBSCRIPTION_TOKEN_KEY="$TOKEN_KEY"
+  --from-literal=SECRET_KEY="$(openssl rand -base64 48)"
+kubectl -n openstatuspage create secret generic openstatuspage-public \
+  --from-literal=SUBSCRIPTION_TOKEN_KEY="$(openssl rand -base64 48)"
 kubectl -n openstatuspage create secret generic openstatuspage-db \
   --from-literal=DATABASE_URL='postgres://osp_app:<password>@postgres.example.com:5432/openstatuspage'
 kubectl -n openstatuspage create secret generic openstatuspage-db-public \
@@ -77,6 +88,7 @@ helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage 
 baseUrl: https://status.example.com
 secrets:
   existingSecret: openstatuspage
+  publicExistingSecret: openstatuspage-public
 database:
   existingSecret: openstatuspage-db
   public:
@@ -93,7 +105,9 @@ ingress:
       nginx.ingress.kubernetes.io/whitelist-source-range: 192.0.2.0/24
 ```
 
-Which keys each instance reads from `secrets.existingSecret`:
+Which keys each instance reads from `secrets.existingSecret` (in split mode
+`SUBSCRIPTION_TOKEN_KEY` comes from `secrets.publicExistingSecret` for every
+instance when that is set):
 
 | Key | all | public | admin | worker |
 | --- | :---: | :---: | :---: | :---: |
@@ -113,22 +127,24 @@ Which keys each instance reads from `secrets.existingSecret`:
 | `image.pullPolicy` | `IfNotPresent` | Pull policy. |
 | `imagePullSecrets` | `[]` | Registry secrets. |
 | `nameOverride`, `fullnameOverride` | `""` | Resource names. |
-| `config` | `TRUST_PROXY: "1"`, `LOG_LEVEL: info` | Non-secret settings (ConfigMap). Keys are the variables of [configuration.md](../../../docs/configuration.md); the schema accepts `TRUST_PROXY`, `LOG_LEVEL`, `SCHEMA_WAIT_SECONDS`, `SESSION_TTL_HOURS`, `SESSION_MAX_AGE_HOURS`, `LOCAL_LOGIN_ENABLED`, `OIDC_*` (except the secret), `BUNDLE_PUSH_STALE_SECONDS`, `MAIL_TRANSPORT`, `SMTP_*` (except the password), `UMAMI_URL` and `ALLOW_UNRESTRICTED_PUBLIC_DB`. |
+| `config` | `TRUST_PROXY: "1"`, `LOG_LEVEL: info` | Non-secret settings (ConfigMap). Keys are the variables of [configuration.md](https://github.com/Raphael-Penning/openstatuspage/blob/main/docs/configuration.md); the schema accepts `TRUST_PROXY`, `LOG_LEVEL`, `SCHEMA_WAIT_SECONDS`, `SESSION_TTL_HOURS`, `SESSION_MAX_AGE_HOURS`, `LOCAL_LOGIN_ENABLED`, `OIDC_*` (except the secret), `BUNDLE_PUSH_STALE_SECONDS`, `MAIL_TRANSPORT`, `SMTP_*` (except the password), `UMAMI_URL` and `ALLOW_UNRESTRICTED_PUBLIC_DB`. |
 | `secrets.existingSecret` | `""` | Existing Secret (recommended), keys see above. |
+| `secrets.publicExistingSecret` | `""` | Split mode: existing Secret with only `SUBSCRIPTION_TOKEN_KEY`, the one Secret besides the public database URL that the public pods reference (recommended). |
 | `secrets.secretKey` | `""` | `SECRET_KEY` (≥ 32 characters) for a chart-created Secret. |
-| `secrets.subscriptionTokenKey` | `""` | `SUBSCRIPTION_TOKEN_KEY` (≥ 32 characters); required in split mode. |
+| `secrets.subscriptionTokenKey` | `""` | `SUBSCRIPTION_TOKEN_KEY` (≥ 32 characters); required in split mode, then stored in the Secret `<fullname>-public`. |
 | `secrets.adminEmail`, `secrets.adminPassword` | `""` | First administrator. |
 | `secrets.smtpPassword`, `secrets.oidcClientSecret` | `""` | SMTP password, OIDC client secret. |
 | `database.url` | `""` | PostgreSQL URL of the owner role. Empty with `existingSecret` empty = SQLite. |
 | `database.existingSecret`, `database.existingSecretKey` | `""`, `DATABASE_URL` | Secret and key with the owner URL. |
-| `database.public.url` | `""` | Split mode: URL of the restricted public role. |
+| `database.public.url` | `""` | Split mode: URL of the restricted public role (stored in the Secret `<fullname>-public`). |
 | `database.public.existingSecret`, `database.public.existingSecretKey` | `""`, `DATABASE_URL` | Secret and key with the public role's URL. |
 | `database.public.role` | `osp_public` | `DB_PUBLIC_ROLE`. |
+| `persistence.enabled` | `true` | SQLite: keep the database on a claim. `false` uses an emptyDir that loses the data with every pod restart (tests only). |
 | `persistence.existingClaim` | `""` | SQLite: use an existing claim. |
 | `persistence.storageClass` | `""` | SQLite: storage class (cluster default when empty). |
 | `persistence.accessModes` | `[ReadWriteOnce]` | SQLite: access modes. |
 | `persistence.size` | `1Gi` | SQLite: size. |
-| `persistence.annotations` | `{}` | Extra claim annotations (the claim always carries `helm.sh/resource-policy: keep`). |
+| `persistence.annotations` | `{}` | Extra claim annotations (the claim always carries `helm.sh/resource-policy: keep`; a `helm.sh/resource-policy` here is ignored). |
 | `replicaCount` | `1` | Replicas of the single instance (1 with SQLite). |
 | `strategy` | `{type: RollingUpdate}` | Strategy of the single instance (`Recreate` with SQLite). |
 | `split.enabled` | `false` | Split mode. |
@@ -139,9 +155,9 @@ Which keys each instance reads from `secrets.existingSecret`:
 | `split.worker.replicaCount` | `1` | Replicas of the worker. |
 | `split.<role>.resources`, `.extraEnv`, `.nodeSelector`, `.tolerations`, `.affinity`, `.podAnnotations` | empty | Per-instance overrides. |
 | `autoscaling.enabled` | `false` | HPA for the public instance (split) or the single instance (PostgreSQL only). |
-| `autoscaling.minReplicas`, `maxReplicas` | `2`, `6` | Replica range. |
-| `autoscaling.targetCPUUtilizationPercentage` | `75` | CPU target. |
-| `autoscaling.targetMemoryUtilizationPercentage` | `""` | Optional memory target. |
+| `autoscaling.minReplicas`, `maxReplicas` | `2`, `6` | Replica range (`minReplicas` ≤ `maxReplicas`). |
+| `autoscaling.targetCPUUtilizationPercentage` | `75` | CPU target, integer 1–100 or `""`. |
+| `autoscaling.targetMemoryUtilizationPercentage` | `""` | Optional memory target, integer 1–100. At least one target is required. |
 | `podDisruptionBudget.enabled` | `true` | PDB for the public-facing instance (not with SQLite). |
 | `podDisruptionBudget.minAvailable`, `maxUnavailable` | `""`, `1` | Budget. |
 | `serviceAccount.create`, `name`, `annotations` | `true`, `""`, `{}` | Dedicated ServiceAccount (no token mounted). |
@@ -155,7 +171,7 @@ Which keys each instance reads from `secrets.existingSecret`:
 | `podSecurityContext` | non-root 1000, seccomp | Pod security context. |
 | `securityContext` | read-only, no escalation, drop ALL | Container security context. |
 | `resources` | 100m/128Mi request, 256Mi limit | Resources of every instance. |
-| `probes.startup`, `readiness`, `liveness` | enabled | Probes on `/api/health` (the public instance gets twice the startup failures). |
+| `probes.startup`, `readiness`, `liveness` | enabled | Probes on `/api/health`, which checks the database. The public instance allows twice the startup failures and at least `config.SCHEMA_WAIT_SECONDS` + 60 s. Liveness: 10 × 30 s, so a database outage restarts the pods after 5 minutes. |
 | `tmpSizeLimit` | `64Mi` | Size limit of `/tmp`. |
 | `podAnnotations`, `podLabels` | `{}` | Pod metadata. |
 | `nodeSelector`, `tolerations`, `affinity` | empty | Scheduling. |
@@ -167,18 +183,27 @@ Which keys each instance reads from `secrets.existingSecret`:
 | `networkPolicy.ingress.from` | namespace `ingress-nginx` | Who may reach the HTTP port (the worker accepts nothing). |
 | `networkPolicy.egress.dns` | enabled, kube-dns | DNS. |
 | `networkPolicy.egress.postgres` | enabled, port 5432 | PostgreSQL (all instances). |
-| `networkPolicy.egress.smtp` | disabled, 587/465 | SMTP (single, admin, worker). |
+| `networkPolicy.egress.smtp` | `auto`, 587/465 | SMTP (single, admin, worker). |
 | `networkPolicy.egress.monitoring` | disabled, 443 | Monitoring systems (single, admin, worker). |
-| `networkPolicy.egress.oidc` | disabled, 443 | OIDC provider (single, admin). |
-| `networkPolicy.egress.umami` | disabled, 443 | Umami (single, public, admin). |
+| `networkPolicy.egress.oidc` | `auto`, 443 | OIDC provider (single, admin). |
+| `networkPolicy.egress.umami` | `auto`, 443 | Umami (single, public, admin). |
 | `networkPolicy.egress.extra` | `[]` | Extra egress rules for every instance. |
 
 An egress rule with an empty `to` allows any destination on its ports; set
-`to` (for example an `ipBlock`) to narrow it down.
+`to` (for example an `ipBlock`) to narrow it down. The SMTP, OIDC and Umami
+rules take `enabled: true`, `false` or `auto` (default): `auto` turns the rule
+on when `config.SMTP_HOST`, `config.OIDC_ISSUER_URL` or `config.UMAMI_URL` is
+set and adds `SMTP_PORT` or the port of the URL to its ports.
+
+The chart cannot know the monitoring systems the app polls. With
+`networkPolicy.enabled=true` turn on `networkPolicy.egress.monitoring` and list
+the ports (and ideally the addresses) of every polled API, for example 443, 80,
+9090 for Prometheus or 3000 for Grafana; while it is off, polling fails and
+NOTES prints a warning.
 
 ## Development
 
 `scripts/helm-test.sh` lints and renders the chart for the value files in
 `ci/` and checks the output; CI runs the same script. Release tags `vX.Y.Z`
 publish the chart to `oci://ghcr.io/<owner>/charts/openstatuspage`
-([releasing](../../../docs/releasing.md)).
+([releasing](https://github.com/Raphael-Penning/openstatuspage/blob/main/docs/releasing.md)).
