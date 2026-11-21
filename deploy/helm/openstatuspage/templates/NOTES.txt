@@ -6,6 +6,8 @@ Database: {{ if $pg }}PostgreSQL{{ else if not .Values.persistence.enabled }}SQL
 Public:   {{ .Values.baseUrl }}
 {{- if .Values.split.enabled }}
 Admin:    {{ .Values.split.admin.baseUrl }}  (restrict it, e.g. with an IP allowlist)
+Public pods reference only the Secrets {{ include "openstatuspage.tokenSecretName" . }}{{ if ne (include "openstatuspage.tokenSecretName" .) (include "openstatuspage.dbPublicSecretName" .) }} and {{ include "openstatuspage.dbPublicSecretName" . }}{{ end }}
+(no SECRET_KEY, ADMIN_*, SMTP_PASSWORD, OIDC_CLIENT_SECRET or owner DATABASE_URL).
 {{- end }}
 
 Wait for the rollout:
@@ -51,9 +53,12 @@ credentials unreadable.
 {{- $np := .Values.networkPolicy.egress }}
 {{- if not $np.monitoring.enabled }}
 
-WARNING: networkPolicy.enabled=true and networkPolicy.egress.monitoring is off:
-the app cannot poll any monitoring system. Turn it on and list the ports (and
-addresses) of every polled API, e.g. 443, 80 or 9090.
+WARNING: networkPolicy.enabled=true and networkPolicy.egress.monitoring is off
+(the default): the NetworkPolicies block every monitoring system, so every
+poll fails. The chart cannot know which systems you poll, so it never opens
+them by itself. Set
+networkPolicy.egress.monitoring.enabled=true and list the ports (and ideally
+the addresses in "to") of every polled API, e.g. 443, 80 or 9090.
 {{- end }}
 {{- range $kind, $setting := include "openstatuspage.egressSettings" . | fromYaml }}
 {{- if and $setting (eq (toString (index $np $kind).enabled) "false") }}

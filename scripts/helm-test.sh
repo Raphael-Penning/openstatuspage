@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lints and renders the Helm chart (deploy/helm/openstatuspage) for the main
-# value combinations and checks key properties of the output. Needs helm (v3.8+
+# value combinations and checks key properties of the output. Needs helm (v3.13+
 # or v4) only; no cluster. Used by CI (.github/workflows/ci.yml, job "helm").
 #
 #   scripts/helm-test.sh
@@ -268,6 +268,20 @@ check "secret: public reads DATABASE_URL_PUBLIC" has splitnp Deployment "$APP-pu
 check "topology spread gets the component selector" has splitnp Deployment "$APP-public" 'topologyKey: kubernetes.io/hostname'
 check "ConfigMap carries the SMTP settings" has splitnp ConfigMap "$APP" 'SMTP_HOST: "smtp.example.com"'
 check "pods restart on Secret changes" has splitnp Deployment "$APP-admin" 'checksum/secret: '
+
+echo "== NOTES"
+notes() { # notes <name> [helm args...] -> $TMP/<name>.notes (client-side dry run, no cluster)
+  local name="$1"; shift
+  "$HELM" install osp "$CHART" --namespace osp --dry-run=client "$@" | sed -n '/^NOTES:/,$p' > "$TMP/$name.notes"
+}
+notes npoff -f "$CI/sqlite-values.yaml" --set networkPolicy.enabled=true
+check "notes: warn that monitoring egress is off by default" \
+  grep -q 'networkPolicy.egress.monitoring is off' "$TMP/npoff.notes"
+notes splitnp -f "$CI/split-networkpolicy-hpa-values.yaml"
+check "notes: no monitoring warning once it is on" bash -c "! grep -q 'egress.monitoring is off' '$TMP/splitnp.notes'"
+notes split -f "$CI/split-values.yaml"
+check "notes: name the Secrets of the public pods" \
+  grep -q 'Public pods reference only the Secrets openstatuspage-public and openstatuspage-db-public' "$TMP/split.notes"
 
 echo "== invalid values are rejected"
 BASE=(--set baseUrl=https://status.example.com)
