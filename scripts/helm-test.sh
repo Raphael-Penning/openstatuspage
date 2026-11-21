@@ -193,6 +193,19 @@ check "netpol: public has no monitoring egress" lacks splitnp NetworkPolicy "$AP
 check "netpol: worker may reach SMTP" has splitnp NetworkPolicy "$APP-worker" 'port: 587'
 check "netpol: worker may reach monitoring" has splitnp NetworkPolicy "$APP-worker" '# monitoring'
 check "netpol: worker has no Umami egress" lacks splitnp NetworkPolicy "$APP-worker" '# umami'
+check "netpol: SMTP turned on by SMTP_HOST (auto)" has splitnp NetworkPolicy "$APP-admin" '# smtp'
+check "netpol: SMTP_PORT added to the SMTP rule" has splitnp NetworkPolicy "$APP-worker" 'port: 2525'
+check "netpol: Umami turned on by UMAMI_URL (auto)" has splitnp NetworkPolicy "$APP-public" '# umami'
+check "netpol: OIDC stays off without OIDC_ISSUER_URL" lacks splitnp NetworkPolicy "$APP-admin" '# oidc'
+check "netpol: monitoring ports from values" has splitnp NetworkPolicy "$APP-worker" 'port: 9090'
+render npoff -f "$CI/sqlite-values.yaml" --set networkPolicy.enabled=true
+check "netpol: no optional egress without settings" lacks npoff NetworkPolicy "$APP" '# (smtp|oidc|umami|monitoring)'
+render npoidc -f "$CI/sqlite-values.yaml" --set networkPolicy.enabled=true \
+  --set config.OIDC_ISSUER_URL=https://sso.example.com:8443/realms/example
+check "netpol: OIDC turned on with the port of the issuer URL" has npoidc NetworkPolicy "$APP" 'port: 8443'
+render npforce -f "$CI/sqlite-values.yaml" --set networkPolicy.enabled=true \
+  --set config.SMTP_HOST=smtp.example.com --set networkPolicy.egress.smtp.enabled=false
+check "netpol: enabled=false wins over the setting" lacks npforce NetworkPolicy "$APP" '# smtp'
 check "netpol: PostgreSQL restricted to the given peer" has splitnp NetworkPolicy "$APP-public" 'cidr: 192.0.2.10/32'
 check "secret: public Secret holds the public URL" has splitnp Secret "$APP-public" '^  DATABASE_URL_PUBLIC: '
 check "secret: public Secret holds the token key" has splitnp Secret "$APP-public" '^  SUBSCRIPTION_TOKEN_KEY: '
@@ -239,6 +252,8 @@ expect_failure "SQLite URL in database.url fails" 'PostgreSQL URL|schema' "${BAS
   --set database.url=sqlite:/data/x.db
 expect_failure "unknown config variable fails (schema)" "additional properties 'NOT_A_SETTING'" "${BASE[@]}" "${KEY[@]}" \
   --set config.NOT_A_SETTING=1
+expect_failure "unknown egress mode fails (schema)" "smtp/enabled" "${BASE[@]}" "${KEY[@]}" \
+  --set networkPolicy.egress.smtp.enabled=maybe
 expect_failure "chart-managed variable in config fails (schema)" "additional properties 'SECRET_KEY'" "${BASE[@]}" "${KEY[@]}" \
   --set config.SECRET_KEY=x
 

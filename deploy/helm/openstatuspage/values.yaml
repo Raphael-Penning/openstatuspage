@@ -363,9 +363,13 @@ networkPolicy:
       ports:
         - port: 5432
           protocol: TCP
+    # The rules below take enabled: true, false or auto. auto turns a rule on
+    # when its setting is configured (config.SMTP_HOST, config.OIDC_ISSUER_URL,
+    # config.UMAMI_URL) and adds the port of that setting (SMTP_PORT, the port
+    # of the URL) to the list. An empty "to" allows any destination.
     smtp:
       # -- Allow SMTP (single instance, admin, worker).
-      enabled: false
+      enabled: auto
       to: []
       ports:
         - port: 587
@@ -374,7 +378,10 @@ networkPolicy:
           protocol: TCP
     monitoring:
       # -- Allow the monitoring systems that are polled (single instance,
-      # admin for manual actions and imports, worker). Never the public instance.
+      # admin for manual actions and imports, worker). Never the public
+      # instance. The chart cannot know these systems: turn it on and list the
+      # ports (and ideally the addresses) of every polled API, e.g. 443, 80,
+      # 9090 (Prometheus), 3000 (Grafana). While it is off the app cannot poll.
       enabled: false
       to: []
       ports:
@@ -382,14 +389,14 @@ networkPolicy:
           protocol: TCP
     oidc:
       # -- Allow the OIDC provider (single instance, admin).
-      enabled: false
+      enabled: auto
       to: []
       ports:
         - port: 443
           protocol: TCP
     umami:
       # -- Allow the Umami server of UMAMI_URL (single instance, public, admin).
-      enabled: false
+      enabled: auto
       to: []
       ports:
         - port: 443

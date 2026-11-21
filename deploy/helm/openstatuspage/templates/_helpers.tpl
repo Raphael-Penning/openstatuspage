@@ -166,6 +166,50 @@ must not carry a port.
 {{- end }}
 
 {{/*
+Port of an http(s) URL: the explicit one, else 443 for https and 80 for http.
+*/}}
+{{- define "openstatuspage.urlPort" -}}
+{{- $u := urlParse . }}
+{{- $port := regexFind "[0-9]+$" (regexFind ":[0-9]+$" $u.host) }}
+{{- if $port }}{{ $port }}{{ else if eq $u.scheme "http" }}80{{ else }}443{{ end }}
+{{- end }}
+
+{{/*
+Optional egress rules of the NetworkPolicies and the setting that turns an
+"auto" rule on. Argument: root context. Returns YAML: kind -> setting value.
+*/}}
+{{- define "openstatuspage.egressSettings" -}}
+smtp: {{ .Values.config.SMTP_HOST | default "" | quote }}
+oidc: {{ .Values.config.OIDC_ISSUER_URL | default "" | quote }}
+umami: {{ .Values.config.UMAMI_URL | default "" | quote }}
+monitoring: ""
+{{- end }}
+
+{{/*
+"true" when an optional egress rule is on: enabled=true, or enabled=auto and
+its setting (config.SMTP_HOST, OIDC_ISSUER_URL, UMAMI_URL) is set.
+Argument: dict "root" $ "kind" <smtp|oidc|umami|monitoring>.
+*/}}
+{{- define "openstatuspage.egressOn" -}}
+{{- $enabled := (index .root.Values.networkPolicy.egress .kind).enabled }}
+{{- $setting := index (include "openstatuspage.egressSettings" .root | fromYaml) .kind }}
+{{- if or (eq (toString $enabled) "true") (and (eq (toString $enabled) "auto") $setting) }}true{{ end }}
+{{- end }}
+
+{{/*
+Port the app uses for an optional egress rule, from its setting: SMTP_PORT,
+or the port of OIDC_ISSUER_URL / UMAMI_URL. Empty when unknown.
+Argument: dict "root" $ "kind" <smtp|oidc|umami|monitoring>.
+*/}}
+{{- define "openstatuspage.egressPort" -}}
+{{- $c := .root.Values.config }}
+{{- if eq .kind "smtp" }}{{ $c.SMTP_PORT | default "" }}
+{{- else if and (eq .kind "oidc") $c.OIDC_ISSUER_URL }}{{ include "openstatuspage.urlPort" $c.OIDC_ISSUER_URL }}
+{{- else if and (eq .kind "umami") $c.UMAMI_URL }}{{ include "openstatuspage.urlPort" $c.UMAMI_URL }}
+{{- end }}
+{{- end }}
+
+{{/*
 Validates the values combination and fails with a clear message. Rendered
 by every template that depends on it (through the Deployment template).
 */}}

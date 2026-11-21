@@ -50,6 +50,22 @@ well. Prefer secrets.existingSecret and database.existingSecret.
 Back up SECRET_KEY outside the cluster: a new key makes the stored monitoring
 credentials unreadable.
 {{- end }}
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy.egress }}
+{{- if not $np.monitoring.enabled }}
+
+WARNING: networkPolicy.enabled=true and networkPolicy.egress.monitoring is off:
+the app cannot poll any monitoring system. Turn it on and list the ports (and
+addresses) of every polled API, e.g. 443, 80 or 9090.
+{{- end }}
+{{- range $kind, $setting := include "openstatuspage.egressSettings" . | fromYaml }}
+{{- if and $setting (eq (toString (index $np $kind).enabled) "false") }}
+
+WARNING: {{ $setting }} is configured, but networkPolicy.egress.{{ $kind }}.enabled=false
+blocks the connection. Use enabled: auto or true.
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if eq (toString .Values.config.TRUST_PROXY) "" }}
 
 NOTE: TRUST_PROXY is not set. Behind the ingress controller set

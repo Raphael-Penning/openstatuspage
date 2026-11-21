@@ -2,7 +2,8 @@
 One NetworkPolicy per instance: everything is denied except the rules below.
 Which egress each role may use follows docs/guide/en/02-installation.md
 (split deployment): the public instance never connects to the monitoring
-systems, SMTP or the OIDC provider.
+systems, SMTP or the OIDC provider. The SMTP, OIDC and Umami rules default to
+"auto": on when config.SMTP_HOST, OIDC_ISSUER_URL or UMAMI_URL is set.
 */}}
 {{- if .Values.networkPolicy.enabled }}
 {{- $np := .Values.networkPolicy }}
@@ -60,10 +61,21 @@ spec:
     {{- end }}
     {{- range $kind := list "smtp" "monitoring" "oidc" "umami" }}
     {{- $rule := index $np.egress $kind }}
-    {{- if and $rule.enabled (has $role (index $egressRoles $kind)) }}
+    {{- $kindCtx := dict "root" $ "kind" $kind }}
+    {{- if and (include "openstatuspage.egressOn" $kindCtx) (has $role (index $egressRoles $kind)) }}
+    {{- /* Adds the port of the setting (SMTP_PORT, port of the URL) when the list lacks it. */}}
+    {{- $ports := $rule.ports }}
+    {{- $port := include "openstatuspage.egressPort" $kindCtx }}
+    {{- if $port }}
+    {{- $known := list }}
+    {{- range $rule.ports }}{{ $known = append $known (toString .port) }}{{ end }}
+    {{- if not (has $port $known) }}
+    {{- $ports = append $ports (dict "port" (int $port) "protocol" "TCP") }}
+    {{- end }}
+    {{- end }}
     # {{ $kind }}
     - ports:
-        {{- toYaml $rule.ports | nindent 8 }}
+        {{- toYaml $ports | nindent 8 }}
       {{- with $rule.to }}
       to:
         {{- toYaml . | nindent 8 }}

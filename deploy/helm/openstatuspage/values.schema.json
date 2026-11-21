@@ -62,7 +62,7 @@
     "egressRule": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
+        "enabled": { "type": ["boolean", "string"] },
         "to": { "type": "array", "items": { "type": "object" } },
         "ports": {
           "type": "array",
@@ -79,6 +79,12 @@
       },
       "required": ["enabled"],
       "additionalProperties": false
+    },
+    "autoEgressRule": {
+      "allOf": [{ "$ref": "#/definitions/egressRule" }],
+      "properties": {
+        "enabled": { "enum": [true, false, "auto"] }
+      }
     },
     "probe": {
       "type": "object",
@@ -334,12 +340,12 @@
         "egress": {
           "type": "object",
           "properties": {
-            "dns": { "$ref": "#/definitions/egressRule" },
-            "postgres": { "$ref": "#/definitions/egressRule" },
-            "smtp": { "$ref": "#/definitions/egressRule" },
-            "monitoring": { "$ref": "#/definitions/egressRule" },
-            "oidc": { "$ref": "#/definitions/egressRule" },
-            "umami": { "$ref": "#/definitions/egressRule" },
+            "dns": { "allOf": [{ "$ref": "#/definitions/egressRule" }], "properties": { "enabled": { "type": "boolean" } } },
+            "postgres": { "allOf": [{ "$ref": "#/definitions/egressRule" }], "properties": { "enabled": { "type": "boolean" } } },
+            "smtp": { "$ref": "#/definitions/autoEgressRule" },
+            "monitoring": { "allOf": [{ "$ref": "#/definitions/egressRule" }], "properties": { "enabled": { "type": "boolean" } } },
+            "oidc": { "$ref": "#/definitions/autoEgressRule" },
+            "umami": { "$ref": "#/definitions/autoEgressRule" },
             "extra": { "type": "array", "items": { "type": "object" } }
           },
           "additionalProperties": false

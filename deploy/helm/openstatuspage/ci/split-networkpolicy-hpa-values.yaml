@@ -3,6 +3,7 @@ baseUrl: https://status.example.com
 config:
   MAIL_TRANSPORT: smtp
   SMTP_HOST: smtp.example.com
+  SMTP_PORT: "2525"
   SMTP_FROM: "Example Status <status@example.com>"
   UMAMI_URL: https://umami.example.com
 secrets:
@@ -28,12 +29,14 @@ networkPolicy:
       to:
         - ipBlock:
             cidr: 192.0.2.10/32
-    smtp:
-      enabled: true
+    # smtp and umami: "auto", turned on by config.SMTP_HOST and config.UMAMI_URL.
     monitoring:
       enabled: true
-    umami:
-      enabled: true
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
