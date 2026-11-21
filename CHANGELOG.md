@@ -6,6 +6,17 @@ breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Helm chart** in `deploy/helm/openstatuspage`, published with every release
+  as `oci://ghcr.io/raphael-penning/charts/openstatuspage`. Single instance on
+  external PostgreSQL or SQLite on a volume (one replica), or the split
+  deployment (`split.enabled=true`: public, admin and worker with their own
+  database roles and only the secrets of their role). Hardened defaults,
+  optional NetworkPolicies, HorizontalPodAutoscaler and PodDisruptionBudget, and
+  a values schema that only accepts the documented settings. See
+  [installation](docs/guide/en/02-installation.md#kubernetes-with-helm).
+
 ## [0.2.0] - 2026-11-20
 
 ### Upgrading from 0.1.x
