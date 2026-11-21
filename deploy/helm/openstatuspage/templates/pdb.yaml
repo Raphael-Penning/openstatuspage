@@ -1,0 +1,21 @@
+{{- /* For the public-facing Deployment. Not with SQLite: one replica that must be stopped before the next starts. */}}
+{{- if and .Values.podDisruptionBudget.enabled (include "openstatuspage.postgres" .) }}
+{{- $ctx := dict "root" . "component" (ternary "public" "app" .Values.split.enabled) }}
+{{- $pdb := .Values.podDisruptionBudget }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "openstatuspage.componentName" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openstatuspage.componentLabels" $ctx | nindent 4 }}
+spec:
+  {{- if ne (toString $pdb.minAvailable) "" }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ $pdb.maxUnavailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "openstatuspage.componentSelectorLabels" $ctx | nindent 6 }}
+{{- end }}
