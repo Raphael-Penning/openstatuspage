@@ -414,7 +414,10 @@ gehärtet: Benutzer ohne Root, schreibgeschütztes Root-Dateisystem, keine
 Capabilities, kein Service-Account-Token, Probes auf `/api/health`, 128Mi
 Request und 256Mi Speicherlimit. NetworkPolicies, ein
 HorizontalPodAutoscaler und ein PodDisruptionBudget stehen als Optionen
-bereit.
+bereit. Mit NetworkPolicies öffnet das Chart SMTP, OIDC und Umami, sobald du
+sie konfigurierst, aber nicht die Monitoring-Systeme: Schalte
+`networkPolicy.egress.monitoring` ein und trag die Ports aller abgefragten
+APIs ein.
 
 Leg zuerst die Secrets an (committe sie nie) und installiere dann mit der
 Version des Releases:
@@ -470,11 +473,14 @@ helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage 
 
 Für die [geteilte Installation](#geteilte-installation) setzt du
 `split.enabled=true`, die Admin-Domain `split.admin.baseUrl`,
-`SUBSCRIPTION_TOKEN_KEY` im Secret und die URL der eingeschränkten Rolle in
+`SUBSCRIPTION_TOKEN_KEY` in einem eigenen Secret
+(`secrets.publicExistingSecret`) und die URL der eingeschränkten Rolle in
 `database.public.existingSecret` (leg die Rollen vorher mit
 `deploy/postgres/roles.sql` an). Das Chart startet dann die öffentliche, die
 Admin- und die Worker-Instanz als eigene Deployments, gibt jeder nur die
-Secrets ihrer Rolle und legt pro Domain einen Ingress an. Ohne PostgreSQL
+Secrets ihrer Rolle und legt pro Domain einen Ingress an. Die öffentlichen
+Pods verweisen nur auf diese beiden Secrets, daher können die Nodes, auf denen
+sie laufen, `SECRET_KEY` nicht lesen. Ohne PostgreSQL
 verweigert es die geteilte Installation. Alle Werte beschreibt die
 [README des Charts](../../../deploy/helm/openstatuspage/README.md) (Englisch).
 
