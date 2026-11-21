@@ -213,9 +213,10 @@ same visibility step applies. A fork's tags also get GitHub releases with the
 Compose assets, but those assets still name this repository's image as default.
 To deploy a fork's image, set `OSP_IMAGE` in the
 Compose `.env` or adjust the `images:` entry in
-[`deploy/kubernetes/kustomization.yaml`](../deploy/kubernetes/kustomization.yaml). The fork's Helm chart is
-published to `ghcr.io/<fork owner>/charts/openstatuspage` and already defaults
-to the fork's image.
+[`deploy/kubernetes/kustomization.yaml`](../deploy/kubernetes/kustomization.yaml).
+The fork's Helm chart is published to
+`ghcr.io/<fork owner>/charts/openstatuspage` and already defaults to the fork's
+image.
 
 ## Verifying an image
 
