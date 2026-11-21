@@ -428,8 +428,27 @@ helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage 
   [Operations](09-operations.md#secret_key). You can also pass the secrets as
   values (`secrets.secretKey`, `database.url`, ...); the chart then creates the
   Secret, but the values are stored in the Helm release as well.
-- Migrations run when the app starts, so there is no migration job. Upgrade
-  with `helm upgrade ... --version <new version>` after a backup.
+- Migrations run when the app starts, so there is no migration job. Keep your
+  settings in a values file (for example `my-values.yaml`) and upgrade with the
+  new version after a backup:
+
+  ```bash
+  helm upgrade openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+    --version 1.3.0 --namespace openstatuspage -f my-values.yaml
+  ```
+
+For SQLite instead of PostgreSQL, leave out `database.existingSecret` and the
+`openstatuspage-db` secret. The chart then creates a PersistentVolumeClaim
+(`persistence.size`, 1Gi by default) and runs exactly one replica with the
+`Recreate` strategy. Autoscaling and split mode are not available with SQLite:
+
+```bash
+helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+  --version 1.2.3 --namespace openstatuspage \
+  --set baseUrl=https://status.example.com \
+  --set secrets.existingSecret=openstatuspage \
+  --set ingress.enabled=true --set ingress.className=nginx
+```
 
 For the [split deployment](#split-deployment) set `split.enabled=true`, the
 admin domain `split.admin.baseUrl`, `SUBSCRIPTION_TOKEN_KEY` in the secret and
