@@ -164,6 +164,7 @@
       "type": "object",
       "properties": {
         "existingSecret": { "type": "string" },
+        "publicExistingSecret": { "type": "string" },
         "secretKey": { "type": "string" },
         "subscriptionTokenKey": { "type": "string" },
         "adminEmail": { "type": "string" },

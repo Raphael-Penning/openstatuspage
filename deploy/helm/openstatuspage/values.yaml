@@ -60,13 +60,21 @@ secrets:
   # ADMIN_PASSWORD, SMTP_PASSWORD, OIDC_CLIENT_SECRET. When set, the values
   # below are ignored.
   existingSecret: ""
+  # -- Split mode: existing Secret with only the key SUBSCRIPTION_TOKEN_KEY
+  # (recommended). The public pods reference it instead of existingSecret, so
+  # the nodes that run them cannot read SECRET_KEY and the other keys (the
+  # kubelet may read every Secret its pods reference). Every instance reads
+  # SUBSCRIPTION_TOKEN_KEY from it. Without it, split mode with existingSecret
+  # makes the public pods reference existingSecret.
+  publicExistingSecret: ""
   # -- At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts the
   # monitoring credentials: back it up, a new key makes them unreadable. Stored
   # in a Secret created by the chart (and in the Helm release); prefer existingSecret.
   secretKey: ""
   # -- Key of the e-mail subscription links, at least 32 characters. Required in
   # split mode (the public instance gets only this key, never SECRET_KEY);
-  # defaults to SECRET_KEY otherwise.
+  # defaults to SECRET_KEY otherwise. In split mode it is stored in a separate
+  # Secret <fullname>-public together with database.public.url.
   subscriptionTokenKey: ""
   # -- First administrator, only created while the database has no user.
   # Remove it after the first login.

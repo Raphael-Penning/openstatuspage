@@ -2,7 +2,9 @@
 Environment of one instance. Secrets are referenced key by key (never with
 envFrom), so every instance receives only the keys its role needs: the public
 instance of split mode gets SUBSCRIPTION_TOKEN_KEY and the public role's
-database URL, never SECRET_KEY.
+database URL, never SECRET_KEY, and references only the Secrets that hold
+those two (the chart's public Secret, or secrets.publicExistingSecret and
+database.public.existingSecret).
 Argument: dict "root" $ "role" <all|public|admin|worker>.
 */}}
 {{- define "openstatuspage.env" -}}
@@ -41,9 +43,12 @@ Argument: dict "root" $ "role" <all|public|admin|worker>.
 {{- if ne $role "public" }}
 {{ include "openstatuspage.secretEnv" (dict "name" "SECRET_KEY" "secret" $secret "key" "SECRET_KEY") }}
 {{- end }}
-{{- /* SUBSCRIPTION_TOKEN_KEY: required in split mode, optional otherwise. */}}
-{{- if or $existing $v.secrets.subscriptionTokenKey }}
-{{ include "openstatuspage.secretEnv" (dict "name" "SUBSCRIPTION_TOKEN_KEY" "secret" $secret "key" "SUBSCRIPTION_TOKEN_KEY" "optional" (and $existing (not $v.split.enabled))) }}
+{{- /* SUBSCRIPTION_TOKEN_KEY: required in split mode (every role reads it from
+the Secret the public instance references), optional otherwise. */}}
+{{- if $v.split.enabled }}
+{{ include "openstatuspage.secretEnv" (dict "name" "SUBSCRIPTION_TOKEN_KEY" "secret" (include "openstatuspage.tokenSecretName" $root) "key" "SUBSCRIPTION_TOKEN_KEY") }}
+{{- else if or $existing $v.secrets.subscriptionTokenKey }}
+{{ include "openstatuspage.secretEnv" (dict "name" "SUBSCRIPTION_TOKEN_KEY" "secret" $secret "key" "SUBSCRIPTION_TOKEN_KEY" "optional" $existing) }}
 {{- end }}
 {{- /* First administrator and OIDC client secret: where login is served. */}}
 {{- if or (eq $role "all") (eq $role "admin") }}
@@ -109,7 +114,7 @@ spec:
         {{- end }}
       annotations:
         checksum/config: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
-        {{- if include "openstatuspage.createSecret" $root }}
+        {{- if or (include "openstatuspage.createSecret" $root) (include "openstatuspage.createPublicSecret" $root) }}
         checksum/secret: {{ include (print $root.Template.BasePath "/secret.yaml") $root | sha256sum }}
         {{- end }}
         {{- with $v.podAnnotations }}

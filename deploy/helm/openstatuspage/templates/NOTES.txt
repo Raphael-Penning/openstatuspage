@@ -24,6 +24,21 @@ No Ingress was created. To try it locally:
   curl -fsS http://127.0.0.1:3000/api/health
 {{- end }}
 
+{{- if and .Values.split.enabled .Values.secrets.existingSecret (not .Values.secrets.publicExistingSecret) }}
+
+WARNING: the public pods reference secrets.existingSecret ({{ .Values.secrets.existingSecret }}) for
+SUBSCRIPTION_TOKEN_KEY. The container gets only that key, but the kubelet of
+every node that runs a public pod may read the whole Secret, SECRET_KEY
+included. Put SUBSCRIPTION_TOKEN_KEY into a Secret of its own and set
+secrets.publicExistingSecret.
+{{- end }}
+{{- if include "openstatuspage.createPublicSecret" . }}
+
+WARNING: the chart created the Secret {{ include "openstatuspage.publicSecretName" . }} for the public instance
+from values (SUBSCRIPTION_TOKEN_KEY or database.public.url). These values are
+stored in the Helm release as well. Prefer secrets.publicExistingSecret and
+database.public.existingSecret.
+{{- end }}
 {{- if include "openstatuspage.createSecret" . }}
 
 WARNING: the chart created the Secret {{ include "openstatuspage.fullname" . }} from values

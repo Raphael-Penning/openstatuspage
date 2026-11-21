@@ -53,6 +53,12 @@ env_is() { # env_is <file> <deployment> <env> <value>
   doc "$1" Deployment "$2" | grep -A1 -- "- name: $3\$" | grep -Eq -- "value: \"?$4\"?\$"
 }
 
+# True when the Deployment references exactly the given Secrets (sorted, space separated).
+secret_refs_are() { # secret_refs_are <file> <deployment> <names...>
+  local file="$1" name="$2"; shift 2
+  [[ "$(doc "$file" Deployment "$name" | grep -A1 'secretKeyRef:' | awk '/name:/ {print $2}' | sort -u | xargs)" == "$*" ]]
+}
+
 lacks() { # lacks <file> <kind> <name> <extended regex> (the document must exist)
   [[ -n "$(doc "$1" "$2" "$3")" ]] && ! has "$@"
 }
@@ -168,6 +174,13 @@ check "split: admin Ingress keeps its own annotations" has split Ingress "$APP-a
 check "split: public Ingress has no admin restriction" lacks split Ingress "$APP-public" 'whitelist-source-range'
 check "split: public startup waits for the migrations" has split Deployment "$APP-public" 'failureThreshold: 60'
 check "split: PodDisruptionBudget selects public" has split PodDisruptionBudget "$APP-public" 'component: public'
+check "split: no chart Secret with existing Secrets" bash -c "! grep -q '^kind: Secret\$' '$TMP/split.yaml'"
+check "split: admin reads the token key from existingSecret" has split Deployment "$APP-admin" 'name: openstatuspage$'
+render splitpub -f "$CI/split-values.yaml" --set secrets.publicExistingSecret=openstatuspage-public
+check "split: public references only the public Secrets" \
+  secret_refs_are splitpub "$APP-public" openstatuspage-db-public openstatuspage-public
+check "split: admin reads the token key from publicExistingSecret" \
+  bash -c "grep -A3 'name: SUBSCRIPTION_TOKEN_KEY' <(awk '/^  name: $APP-admin\$/,/^---/' '$TMP/splitpub.yaml') | grep -q 'name: openstatuspage-public'"
 
 echo "== split mode with NetworkPolicy and HPA"
 expect_count splitnp NetworkPolicy 3
@@ -181,7 +194,13 @@ check "netpol: worker may reach SMTP" has splitnp NetworkPolicy "$APP-worker" 'p
 check "netpol: worker may reach monitoring" has splitnp NetworkPolicy "$APP-worker" '# monitoring'
 check "netpol: worker has no Umami egress" lacks splitnp NetworkPolicy "$APP-worker" '# umami'
 check "netpol: PostgreSQL restricted to the given peer" has splitnp NetworkPolicy "$APP-public" 'cidr: 192.0.2.10/32'
-check "secret: chart Secret has the public URL separately" has splitnp Secret "$APP" '^  DATABASE_URL_PUBLIC: '
+check "secret: public Secret holds the public URL" has splitnp Secret "$APP-public" '^  DATABASE_URL_PUBLIC: '
+check "secret: public Secret holds the token key" has splitnp Secret "$APP-public" '^  SUBSCRIPTION_TOKEN_KEY: '
+check "secret: public Secret holds nothing else" lacks splitnp Secret "$APP-public" 'SECRET_KEY:|PASSWORD|ADMIN_|  DATABASE_URL:'
+check "secret: main Secret lacks the public keys" lacks splitnp Secret "$APP" 'DATABASE_URL_PUBLIC|SUBSCRIPTION_TOKEN_KEY'
+check "secret: public pods reference only the public Secret" secret_refs_are splitnp "$APP-public" "$APP-public"
+check "secret: admin reads the token key from the public Secret" \
+  bash -c "grep -A3 'name: SUBSCRIPTION_TOKEN_KEY' <(awk '/^  name: $APP-admin\$/,/^---/' '$TMP/splitnp.yaml') | grep -q 'name: $APP-public'"
 check "secret: public reads DATABASE_URL_PUBLIC" has splitnp Deployment "$APP-public" 'key: DATABASE_URL_PUBLIC'
 check "topology spread gets the component selector" has splitnp Deployment "$APP-public" 'topologyKey: kubernetes.io/hostname'
 check "ConfigMap carries the SMTP settings" has splitnp ConfigMap "$APP" 'SMTP_HOST: "smtp.example.com"'

@@ -110,7 +110,7 @@ Secret and key of the owner database URL, and of the public role's URL.
 {{- end }}
 
 {{- define "openstatuspage.dbPublicSecretName" -}}
-{{- default (include "openstatuspage.fullname" .) .Values.database.public.existingSecret }}
+{{- default (include "openstatuspage.publicSecretName" .) .Values.database.public.existingSecret }}
 {{- end }}
 
 {{- define "openstatuspage.dbPublicSecretKey" -}}
@@ -118,10 +118,42 @@ Secret and key of the owner database URL, and of the public role's URL.
 {{- end }}
 
 {{/*
+Name of the chart-created Secret of the public instance (split mode). It holds
+only SUBSCRIPTION_TOKEN_KEY and DATABASE_URL_PUBLIC, so the kubelet of a node
+that runs public pods can read nothing else.
+*/}}
+{{- define "openstatuspage.publicSecretName" -}}
+{{- printf "%s-public" (include "openstatuspage.fullname" .) }}
+{{- end }}
+
+{{/*
+Secret that holds SUBSCRIPTION_TOKEN_KEY. In split mode every instance reads
+it from the same Secret that the public instance references:
+secrets.publicExistingSecret, else secrets.existingSecret, else the chart's
+public Secret.
+*/}}
+{{- define "openstatuspage.tokenSecretName" -}}
+{{- if .Values.split.enabled }}
+{{- coalesce .Values.secrets.publicExistingSecret .Values.secrets.existingSecret (include "openstatuspage.publicSecretName" .) }}
+{{- else }}
+{{- include "openstatuspage.secretName" . }}
+{{- end }}
+{{- end }}
+
+{{/*
 "true" when the chart has to create its own Secret.
 */}}
 {{- define "openstatuspage.createSecret" -}}
-{{- if or (not .Values.secrets.existingSecret) (and .Values.database.url (not .Values.database.existingSecret)) (and .Values.split.enabled .Values.database.public.url (not .Values.database.public.existingSecret)) }}true{{ end }}
+{{- if or (not .Values.secrets.existingSecret) (and .Values.database.url (not .Values.database.existingSecret)) }}true{{ end }}
+{{- end }}
+
+{{/*
+"true" when split mode needs the chart's public Secret: SUBSCRIPTION_TOKEN_KEY
+or the public role's URL came from values.
+*/}}
+{{- define "openstatuspage.createPublicSecret" -}}
+{{- $s := .Values.secrets }}
+{{- if and .Values.split.enabled (or (and (not $s.publicExistingSecret) (not $s.existingSecret)) (and .Values.database.public.url (not .Values.database.public.existingSecret))) }}true{{ end }}
 {{- end }}
 
 {{/*
@@ -173,8 +205,8 @@ by every template that depends on it (through the Deployment template).
 {{- if and .Values.database.url .Values.database.public.url (eq .Values.database.url .Values.database.public.url) }}
 {{- fail "database.public.url must use the restricted public role, not the same URL as database.url" }}
 {{- end }}
-{{- if and (not .Values.secrets.existingSecret) (not .Values.secrets.subscriptionTokenKey) }}
-{{- fail "split.enabled=true needs secrets.subscriptionTokenKey (or the key SUBSCRIPTION_TOKEN_KEY in secrets.existingSecret): the public instance never gets SECRET_KEY" }}
+{{- if and (not .Values.secrets.existingSecret) (not .Values.secrets.publicExistingSecret) (not .Values.secrets.subscriptionTokenKey) }}
+{{- fail "split.enabled=true needs secrets.subscriptionTokenKey (or the key SUBSCRIPTION_TOKEN_KEY in secrets.publicExistingSecret or secrets.existingSecret): the public instance never gets SECRET_KEY" }}
 {{- end }}
 {{- if not .Values.split.admin.baseUrl }}
 {{- fail "split.enabled=true needs split.admin.baseUrl, the URL of the admin domain (e.g. https://status.admin.example.com)" }}
