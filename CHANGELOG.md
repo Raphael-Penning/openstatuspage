@@ -12,11 +12,17 @@ breaking changes.
   as `oci://ghcr.io/raphael-penning/charts/openstatuspage`. Single instance on
   external PostgreSQL or SQLite on a volume (one replica), or the split
   deployment (`split.enabled=true`: public, admin and worker with their own
-  database roles and only the secrets of their role; the public pods reference
-  only a Secret with their own keys). Hardened defaults, optional
-  NetworkPolicies (SMTP, OIDC and Umami egress follow the configuration),
+  database roles and only the secrets of their role). In split mode the public
+  pods reference only Secrets of their own: with `secrets.existingSecret` the
+  chart requires `secrets.publicExistingSecret` (only `SUBSCRIPTION_TOKEN_KEY`)
+  and refuses public Secrets that are also the private ones, so the public
+  pods can never read `SECRET_KEY`, `ADMIN_*`, `SMTP_PASSWORD`,
+  `OIDC_CLIENT_SECRET` or the owner `DATABASE_URL`. Hardened defaults, optional
+  NetworkPolicies (SMTP, OIDC and Umami egress follow the configuration;
+  monitoring egress stays off until you list the polled systems),
   HorizontalPodAutoscaler and PodDisruptionBudget, and
-  a values schema that only accepts the documented settings. See
+  a values schema that only accepts the documented settings. CI validates
+  every render with a pinned kubeconform. See
   [installation](docs/guide/en/02-installation.md#kubernetes-with-helm).
 
 ## [0.2.0] - 2026-11-20
