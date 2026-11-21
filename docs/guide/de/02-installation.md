@@ -445,8 +445,28 @@ helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage 
   übergeben (`secrets.secretKey`, `database.url`, ...); dann legt das Chart das
   Secret an, die Werte stehen aber auch im Helm-Release.
 - Die Migrationen laufen beim Start der Anwendung, ein Migrations-Job ist
-  nicht nötig. Für ein Update machst du ein Backup und dann
-  `helm upgrade ... --version <neue Version>`.
+  nicht nötig. Bewahre deine Einstellungen in einer Werte-Datei auf (zum
+  Beispiel `my-values.yaml`) und aktualisiere nach einem Backup auf die neue
+  Version:
+
+  ```bash
+  helm upgrade openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+    --version 1.3.0 --namespace openstatuspage -f my-values.yaml
+  ```
+
+Mit SQLite statt PostgreSQL lässt du `database.existingSecret` und das Secret
+`openstatuspage-db` weg. Das Chart legt dann einen PersistentVolumeClaim an
+(`persistence.size`, standardmäßig 1Gi) und läuft mit genau einem Replikat und
+der Strategie `Recreate`. Autoskalierung und geteilte Installation sind mit
+SQLite nicht verfügbar:
+
+```bash
+helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+  --version 1.2.3 --namespace openstatuspage \
+  --set baseUrl=https://status.example.com \
+  --set secrets.existingSecret=openstatuspage \
+  --set ingress.enabled=true --set ingress.className=nginx
+```
 
 Für die [geteilte Installation](#geteilte-installation) setzt du
 `split.enabled=true`, die Admin-Domain `split.admin.baseUrl`,
