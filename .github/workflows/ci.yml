@@ -252,3 +252,54 @@ jobs:
               --prerelease="$prerelease" --latest="$LATEST"
           fi
           gh release upload "$TAG" "$ASSETS/compose.yaml" "$ASSETS/env.example" --clobber
+
+  helm-publish:
+    # For a version tag: packages the Helm chart with version and appVersion =
+    # the tag without "v" and pushes it as an OCI artifact to
+    # ghcr.io/<owner>/charts/openstatuspage. Runs only for tags pushed to this
+    # repository (never for pull requests) and only after the image of the same
+    # version was published and the chart checks passed. See docs/releasing.md.
+    needs: [image, helm]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: helm-publish-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v4.3.2
+
+      - name: Package the chart
+        # The default image follows the repository (ghcr.io/<owner>/<repo>, like the
+        # "image" job), so a fork's chart points to the fork's image.
+        run: |
+          version="${TAG#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::$TAG is not a release tag of the form vX.Y.Z[-pre]"
+            exit 1
+          fi
+          values=deploy/helm/openstatuspage/values.yaml
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          sed -i "s|^  repository: ghcr.io/raphael-penning/openstatuspage\$|  repository: $image|" "$values"
+          # Fail if values.yaml changed and the substitution no longer applies.
+          grep -qx "  repository: $image" "$values"
+          helm package deploy/helm/openstatuspage --version "$version" --app-version "$version" \
+            --destination "$RUNNER_TEMP/chart"
+          echo "CHART=$RUNNER_TEMP/chart/openstatuspage-$version.tgz" >> "$GITHUB_ENV"
+
+      - name: Push the chart to the GitHub Container Registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_PASSWORD" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm push "$CHART" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts"
+          helm registry logout ghcr.io
