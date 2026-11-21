@@ -278,11 +278,12 @@ resources:
   limits:
     memory: 256Mi
 
-# Probes on /api/health (answers 200 once the database is reachable).
+# Probes on /api/health (answers 200 only while the database is reachable).
 probes:
   startup:
     # -- Startup probe. The public instance of split mode allows twice the
-    # failures: it waits up to SCHEMA_WAIT_SECONDS (120 s) for the migrations.
+    # failures, and at least config.SCHEMA_WAIT_SECONDS (default 120) + 60 s:
+    # it waits that long for the migrations.
     enabled: true
     periodSeconds: 5
     timeoutSeconds: 5
@@ -293,10 +294,13 @@ probes:
     timeoutSeconds: 5
     failureThreshold: 3
   liveness:
+    # -- Liveness probe. /api/health checks the database, so a database outage
+    # longer than periodSeconds x failureThreshold (5 minutes) restarts every
+    # pod. Restarts do not help then; keep this window generous.
     enabled: true
     periodSeconds: 30
     timeoutSeconds: 5
-    failureThreshold: 4
+    failureThreshold: 10
 
 # -- Size limit of the /tmp emptyDir.
 tmpSizeLimit: 64Mi

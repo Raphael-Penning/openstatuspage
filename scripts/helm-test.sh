@@ -130,6 +130,7 @@ check "runAsNonRoot and seccomp RuntimeDefault" has sqlite Deployment "$APP" 'ru
 check "capabilities dropped" has sqlite Deployment "$APP" '- ALL'
 check "/tmp is an emptyDir" has sqlite Deployment "$APP" 'mountPath: /tmp'
 check "probes use /api/health" has sqlite Deployment "$APP" 'path: /api/health'
+check "liveness allows a 5 minute database outage" has sqlite Deployment "$APP" 'failureThreshold: 10$'
 check "memory limit 256Mi" has sqlite Deployment "$APP" 'memory: 256Mi'
 check "image tag defaults to appVersion" has sqlite Deployment "$APP" "image: \"ghcr.io/[a-z0-9-]+/openstatuspage:$(awk '/^appVersion:/ {gsub(/"/, "", $2); print $2}' "$CHART/Chart.yaml")\""
 render digest -f "$CI/sqlite-values.yaml" --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -173,6 +174,9 @@ check "split: admin Ingress routes to the admin Service" has split Ingress "$APP
 check "split: admin Ingress keeps its own annotations" has split Ingress "$APP-admin" 'whitelist-source-range'
 check "split: public Ingress has no admin restriction" lacks split Ingress "$APP-public" 'whitelist-source-range'
 check "split: public startup waits for the migrations" has split Deployment "$APP-public" 'failureThreshold: 60'
+render splitwait -f "$CI/split-values.yaml" --set-string config.SCHEMA_WAIT_SECONDS=600
+check "split: public startup follows SCHEMA_WAIT_SECONDS" has splitwait Deployment "$APP-public" 'failureThreshold: 132$'
+check "split: admin startup keeps the default" has splitwait Deployment "$APP-admin" 'failureThreshold: 30$'
 check "split: PodDisruptionBudget selects public" has split PodDisruptionBudget "$APP-public" 'component: public'
 check "split: no chart Secret with existing Secrets" bash -c "! grep -q '^kind: Secret\$' '$TMP/split.yaml'"
 check "split: admin reads the token key from existingSecret" has split Deployment "$APP-admin" 'name: openstatuspage$'

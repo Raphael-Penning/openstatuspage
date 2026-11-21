@@ -87,7 +87,13 @@ One Deployment. Argument: dict
 {{- $ctx := dict "root" $root "component" .component }}
 {{- $name := include "openstatuspage.componentName" $ctx }}
 {{- $startupFailures := int $v.probes.startup.failureThreshold }}
-{{- if eq .role "public" }}{{ $startupFailures = mul $startupFailures 2 }}{{ end }}
+{{- if eq .role "public" }}
+{{- /* The public instance waits up to SCHEMA_WAIT_SECONDS (default 120) for the
+migrations: allow at least that plus 60 s, and at least twice the failures. */}}
+{{- $period := int $v.probes.startup.periodSeconds }}
+{{- $wait := add (int (default 120 $v.config.SCHEMA_WAIT_SECONDS)) 60 }}
+{{- $startupFailures = max (mul $startupFailures 2) (div (add $wait (sub $period 1)) $period) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
