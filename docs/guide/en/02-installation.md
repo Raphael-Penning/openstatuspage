@@ -399,6 +399,9 @@ exactly one replica). Its defaults are hardened: non-root user, read-only root
 filesystem, no capabilities, no service account token, probes on
 `/api/health`, 128Mi request and 256Mi memory limit. NetworkPolicies, a
 HorizontalPodAutoscaler and a PodDisruptionBudget are available as options.
+With NetworkPolicies the chart opens SMTP, OIDC and Umami when they are
+configured, but not the monitoring systems: turn on
+`networkPolicy.egress.monitoring` and list the ports of every polled API.
 
 Create the secrets first (never commit them), then install with the version of
 the release:
@@ -451,11 +454,13 @@ helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage 
 ```
 
 For the [split deployment](#split-deployment) set `split.enabled=true`, the
-admin domain `split.admin.baseUrl`, `SUBSCRIPTION_TOKEN_KEY` in the secret and
-the URL of the restricted role in `database.public.existingSecret` (create the
-roles with `deploy/postgres/roles.sql` first). The chart then runs the public,
-admin and worker instances as separate Deployments, gives each only the
-secrets of its role and creates one Ingress per domain. It refuses split mode
+admin domain `split.admin.baseUrl`, `SUBSCRIPTION_TOKEN_KEY` in a secret of its
+own (`secrets.publicExistingSecret`) and the URL of the restricted role in
+`database.public.existingSecret` (create the roles with
+`deploy/postgres/roles.sql` first). The chart then runs the public, admin and
+worker instances as separate Deployments, gives each only the secrets of its
+role and creates one Ingress per domain. The public pods reference only those
+two secrets, so the nodes they run on cannot read `SECRET_KEY`. It refuses split mode
 without PostgreSQL. All values are described in the
 [chart README](../../../deploy/helm/openstatuspage/README.md).
 
