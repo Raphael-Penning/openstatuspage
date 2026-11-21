@@ -400,8 +400,13 @@ filesystem, no capabilities, no service account token, probes on
 `/api/health`, 128Mi request and 256Mi memory limit. NetworkPolicies, a
 HorizontalPodAutoscaler and a PodDisruptionBudget are available as options.
 With NetworkPolicies the chart opens SMTP, OIDC and Umami when they are
-configured, but not the monitoring systems: turn on
-`networkPolicy.egress.monitoring` and list the ports of every polled API.
+configured, but not the monitoring systems.
+
+> **Warning:** monitoring egress is off by default, because the chart cannot
+> know which systems you poll. With `networkPolicy.enabled=true` every poll
+> fails until you set `networkPolicy.egress.monitoring.enabled=true` and list
+> the ports (and ideally the addresses) of every polled API. The install notes
+> warn while it is off.
 
 Create the secrets first (never commit them), then install with the version of
 the release:
@@ -460,8 +465,23 @@ own (`secrets.publicExistingSecret`) and the URL of the restricted role in
 `deploy/postgres/roles.sql` first). The chart then runs the public, admin and
 worker instances as separate Deployments, gives each only the secrets of its
 role and creates one Ingress per domain. The public pods reference only those
-two secrets, so the nodes they run on cannot read `SECRET_KEY`. It refuses split mode
-without PostgreSQL. All values are described in the
+two secrets, so the nodes they run on cannot read `SECRET_KEY`, the admin
+password, the SMTP and OIDC secrets or the owner's database URL. The chart
+enforces this: with `secrets.existingSecret` it fails without
+`secrets.publicExistingSecret`, and both public secrets must differ from
+`secrets.existingSecret` and `database.existingSecret` (they may be one
+secret). Create the public secrets like this:
+
+```bash
+kubectl -n openstatuspage create secret generic openstatuspage-public \
+  --from-literal=SUBSCRIPTION_TOKEN_KEY="$(openssl rand -base64 48)"
+kubectl -n openstatuspage create secret generic openstatuspage-db-public \
+  --from-literal=DATABASE_URL='postgres://osp_public:<password>@db.example.com:5432/openstatuspage'
+```
+
+If you pass the secrets as values instead, the chart creates a separate
+secret for the public pods with only `SUBSCRIPTION_TOKEN_KEY` and the public
+role's URL. It refuses split mode without PostgreSQL. All values are described in the
 [chart README](../../../deploy/helm/openstatuspage/README.md).
 
 ## Kubernetes
