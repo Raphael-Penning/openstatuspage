@@ -4,14 +4,29 @@
 # or v4) only; no cluster. Used by CI (.github/workflows/ci.yml, job "helm").
 #
 #   scripts/helm-test.sh
+#
+# Environment:
+#   HELM        helm binary (default: helm)
+#   RENDER_DIR  also write every successful render to this directory as
+#               <name>.yaml, e.g. for schema validation with kubeconform (CI)
+#   KUBECONFORM kubeconform binary (default: kubeconform). When it is found,
+#               every render is validated against the Kubernetes version of
+#               kubeVersion in Chart.yaml; KUBECONFORM=skip turns that off.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART="$ROOT/deploy/helm/openstatuspage"
 CI="$CHART/ci"
 HELM="${HELM:-helm}"
+KUBECONFORM="${KUBECONFORM:-kubeconform}"
+RENDER_DIR="${RENDER_DIR:-}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+RENDERS=()
+if [[ -n "$RENDER_DIR" ]]; then
+  mkdir -p "$RENDER_DIR"
+  rm -f "$RENDER_DIR"/*.yaml
+fi
 
 failures=0
 pass() { printf '  ok    %s\n' "$1"; }
@@ -24,6 +39,13 @@ check() { # check <description> <command...>
 render() { # render <name> [helm args...] -> $TMP/<name>.yaml
   local name="$1"; shift
   "$HELM" template osp "$CHART" --namespace osp "$@" > "$TMP/$name.yaml"
+  RENDERS+=("$name")
+  if [[ -n "$RENDER_DIR" ]]; then cp "$TMP/$name.yaml" "$RENDER_DIR/$name.yaml"; fi
+}
+
+# Minimum Kubernetes version of the chart: "1.25.0" from kubeVersion ">=1.25.0-0".
+kube_version() {
+  sed -nE 's/^kubeVersion: *"?>= *v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$CHART/Chart.yaml"
 }
 
 # Prints the document of the given kind and metadata.name from a rendered file.
@@ -324,6 +346,26 @@ expect_failure "unknown egress mode fails (schema)" "smtp/enabled" "${BASE[@]}" 
   --set networkPolicy.egress.smtp.enabled=maybe
 expect_failure "chart-managed variable in config fails (schema)" "additional properties 'SECRET_KEY'" "${BASE[@]}" "${KEY[@]}" \
   --set config.SECRET_KEY=x
+
+echo "== schemas"
+check "kubeVersion of Chart.yaml gives a minimum version" bash -c "[[ -n '$(kube_version)' ]]"
+if [[ "$KUBECONFORM" != skip ]] && command -v "$KUBECONFORM" > /dev/null 2>&1; then
+  # No CRDs in the chart, so every kind must have a schema (no -ignore-missing-schemas).
+  for name in "${RENDERS[@]}"; do
+    if "$KUBECONFORM" -strict -summary -kubernetes-version "$(kube_version)" "$TMP/$name.yaml" > "$TMP/kc" 2>&1; then
+      pass "kubeconform: $name (Kubernetes $(kube_version))"
+    else
+      cat "$TMP/kc"
+      fail "kubeconform: $name (Kubernetes $(kube_version))"
+    fi
+  done
+else
+  echo "  skip  kubeconform not found (CI validates RENDER_DIR with it)"
+fi
+if [[ -n "$RENDER_DIR" ]]; then
+  check "every render written to RENDER_DIR" \
+    bash -c "[[ \$(ls '$RENDER_DIR'/*.yaml | wc -l) -eq ${#RENDERS[@]} ]]"
+fi
 
 echo "== package"
 if "$HELM" package "$CHART" --destination "$TMP/pkg" > /dev/null; then
