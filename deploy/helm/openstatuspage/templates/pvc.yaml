@@ -1,0 +1,24 @@
+{{- if and (not (include "openstatuspage.postgres" .)) (not .Values.persistence.existingClaim) }}
+# SQLite database (/data). Kept on uninstall by default: deleting it deletes the data.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openstatuspage.fullname" . }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openstatuspage.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- with .Values.persistence.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.persistence.accessModes | nindent 4 }}
+  {{- with .Values.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}
