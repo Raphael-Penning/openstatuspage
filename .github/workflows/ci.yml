@@ -63,7 +63,20 @@ jobs:
     # Lints and renders the Helm chart (deploy/helm/openstatuspage) for the main
     # value combinations (SQLite, external PostgreSQL, split mode, NetworkPolicy
     # and HPA) and checks key properties of the output: scripts/helm-test.sh.
+    # Then validates every render against the Kubernetes API schemas with
+    # kubeconform.
     runs-on: ubuntu-latest
+    env:
+      # kubeconform release, pinned twice: the SHA-256 of the tarball is
+      # hard-coded, and so is the SHA-256 of the release's CHECKSUMS file.
+      # Both were taken from https://github.com/yannh/kubeconform/releases/tag/v0.8.0.
+      # The install step checks the CHECKSUMS file against its pin, the
+      # tarball's line in it against KUBECONFORM_SHA256, and the tarball itself
+      # against KUBECONFORM_SHA256, so a changed release asset fails the job.
+      # To upgrade, update all three values from the new release.
+      KUBECONFORM_VERSION: v0.8.0
+      KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+      KUBECONFORM_CHECKSUMS_SHA256: 235fc6d8801ca0b6dba3ff3d49b8751e27c7ec92f4414fe052b283ec50cca0af
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,7 +84,38 @@ jobs:
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: v4.3.2
-      - run: scripts/helm-test.sh
+      - name: Lint, render and check the chart
+        # kubeconform is not on the PATH yet, so the script only writes the
+        # renders; the next steps validate them.
+        run: scripts/helm-test.sh
+        env:
+          RENDER_DIR: ${{ runner.temp }}/helm-renders
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/kubeconform"
+          mkdir -p "$dir"
+          cd "$dir"
+          base="https://github.com/yannh/kubeconform/releases/download/$KUBECONFORM_VERSION"
+          curl -fsSLo CHECKSUMS "$base/CHECKSUMS"
+          curl -fsSLo kubeconform-linux-amd64.tar.gz "$base/kubeconform-linux-amd64.tar.gz"
+          echo "$KUBECONFORM_CHECKSUMS_SHA256  CHECKSUMS" | sha256sum --check --strict
+          grep -qx "$KUBECONFORM_SHA256  kubeconform-linux-amd64.tar.gz" CHECKSUMS
+          echo "$KUBECONFORM_SHA256  kubeconform-linux-amd64.tar.gz" | sha256sum --check --strict
+          tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
+          ./kubeconform -v
+      - name: Validate the renders with kubeconform
+        # Strict (unknown fields fail) against the minimum Kubernetes version of
+        # kubeVersion in Chart.yaml, with the default schema location. The chart
+        # has no CRDs, so missing schemas are errors (no -ignore-missing-schemas).
+        run: |
+          set -euo pipefail
+          version="$(sed -nE 's/^kubeVersion: *"?>= *v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' deploy/helm/openstatuspage/Chart.yaml)"
+          test -n "$version"
+          renders="$RUNNER_TEMP/helm-renders"
+          ls "$renders"/*.yaml
+          "$RUNNER_TEMP/kubeconform/kubeconform" -strict -summary \
+            -kubernetes-version "$version" "$renders"
 
   image:
     # Builds the container image (docker/Dockerfile). Pull requests only build it
