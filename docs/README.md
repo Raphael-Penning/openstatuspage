@@ -31,8 +31,9 @@ It is also shown in the management UI under **Help**, in English or German.
 | [architecture.md](architecture.md) | Code layout, privacy model, status model, database, worker |
 | [security-model.md](security-model.md) | Split deployment on PostgreSQL: what the restricted public database role can and cannot do, how it is enforced, threat model |
 | [accessibility.md](accessibility.md) | WCAG 2.2 AA for the public page and the emails: implementation, automated checks, manual test checklist, known limitations |
-| [releasing.md](releasing.md) | Container image pipeline, image tags, cutting a release, release assets, GHCR setup (maintainers) |
+| [releasing.md](releasing.md) | Container image pipeline, image tags, cutting a release, release assets, Helm chart publishing, GHCR setup (maintainers) |
 | [../deploy/compose/](../deploy/compose/) | Docker Compose setup (`compose.yaml`, `.env.example`, build override `compose.build.yaml`), also attached to every release, see [installation](guide/en/02-installation.md#docker-compose) |
+| [../deploy/helm/openstatuspage/](../deploy/helm/openstatuspage/) | Helm chart (recommended on Kubernetes, single instance or split mode), see [installation](guide/en/02-installation.md#kubernetes-with-helm) |
 | [../deploy/kubernetes/](../deploy/kubernetes/) | Example Kubernetes manifests (Kustomize), see [installation](guide/en/02-installation.md#kubernetes) |
 
 ## Writing the guide
