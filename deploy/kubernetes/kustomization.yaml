@@ -1,4 +1,6 @@
 # Example deployment of OpenStatusPage on Kubernetes.
+# The Helm chart in deploy/helm/openstatuspage is the recommended way; these
+# plain manifests remain for setups without Helm.
 #
 #   1. Create the namespace and the secret (see secret.example.yaml):
 #        kubectl apply -f namespace.yaml

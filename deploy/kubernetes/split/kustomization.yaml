@@ -2,6 +2,8 @@
 # instance and the background worker as three Deployments on one PostgreSQL
 # database. The single-instance example in deploy/kubernetes/ stays unchanged.
 # Guide: docs/guide/en/02-installation.md#split-deployment
+# The Helm chart (deploy/helm/openstatuspage, split.enabled=true) is the
+# recommended way; these plain manifests remain for setups without Helm.
 #
 #   1. Create the namespace and the three secrets (never commit them):
 #        kubectl apply -f namespace.yaml
