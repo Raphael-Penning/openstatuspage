@@ -1,0 +1,46 @@
+OpenStatusPage {{ include "openstatuspage.imageTag" . }} is being deployed to namespace {{ .Release.Namespace }}.
+{{- $pg := include "openstatuspage.postgres" . }}
+
+Mode:     {{ if .Values.split.enabled }}split (public, admin, worker){{ else }}single instance (APP_ROLE=all){{ end }}
+Database: {{ if $pg }}PostgreSQL{{ else }}SQLite on the volume {{ default (printf "%s-data" (include "openstatuspage.fullname" .)) .Values.persistence.existingClaim }} (one replica){{ end }}
+Public:   {{ .Values.baseUrl }}
+{{- if .Values.split.enabled }}
+Admin:    {{ .Values.split.admin.baseUrl }}  (restrict it, e.g. with an IP allowlist)
+{{- end }}
+
+Wait for the rollout:
+{{- if .Values.split.enabled }}
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}-admin
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}-public
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}-worker
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}
+{{- end }}
+
+{{- if not .Values.ingress.enabled }}
+
+No Ingress was created. To try it locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "openstatuspage.fullname" . }}{{ if .Values.split.enabled }}-admin{{ end }} 3000:{{ .Values.service.port }}
+  curl -fsS http://127.0.0.1:3000/api/health
+{{- end }}
+
+{{- if include "openstatuspage.createSecret" . }}
+
+WARNING: the chart created the Secret {{ include "openstatuspage.fullname" . }} from values
+(secrets.* or database URLs). These values are stored in the Helm release as
+well. Prefer secrets.existingSecret and database.existingSecret.
+{{- end }}
+{{- if not .Values.secrets.existingSecret }}
+
+Back up SECRET_KEY outside the cluster: a new key makes the stored monitoring
+credentials unreadable.
+{{- end }}
+{{- if eq (toString .Values.config.TRUST_PROXY) "" }}
+
+NOTE: TRUST_PROXY is not set. Behind the ingress controller set
+config.TRUST_PROXY=1 (docs/guide/en/03-reverse-proxy.md).
+{{- end }}
+{{- if and .Values.secrets.adminPassword (not .Values.secrets.existingSecret) }}
+
+Remove secrets.adminPassword after the first login and change the password in the user menu.
+{{- end }}
