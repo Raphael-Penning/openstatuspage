@@ -114,6 +114,9 @@ database:
 
 # SQLite storage, used only without PostgreSQL.
 persistence:
+  # -- Keep the SQLite database on a PersistentVolumeClaim. false puts it on an
+  # emptyDir: every pod restart starts with an empty database. Tests only.
+  enabled: true
   # -- Use an existing PersistentVolumeClaim instead of creating one.
   existingClaim: ""
   # -- Storage class of the created claim ("" = the cluster default).
@@ -124,7 +127,8 @@ persistence:
   # -- Size of the created claim.
   size: 1Gi
   # -- Extra annotations of the created claim. It always carries
-  # helm.sh/resource-policy: keep, so "helm uninstall" keeps the data.
+  # helm.sh/resource-policy: keep, so "helm uninstall" keeps the data (a
+  # helm.sh/resource-policy given here is ignored).
   annotations: {}
 
 # -- Replicas of the single instance (APP_ROLE=all). Forced to 1 with SQLite.

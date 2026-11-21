@@ -116,6 +116,14 @@ check "sqlite: replicaCount=3 is forced to 1" has sqlite3 Deployment "$APP" '^  
 check "sqlite: RollingUpdate is forced to Recreate" has sqlite3 Deployment "$APP" '^    type: Recreate$'
 check "sqlite: claim is kept on uninstall" has sqlite PersistentVolumeClaim "$APP-data" 'helm.sh/resource-policy: keep'
 check "sqlite: chart Secret holds SECRET_KEY" has sqlite Secret "$APP" '^  SECRET_KEY: '
+render sqlitetmp -f "$CI/sqlite-values.yaml" --set persistence.enabled=false
+expect_count sqlitetmp PersistentVolumeClaim 0
+check "sqlite: persistence.enabled=false uses an emptyDir" lacks sqlitetmp Deployment "$APP" 'claimName:'
+render sqliteann -f "$CI/sqlite-values.yaml" --set-string 'persistence.annotations.helm\.sh/resource-policy=delete' \
+  --set-string persistence.annotations.backup=daily
+check "sqlite: resource-policy cannot be overridden" \
+  bash -c "[[ \$(grep -c 'helm.sh/resource-policy' <(awk '/^kind: PersistentVolumeClaim\$/,/^---/' '$TMP/sqliteann.yaml')) == 1 ]]"
+check "sqlite: extra claim annotations kept" has sqliteann PersistentVolumeClaim "$APP-data" 'backup: daily'
 
 echo "== secure defaults"
 for file in sqlite postgres split splitnp; do

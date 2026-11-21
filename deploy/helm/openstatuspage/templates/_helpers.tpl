@@ -279,7 +279,7 @@ by every template that depends on it (through the Deployment template).
 
 {{/*
 Volumes and mounts shared by every pod: /tmp, and /data (the SQLite volume, or
-an emptyDir with PostgreSQL).
+an emptyDir with PostgreSQL or with persistence.enabled=false).
 */}}
 {{- define "openstatuspage.volumes" -}}
 {{- $root := .root }}
@@ -287,9 +287,13 @@ an emptyDir with PostgreSQL).
   emptyDir:
     sizeLimit: {{ $root.Values.tmpSizeLimit }}
 - name: data
-{{- if and .sqlite }}
+{{- if and .sqlite $root.Values.persistence.enabled }}
   persistentVolumeClaim:
     claimName: {{ default (printf "%s-data" (include "openstatuspage.fullname" $root)) $root.Values.persistence.existingClaim }}
+{{- else if .sqlite }}
+  # persistence.enabled=false: throwaway SQLite database, lost with the pod.
+  emptyDir:
+    sizeLimit: {{ $root.Values.persistence.size }}
 {{- else }}
   emptyDir:
     sizeLimit: 64Mi

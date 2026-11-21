@@ -2,7 +2,7 @@ OpenStatusPage {{ include "openstatuspage.imageTag" . }} is being deployed to na
 {{- $pg := include "openstatuspage.postgres" . }}
 
 Mode:     {{ if .Values.split.enabled }}split (public, admin, worker){{ else }}single instance (APP_ROLE=all){{ end }}
-Database: {{ if $pg }}PostgreSQL{{ else }}SQLite on the volume {{ default (printf "%s-data" (include "openstatuspage.fullname" .)) .Values.persistence.existingClaim }} (one replica){{ end }}
+Database: {{ if $pg }}PostgreSQL{{ else if not .Values.persistence.enabled }}SQLite on an emptyDir (one replica, NOT persistent){{ else }}SQLite on the volume {{ default (printf "%s-data" (include "openstatuspage.fullname" .)) .Values.persistence.existingClaim }} (one replica){{ end }}
 Public:   {{ .Values.baseUrl }}
 {{- if .Values.split.enabled }}
 Admin:    {{ .Values.split.admin.baseUrl }}  (restrict it, e.g. with an IP allowlist)
@@ -31,6 +31,11 @@ SUBSCRIPTION_TOKEN_KEY. The container gets only that key, but the kubelet of
 every node that runs a public pod may read the whole Secret, SECRET_KEY
 included. Put SUBSCRIPTION_TOKEN_KEY into a Secret of its own and set
 secrets.publicExistingSecret.
+{{- end }}
+{{- if and (not $pg) (not .Values.persistence.enabled) }}
+
+WARNING: persistence.enabled=false. The SQLite database lives in an emptyDir and
+is lost with every pod restart. Use it for tests only.
 {{- end }}
 {{- if include "openstatuspage.createPublicSecret" . }}
 
