@@ -135,7 +135,15 @@ checked and published by two jobs of
   files in `deploy/helm/openstatuspage/ci/` (SQLite, external PostgreSQL, split
   mode, split mode with NetworkPolicy and HPA), checks of the rendered output
   and of the invalid combinations the chart must reject, and `helm package`.
-  Run the script locally before changing the chart; it needs only `helm`.
+  It then validates every render with
+  [kubeconform](https://github.com/yannh/kubeconform) (`-strict`, against the
+  minimum Kubernetes version of `kubeVersion` in `Chart.yaml`). The job
+  downloads a pinned kubeconform release and checks it against two SHA-256
+  values hard-coded in the workflow (`KUBECONFORM_SHA256` for the tarball,
+  `KUBECONFORM_CHECKSUMS_SHA256` for the release's `CHECKSUMS` file); to
+  upgrade kubeconform, update the version and both hashes from the new
+  release. Run the script locally before changing the chart; it needs only
+  `helm`, and uses `kubeconform` too when it is on the `PATH`.
 - `helm-publish` runs for pushed `v*` tags only, after `image` (so the chart
   never points to an image that does not exist) and `helm` succeeded. It
   packages the chart with `version` and `appVersion` set to the tag without the
