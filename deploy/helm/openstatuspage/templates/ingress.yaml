@@ -1,0 +1,52 @@
+{{- /*
+One Ingress for the public URL (the single instance, or the public instance in
+split mode). Split mode adds a second Ingress for the admin domain: the admin
+instance serves the management UI with its assets, login, OIDC, the admin API
+and the ingest webhooks, and the public instance answers those with 404, so the
+two cannot share one host (docs/guide/en/02-installation.md#split-deployment).
+*/}}
+{{- if .Values.ingress.enabled }}
+{{- $ing := .Values.ingress }}
+{{- $items := list (dict "component" (ternary "public" "app" .Values.split.enabled) "className" $ing.className "annotations" $ing.annotations "hosts" (default (list (include "openstatuspage.urlHost" .Values.baseUrl)) $ing.hosts) "tls" $ing.tls) }}
+{{- if and .Values.split.enabled $ing.admin.enabled }}
+{{- $items = append $items (dict "component" "admin" "className" (default $ing.className $ing.admin.className) "annotations" $ing.admin.annotations "hosts" (default (list (include "openstatuspage.urlHost" .Values.split.admin.baseUrl)) $ing.admin.hosts) "tls" $ing.admin.tls) }}
+{{- end }}
+{{- range $i, $item := $items }}
+{{- $ctx := dict "root" $ "component" $item.component }}
+{{- if $i }}
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "openstatuspage.componentName" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "openstatuspage.componentLabels" $ctx | nindent 4 }}
+  {{- with $item.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $item.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with $item.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $item.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: {{ $ing.path }}
+            pathType: {{ $ing.pathType }}
+            backend:
+              service:
+                name: {{ include "openstatuspage.componentName" $ctx }}
+                port:
+                  name: http
+    {{- end }}
+{{- end }}
+{{- end }}
