@@ -415,9 +415,14 @@ Capabilities, kein Service-Account-Token, Probes auf `/api/health`, 128Mi
 Request und 256Mi Speicherlimit. NetworkPolicies, ein
 HorizontalPodAutoscaler und ein PodDisruptionBudget stehen als Optionen
 bereit. Mit NetworkPolicies öffnet das Chart SMTP, OIDC und Umami, sobald du
-sie konfigurierst, aber nicht die Monitoring-Systeme: Schalte
-`networkPolicy.egress.monitoring` ein und trag die Ports aller abgefragten
-APIs ein.
+sie konfigurierst, aber nicht die Monitoring-Systeme.
+
+> **Achtung:** Der Egress zu den Monitoring-Systemen ist standardmäßig aus,
+> weil das Chart nicht wissen kann, welche Systeme du abfragst. Mit
+> `networkPolicy.enabled=true` schlägt jede Abfrage fehl, bis du
+> `networkPolicy.egress.monitoring.enabled=true` setzt und die Ports (am
+> besten auch die Adressen) aller abgefragten APIs einträgst. Die
+> Installationshinweise warnen, solange er aus ist.
 
 Leg zuerst die Secrets an (committe sie nie) und installiere dann mit der
 Version des Releases:
@@ -480,7 +485,23 @@ Für die [geteilte Installation](#geteilte-installation) setzt du
 Admin- und die Worker-Instanz als eigene Deployments, gibt jeder nur die
 Secrets ihrer Rolle und legt pro Domain einen Ingress an. Die öffentlichen
 Pods verweisen nur auf diese beiden Secrets, daher können die Nodes, auf denen
-sie laufen, `SECRET_KEY` nicht lesen. Ohne PostgreSQL
+sie laufen, weder `SECRET_KEY` noch das Admin-Passwort, die SMTP- und
+OIDC-Geheimnisse oder die Datenbank-URL des Eigentümers lesen. Das Chart
+erzwingt das: Mit `secrets.existingSecret` bricht es ohne
+`secrets.publicExistingSecret` ab, und beide öffentlichen Secrets müssen sich
+von `secrets.existingSecret` und `database.existingSecret` unterscheiden (sie
+dürfen ein gemeinsames Secret sein). Die öffentlichen Secrets legst du so an:
+
+```bash
+kubectl -n openstatuspage create secret generic openstatuspage-public \
+  --from-literal=SUBSCRIPTION_TOKEN_KEY="$(openssl rand -base64 48)"
+kubectl -n openstatuspage create secret generic openstatuspage-db-public \
+  --from-literal=DATABASE_URL='postgres://osp_public:<passwort>@db.example.com:5432/openstatuspage'
+```
+
+Übergibst du die Secrets stattdessen als Werte, legt das Chart für die
+öffentlichen Pods ein eigenes Secret an, das nur `SUBSCRIPTION_TOKEN_KEY` und
+die URL der öffentlichen Rolle enthält. Ohne PostgreSQL
 verweigert es die geteilte Installation. Alle Werte beschreibt die
 [README des Charts](../../../deploy/helm/openstatuspage/README.md) (Englisch).
 
