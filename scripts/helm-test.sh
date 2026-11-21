@@ -134,7 +134,12 @@ for file in sqlite postgres split splitnp; do
   check "$file: no privilege escalation" bash -c "! grep -q 'allowPrivilegeEscalation: true' '$TMP/$file.yaml'"
   check "$file: secrets are never passed with envFrom" bash -c "! grep -q 'secretRef:' '$TMP/$file.yaml'"
 done
-check "runAsNonRoot and seccomp RuntimeDefault" has sqlite Deployment "$APP" 'runAsNonRoot: true'
+check "runAsNonRoot" has sqlite Deployment "$APP" 'runAsNonRoot: true'
+check "seccomp RuntimeDefault" has sqlite Deployment "$APP" 'type: RuntimeDefault'
+for file in sqlite postgres split splitnp; do
+  check "$file: seccomp RuntimeDefault in every pod and container" \
+    bash -c "[[ \$(grep -c 'type: RuntimeDefault' '$TMP/$file.yaml') == \$((2 * \$(grep -c '^kind: Deployment\$' '$TMP/$file.yaml'))) ]]"
+done
 check "capabilities dropped" has sqlite Deployment "$APP" '- ALL'
 check "/tmp is an emptyDir" has sqlite Deployment "$APP" 'mountPath: /tmp'
 check "probes use /api/health" has sqlite Deployment "$APP" 'path: /api/health'
