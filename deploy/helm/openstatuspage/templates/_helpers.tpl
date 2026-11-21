@@ -125,10 +125,12 @@ Secret and key of the owner database URL, and of the public role's URL.
 {{- end }}
 
 {{/*
-Host of a URL ("https://status.example.com" -> "status.example.com").
+Host name of a URL without port, lowercased
+("https://Status.example.com:8443" -> "status.example.com"). Ingress hosts
+must not carry a port.
 */}}
 {{- define "openstatuspage.urlHost" -}}
-{{- (urlParse .).host }}
+{{- regexReplaceAll ":[0-9]*$" (urlParse .).host "" | lower }}
 {{- end }}
 
 {{/*

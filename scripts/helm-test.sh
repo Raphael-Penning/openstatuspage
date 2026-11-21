@@ -138,6 +138,9 @@ check "postgres: replicas from values" has postgres Deployment "$APP" '^  replic
 check "postgres: RollingUpdate" has postgres Deployment "$APP" '^    type: RollingUpdate$'
 check "postgres: DATABASE_URL from the existing Secret" has postgres Deployment "$APP" 'name: openstatuspage-db'
 check "postgres: TLS on the Ingress" has postgres Ingress "$APP" 'secretName: openstatuspage-tls'
+render port -f "$CI/sqlite-values.yaml" --set baseUrl=https://Status.example.com:8443
+check "ingress: host of baseUrl without port, lowercased" has port Ingress "$APP" '^    - host: "status.example.com"$'
+check "ingress: BASE_URL keeps the port" env_is port "$APP" BASE_URL https://Status.example.com:8443
 
 echo "== split mode"
 expect_count split Deployment 3
@@ -203,6 +206,9 @@ expect_failure "split without the admin domain fails" 'split.admin.baseUrl' "${B
   --set secrets.existingSecret=s --set split.enabled=true --set database.existingSecret=db --set database.public.existingSecret=dbp
 expect_failure "split on one host fails" 'another host' "${BASE[@]}" --set secrets.existingSecret=s \
   --set split.enabled=true --set split.admin.baseUrl=https://status.example.com \
+  --set database.existingSecret=db --set database.public.existingSecret=dbp
+expect_failure "split on one host with another port fails" 'another host' "${BASE[@]}" --set secrets.existingSecret=s \
+  --set split.enabled=true --set split.admin.baseUrl=https://STATUS.example.com:8443 \
   --set database.existingSecret=db --set database.public.existingSecret=dbp
 expect_failure "public role URL equal to the owner URL fails" 'restricted public role' "${BASE[@]}" "${KEY[@]}" \
   --set split.enabled=true --set split.admin.baseUrl=https://status.admin.example.com \
