@@ -75,8 +75,10 @@ passt, als Redakteur anmelden. Die Gruppen stehen im Claim
 Standardmäßig dürfen sich nur Benutzer anmelden, die es in OpenStatusPage
 schon gibt (bei der ersten Anmeldung über eine bestätigte E-Mail-Adresse
 zugeordnet). `OIDC_AUTO_CREATE_USERS=true` legt Benutzer bei der ersten
-Anmeldung an; aktiviere das nur zusammen mit den Gruppen-Variablen, sonst wird
-jedes Konto des Identity Providers zum Redakteur.
+Anmeldung an, aber nur, wenn der Identity Provider die E-Mail-Adresse als
+bestätigt markiert (`email_verified`); aktiviere das nur zusammen mit den
+Gruppen-Variablen, sonst wird jedes Konto des Identity Providers zum
+Redakteur.
 
 Funktioniert SSO und ist ein SSO-Benutzer Administrator, kannst du die
 Anmeldung per Passwort mit `LOCAL_LOGIN_ENABLED=false` abschalten.

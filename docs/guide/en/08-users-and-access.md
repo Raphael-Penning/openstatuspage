@@ -75,9 +75,10 @@ that matches a user may log in as editor. The groups are read from the claim
 
 By default only users that already exist in OpenStatusPage may log in (matched
 by a verified email address on the first login). `OIDC_AUTO_CREATE_USERS=true`
-creates users on their first login; enable it only together with the group
-variables, otherwise every account of the identity provider becomes an
-editor.
+creates users on their first login, but only when the identity provider marks
+their email address as verified (`email_verified`); enable it only together
+with the group variables, otherwise every account of the identity provider
+becomes an editor.
 
 After SSO works and an SSO user is administrator, you can disable password
 logins with `LOCAL_LOGIN_ENABLED=false`.

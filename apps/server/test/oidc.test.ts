@@ -64,7 +64,7 @@ describe('resolveOidcUser', () => {
   });
 
   it('creates users on first login and links by subject afterwards', async () => {
-    const claims = { sub: 'abc', email: 'Jane@Example.com', name: 'Jane', groups: ['statuspage-editors'] };
+    const claims = { sub: 'abc', email: 'Jane@Example.com', email_verified: true, name: 'Jane', groups: ['statuspage-editors'] };
     const first = await resolveOidcUser(t.db, config, claims);
     expect(first).toMatchObject({ ok: true, created: true, user: { email: 'jane@example.com', role: 'editor' } });
 
@@ -100,6 +100,21 @@ describe('resolveOidcUser', () => {
     expect(other).toEqual({ ok: false, error: 'account_conflict' });
   });
 
+  it('creates users for a verified e-mail only', async () => {
+    const claims = { sub: 'squatter', email: 'newhire@example.com', groups: ['statuspage-editors'] };
+    for (const email_verified of [undefined, false, 'false']) {
+      expect(await resolveOidcUser(t.db, config, { ...claims, email_verified })).toEqual({
+        ok: false,
+        error: 'email_not_verified',
+      });
+    }
+    expect(await t.db.selectFrom('users').select('id').execute()).toEqual([]);
+
+    // The owner of the address can still sign up with a verified claim.
+    const owner = await resolveOidcUser(t.db, config, { ...claims, sub: 'owner', email_verified: 'true' });
+    expect(owner).toMatchObject({ ok: true, created: true, user: { email: 'newhire@example.com', oidc_subject: 'owner' } });
+  });
+
   it('rejects users without a matching group or account', async () => {
     expect(await resolveOidcUser(t.db, config, { sub: 'x', email: 'x@example.com', groups: [] })).toEqual({
       ok: false,
@@ -115,7 +130,7 @@ describe('resolveOidcUser', () => {
   });
 
   it('ends the sessions and API tokens of a linked user removed from the allowed groups', async () => {
-    const claims = { sub: 'abc', email: 'jane@example.com', groups: ['statuspage-editors'] };
+    const claims = { sub: 'abc', email: 'jane@example.com', email_verified: true, groups: ['statuspage-editors'] };
     const first = await resolveOidcUser(t.db, config, claims);
     if (!first.ok) throw new Error('login failed');
     await createSession(t.app.ctx, first.user.id);
