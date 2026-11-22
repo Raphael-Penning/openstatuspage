@@ -37,7 +37,9 @@ in the public API (not even their number).
   memory) is noticed on the next start: automatic polls of that source wait one
   poll interval (at least a minute), doubled for every further unfinished poll in
   a row, up to 6 hours, and the source shows the reason as its error. "Poll now"
-  and saving the source retry right away.
+  and saving the source retry right away. A normal shutdown (SIGTERM, e.g. a
+  redeploy) cancels running polls and waits up to 10 seconds for them to end, so
+  it does not count as an unfinished poll and records no error.
 
 **Push** – the monitoring system calls OpenStatusPage on every state change:
 
