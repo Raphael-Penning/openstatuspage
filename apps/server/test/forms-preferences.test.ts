@@ -69,9 +69,16 @@ describe('POST /preferences/theme', () => {
     }
   });
 
-  it('accepts the own origin and the origin of PUBLIC_BASE_URL', async () => {
-    expect((await postTheme('theme=dark&return=/', { origin: 'http://localhost:80' })).statusCode).toBe(303);
+  it('accepts only the origin of PUBLIC_BASE_URL', async () => {
     expect((await postTheme('theme=dark&return=/', { origin: 'https://status.example.com' })).statusCode).toBe(303);
+    // Never an origin taken from the request (Host, X-Forwarded-Host/Proto): a client chooses those.
+    for (const headers of <Record<string, string>[]>[
+      { origin: 'http://localhost:80' },
+      { host: 'evil.example', origin: 'http://evil.example' },
+      { 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https', origin: 'https://evil.example' },
+    ]) {
+      expect((await postTheme('theme=dark&return=/', headers)).statusCode, JSON.stringify(headers)).toBe(403);
+    }
     // No browser metadata at all (curl, scripts): nothing a page could forge.
     expect((await postTheme('theme=dark&return=/', {})).statusCode).toBe(303);
   });

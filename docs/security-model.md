@@ -234,8 +234,9 @@ requests per minute; the forms and the API count separately).
   none), but another site could still make a visitor's browser post one, for
   example to subscribe an address. Browsers say where a request comes from:
   a form handler accepts it only with `Sec-Fetch-Site: same-origin`, or, from
-  browsers without that header, with an `Origin` of the request's own origin or
-  of `PUBLIC_BASE_URL`; anything else gets `403`. A request without either header
+  browsers without that header, with an `Origin` of `PUBLIC_BASE_URL` (never an
+  origin built from the request's `Host` or forwarded headers); anything else
+  gets `403`. A request without either header
   does not come from a browser page and cannot be forged through one. The same
   check guards the theme form (`POST /preferences/theme`); the language links
   and form (`/preferences/language`) set no cookie for requests from other sites.
