@@ -233,7 +233,9 @@ What to know:
   log, which the app cannot redact. Limit who can read those logs, keep them
   short, or configure the proxy to log `/p/` without what follows it.
 - Every client may open 60 private pages per minute; a wrong link is just "not
-  found". Beyond that the visitor sees a short "Too many requests" page. Behind a
+  found". The requests the page itself makes while the visitor clicks around
+  count towards the same 60. Beyond that the visitor sees a short "Too many
+  requests" page. IPv6 visitors count per `/64` network. Behind a
   reverse proxy set [`TRUST_PROXY`](03-reverse-proxy.md#trust_proxy), otherwise
   every visitor counts as the proxy and all of them share these 60.
 - Private pages cannot be embedded in other sites (no `iframe`), unlike the

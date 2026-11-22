@@ -15,9 +15,13 @@ import type { PageParams } from './jsonapi.js';
 
 type Query = Record<string, unknown>;
 
-/** Reads `name[key]` parameters (flat keys as Fastify parses them, or a nested object). */
+/**
+ * Reads `name[key]` parameters (flat keys as Fastify parses them, or a nested object)
+ * into an object without prototype, so `filter[constructor]` or `filter[__proto__]`
+ * are plain keys like any other.
+ */
 function family(query: Query, name: string): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  const out: Record<string, unknown> = Object.create(null);
   const nested = query[name];
   if (nested && typeof nested === 'object' && !Array.isArray(nested)) Object.assign(out, nested);
   const prefix = `${name}[`;
@@ -68,7 +72,8 @@ export function parsePage(query: Query, options: PageOptions = {}): PageQuery {
 export function parseFilter<S extends z.ZodRawShape>(query: Query, shape: S): z.output<z.ZodObject<S>> {
   const values = family(query, 'filter');
   for (const name of Object.keys(values)) {
-    if (!(name in shape)) throw invalidParameter(`filter[${name}]`, `Unknown filter "${name}"`);
+    // Own names only: inherited ones (constructor, toString) are unknown filters too.
+    if (!Object.hasOwn(shape, name)) throw invalidParameter(`filter[${name}]`, `Unknown filter "${name}"`);
   }
   const result = z.object(shape).safeParse(values);
   if (!result.success) {

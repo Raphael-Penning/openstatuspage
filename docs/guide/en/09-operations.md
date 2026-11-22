@@ -235,11 +235,12 @@ MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node --max-opt=2 apps/server/dist/index.
 
 Under overload (one page renders at a time, at most four wait) a public page
 is answered from the last rendered version, even an expired one up to
-10 minutes old (header `X-Cache: STALE`). Without one the instance answers
-`503` with `Retry-After: 5` and a short "temporarily busy" page; personal
-subscription links always get the 503. Frequent `503`s or
-"Too many pages waiting" warnings in the log mean you should run another
-public instance.
+10 minutes old (header `X-Cache: STALE`). Without one the instance sends the
+page as it is before rendering, and the browser renders it with JavaScript.
+Personal links (subscriptions, private pages) are never answered like that:
+they get `503` with `Retry-After: 5` and a short "temporarily busy" page.
+Frequent "Too many pages waiting" warnings in the log mean you should run
+another public instance.
 
 Raise `--max-old-space-size` (e.g. to `256`) on the instance that runs a large
 history import. Measurements per role: [architecture.md](../../architecture.md#memory).

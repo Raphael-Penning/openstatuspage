@@ -234,8 +234,9 @@ requests per minute; the forms and the API count separately).
   none), but another site could still make a visitor's browser post one, for
   example to subscribe an address. Browsers say where a request comes from:
   a form handler accepts it only with `Sec-Fetch-Site: same-origin`, or, from
-  browsers without that header, with an `Origin` of the request's own origin or
-  of `PUBLIC_BASE_URL`; anything else gets `403`. A request without either header
+  browsers without that header, with an `Origin` of `PUBLIC_BASE_URL` (never an
+  origin built from the request's `Host` or forwarded headers); anything else
+  gets `403`. A request without either header
   does not come from a browser page and cannot be forged through one. The same
   check guards the theme form (`POST /preferences/theme`); the language links
   and form (`/preferences/language`) set no cookie for requests from other sites.
@@ -274,8 +275,9 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
 - `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns
   off camera, microphone, geolocation, payment and USB.
 - Framing: public pages may be embedded by other sites; the management UI, the
-  API and private pages (`/p/<token>`) add `frame-ancestors 'none'` and
-  `X-Frame-Options: DENY`.
+  API and the pages with a personal link (private pages at `/p/<token>`,
+  subscription confirm and manage pages at `/subscription/...`) add
+  `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
 
 HSTS is left to the reverse proxy that terminates TLS.
 

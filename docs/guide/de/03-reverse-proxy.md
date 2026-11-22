@@ -212,7 +212,8 @@ dein Kundenportal:
         style="width: 100%; height: 600px; border: 0"></iframe>
 ```
 
-Verwaltung (`/admin`) und API (`/api/...`) senden
+Verwaltung (`/admin`), API (`/api/...`), private Seiten (`/p/...`) und die
+Seiten zum Bestätigen und Verwalten eines Abos (`/subscription/...`) senden
 `X-Frame-Options: DENY` und `Content-Security-Policy: frame-ancestors 'none'`
 und lassen sich nicht einbetten. Soll auch die öffentliche Seite nicht
 eingebettet werden, lass deinen Proxy für alle übrigen Pfade einen zweiten

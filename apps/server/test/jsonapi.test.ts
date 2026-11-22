@@ -88,6 +88,17 @@ describe('query parameters', () => {
       expect((err as HttpError).source).toEqual({ parameter: 'filter[nope]' });
     }
     expect(() => parseFilter({ 'filter[type]': 'c' }, shape)).toThrow(HttpError);
+    // Names an object inherits are unknown filters as well, flat or nested.
+    for (const name of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
+      for (const query of [{ [`filter[${name}]`]: 'x' }, { filter: JSON.parse(`{"${name}":"x"}`) }]) {
+        try {
+          parseFilter(query, shape);
+          expect.unreachable(name);
+        } catch (err) {
+          expect((err as HttpError).source, name).toEqual({ parameter: `filter[${name}]` });
+        }
+      }
+    }
     expect(parseSort({ sort: '-date,title' }, ['date', 'title'])).toEqual([
       { field: 'date', desc: true },
       { field: 'title', desc: false },

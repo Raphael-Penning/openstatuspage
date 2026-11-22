@@ -154,6 +154,29 @@ describe('http hardening', () => {
     expect(api.headers['cross-origin-opener-policy']).toBeUndefined();
   });
 
+  it('sends the security headers with the answer to a malformed URL', async () => {
+    for (const url of ['/api/public/services/%E0', '/api/public/incidents/%E0%A4%A', '/api/public/private-page/services/%E0']) {
+      const res = await app.inject({ url });
+      expect(res.statusCode, url).toBe(400);
+      expect(res.headers['content-type'], url).toBe('application/vnd.api+json');
+      expect(res.json().errors[0], url).toMatchObject({ status: '400', code: 'bad_url' });
+      expect(res.body, url).not.toContain('%E0');
+      expect(res.headers['x-content-type-options'], url).toBe('nosniff');
+      expect(res.headers['x-frame-options'], url).toBe('DENY');
+      expect(res.headers['content-security-policy'], url).toBe("frame-ancestors 'none'");
+      expect(res.headers['referrer-policy'], url).toBe('strict-origin-when-cross-origin');
+    }
+  });
+
+  it('denies framing of pages with a personal link token', async () => {
+    for (const url of ['/subscription/manage?id=x&token=y', '/subscription/confirm?id=x&token=y', '/Subscription/Manage', '/%73ubscription/manage']) {
+      const res = await app.inject({ url });
+      expect(res.headers['x-frame-options'], url).toBe('DENY');
+      expect(res.headers['content-security-policy'], url).toContain("frame-ancestors 'none'");
+      expect(res.headers['referrer-policy'], url).toBe('no-referrer');
+    }
+  });
+
   it('denies framing of case-variant and percent-encoded admin paths', async () => {
     // The SPA fallback serves these, and the client router would match /admin.
     for (const url of ['/ADMIN/x', '/Admin', '/%61dmin/x', '/%41DMIN/x?a=1', '//admin/x']) {
@@ -163,7 +186,7 @@ describe('http hardening', () => {
       expect(res.headers['content-security-policy'], url).toContain("frame-ancestors 'none'");
     }
     // Public client routes stay embeddable.
-    for (const url of ['/services/admin', '/%73ervices/foo']) {
+    for (const url of ['/services/admin', '/%73ervices/foo', '/subscribe']) {
       expect((await app.inject({ url })).headers['x-frame-options'], url).toBeUndefined();
     }
   });
@@ -187,6 +210,14 @@ describe('request logging', () => {
     expect(redactUrlTokens('/x?a=1&token=abc&b=2&TOKEN=def')).toBe('/x?a=1&token=[REDACTED]&b=2&TOKEN=[REDACTED]');
     expect(redactUrlTokens('/x?mytoken=keep&token_type=keep')).toBe('/x?mytoken=keep&token_type=keep');
     expect(redactUrlTokens('/token=abc')).toBe('/token=abc');
+  });
+
+  it('redacts token parameters whose name is percent-encoded', () => {
+    expect(redactUrlTokens('/x?tok%65n=abc&a=1')).toBe('/x?tok%65n=[REDACTED]&a=1');
+    expect(redactUrlTokens('/x?%74%6F%6B%65%6E=abc')).toBe('/x?%74%6F%6B%65%6E=[REDACTED]');
+    expect(redactUrlTokens('/x?%54OKEN=abc')).toBe('/x?%54OKEN=[REDACTED]');
+    expect(redactUrlTokens('/x?return=%2Fy%3Ftok%2565n%3Dabc')).toBe('/x?return=%2Fy%3Ftok%2565n%3D[REDACTED]');
+    expect(redactUrlTokens('/x?tok%65ns=keep')).toBe('/x?tok%65ns=keep');
   });
 
   it('redacts tokens nested in encoded parameter values (return paths)', () => {

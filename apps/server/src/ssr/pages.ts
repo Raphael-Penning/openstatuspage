@@ -11,17 +11,21 @@
  *
  * Memory (public instances stay below 100 MB, docs/architecture.md#memory): one
  * page renders at a time, a few wait; beyond 4 waiting pages a request gets the
- * last rendered version of the page at once, even an expired one, or a 503 busy
- * page with Retry-After when there is none (graceful degradation under a flood:
- * under 64 concurrent connections that kept the public instance below 100 MB,
- * with 2 renders and 32 waiting it reached 110 MB). A rendered page is kept for
- * a few seconds per URL (only the query parameters the pages read) and
- * language/theme input as UTF-8 bytes (a bounded map: entries and bytes;
- * concurrent requests for the same key share one render) and is sent with an
- * ETag and a short shared Cache-Control. After that it stays in the same
- * bounded map for a stale window (10 minutes) to answer when no render slot is
- * free or a render fails. A render error without such a copy is logged and the
- * caller sends the plain client-rendered page instead.
+ * last rendered version of the page at once, even an expired one, or, when
+ * there is none, the plain client-rendered entry page, which costs no render
+ * (a personal page gets a 503 busy page with Retry-After instead). Graceful
+ * degradation under a flood: under 64 concurrent connections that kept the
+ * public instance below 100 MB, with 2 renders and 32 waiting it reached 110 MB.
+ * A rendered page is kept for a few seconds per URL (only the query parameters
+ * the pages read) and language/theme input as UTF-8 bytes (a bounded map:
+ * entries and bytes; concurrent requests for the same key share one render)
+ * and is sent with an ETag and a short shared Cache-Control. After that it
+ * stays in the same bounded map for a stale window (10 minutes) to answer when
+ * no render slot is free or a render fails. Only pages rendered with status
+ * 200 are kept, and the least recently used one is dropped first, so requests
+ * for countless unknown URLs cannot push the pages visitors use out of the
+ * map. A render error without such a copy is logged and the caller sends the
+ * plain client-rendered page instead.
  *
  * The analytics opt-out cookie is part of the cache key (entry-server.tsx), so a
  * page rendered with the analytics script never answers a visitor who turned it
@@ -322,9 +326,10 @@ export class SsrPages {
 
   /**
    * Sends the rendered page for a public client route: fresh, or the last
-   * rendered version when no fresh one can be rendered, or 503 when the queue is
-   * full and there is none. Resolves false when the page could not be rendered
-   * otherwise (the caller sends the plain page).
+   * rendered version when no fresh one can be rendered, or (personal pages
+   * only) 503 when the queue is full and there is none. Resolves false when the
+   * page could not be rendered otherwise (the caller sends the plain
+   * client-rendered page).
    */
   async send(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
     if (this.unavailable || req.url.length > MAX_URL) return false;
@@ -334,6 +339,9 @@ export class SsrPages {
     } catch (err) {
       if (err instanceof RenderQueueFull) {
         this.queueFull(req.log, false);
+        // The client-rendered entry page costs no render; a personal page gets the busy page,
+        // so nothing of it is ever answered without its own render.
+        if (!isPersonalPath(req.url)) return false;
         await sendBusy(req, reply);
         return true;
       }
@@ -396,7 +404,7 @@ export class SsrPages {
     if (now - this.queueWarnedAt < QUEUE_WARNING_MS) return;
     log.warn(
       { requests: this.queueFullCount, stale: this.queueFullStale },
-      'Too many pages waiting for server-side rendering; sent stale pages or 503',
+      'Too many pages waiting for server-side rendering; sent stale, client-rendered or busy pages',
     );
     this.queueWarnedAt = now;
     this.queueFullCount = 0;
@@ -443,7 +451,10 @@ export class SsrPages {
     const now = Date.now();
 
     let cached = this.cache.get(key);
-    if (cached && cached.expires > now) return { page: cached };
+    if (cached && cached.expires > now) {
+      this.touch(key, cached);
+      return { page: cached };
+    }
     if (cached && cached.staleUntil <= now) {
       this.evict(key);
       cached = undefined;
@@ -465,21 +476,30 @@ export class SsrPages {
     } catch (err) {
       // Queue full or render error: the last rendered version, if there is one.
       if (!cached) throw err;
+      if (this.cache.get(key) === cached) this.touch(key, cached);
       return { page: cached, stale: { error: err } };
     }
   }
 
   private remember(key: string, page: RenderedPage): void {
-    if (this.ttlMs <= 0 || pageBytes(page) > this.maxBytes) return;
+    // Only real pages: a 404 for each of countless unknown URLs would push the pages
+    // visitors ask for (and their stale copies, the fallback under load) out of the cache.
+    if (page.status !== 200 || this.ttlMs <= 0 || pageBytes(page) > this.maxBytes) return;
     this.evict(key);
     this.cache.set(key, page);
     this.cachedBytes += pageBytes(page);
-    // Oldest first: drop beyond the limits.
+    // Least recently used first: drop beyond the limits.
     while (this.cache.size > this.maxEntries || this.cachedBytes > this.maxBytes) this.evict(this.cache.keys().next().value!);
     // Pages past the stale window do not wait for the next request of their key.
     setTimeout(() => {
       if (this.cache.get(key) === page) this.evict(key);
     }, this.ttlMs + this.staleMs).unref();
+  }
+
+  /** Marks a page as just used: it is dropped last (the map keeps insertion order). */
+  private touch(key: string, page: RenderedPage): void {
+    this.cache.delete(key);
+    this.cache.set(key, page);
   }
 
   private evict(key: string): void {

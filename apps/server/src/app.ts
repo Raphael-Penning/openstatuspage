@@ -1,18 +1,19 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath, PRIVATE_PAGE_REQUESTS_PER_MINUTE } from '@openstatuspage/shared';
-import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
+import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath } from '@openstatuspage/shared';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
+import { localPath } from './forms/http.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
+import { mapError } from './lib/jsonapi-errors.js';
 import { FRAMELESS_PAGE_CSP, PERMISSIONS_POLICY, PUBLIC_PAGE_CSP } from './lib/security-headers.js';
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
-import { TokenBucketLimiter } from './adapters/rate-limit.js';
-import { RATE_LIMIT_KEYS, registerRoutes } from './routes/index.js';
+import { registerRoutes } from './routes/index.js';
 import { sendTooManyRequests } from './ssr/busy.js';
 import type { RenderModule, SsrPages } from './ssr/pages.js';
 import { staticCacheControl, webAssetPolicy } from './web-assets.js';
@@ -34,15 +35,23 @@ export interface BuildAppOptions {
 
 /** `?`, `&` and `=` as they appear in a URL-encoded parameter value, also encoded twice or more (`%253D`). */
 const ENC = (hex: string) => `%(?:25)*${hex}`;
+/** The parameter name `token` in any spelling the query parser decodes to it (`tok%65n`, `%74oken`, `TOKEN`). */
+const TOKEN_NAME = [...'token']
+  .map((c) => {
+    const hex = (ch: string) => ch.charCodeAt(0).toString(16);
+    return `(?:${c}|${ENC(`(?:${hex(c)}|${hex(c.toUpperCase())})`)})`;
+  })
+  .join('');
 const TOKEN_PARAM = new RegExp(
   // A parameter of its own, or one inside an encoded value such as return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3Dabc.
-  `((?:[?&]|${ENC('3F')}|${ENC('26')})token(?:=|${ENC('3D')}))(?:(?!${ENC('26')})[^&#])*`,
+  `((?:[?&]|${ENC('3F')}|${ENC('26')})${TOKEN_NAME}(?:=|${ENC('3D')}))(?:(?!${ENC('26')})[^&#])*`,
   'gi',
 );
 
 /**
- * Replaces the value of every `token` query parameter, also one nested in an
- * encoded parameter value: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1".
+ * Replaces the value of every `token` query parameter, also one with a
+ * percent-encoded name or nested in an encoded parameter value:
+ * "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1".
  */
 export function redactUrlTokens(url: string): string {
   const query = url.indexOf('?');
@@ -51,20 +60,19 @@ export function redactUrlTokens(url: string): string {
 }
 
 /**
- * Replaces the token of a private page path in any spelling (`/p/<token>/...`,
- * `/P//<token>`, `/%70/<token>`, `/x/../p/<token>`): "/p/abc/services/web" →
- * "/p/[REDACTED]/services/web". A path with dot segments is logged resolved.
+ * Replaces the token of a private page path in any spelling the router or the
+ * renderer could read as one (`/p/<token>/...`, `/P//<token>`, `/%70/<token>`,
+ * `/p%2F<token>`, `/p\<token>`, `/x/../p/<token>`). Such a path is logged as the
+ * client router sees it: "/P/abc/services/Web" → "/p/[REDACTED]/services/web".
  */
 export function redactPrivatePagePath(url: string): string {
   const end = url.search(/[?#]/);
   const path = end === -1 ? url : url.slice(0, end);
-  if (hasDotSegments(path)) return redactPrivatePagePath(normalizePath(path) + (end === -1 ? '' : url.slice(end)));
-  const parts = path.split('/');
-  const first = parts.findIndex((part) => part !== '');
-  if (first === -1 || safeDecode(parts[first]!).toLowerCase() !== 'p') return url;
-  const token = parts.findIndex((part, i) => i > first && part !== '');
-  if (token === -1) return url;
-  parts[token] = '[REDACTED]';
+  // Escapes decoded one run at a time, so a malformed one elsewhere keeps no token in clear.
+  const normalized = normalizePath(path.replace(/(?:%[0-9a-f]{2})+/gi, safeDecode));
+  const parts = normalized.split('/');
+  if (parts[1] !== 'p' || !parts[2]) return url;
+  parts[2] = '[REDACTED]';
   return parts.join('/') + (end === -1 ? '' : url.slice(end));
 }
 
@@ -104,6 +112,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     redact: ['req.headers.authorization', 'req.headers.cookie'],
     serializers: { req: serializeRequest },
   };
+  const adminInstance = config.APP_ROLE === 'admin';
   const app = Fastify({
     logger: logStream
       ? { ...loggerBase, stream: logStream }
@@ -118,6 +127,15 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     trustProxy: trustProxyOption(config.TRUST_PROXY),
     // 1 MiB; routes that need more (bulk ingest) raise it per route.
     bodyLimit: 1024 * 1024,
+    // Errors Fastify answers before routing (a malformed URL): a JSON:API error document with
+    // the same security headers as every other answer; they skip the onSend hooks.
+    frameworkErrors: (err, req, reply) => {
+      securityHeaders(req, reply, { adminInstance, frameless: true });
+      const { status, errors } = mapError(err);
+      if (status >= 500) req.log.error({ err }, 'request failed');
+      // A Buffer: Fastify would add "; charset=utf-8" to a JSON string, which JSON:API forbids.
+      (reply as FastifyReply).status(status).type(JSONAPI_MEDIA_TYPE).send(Buffer.from(JSON.stringify(errorDocument(errors))));
+    },
   });
 
   if (onRoute) app.addHook('onRoute', onRoute);
@@ -138,34 +156,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     await app.register(cookie, { secret: config.SECRET_KEY });
   }
 
-  const adminInstance = config.APP_ROLE === 'admin';
-  // Basic hardening headers. The public page may be embedded (iframe) by
-  // customers; the management UI and the API may not.
-  app.addHook('onSend', async (req, reply) => {
-    reply.header('X-Content-Type-Options', 'nosniff');
-    // Request path as the client router sees it, so that /ADMIN/... or /%61dmin/...
-    // (served by the SPA fallback) cannot skip the checks below.
-    const path = normalizePath(req.url);
-    // Subscription pages have a token in their URL: it never leaves as a referrer.
-    reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
-    const admin = path === '/admin' || path.startsWith('/admin/');
-    // Private pages are not embeddable either: whoever holds a link could otherwise show it on any site.
-    const framed = !(admin || isApiPath(path) || isPrivatePagePath(path));
-    if (!framed) reply.header('X-Frame-Options', 'DENY');
-    // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
-    const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
-    if (html) {
-      reply.header('Content-Security-Policy', framed ? PUBLIC_PAGE_CSP : FRAMELESS_PAGE_CSP);
-      reply.header('Cross-Origin-Opener-Policy', 'same-origin');
-      reply.header('Permissions-Policy', PERMISSIONS_POLICY);
-    } else if (!framed) {
-      reply.header('Content-Security-Policy', "frame-ancestors 'none'");
-    }
-    // The management UI is never indexed by search engines, nor is any page of an
-    // admin instance (its public pages are a preview; the status page is elsewhere).
-    // Private pages (/p/<token>) are never indexed nor followed, wherever they are served.
-    if (admin || (adminInstance && html) || isPrivatePagePath(path)) reply.header('X-Robots-Tag', 'noindex, nofollow');
-  });
+  app.addHook('onSend', async (req, reply) => securityHeaders(req, reply, { adminInstance }));
 
   registerJsonApi(app);
 
@@ -192,12 +183,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         if (cacheControl) reply.header('Cache-Control', cacheControl);
       },
     });
-    // Page views of private pages per client, like the rate limit of their API (routes/public.ts).
-    const privatePageLimiter = new TokenBucketLimiter({
-      capacity: PRIVATE_PAGE_REQUESTS_PER_MINUTE,
-      refillPerSecond: PRIVATE_PAGE_REQUESTS_PER_MINUTE / 60,
-      maxKeys: RATE_LIMIT_KEYS,
-    });
+    // Page views of private pages per client, from the same budget as their API (routes/public.ts).
+    const { takePrivatePageRequest } = await import('./lib/private-page-limit.js');
     // Public pages are rendered on the server (ssr/pages.ts) where the web build has
     // the render bundle and the role serves the public web client.
     let ssr: SsrPages | null = null;
@@ -232,20 +219,24 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // after a deploy. A public instance answers /admin/... with 404.
     app.setNotFoundHandler(async (req, reply) => {
       const path = req.url.split('?')[0] ?? '';
-      // Browsers resolve "." and ".." before sending a request; a path that still has them
-      // (/./p/<token>, /a/../p/<token>) is hand-made and gets nothing but a plain 404.
-      if (hasDotSegments(path)) return routeNotFound(reply.header('Cache-Control', 'no-store'));
-      const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
+      // Browsers resolve "." and ".." and turn "\" into "/" before sending a request; a path
+      // that still has them (/./p/<token>, /a/../p/<token>, /p\<token>, /p%5c<token>) is
+      // hand-made and gets nothing but a plain 404, before any redirect, rate limit or render.
+      if (isHandMadePath(path)) return routeNotFound(reply.header('Cache-Control', 'no-store'));
+      // Other spellings of /api (/API/..., /%61pi/...) are no page either: a plain 404, never a redirect.
+      const isClientRoute = !isApiPath(normalizePath(path)) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
         // One URL per page for search engines: /SERVICES/ → 301 /services. Not personal
         // pages (their token would go into a cacheable redirect; they are never indexed).
         const preferred = canonicalPath(path);
         if (preferred !== path && !isAdminPath(path) && !isPersonalPath(path)) {
+          // Only ever to a path on this site (one leading slash, no backslash), like the form redirects.
+          if (localPath(preferred) !== preferred) return routeNotFound(reply.header('Cache-Control', 'no-store'));
           return reply.header('Cache-Control', CANONICAL_REDIRECT_CACHE).redirect(preferred + req.url.slice(path.length), 301);
         }
         // Private pages: as many page views per client as their API allows (against guessing tokens).
         if (isPrivatePagePath(path)) {
-          const retryAfter = privatePageLimiter.take(req.ip);
+          const retryAfter = takePrivatePageRequest(ctx, req.ip);
           if (retryAfter > 0) {
             await sendTooManyRequests(req, reply, retryAfter);
             return reply;
@@ -263,6 +254,38 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   return app;
 }
 
+/**
+ * Basic hardening headers of every answer. The public page may be embedded
+ * (iframe) by customers; the management UI, the API and pages with a personal
+ * link may not, nor any answer with `frameless` (error documents).
+ */
+function securityHeaders(req: FastifyRequest, reply: FastifyReply, options: { adminInstance: boolean; frameless?: boolean }): void {
+  reply.header('X-Content-Type-Options', 'nosniff');
+  // Request path as the client router sees it, so that /ADMIN/... or /%61dmin/...
+  // (served by the SPA fallback) cannot skip the checks below.
+  const path = normalizePath(req.url);
+  // Subscription pages have a token in their URL: it never leaves as a referrer.
+  reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
+  const admin = path === '/admin' || path.startsWith('/admin/');
+  // Pages with a personal link (private pages, subscription confirm and manage) are not embeddable
+  // either: whoever holds a link could otherwise show it on any site.
+  const framed = !(options.frameless || admin || isApiPath(path) || isPersonalPath(path));
+  if (!framed) reply.header('X-Frame-Options', 'DENY');
+  // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
+  const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
+  if (html) {
+    reply.header('Content-Security-Policy', framed ? PUBLIC_PAGE_CSP : FRAMELESS_PAGE_CSP);
+    reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+    reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+  } else if (!framed) {
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'");
+  }
+  // The management UI is never indexed by search engines, nor is any page of an
+  // admin instance (its public pages are a preview; the status page is elsewhere).
+  // Private pages (/p/<token>) are never indexed nor followed, wherever they are served.
+  if (admin || (options.adminInstance && html) || isPrivatePagePath(path)) reply.header('X-Robots-Tag', 'noindex, nofollow');
+}
+
 /** Redirects to the preferred spelling of a page path are kept for a day. */
 const CANONICAL_REDIRECT_CACHE = 'public, max-age=86400';
 
@@ -277,6 +300,18 @@ function routeNotFound(reply: FastifyReply) {
 function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((addr: string, hop: number) => boolean) {
   if (typeof value === 'number') return (_addr, hop) => hop < value;
   return value;
+}
+
+/**
+ * A request target no browser sends: not starting with "/", or with dot segments
+ * or a backslash (also as %5c), which the WHATWG URL parser turns into "/". The
+ * renderer would read such a path differently from the raw-path checks before
+ * it, so it is never answered with a page or a redirect.
+ */
+function isHandMadePath(path: string): boolean {
+  // Not a path at all: the absolute form (GET http://host/x), which browsers never send to a server.
+  if (!path.startsWith('/')) return true;
+  return hasDotSegments(path) || /\\|%5c/i.test(path);
 }
 
 function isAdminPath(path: string): boolean {
