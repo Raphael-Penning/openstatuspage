@@ -8,7 +8,8 @@ the [installation guide](guide/en/02-installation.md).
 
 The `image` job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 builds [`docker/Dockerfile`](../docker/Dockerfile) with Docker Buildx and
-publishes it to the GitHub Container Registry (GHCR):
+publishes it to the GitHub Container Registry (GHCR). Pull requests run the
+separate `image-build` job instead, which only builds the image:
 
 ```
 ghcr.io/raphael-penning/openstatuspage
@@ -19,11 +20,13 @@ lower case), so a fork publishes to its own namespace without changes.
 
 | Event | Platforms | Pushed |
 | --- | --- | --- |
-| Pull request | `linux/amd64` | nothing, the build only has to succeed |
-| Push to `main` | `linux/amd64`, `linux/arm64` | yes |
-| Tag `vX.Y.Z` (or a pre-release such as `v1.2.0-rc.1`) | `linux/amd64`, `linux/arm64` | yes |
+| Pull request (`image-build`) | `linux/amd64` | nothing, the build only has to succeed |
+| Push to `main` (`image`) | `linux/amd64`, `linux/arm64` | yes |
+| Tag `vX.Y.Z` (or a pre-release such as `v1.2.0-rc.1`) (`image`) | `linux/amd64`, `linux/arm64` | yes |
 
-- The job depends on the `check` (typecheck, tests, build) and `postgres`
+- Only the `image` job, which never runs for pull requests, gets
+  `packages: write`. `image-build` has read access only.
+- Both jobs depend on the `check` (typecheck, tests, build) and `postgres`
   (migrations and seed against PostgreSQL) jobs. Nothing is pushed unless both
   passed.
 - Pushed images carry OCI labels and annotations (title, description,
@@ -32,9 +35,14 @@ lower case), so a fork publishes to its own namespace without changes.
   as attestations.
 - Layers are cached in the GitHub Actions cache. Pull requests read the cache
   of `main` but do not write to it.
-- Only one image build runs per branch or tag. A newer push to `main` or to a
-  pull request cancels the running build of the same ref; tag builds are never
-  cancelled.
+- Only one image build runs per branch, tag or pull request. A newer push to a
+  pull request cancels its running build; builds of `main` and of tags are
+  never cancelled, so every commit of `main` gets its `sha-` tag.
+- Every action in the workflow is pinned to a full commit SHA, with the
+  release it belongs to as a comment (`# vX.Y.Z`). To upgrade an action,
+  resolve the new release tag to its commit
+  (`git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>`, using the
+  `^{}` entry for annotated tags) and update SHA and comment together.
 - The arm64 image is built with QEMU emulation and takes noticeably longer
   than the amd64 one.
 
