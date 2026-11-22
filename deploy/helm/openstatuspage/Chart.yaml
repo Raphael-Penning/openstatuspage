@@ -1,0 +1,21 @@
+apiVersion: v2
+name: openstatuspage
+description: Self-hosted status page that keeps your infrastructure private
+type: application
+# Release tags vX.Y.Z publish the chart with version and appVersion X.Y.Z
+# (docs/releasing.md). The values here are those of the current development line.
+version: 0.2.0
+appVersion: "0.2.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/Raphael-Penning/openstatuspage
+sources:
+  - https://github.com/Raphael-Penning/openstatuspage
+icon: https://raw.githubusercontent.com/Raphael-Penning/openstatuspage/main/apps/web/public/favicon.svg
+keywords:
+  - status-page
+  - incident
+  - maintenance
+  - monitoring
+annotations:
+  licenses: AGPL-3.0-only
+  artifacthub.io/license: AGPL-3.0-only

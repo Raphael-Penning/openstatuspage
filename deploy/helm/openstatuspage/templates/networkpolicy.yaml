@@ -1,0 +1,89 @@
+{{- /*
+One NetworkPolicy per instance: everything is denied except the rules below.
+Which egress each role may use follows docs/guide/en/02-installation.md
+(split deployment): the public instance never connects to the monitoring
+systems, SMTP or the OIDC provider. The SMTP, OIDC and Umami rules default to
+"auto": on when config.SMTP_HOST, OIDC_ISSUER_URL or UMAMI_URL is set.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- $pg := include "openstatuspage.postgres" . }}
+{{- $roles := ternary (list "public" "admin" "worker") (list "all") .Values.split.enabled }}
+{{- $egressRoles := dict "smtp" (list "all" "admin" "worker") "monitoring" (list "all" "admin" "worker") "oidc" (list "all" "admin") "umami" (list "all" "public" "admin") }}
+{{- range $i, $role := $roles }}
+{{- $ctx := dict "root" $ "component" (ternary "app" $role (eq $role "all")) }}
+{{- if $i }}
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "openstatuspage.componentName" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "openstatuspage.componentLabels" $ctx | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "openstatuspage.componentSelectorLabels" $ctx | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  {{- if eq $role "worker" }}
+  # The worker serves /api/health for the kubelet only.
+  ingress: []
+  {{- else }}
+  ingress:
+    - ports:
+        - port: http
+          protocol: TCP
+      {{- with $np.ingress.from }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- end }}
+  egress:
+    {{- if $np.egress.dns.enabled }}
+    - ports:
+        {{- toYaml $np.egress.dns.ports | nindent 8 }}
+      {{- with $np.egress.dns.to }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- if and $pg $np.egress.postgres.enabled }}
+    - ports:
+        {{- toYaml $np.egress.postgres.ports | nindent 8 }}
+      {{- with $np.egress.postgres.to }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- range $kind := list "smtp" "monitoring" "oidc" "umami" }}
+    {{- $rule := index $np.egress $kind }}
+    {{- $kindCtx := dict "root" $ "kind" $kind }}
+    {{- if and (include "openstatuspage.egressOn" $kindCtx) (has $role (index $egressRoles $kind)) }}
+    {{- /* Adds the port of the setting (SMTP_PORT, port of the URL) when the list lacks it. */}}
+    {{- $ports := $rule.ports }}
+    {{- $port := include "openstatuspage.egressPort" $kindCtx }}
+    {{- if $port }}
+    {{- $known := list }}
+    {{- range $rule.ports }}{{ $known = append $known (toString .port) }}{{ end }}
+    {{- if not (has $port $known) }}
+    {{- $ports = append $ports (dict "port" (int $port) "protocol" "TCP") }}
+    {{- end }}
+    {{- end }}
+    # {{ $kind }}
+    - ports:
+        {{- toYaml $ports | nindent 8 }}
+      {{- with $rule.to }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with $np.egress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- end }}

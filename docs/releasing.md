@@ -124,6 +124,45 @@ every further command), or migrate the database with `pg_dump`/restore, see
 [Operations](guide/en/09-operations.md). Mention this in the release notes of
 the first release with the new file.
 
+## Helm chart
+
+The chart in [`deploy/helm/openstatuspage`](../deploy/helm/openstatuspage) is
+checked and published by two jobs of
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+
+- `helm` runs [`scripts/helm-test.sh`](../scripts/helm-test.sh) on every push
+  and pull request: `helm lint --strict` and `helm template` for the value
+  files in `deploy/helm/openstatuspage/ci/` (SQLite, external PostgreSQL, split
+  mode, split mode with NetworkPolicy and HPA), checks of the rendered output
+  and of the invalid combinations the chart must reject, and `helm package`.
+  It then validates every render with
+  [kubeconform](https://github.com/yannh/kubeconform) (`-strict`, against the
+  minimum Kubernetes version of `kubeVersion` in `Chart.yaml`). The job
+  downloads a pinned kubeconform release and checks it against two SHA-256
+  values hard-coded in the workflow (`KUBECONFORM_SHA256` for the tarball,
+  `KUBECONFORM_CHECKSUMS_SHA256` for the release's `CHECKSUMS` file); to
+  upgrade kubeconform, update the version and both hashes from the new
+  release. Run the script locally before changing the chart; it needs only
+  `helm`, and uses `kubeconform` too when it is on the `PATH`.
+- `helm-publish` runs for pushed `v*` tags only, after `image` (so the chart
+  never points to an image that does not exist) and `helm` succeeded. It
+  packages the chart with `version` and `appVersion` set to the tag without the
+  leading `v` (`v1.2.3` gives `1.2.3`, `v1.3.0-rc.1` gives `1.3.0-rc.1`) and
+  pushes it with the automatic `GITHUB_TOKEN` to
+  `oci://ghcr.io/<owner>/charts/openstatuspage`. The default image repository in
+  the packaged `values.yaml` is set to the image of the same repository.
+
+The `version` in `Chart.yaml` is only used for local packaging; a release does
+not need a change there. The chart package is a separate GHCR package
+(`charts/openstatuspage`): set it to **Public** after the first release, as
+described in [First-time GHCR setup](#first-time-ghcr-setup).
+
+Check a published chart with:
+
+```bash
+helm show chart oci://ghcr.io/raphael-penning/charts/openstatuspage --version 1.2.3
+```
+
 ## Cutting a release
 
 1. Make sure `main` is green and contains everything for the release.
@@ -140,7 +179,8 @@ the first release with the new file.
 4. Wait for the CI run of the tag. The `image` job pushes `1.2.3`, `1.2`, `1`
    and `latest` (see [Tags](#tags)); the `release` job then creates the GitHub
    release with generated notes and attaches `compose.yaml` and `env.example`
-   (see [Release assets](#release-assets-compose-deployment)).
+   (see [Release assets](#release-assets-compose-deployment)), and the
+   `helm-publish` job pushes the Helm chart `1.2.3` (see [Helm chart](#helm-chart)).
 5. Edit the release notes on GitHub and put upgrade notes (configuration
    changes, migrations) at the top. Check that the assets are attached and
    that `releases/latest/download/compose.yaml` shows the new version.
@@ -182,6 +222,9 @@ Compose assets, but those assets still name this repository's image as default.
 To deploy a fork's image, set `OSP_IMAGE` in the
 Compose `.env` or adjust the `images:` entry in
 [`deploy/kubernetes/kustomization.yaml`](../deploy/kubernetes/kustomization.yaml).
+The fork's Helm chart is published to
+`ghcr.io/<fork owner>/charts/openstatuspage` and already defaults to the fork's
+image.
 
 ## Verifying an image
 

@@ -1,0 +1,45 @@
+# Split mode with NetworkPolicy, HPA and values-based secrets.
+baseUrl: https://status.example.com
+config:
+  MAIL_TRANSPORT: smtp
+  SMTP_HOST: smtp.example.com
+  SMTP_PORT: "2525"
+  SMTP_FROM: "Example Status <status@example.com>"
+  UMAMI_URL: https://umami.example.com
+secrets:
+  secretKey: test-only-secret-key-0123456789abcdef
+  subscriptionTokenKey: test-only-token-key-0123456789abcdef
+  adminEmail: admin@example.com
+  adminPassword: test-only-password
+  smtpPassword: test-only-smtp-password
+database:
+  url: postgres://osp_app:test-only@postgres.example.com:5432/openstatuspage
+  public:
+    url: postgres://osp_public:test-only@postgres.example.com:5432/openstatuspage
+split:
+  enabled: true
+  admin:
+    baseUrl: https://status.admin.example.com
+autoscaling:
+  enabled: true
+networkPolicy:
+  enabled: true
+  egress:
+    postgres:
+      to:
+        - ipBlock:
+            cidr: 192.0.2.10/32
+    # smtp and umami: "auto", turned on by config.SMTP_HOST and config.UMAMI_URL.
+    monitoring:
+      enabled: true
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+ingress:
+  enabled: true

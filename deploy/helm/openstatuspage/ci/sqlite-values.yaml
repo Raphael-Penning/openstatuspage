@@ -1,0 +1,6 @@
+# Default: SQLite on a volume, chart-created Secret. Placeholder values for tests only.
+baseUrl: https://status.example.com
+secrets:
+  secretKey: test-only-secret-key-0123456789abcdef
+ingress:
+  enabled: true

@@ -12,6 +12,7 @@ const repoFiles = new Set(
       '../../../../docker/*',
       '../../../../contrib/**/*',
       '../../../../*.md',
+      '../../../../deploy/**/*.md',
       '../../../../.env.example',
     ]),
   ).map((k) => k.replace(/^(\.\.\/)+/, '')),

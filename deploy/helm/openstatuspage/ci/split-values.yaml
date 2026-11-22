@@ -1,0 +1,20 @@
+# Split mode: public, admin and worker on external PostgreSQL.
+baseUrl: https://status.example.com
+secrets:
+  existingSecret: openstatuspage
+  # Required with existingSecret in split mode: only SUBSCRIPTION_TOKEN_KEY.
+  publicExistingSecret: openstatuspage-public
+database:
+  existingSecret: openstatuspage-db
+  public:
+    existingSecret: openstatuspage-db-public
+split:
+  enabled: true
+  admin:
+    baseUrl: https://status.admin.example.com
+ingress:
+  enabled: true
+  className: nginx
+  admin:
+    annotations:
+      nginx.ingress.kubernetes.io/whitelist-source-range: 192.0.2.0/24

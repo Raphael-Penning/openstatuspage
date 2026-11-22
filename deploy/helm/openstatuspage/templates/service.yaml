@@ -1,0 +1,28 @@
+{{- /* The single instance, or public and admin in split mode. The worker serves /api/health only and gets no Service. */}}
+{{- $components := ternary (list "public" "admin") (list "app") .Values.split.enabled }}
+{{- range $i, $component := $components }}
+{{- $ctx := dict "root" $ "component" $component }}
+{{- if $i }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openstatuspage.componentName" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "openstatuspage.componentLabels" $ctx | nindent 4 }}
+  {{- with $.Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $.Values.service.type }}
+  selector:
+    {{- include "openstatuspage.componentSelectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $.Values.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

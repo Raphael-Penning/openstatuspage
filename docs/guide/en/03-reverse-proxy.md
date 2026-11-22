@@ -182,7 +182,8 @@ controller terminates HTTPS and forwards to the service. The same rules
 apply:
 
 - `BASE_URL` in `deployment.yaml` must be the host from `ingress.yaml`, with
-  `https://`.
+  `https://`. The [Helm chart](02-installation.md#kubernetes-with-helm) derives
+  the Ingress host from `baseUrl` and sets `config.TRUST_PROXY` to 1 by default.
 - `TRUST_PROXY` must equal the number of proxies in front of the app. The
   example assumes one: the ingress controller. If a load balancer or CDN in
   front of the controller passes the client address on in

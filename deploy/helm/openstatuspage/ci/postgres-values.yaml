@@ -1,0 +1,13 @@
+# External PostgreSQL, single instance, existing Secrets.
+baseUrl: https://status.example.com
+replicaCount: 2
+secrets:
+  existingSecret: openstatuspage
+database:
+  existingSecret: openstatuspage-db
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    - secretName: openstatuspage-tls
+      hosts: [status.example.com]

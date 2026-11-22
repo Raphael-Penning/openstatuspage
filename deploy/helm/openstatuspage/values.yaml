@@ -1,0 +1,430 @@
+# Default values of the OpenStatusPage chart. Every setting of the app is
+# described in docs/configuration.md; the chart README lists all values.
+#
+# Minimal install (SQLite on a volume, one replica):
+#   helm install osp oci://ghcr.io/raphael-penning/charts/openstatuspage \
+#     --set baseUrl=https://status.example.com \
+#     --set secrets.existingSecret=openstatuspage
+# with a Secret "openstatuspage" that holds at least SECRET_KEY.
+
+# -- Overrides the chart name in resource names.
+nameOverride: ""
+# -- Overrides the full resource name prefix (default: <release>-openstatuspage).
+fullnameOverride: ""
+
+image:
+  # -- Container image. Release images are multi-arch (linux/amd64, linux/arm64).
+  repository: ghcr.io/raphael-penning/openstatuspage
+  # -- Image tag. Defaults to the appVersion of the chart (the matching release).
+  tag: ""
+  # -- Image digest (sha256:...). When set it pins the image and the tag is only informative.
+  digest: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Secrets for a private registry, e.g. [{name: regcred}].
+imagePullSecrets: []
+
+# -- Public URL of the status page, without trailing slash and without a path
+# (BASE_URL). Required. In split mode it is the BASE_URL of the public and the
+# worker instance and the PUBLIC_BASE_URL of the admin instance.
+baseUrl: ""
+
+# -- Non-secret settings, passed to every instance through a ConfigMap. Keys are
+# the environment variables of docs/configuration.md; only the variables listed
+# in values.schema.json are accepted. Empty values are left out. BASE_URL,
+# PUBLIC_BASE_URL, APP_ROLE, WORKER_ENABLED, DATABASE_URL, DB_PUBLIC_ROLE and the
+# secrets are set by the chart from other values.
+config:
+  # Requests arrive through the ingress controller: one proxy hop. Use 2 if a
+  # load balancer that keeps X-Forwarded-For sits in front of the controller, or
+  # the controller's pod CIDR instead of a hop count (docs/guide/en/03-reverse-proxy.md).
+  TRUST_PROXY: "1"
+  LOG_LEVEL: info
+  # Optional examples (see docs/configuration.md):
+  # MAIL_TRANSPORT: smtp
+  # SMTP_HOST: smtp.example.com
+  # SMTP_PORT: "587"
+  # SMTP_SECURE: "false"
+  # SMTP_USER: status@example.com
+  # SMTP_FROM: "Example Status <status@example.com>"
+  # UMAMI_URL: https://umami.example.com
+  # OIDC_ISSUER_URL: https://sso.example.com/realms/example
+  # OIDC_CLIENT_ID: openstatuspage
+  # OIDC_ADMIN_GROUP: status-admins
+
+secrets:
+  # -- Name of an existing Secret (recommended). The chart reads these keys from
+  # it, each only in the instances that need it: SECRET_KEY (required),
+  # SUBSCRIPTION_TOKEN_KEY (required in split mode), and optionally ADMIN_EMAIL,
+  # ADMIN_PASSWORD, SMTP_PASSWORD, OIDC_CLIENT_SECRET. When set, the values
+  # below are ignored (in split mode SUBSCRIPTION_TOKEN_KEY comes from
+  # publicExistingSecret instead). Split mode with existingSecret requires
+  # publicExistingSecret.
+  existingSecret: ""
+  # -- Split mode: existing Secret with only the key SUBSCRIPTION_TOKEN_KEY.
+  # Required when existingSecret is set in split mode; the chart fails without
+  # it. The public pods reference only this Secret and the public database
+  # Secret, never existingSecret, so the nodes that run them cannot read
+  # SECRET_KEY, ADMIN_*, SMTP_PASSWORD, OIDC_CLIENT_SECRET or the owner
+  # DATABASE_URL (the kubelet may read every Secret its pods reference, not
+  # only the keys they use). Every instance reads SUBSCRIPTION_TOKEN_KEY from
+  # it. It must not be existingSecret or database.existingSecret; it may be
+  # database.public.existingSecret. Without existingSecret and without it, the
+  # chart creates <fullname>-public from subscriptionTokenKey.
+  publicExistingSecret: ""
+  # -- At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts the
+  # monitoring credentials: back it up, a new key makes them unreadable. Stored
+  # in a Secret created by the chart (and in the Helm release); prefer existingSecret.
+  secretKey: ""
+  # -- Key of the e-mail subscription links, at least 32 characters. Required in
+  # split mode (the public instance gets only this key, never SECRET_KEY);
+  # defaults to SECRET_KEY otherwise. In split mode it is used only without
+  # existingSecret and publicExistingSecret and is then stored in a separate
+  # Secret <fullname>-public, together with database.public.url and nothing else.
+  subscriptionTokenKey: ""
+  # -- First administrator, only created while the database has no user.
+  # Remove it after the first login.
+  adminEmail: ""
+  # -- Password of the first administrator (at least 10 characters).
+  adminPassword: ""
+  # -- SMTP password (the other SMTP settings go into config).
+  smtpPassword: ""
+  # -- OIDC client secret (the other OIDC settings go into config).
+  oidcClientSecret: ""
+
+# Database. Without PostgreSQL (url and existingSecret empty) the chart runs
+# SQLite on a PersistentVolumeClaim: exactly one replica, Recreate strategy, no
+# split mode. No database is deployed by the chart.
+database:
+  # -- PostgreSQL URL of the owner role, e.g.
+  # postgres://osp_app:password@postgres.example.com:5432/openstatuspage. Used by
+  # the single instance, or by admin and worker in split mode (they migrate the
+  # schema on start). Stored in the chart's Secret; prefer existingSecret.
+  url: ""
+  # -- Existing Secret holding the PostgreSQL URL of the owner role.
+  existingSecret: ""
+  # -- Key of the URL in existingSecret.
+  existingSecretKey: DATABASE_URL
+  public:
+    # -- Split mode only: PostgreSQL URL of the restricted public role
+    # (deploy/postgres/roles.sql), e.g.
+    # postgres://osp_public:password@postgres.example.com:5432/openstatuspage.
+    url: ""
+    # -- Existing Secret holding the URL of the public role. The public pods
+    # reference it, so it must not be database.existingSecret or
+    # secrets.existingSecret (the chart fails); secrets.publicExistingSecret is
+    # fine.
+    existingSecret: ""
+    # -- Key of the URL in database.public.existingSecret.
+    existingSecretKey: DATABASE_URL
+    # -- Name of the public role (DB_PUBLIC_ROLE). The migrating instances grant
+    # it the osp_public schema; it must match the login of database.public.url.
+    role: osp_public
+
+# SQLite storage, used only without PostgreSQL.
+persistence:
+  # -- Keep the SQLite database on a PersistentVolumeClaim. false puts it on an
+  # emptyDir: every pod restart starts with an empty database. Tests only.
+  enabled: true
+  # -- Use an existing PersistentVolumeClaim instead of creating one.
+  existingClaim: ""
+  # -- Storage class of the created claim ("" = the cluster default).
+  storageClass: ""
+  # -- Access modes of the created claim. SQLite needs one writer.
+  accessModes:
+    - ReadWriteOnce
+  # -- Size of the created claim.
+  size: 1Gi
+  # -- Extra annotations of the created claim. It always carries
+  # helm.sh/resource-policy: keep, so "helm uninstall" keeps the data (a
+  # helm.sh/resource-policy given here is ignored).
+  annotations: {}
+
+# -- Replicas of the single instance (APP_ROLE=all). Forced to 1 with SQLite.
+# Several replicas need PostgreSQL; they coordinate background tasks through it.
+replicaCount: 1
+
+# -- Deployment strategy of the single instance. Always Recreate with SQLite
+# (one writer, ReadWriteOnce volume).
+strategy:
+  type: RollingUpdate
+
+# Split deployment (docs/guide/en/02-installation.md#split-deployment): the
+# public page, the admin instance and the background worker as three
+# Deployments with their own APP_ROLE and database role. Needs PostgreSQL and
+# database.public. Public and admin are served on separate domains, as the app
+# requires: the public instance never serves the management UI or its assets.
+split:
+  # -- Run public, admin and worker as separate Deployments.
+  enabled: false
+  public:
+    # -- Replicas of the public instance (stateless, scale freely).
+    replicaCount: 2
+    # -- Overrides the global resources for this instance.
+    resources: {}
+    # -- Extra environment variables of this instance only.
+    extraEnv: []
+    # -- Overrides the global nodeSelector for this instance.
+    nodeSelector: {}
+    # -- Overrides the global tolerations for this instance.
+    tolerations: []
+    # -- Overrides the global affinity for this instance.
+    affinity: {}
+    # -- Extra pod annotations of this instance.
+    podAnnotations: {}
+  admin:
+    # -- URL of the admin domain (BASE_URL of the admin instance). Required in
+    # split mode. Restrict it, e.g. with an IP allowlist in ingress.admin.annotations.
+    baseUrl: ""
+    # -- Replicas of the admin instance.
+    replicaCount: 1
+    # -- Deployment strategy of the admin instance.
+    strategy:
+      type: Recreate
+    resources: {}
+    extraEnv: []
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    podAnnotations: {}
+  worker:
+    # -- Replicas of the worker. Several are safe on PostgreSQL (tasks are leased).
+    replicaCount: 1
+    resources: {}
+    extraEnv: []
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    podAnnotations: {}
+
+# -- Horizontal Pod Autoscaler of the public-facing Deployment (the public
+# instance in split mode, else the single instance). Not available with SQLite.
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 75
+  # -- Optional memory target in percent of the request ("" = off).
+  targetMemoryUtilizationPercentage: ""
+
+# -- PodDisruptionBudget of the public-facing Deployment. Not rendered with
+# SQLite (one replica). Set either minAvailable or maxUnavailable.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: ""
+  maxUnavailable: 1
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount. The app does not use the Kubernetes API.
+  create: true
+  # -- Name of the ServiceAccount (default: the full name).
+  name: ""
+  # -- Annotations of the ServiceAccount.
+  annotations: {}
+
+service:
+  # -- Service type. Keep ClusterIP and expose the app through the Ingress only.
+  type: ClusterIP
+  # -- Service port.
+  port: 80
+  # -- Service annotations.
+  annotations: {}
+
+ingress:
+  # -- Create an Ingress for the public URL (the single instance, or the public
+  # instance in split mode).
+  enabled: false
+  # -- Ingress class, e.g. nginx ("" = the cluster default).
+  className: ""
+  # -- Annotations, e.g. cert-manager.io/cluster-issuer: letsencrypt or
+  # nginx.ingress.kubernetes.io/proxy-body-size: 6m (ingest batches up to 5 MiB).
+  annotations: {}
+  # -- Host names (default: the host of baseUrl).
+  hosts: []
+  # -- Path and path type of every host.
+  path: /
+  pathType: Prefix
+  # -- TLS, e.g. [{secretName: openstatuspage-tls, hosts: [status.example.com]}].
+  tls: []
+  admin:
+    # -- Split mode: Ingress for the admin domain (management UI, API, login,
+    # OIDC, ingest webhooks). Uses ingress.className unless set here.
+    enabled: true
+    className: ""
+    # -- Restrict it, e.g. nginx.ingress.kubernetes.io/whitelist-source-range: 192.0.2.0/24.
+    annotations: {}
+    # -- Host names (default: the host of split.admin.baseUrl).
+    hosts: []
+    tls: []
+
+# -- Pod security context. 1000 is the "node" user of the image.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context. The root filesystem is read-only; /tmp and
+# /data are volumes.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Resources of every instance (split.<role>.resources overrides them). About
+# 80-100 MB in steady use with the image's NODE_OPTIONS, short peaks add 10-20 MB
+# (docs/architecture.md#memory).
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+# Probes on /api/health (answers 200 only while the database is reachable).
+probes:
+  startup:
+    # -- Startup probe. The public instance of split mode allows twice the
+    # failures, and at least config.SCHEMA_WAIT_SECONDS (default 120) + 60 s:
+    # it waits that long for the migrations.
+    enabled: true
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 30
+  readiness:
+    enabled: true
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  liveness:
+    # -- Liveness probe. /api/health checks the database, so a database outage
+    # longer than periodSeconds x failureThreshold (5 minutes) restarts every
+    # pod. Restarts do not help then; keep this window generous.
+    enabled: true
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 10
+
+# -- Size limit of the /tmp emptyDir.
+tmpSizeLimit: 64Mi
+
+# -- Annotations of every pod.
+podAnnotations: {}
+# -- Labels of every pod.
+podLabels: {}
+# -- Node selector of every pod.
+nodeSelector: {}
+# -- Tolerations of every pod.
+tolerations: []
+# -- Affinity of every pod.
+affinity: {}
+# -- Topology spread constraints. The chart adds the selector labels of the
+# Deployment when labelSelector is left out.
+topologySpreadConstraints: []
+# -- Priority class of every pod.
+priorityClassName: ""
+# -- Seconds a pod gets to shut down.
+terminationGracePeriodSeconds: 30
+
+# -- Extra environment variables of every instance ([{name, value}] or valueFrom).
+# In split mode they reach the public instance as well: the chart fails when
+# they reference secrets.existingSecret, database.existingSecret or the chart's
+# own Secret.
+extraEnv: []
+# -- Extra envFrom sources of every instance. Note: in split mode they reach the
+# public instance as well; keep secrets out of them (the chart fails when they
+# reference secrets.existingSecret, database.existingSecret or its own Secret).
+extraEnvFrom: []
+# -- Extra volumes of every pod (in split mode the public pods too; the same
+# Secrets as for extraEnvFrom are refused).
+extraVolumes: []
+# -- Extra volume mounts of the container.
+extraVolumeMounts: []
+
+networkPolicy:
+  # -- Create NetworkPolicies (default deny, then the rules below per instance).
+  enabled: false
+  ingress:
+    # -- Peers allowed to reach the HTTP port (the ingress controller). The
+    # worker accepts no traffic. Probes of the kubelet are not affected on most
+    # network plugins.
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+  egress:
+    dns:
+      # -- Allow DNS to kube-dns.
+      enabled: true
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    postgres:
+      # -- Allow PostgreSQL (every instance). Empty "to" = any destination.
+      enabled: true
+      to: []
+      ports:
+        - port: 5432
+          protocol: TCP
+    # The rules below take enabled: true, false or auto. auto turns a rule on
+    # when its setting is configured (config.SMTP_HOST, config.OIDC_ISSUER_URL,
+    # config.UMAMI_URL) and adds the port of that setting (SMTP_PORT, the port
+    # of the URL) to the list. An empty "to" allows any destination.
+    smtp:
+      # -- Allow SMTP (single instance, admin, worker).
+      enabled: auto
+      to: []
+      ports:
+        - port: 587
+          protocol: TCP
+        - port: 465
+          protocol: TCP
+    monitoring:
+      # -- Allow the monitoring systems that are polled (single instance,
+      # admin for manual actions and imports, worker). Never the public
+      # instance. The chart cannot know these systems: turn it on and list the
+      # ports (and ideally the addresses) of every polled API, e.g. 443, 80,
+      # 9090 (Prometheus), 3000 (Grafana). Off by default on purpose: while
+      # it is off and networkPolicy.enabled=true, every poll fails (NOTES
+      # warns). Without NetworkPolicies this setting has no effect.
+      enabled: false
+      to: []
+      ports:
+        - port: 443
+          protocol: TCP
+    oidc:
+      # -- Allow the OIDC provider (single instance, admin).
+      enabled: auto
+      to: []
+      ports:
+        - port: 443
+          protocol: TCP
+    umami:
+      # -- Allow the Umami server of UMAMI_URL (single instance, public, admin).
+      enabled: auto
+      to: []
+      ports:
+        - port: 443
+          protocol: TCP
+    # -- Extra egress rules for every instance (NetworkPolicyEgressRule list).
+    extra: []

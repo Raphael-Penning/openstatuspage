@@ -1,0 +1,15 @@
+{{- include "openstatuspage.validate" . }}
+{{- $sqlite := not (include "openstatuspage.postgres" .) }}
+{{- if not .Values.split.enabled }}
+{{- /* One instance with APP_ROLE=all. SQLite: one replica, Recreate (one writer, ReadWriteOnce volume). */}}
+{{- $replicas := ternary 1 (int .Values.replicaCount) $sqlite }}
+{{- $strategy := ternary (dict "type" "Recreate") .Values.strategy $sqlite }}
+{{- include "openstatuspage.deployment" (dict "root" . "component" "app" "role" "all" "values" (dict) "replicas" $replicas "strategy" $strategy "sqlite" $sqlite "autoscaled" .Values.autoscaling.enabled) }}
+{{- else }}
+{{- /* Split mode (validated: PostgreSQL only). The admin instance migrates on start; the public one waits for the schema. */}}
+{{- include "openstatuspage.deployment" (dict "root" . "component" "public" "role" "public" "values" .Values.split.public "replicas" (int .Values.split.public.replicaCount) "strategy" (dict "type" "RollingUpdate") "sqlite" false "autoscaled" .Values.autoscaling.enabled) }}
+---
+{{ include "openstatuspage.deployment" (dict "root" . "component" "admin" "role" "admin" "values" .Values.split.admin "replicas" (int .Values.split.admin.replicaCount) "strategy" .Values.split.admin.strategy "sqlite" false "autoscaled" false) }}
+---
+{{ include "openstatuspage.deployment" (dict "root" . "component" "worker" "role" "worker" "values" .Values.split.worker "replicas" (int .Values.split.worker.replicaCount) "strategy" (dict "type" "RollingUpdate") "sqlite" false "autoscaled" false) }}
+{{- end }}

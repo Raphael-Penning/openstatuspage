@@ -1,0 +1,79 @@
+OpenStatusPage {{ include "openstatuspage.imageTag" . }} is being deployed to namespace {{ .Release.Namespace }}.
+{{- $pg := include "openstatuspage.postgres" . }}
+
+Mode:     {{ if .Values.split.enabled }}split (public, admin, worker){{ else }}single instance (APP_ROLE=all){{ end }}
+Database: {{ if $pg }}PostgreSQL{{ else if not .Values.persistence.enabled }}SQLite on an emptyDir (one replica, NOT persistent){{ else }}SQLite on the volume {{ default (printf "%s-data" (include "openstatuspage.fullname" .)) .Values.persistence.existingClaim }} (one replica){{ end }}
+Public:   {{ .Values.baseUrl }}
+{{- if .Values.split.enabled }}
+Admin:    {{ .Values.split.admin.baseUrl }}  (restrict it, e.g. with an IP allowlist)
+Public pods reference only the Secrets {{ include "openstatuspage.tokenSecretName" . }}{{ if ne (include "openstatuspage.tokenSecretName" .) (include "openstatuspage.dbPublicSecretName" .) }} and {{ include "openstatuspage.dbPublicSecretName" . }}{{ end }}
+(no SECRET_KEY, ADMIN_*, SMTP_PASSWORD, OIDC_CLIENT_SECRET or owner DATABASE_URL).
+{{- end }}
+
+Wait for the rollout:
+{{- if .Values.split.enabled }}
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}-admin
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}-public
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}-worker
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "openstatuspage.fullname" . }}
+{{- end }}
+
+{{- if not .Values.ingress.enabled }}
+
+No Ingress was created. To try it locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "openstatuspage.fullname" . }}{{ if .Values.split.enabled }}-admin{{ end }} 3000:{{ .Values.service.port }}
+  curl -fsS http://127.0.0.1:3000/api/health
+{{- end }}
+
+{{- if and (not $pg) (not .Values.persistence.enabled) }}
+
+WARNING: persistence.enabled=false. The SQLite database lives in an emptyDir and
+is lost with every pod restart. Use it for tests only.
+{{- end }}
+{{- if include "openstatuspage.createPublicSecret" . }}
+
+WARNING: the chart created the Secret {{ include "openstatuspage.publicSecretName" . }} for the public instance
+from values (SUBSCRIPTION_TOKEN_KEY or database.public.url). These values are
+stored in the Helm release as well. Prefer secrets.publicExistingSecret and
+database.public.existingSecret.
+{{- end }}
+{{- if include "openstatuspage.createSecret" . }}
+
+WARNING: the chart created the Secret {{ include "openstatuspage.fullname" . }} from values
+(secrets.* or database URLs). These values are stored in the Helm release as
+well. Prefer secrets.existingSecret and database.existingSecret.
+{{- end }}
+{{- if not .Values.secrets.existingSecret }}
+
+Back up SECRET_KEY outside the cluster: a new key makes the stored monitoring
+credentials unreadable.
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy.egress }}
+{{- if not $np.monitoring.enabled }}
+
+WARNING: networkPolicy.enabled=true and networkPolicy.egress.monitoring is off
+(the default): the NetworkPolicies block every monitoring system, so every
+poll fails. The chart cannot know which systems you poll, so it never opens
+them by itself. Set
+networkPolicy.egress.monitoring.enabled=true and list the ports (and ideally
+the addresses in "to") of every polled API, e.g. 443, 80 or 9090.
+{{- end }}
+{{- range $kind, $setting := include "openstatuspage.egressSettings" . | fromYaml }}
+{{- if and $setting (eq (toString (index $np $kind).enabled) "false") }}
+
+WARNING: {{ $setting }} is configured, but networkPolicy.egress.{{ $kind }}.enabled=false
+blocks the connection. Use enabled: auto or true.
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if eq (toString .Values.config.TRUST_PROXY) "" }}
+
+NOTE: TRUST_PROXY is not set. Behind the ingress controller set
+config.TRUST_PROXY=1 (docs/guide/en/03-reverse-proxy.md).
+{{- end }}
+{{- if and .Values.secrets.adminPassword (not .Values.secrets.existingSecret) }}
+
+Remove secrets.adminPassword after the first login and change the password in the user menu.
+{{- end }}

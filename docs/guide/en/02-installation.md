@@ -15,7 +15,8 @@ Choose one of these ways to run it:
 | [Docker Compose](#docker-compose) | PostgreSQL 17 container | most production setups |
 | [Split deployment](#split-deployment) | PostgreSQL 17 container | public and admin on separate domains, worker in its own container |
 | [Single container with SQLite](#single-container-with-sqlite) | SQLite file in a volume | small setups, one instance |
-| [Kubernetes](#kubernetes) | external PostgreSQL (or SQLite on a volume) | clusters with an ingress controller |
+| [Kubernetes with Helm](#kubernetes-with-helm) | external PostgreSQL (or SQLite on a volume) | clusters, recommended way on Kubernetes, also for the split deployment |
+| [Kubernetes](#kubernetes) | external PostgreSQL (or SQLite on a volume) | clusters with an ingress controller, plain manifests (Kustomize) |
 | [Building the image yourself](#building-the-image-yourself) | as with Compose | own changes, other platforms |
 | [From source](#from-source) | SQLite or PostgreSQL | hosts without Docker, development |
 
@@ -343,8 +344,9 @@ docker compose -f compose.split.yaml up -d public admin worker
   hosts or more replicas, see [Kubernetes](#kubernetes) and
   [Running several instances](09-operations.md#running-several-instances).
 
-The manifests are in `deploy/kubernetes/split/` (apply them with
-`kubectl apply -k deploy/kubernetes/split`).
+On Kubernetes use the [Helm chart](#kubernetes-with-helm) with
+`split.enabled=true`, or the plain manifests in `deploy/kubernetes/split/`
+(apply them with `kubectl apply -k deploy/kubernetes/split`).
 
 ## Single container with SQLite
 
@@ -381,10 +383,112 @@ then stored in the `data` volume.
 SQLite supports exactly one running instance. Use PostgreSQL if you want
 [additional replicas](09-operations.md#running-several-instances).
 
+## Kubernetes with Helm
+
+The Helm chart in `deploy/helm/openstatuspage` is the recommended way to run
+OpenStatusPage on Kubernetes (1.25 or newer). Every release publishes it as an
+OCI artifact next to the image:
+
+```text
+oci://ghcr.io/raphael-penning/charts/openstatuspage
+```
+
+The chart deploys no database: point it to an external PostgreSQL, or leave
+the database settings empty to run SQLite on a PersistentVolumeClaim (then
+exactly one replica). Its defaults are hardened: non-root user, read-only root
+filesystem, no capabilities, no service account token, probes on
+`/api/health`, 128Mi request and 256Mi memory limit. NetworkPolicies, a
+HorizontalPodAutoscaler and a PodDisruptionBudget are available as options.
+With NetworkPolicies the chart opens SMTP, OIDC and Umami when they are
+configured, but not the monitoring systems.
+
+> **Warning:** monitoring egress is off by default, because the chart cannot
+> know which systems you poll. With `networkPolicy.enabled=true` every poll
+> fails until you set `networkPolicy.egress.monitoring.enabled=true` and list
+> the ports (and ideally the addresses) of every polled API. The install notes
+> warn while it is off.
+
+Create the secrets first (never commit them), then install with the version of
+the release:
+
+```bash
+kubectl create namespace openstatuspage
+kubectl -n openstatuspage create secret generic openstatuspage \
+  --from-literal=SECRET_KEY="$(openssl rand -base64 48)" \
+  --from-literal=ADMIN_EMAIL=admin@example.com \
+  --from-literal=ADMIN_PASSWORD='a-long-password'
+kubectl -n openstatuspage create secret generic openstatuspage-db \
+  --from-literal=DATABASE_URL='postgres://openstatuspage:<password>@db.example.com:5432/openstatuspage'
+
+helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+  --version 1.2.3 --namespace openstatuspage \
+  --set baseUrl=https://status.example.com \
+  --set secrets.existingSecret=openstatuspage \
+  --set database.existingSecret=openstatuspage-db \
+  --set ingress.enabled=true --set ingress.className=nginx
+```
+
+- `baseUrl` is `BASE_URL`; the other settings of
+  [Configuration](04-configuration.md) go under `config` (for example
+  `config.TRUST_PROXY`, `config.SMTP_HOST`). The chart rejects variables it
+  does not know.
+- `SECRET_KEY` is required; the chart never generates it. Back it up, see
+  [Operations](09-operations.md#secret_key). You can also pass the secrets as
+  values (`secrets.secretKey`, `database.url`, ...); the chart then creates the
+  Secret, but the values are stored in the Helm release as well.
+- Migrations run when the app starts, so there is no migration job. Keep your
+  settings in a values file (for example `my-values.yaml`) and upgrade with the
+  new version after a backup:
+
+  ```bash
+  helm upgrade openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+    --version 1.3.0 --namespace openstatuspage -f my-values.yaml
+  ```
+
+For SQLite instead of PostgreSQL, leave out `database.existingSecret` and the
+`openstatuspage-db` secret. The chart then creates a PersistentVolumeClaim
+(`persistence.size`, 1Gi by default) and runs exactly one replica with the
+`Recreate` strategy. Autoscaling and split mode are not available with SQLite:
+
+```bash
+helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+  --version 1.2.3 --namespace openstatuspage \
+  --set baseUrl=https://status.example.com \
+  --set secrets.existingSecret=openstatuspage \
+  --set ingress.enabled=true --set ingress.className=nginx
+```
+
+For the [split deployment](#split-deployment) set `split.enabled=true`, the
+admin domain `split.admin.baseUrl`, `SUBSCRIPTION_TOKEN_KEY` in a secret of its
+own (`secrets.publicExistingSecret`) and the URL of the restricted role in
+`database.public.existingSecret` (create the roles with
+`deploy/postgres/roles.sql` first). The chart then runs the public, admin and
+worker instances as separate Deployments, gives each only the secrets of its
+role and creates one Ingress per domain. The public pods reference only those
+two secrets, so the nodes they run on cannot read `SECRET_KEY`, the admin
+password, the SMTP and OIDC secrets or the owner's database URL. The chart
+enforces this: with `secrets.existingSecret` it fails without
+`secrets.publicExistingSecret`, and both public secrets must differ from
+`secrets.existingSecret` and `database.existingSecret` (they may be one
+secret). Create the public secrets like this:
+
+```bash
+kubectl -n openstatuspage create secret generic openstatuspage-public \
+  --from-literal=SUBSCRIPTION_TOKEN_KEY="$(openssl rand -base64 48)"
+kubectl -n openstatuspage create secret generic openstatuspage-db-public \
+  --from-literal=DATABASE_URL='postgres://osp_public:<password>@db.example.com:5432/openstatuspage'
+```
+
+If you pass the secrets as values instead, the chart creates a separate
+secret for the public pods with only `SUBSCRIPTION_TOKEN_KEY` and the public
+role's URL. It refuses split mode without PostgreSQL. All values are described in the
+[chart README](../../../deploy/helm/openstatuspage/README.md).
+
 ## Kubernetes
 
 The directory `deploy/kubernetes/` in the repository contains example
-manifests, combined with Kustomize:
+manifests, combined with Kustomize. They are an alternative to the
+[Helm chart](#kubernetes-with-helm) for setups without Helm:
 
 | File | Content |
 | --- | --- |

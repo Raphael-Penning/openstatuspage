@@ -1,0 +1,13 @@
+# Patterns ignored when the chart is packaged.
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.vscode/
+.idea/
+# Test values of scripts/helm-test.sh, not part of the package.
+ci/

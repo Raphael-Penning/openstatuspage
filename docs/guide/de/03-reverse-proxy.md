@@ -186,7 +186,8 @@ Ingress-Controller HTTPS und leitet an den Service weiter. Es gelten
 dieselben Regeln:
 
 - `BASE_URL` in `deployment.yaml` muss der Host aus `ingress.yaml` sein, mit
-  `https://`.
+  `https://`. Das [Helm-Chart](02-installation.md#kubernetes-mit-helm) leitet
+  den Ingress-Host aus `baseUrl` ab und setzt `config.TRUST_PROXY` standardmäßig auf 1.
 - `TRUST_PROXY` muss der Anzahl der Proxys vor der Anwendung entsprechen. Das
   Beispiel geht von einem aus: dem Ingress-Controller. Gibt ein Load Balancer
   oder CDN vor dem Controller die Client-Adresse ebenfalls in

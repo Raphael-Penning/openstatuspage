@@ -15,7 +15,8 @@ Du hast diese Möglichkeiten:
 | [Docker Compose](#docker-compose) | PostgreSQL-17-Container | die meisten Produktivumgebungen |
 | [Geteilte Installation](#geteilte-installation) | PostgreSQL-17-Container | öffentliche Seite und Admin-Bereich auf getrennten Domains, Worker in eigenem Container |
 | [Einzelner Container mit SQLite](#einzelner-container-mit-sqlite) | SQLite-Datei in einem Volume | kleine Setups mit einer Instanz |
-| [Kubernetes](#kubernetes) | externes PostgreSQL (oder SQLite auf einem Volume) | Cluster mit Ingress-Controller |
+| [Kubernetes mit Helm](#kubernetes-mit-helm) | externes PostgreSQL (oder SQLite auf einem Volume) | Cluster, empfohlener Weg auf Kubernetes, auch für die geteilte Installation |
+| [Kubernetes](#kubernetes) | externes PostgreSQL (oder SQLite auf einem Volume) | Cluster mit Ingress-Controller, einfache Manifeste (Kustomize) |
 | [Image selbst bauen](#image-selbst-bauen) | wie bei Compose | eigene Änderungen, andere Plattformen |
 | [Aus dem Quellcode](#aus-dem-quellcode) | SQLite oder PostgreSQL | Hosts ohne Docker, Entwicklung |
 
@@ -356,8 +357,9 @@ docker compose -f compose.split.yaml up -d public admin worker
   Hosts oder mehr Replikate siehe [Kubernetes](#kubernetes) und
   [Mehrere Instanzen betreiben](09-operations.md#mehrere-instanzen-betreiben).
 
-Die Manifeste liegen in `deploy/kubernetes/split/` (anwenden mit
-`kubectl apply -k deploy/kubernetes/split`).
+Auf Kubernetes nutzt du das [Helm-Chart](#kubernetes-mit-helm) mit
+`split.enabled=true` oder die einfachen Manifeste in `deploy/kubernetes/split/`
+(anwenden mit `kubectl apply -k deploy/kubernetes/split`).
 
 ## Einzelner Container mit SQLite
 
@@ -395,10 +397,119 @@ SQLite unterstützt genau eine laufende Instanz. Für
 [weitere Instanzen](09-operations.md#mehrere-instanzen-betreiben) brauchst du
 PostgreSQL.
 
+## Kubernetes mit Helm
+
+Das Helm-Chart in `deploy/helm/openstatuspage` ist der empfohlene Weg, um
+OpenStatusPage auf Kubernetes (ab 1.25) zu betreiben. Jedes Release
+veröffentlicht es neben dem Image als OCI-Artefakt:
+
+```text
+oci://ghcr.io/raphael-penning/charts/openstatuspage
+```
+
+Das Chart bringt keine Datenbank mit: Du verweist auf ein externes
+PostgreSQL, oder du lässt die Datenbank-Einstellungen leer, dann läuft SQLite
+auf einem PersistentVolumeClaim (mit genau einem Replikat). Die Vorgaben sind
+gehärtet: Benutzer ohne Root, schreibgeschütztes Root-Dateisystem, keine
+Capabilities, kein Service-Account-Token, Probes auf `/api/health`, 128Mi
+Request und 256Mi Speicherlimit. NetworkPolicies, ein
+HorizontalPodAutoscaler und ein PodDisruptionBudget stehen als Optionen
+bereit. Mit NetworkPolicies öffnet das Chart SMTP, OIDC und Umami, sobald du
+sie konfigurierst, aber nicht die Monitoring-Systeme.
+
+> **Achtung:** Der Egress zu den Monitoring-Systemen ist standardmäßig aus,
+> weil das Chart nicht wissen kann, welche Systeme du abfragst. Mit
+> `networkPolicy.enabled=true` schlägt jede Abfrage fehl, bis du
+> `networkPolicy.egress.monitoring.enabled=true` setzt und die Ports (am
+> besten auch die Adressen) aller abgefragten APIs einträgst. Die
+> Installationshinweise warnen, solange er aus ist.
+
+Leg zuerst die Secrets an (committe sie nie) und installiere dann mit der
+Version des Releases:
+
+```bash
+kubectl create namespace openstatuspage
+kubectl -n openstatuspage create secret generic openstatuspage \
+  --from-literal=SECRET_KEY="$(openssl rand -base64 48)" \
+  --from-literal=ADMIN_EMAIL=admin@example.com \
+  --from-literal=ADMIN_PASSWORD='ein-langes-passwort'
+kubectl -n openstatuspage create secret generic openstatuspage-db \
+  --from-literal=DATABASE_URL='postgres://openstatuspage:<passwort>@db.example.com:5432/openstatuspage'
+
+helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+  --version 1.2.3 --namespace openstatuspage \
+  --set baseUrl=https://status.example.com \
+  --set secrets.existingSecret=openstatuspage \
+  --set database.existingSecret=openstatuspage-db \
+  --set ingress.enabled=true --set ingress.className=nginx
+```
+
+- `baseUrl` ist `BASE_URL`; die übrigen Einstellungen aus
+  [Konfiguration](04-configuration.md) gehören unter `config` (zum Beispiel
+  `config.TRUST_PROXY`, `config.SMTP_HOST`). Unbekannte Variablen lehnt das
+  Chart ab.
+- `SECRET_KEY` ist Pflicht; das Chart erzeugt ihn nie. Sichere ihn, siehe
+  [Betrieb](09-operations.md#secret_key). Du kannst die Secrets auch als Werte
+  übergeben (`secrets.secretKey`, `database.url`, ...); dann legt das Chart das
+  Secret an, die Werte stehen aber auch im Helm-Release.
+- Die Migrationen laufen beim Start der Anwendung, ein Migrations-Job ist
+  nicht nötig. Bewahre deine Einstellungen in einer Werte-Datei auf (zum
+  Beispiel `my-values.yaml`) und aktualisiere nach einem Backup auf die neue
+  Version:
+
+  ```bash
+  helm upgrade openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+    --version 1.3.0 --namespace openstatuspage -f my-values.yaml
+  ```
+
+Mit SQLite statt PostgreSQL lässt du `database.existingSecret` und das Secret
+`openstatuspage-db` weg. Das Chart legt dann einen PersistentVolumeClaim an
+(`persistence.size`, standardmäßig 1Gi) und läuft mit genau einem Replikat und
+der Strategie `Recreate`. Autoskalierung und geteilte Installation sind mit
+SQLite nicht verfügbar:
+
+```bash
+helm install openstatuspage oci://ghcr.io/raphael-penning/charts/openstatuspage \
+  --version 1.2.3 --namespace openstatuspage \
+  --set baseUrl=https://status.example.com \
+  --set secrets.existingSecret=openstatuspage \
+  --set ingress.enabled=true --set ingress.className=nginx
+```
+
+Für die [geteilte Installation](#geteilte-installation) setzt du
+`split.enabled=true`, die Admin-Domain `split.admin.baseUrl`,
+`SUBSCRIPTION_TOKEN_KEY` in einem eigenen Secret
+(`secrets.publicExistingSecret`) und die URL der eingeschränkten Rolle in
+`database.public.existingSecret` (leg die Rollen vorher mit
+`deploy/postgres/roles.sql` an). Das Chart startet dann die öffentliche, die
+Admin- und die Worker-Instanz als eigene Deployments, gibt jeder nur die
+Secrets ihrer Rolle und legt pro Domain einen Ingress an. Die öffentlichen
+Pods verweisen nur auf diese beiden Secrets, daher können die Nodes, auf denen
+sie laufen, weder `SECRET_KEY` noch das Admin-Passwort, die SMTP- und
+OIDC-Geheimnisse oder die Datenbank-URL des Eigentümers lesen. Das Chart
+erzwingt das: Mit `secrets.existingSecret` bricht es ohne
+`secrets.publicExistingSecret` ab, und beide öffentlichen Secrets müssen sich
+von `secrets.existingSecret` und `database.existingSecret` unterscheiden (sie
+dürfen ein gemeinsames Secret sein). Die öffentlichen Secrets legst du so an:
+
+```bash
+kubectl -n openstatuspage create secret generic openstatuspage-public \
+  --from-literal=SUBSCRIPTION_TOKEN_KEY="$(openssl rand -base64 48)"
+kubectl -n openstatuspage create secret generic openstatuspage-db-public \
+  --from-literal=DATABASE_URL='postgres://osp_public:<passwort>@db.example.com:5432/openstatuspage'
+```
+
+Übergibst du die Secrets stattdessen als Werte, legt das Chart für die
+öffentlichen Pods ein eigenes Secret an, das nur `SUBSCRIPTION_TOKEN_KEY` und
+die URL der öffentlichen Rolle enthält. Ohne PostgreSQL
+verweigert es die geteilte Installation. Alle Werte beschreibt die
+[README des Charts](../../../deploy/helm/openstatuspage/README.md) (Englisch).
+
 ## Kubernetes
 
 Im Verzeichnis `deploy/kubernetes/` des Repositorys liegen Beispiel-Manifeste,
-die Kustomize zusammenfasst:
+die Kustomize zusammenfasst. Sie sind die Alternative zum
+[Helm-Chart](#kubernetes-mit-helm) für Setups ohne Helm:
 
 | Datei | Inhalt |
 | --- | --- |
