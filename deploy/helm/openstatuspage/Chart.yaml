@@ -4,8 +4,8 @@ description: Self-hosted status page that keeps your infrastructure private
 type: application
 # Release tags vX.Y.Z publish the chart with version and appVersion X.Y.Z
 # (docs/releasing.md). The values here are those of the current development line.
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.3.0
+appVersion: "0.3.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/Raphael-Penning/openstatuspage
 sources:
