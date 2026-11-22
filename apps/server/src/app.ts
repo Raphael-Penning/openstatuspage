@@ -34,15 +34,23 @@ export interface BuildAppOptions {
 
 /** `?`, `&` and `=` as they appear in a URL-encoded parameter value, also encoded twice or more (`%253D`). */
 const ENC = (hex: string) => `%(?:25)*${hex}`;
+/** The parameter name `token` in any spelling the query parser decodes to it (`tok%65n`, `%74oken`, `TOKEN`). */
+const TOKEN_NAME = [...'token']
+  .map((c) => {
+    const hex = (ch: string) => ch.charCodeAt(0).toString(16);
+    return `(?:${c}|${ENC(`(?:${hex(c)}|${hex(c.toUpperCase())})`)})`;
+  })
+  .join('');
 const TOKEN_PARAM = new RegExp(
   // A parameter of its own, or one inside an encoded value such as return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3Dabc.
-  `((?:[?&]|${ENC('3F')}|${ENC('26')})token(?:=|${ENC('3D')}))(?:(?!${ENC('26')})[^&#])*`,
+  `((?:[?&]|${ENC('3F')}|${ENC('26')})${TOKEN_NAME}(?:=|${ENC('3D')}))(?:(?!${ENC('26')})[^&#])*`,
   'gi',
 );
 
 /**
- * Replaces the value of every `token` query parameter, also one nested in an
- * encoded parameter value: "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1".
+ * Replaces the value of every `token` query parameter, also one with a
+ * percent-encoded name or nested in an encoded parameter value:
+ * "/x?token=abc&a=1" → "/x?token=[REDACTED]&a=1".
  */
 export function redactUrlTokens(url: string): string {
   const query = url.indexOf('?');

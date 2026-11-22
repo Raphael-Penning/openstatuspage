@@ -158,6 +158,14 @@ describe('request logging', () => {
     expect(redactUrlTokens('/token=abc')).toBe('/token=abc');
   });
 
+  it('redacts token parameters whose name is percent-encoded', () => {
+    expect(redactUrlTokens('/x?tok%65n=abc&a=1')).toBe('/x?tok%65n=[REDACTED]&a=1');
+    expect(redactUrlTokens('/x?%74%6F%6B%65%6E=abc')).toBe('/x?%74%6F%6B%65%6E=[REDACTED]');
+    expect(redactUrlTokens('/x?%54OKEN=abc')).toBe('/x?%54OKEN=[REDACTED]');
+    expect(redactUrlTokens('/x?return=%2Fy%3Ftok%2565n%3Dabc')).toBe('/x?return=%2Fy%3Ftok%2565n%3D[REDACTED]');
+    expect(redactUrlTokens('/x?tok%65ns=keep')).toBe('/x?tok%65ns=keep');
+  });
+
   it('redacts tokens nested in encoded parameter values (return paths)', () => {
     expect(redactUrlTokens('/preferences/language?lang=de&return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3Dabc-123%26saved%3D1')).toBe(
       '/preferences/language?lang=de&return=%2Fsubscription%2Fmanage%3Fid%3D1%26token%3D[REDACTED]%26saved%3D1',
