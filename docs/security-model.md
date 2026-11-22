@@ -57,7 +57,7 @@ tests) and history imports. The public instance never connects to either.
 | Subscribe an address (double opt-in) | `osp_public.subscribe(...)` |
 | Confirm, read, change and delete one subscription, **only with its token** | `osp_public.subscription_confirm/get/update/delete(...)` |
 | Read **one private page with its token**: its name, its services (also hidden ones), their history and corrections, and the public incidents and maintenance windows that affect them | `osp_public.private_page*(token, ...)` |
-| Check whether its own login is restricted | `osp_public.connection_restricted()` |
+| Check whether its own login is restricted, and in which schemas it may still create objects | `osp_public.connection_restricted()`, `osp_public.connection_create_schemas()` |
 
 The views have the same names as the tables, and the public instance connects
 with `search_path=osp_public`, so the public code runs unchanged against them.
@@ -132,10 +132,10 @@ stop a leak on its own; together they are defense in depth:
    worker instances call it on every start (and `pnpm db:migrate` does), so the
    grants follow every migration. It refuses a role that is the connecting role,
    a superuser, has `BYPASSRLS` or is a member of any role (predefined roles such
-   as `pg_read_all_data` would bypass the column privileges), and a role that may
-   create objects in the table schema or in `osp_public`, also through a grant to
-   `PUBLIC` (migration `0012`): the instance then does not start until the
-   privilege is revoked (`harden.sql` does it for the schema `public`). Functions the
+   as `pg_read_all_data` would bypass the column privileges). It also takes
+   `CREATE` on the table schema and on `osp_public` away from the role and from
+   `PUBLIC` (migration `0013`, see [CREATE on the schemas](#create-on-the-schemas)).
+   Functions the
    migrating role creates are not executable by `PUBLIC` by default
    (`ALTER DEFAULT PRIVILEGES`), so a function added later is only callable by
    the roles it is granted to.
@@ -183,6 +183,38 @@ and history imports on every instance. These privileges exist per database and
 also affect other applications in the same database. Rerun `roles.sql` on an
 existing installation to apply it.
 
+### CREATE on the schemas
+
+Before PostgreSQL 15 (and on clusters upgraded from such a version) `PUBLIC` may
+create objects in the schema `public`, so the public role could too. The pinned
+`search_path` of the functions (layer 4) already keeps such objects out of
+everything that runs with the owner's rights; taking `CREATE` away is defence
+in depth on top. It needs no manual step:
+
+- Migration `0013_schema_create_hardening` and `osp_grant_public_role` (every
+  start of an admin, worker or all instance, and `pnpm db:migrate`) revoke
+  `CREATE` on the table schema and on `osp_public` from `PUBLIC` and from the
+  public role. Before revoking from `PUBLIC` they make sure the migrating role
+  keeps its own `CREATE` (it grants it to itself where it may; later migrations
+  add tables there) and leave `PUBLIC` as it is when it would lose it.
+  Databases without a registered public role are not changed.
+- Each statement runs on its own; one the migrating role may not run (the schema
+  belongs to another role, for example a superuser on PostgreSQL 14 while the
+  app role is none) changes nothing and fails nothing. If the public role may
+  still create objects there afterwards, the migration raises a `WARNING` and
+  the instances that migrate log on every start: *"the public database role
+  "osp_public" may still create objects in the table schema or in osp_public,
+  and this instance may not take that away …"*, with the exact commands, for
+  example `REVOKE CREATE ON SCHEMA public FROM PUBLIC;` (and
+  `GRANT CREATE ON SCHEMA public TO <app role>;` first when the app role created
+  its tables only through `PUBLIC`). Run them as the schema owner or a
+  superuser; `harden.sql` does the same for the schema `public`.
+- A grant through a role the public role is a member of is only reported
+  (`REVOKE <role> FROM osp_public;`); `osp_grant_public_role` refuses such a role
+  anyway.
+- A public instance whose login may still create objects there logs a warning
+  and starts.
+
 PostgreSQL 11 is the minimum and 15 or newer is recommended: older servers do not support
 `security_invoker` views. There all views run with the owner's rights (as
 `security_barrier` views); layers 1, 2 and 4 still apply, but RLS does not apply
@@ -217,10 +249,11 @@ way on every version.
 3. Public instance: `APP_ROLE=public` and
    `DATABASE_URL=postgres://osp_public:...@db/openstatuspage`. It waits for the
    schema, then checks its login: if it is **not** a registered public role (e.g.
-   it was given the owner's credentials by mistake), or if it may create objects
-   in the table schema or in `osp_public`, it refuses to start with *"Refusing to
-   start: the database login of this public instance is not a registered public
-   role …"*. `ALLOW_UNRESTRICTED_PUBLIC_DB=true` turns this into
+   it was given the owner's credentials by mistake), it refuses to start with
+   *"Refusing to start: the database login of this public instance is not a
+   registered public role …"*. If it may still create objects in the table schema
+   or in `osp_public`, it only logs a warning (see
+   [CREATE on the schemas](#create-on-the-schemas)). `ALLOW_UNRESTRICTED_PUBLIC_DB=true` turns this into
    a warning, for setups that knowingly run without the database boundary.
 
 All instances need the same `SUBSCRIPTION_TOKEN_KEY`: the public instance

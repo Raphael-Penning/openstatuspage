@@ -13,9 +13,12 @@
 -- - Temporary tables: the public role needs none.
 -- - CREATE on the schema "public": PUBLIC holds it by default before PostgreSQL 15
 --   (and on clusters upgraded or restored from such a version). Nobody but the
---   owner creates objects there; a public role that may is refused by the
---   instances (osp_grant_public_role, connection_restricted). If the tables live
---   in another schema, revoke CREATE on that one from PUBLIC as well.
+--   owner creates objects there. The instances take it away from PUBLIC and the
+--   public role themselves where the app role may (migration
+--   0013_schema_create_hardening) and otherwise log a warning with the command,
+--   so this part is optional for OpenStatusPage; it still covers a schema the
+--   app role may not change and other applications in the same database. If the
+--   tables live in another schema, revoke CREATE on that one from PUBLIC as well.
 --   A role that created its tables there only through PUBLIC's CREATE (the
 --   migrating app role on PostgreSQL 14 or older without roles.sql) loses it, and
 --   the next db:migrate that adds a table or index fails with "permission

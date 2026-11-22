@@ -49,20 +49,25 @@ documentation or an example file. Generate your own with
 `openssl rand -base64 48`. On an existing installation this makes stored
 monitoring credentials unreadable, so re-enter them afterwards.
 
-**PostgreSQL: "The public database role ... may create objects in the
-schema ...".**
-The public role may create objects in the table schema, usually because
-PostgreSQL before version 15 (or a cluster upgraded from one) lets everybody
-create objects in schema `public`. The instance does not start until that is
-revoked: run `deploy/postgres/harden.sql` again as a superuser in that database, as described in the
-[security model](../../security-model.md), or run
-`REVOKE CREATE ON SCHEMA public FROM PUBLIC` as a superuser (if the tables live in another schema, revoke it there as well).
-If the role that runs the migrations is not the owner of the schema and has
-created its tables only through that default (PostgreSQL 14 or older without
-`roles.sql`), it loses the right as well and the next update fails with
-"permission denied": first run `GRANT CREATE ON SCHEMA public TO <app role>`
-(`roles.sql` already does). `harden.sql` warns about every role that owns tables
-in the schema and can no longer create objects there.
+**PostgreSQL warning: "the public database role ... may still create objects
+in the table schema or in osp_public".**
+Updates take `CREATE` on the table schema away from the public role and from
+`PUBLIC` by themselves (PostgreSQL before version 15, and clusters upgraded from
+one, let everybody create objects in schema `public`). This warning means the
+role that runs the migrations was not allowed to, usually because a superuser
+owns the schema. Everything keeps running: the functions of the public role
+ignore such objects anyway, so this is an additional safeguard only. To close
+it, run the command from the warning once as a superuser (or the schema owner)
+in that database, typically `REVOKE CREATE ON SCHEMA public FROM PUBLIC;`. If
+the warning starts with `GRANT CREATE ON SCHEMA public TO <app role>;`, run that
+part too, first: the app role needs it for later updates. Rerunning
+`deploy/postgres/harden.sql` as a superuser does the same for schema `public`.
+The warning disappears on the next start. The public instance logs a matching
+warning ("may create objects in the table schema") with the same cause.
+
+0.3.0 refused to start in this situation (*"The public database role ... may
+create objects in the schema ..."*); a later version starts without any manual
+step.
 
 **`docker compose` says "set SECRET_KEY in .env" or "set POSTGRES_PASSWORD
 in .env".**
