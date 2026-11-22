@@ -253,6 +253,17 @@ docker buildx imagetools inspect ghcr.io/raphael-penning/openstatuspage:1.2.3 \
   --format '{{ json .SBOM }}'
 ```
 
+The images are not signed (no cosign or Docker Content Trust signature).
+What ties an image to this repository is the provenance attestation that
+BuildKit attaches to every pushed image: check in the output of the
+`.Provenance` command above that the build ran from this repository's
+workflow (the builder ID is the URL of the GitHub Actions run) and that the
+recorded `vcs` source and revision are this repository and the commit of the
+release tag. The attestation only says how the image was built; it is not a
+signature. Pin the image by digest
+(`ghcr.io/raphael-penning/openstatuspage@sha256:...`, shown by `imagetools
+inspect`) if you need a reference that cannot change.
+
 A quick functional check of a published image (SQLite in a throwaway volume):
 
 ```bash
