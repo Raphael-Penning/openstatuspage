@@ -70,12 +70,6 @@ const zOptionalText = (max: number) => z.string().max(max).nullish();
 
 /** Absolute http(s) URL. Rejects javascript:, data: and other schemes. */
 export const zHttpUrl = z.url({ protocol: /^https?$/, error: 'must be an http(s) URL' }).max(500);
-/** http(s) URL or a path on this site (`/logo.svg`), e.g. for logos. */
-export const zHttpUrlOrPath = z
-  .string()
-  .max(500)
-  .refine((v) => (v.startsWith('/') && !v.startsWith('//')) || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path');
-
 /**
  * Path on this site for links (`/about`): a single leading slash, no `//` or
  * backslash (browsers read both as another host), no whitespace or control
@@ -85,6 +79,11 @@ export const zSitePath = z
   .string()
   .max(500)
   .regex(/^\/(?![/\\])[^\s\\\u0000-\u001f\u007f]*$/, 'must be a path on this site starting with a single /');
+/** http(s) URL or a path on this site (`/logo.svg`, same rules as {@link zSitePath}), e.g. for logos. */
+export const zHttpUrlOrPath = z
+  .string()
+  .max(500)
+  .refine((v) => zSitePath.safeParse(v).success || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path');
 /**
  * Link target: an http(s) URL or a path on this site ({@link zSitePath}).
  * Leading and trailing whitespace is trimmed, like the http(s) URL fields.
