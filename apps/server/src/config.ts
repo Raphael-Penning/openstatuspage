@@ -304,3 +304,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     UMAMI_URL: c.UMAMI_URL?.replace(/\/+$/, ''),
   };
 }
+
+/**
+ * Settings that are valid but probably not what the operator wants. Logged on
+ * start (src/index.ts).
+ */
+export function configWarnings(config: Pick<Config, 'TRUST_PROXY' | 'APP_ROLE'>): string[] {
+  const warnings: string[] = [];
+  if (typeof config.TRUST_PROXY === 'number' && config.APP_ROLE !== 'worker') {
+    warnings.push(
+      `TRUST_PROXY=${config.TRUST_PROXY} trusts the nearest ${config.TRUST_PROXY === 1 ? 'hop' : 'hops'} whatever ` +
+        'the address: a client that reaches the app port directly (not through the proxy) can choose its IP with ' +
+        'X-Forwarded-For and evade the per-client rate limits. Make the port reachable only through the proxy, or ' +
+        'set TRUST_PROXY to the addresses of the proxies.',
+    );
+  }
+  return warnings;
+}

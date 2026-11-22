@@ -1,6 +1,6 @@
 import { buildApp } from './app.js';
 import { ensureInitialAdmin } from './bootstrap.js';
-import { loadConfig } from './config.js';
+import { configWarnings, loadConfig } from './config.js';
 import { createDb } from './db/index.js';
 import { roleFeatures } from './role.js';
 import { prepareDatabase, startBackgroundTasks } from './startup.js';
@@ -25,6 +25,7 @@ async function main(): Promise<void> {
         'compromised public host does not hold the key of the monitoring credentials (docs/security-model.md).',
     );
   }
+  for (const warning of configWarnings(config)) app.log.warn(warning);
   if (config.insecureSecret) {
     app.log.warn('SECRET_KEY is not set: using the public development secret. Never use this in production.');
   }

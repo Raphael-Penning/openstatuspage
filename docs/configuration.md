@@ -321,7 +321,9 @@ management UI (`/admin`) never loads the tracker.
   minute per client IP (see [Analytics](#analytics)).
 
 Behind a reverse proxy set `TRUST_PROXY` (hop count or proxy addresses), otherwise all
-clients share the proxy's IP.
+clients share the proxy's IP. With a hop count the server logs a warning on start: it
+trusts the nearest hop whatever its address, so the app port must only be reachable
+through the proxy.
 
 The counters live in the memory of each instance. With *n* instances behind a load
 balancer a client can make up to *n* times as many requests. For exact limits route

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp, redactUrlTokens } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
+import { configWarnings, loadConfig } from '../src/config.js';
 import { createDb, migrateToLatest } from '../src/db/index.js';
 import { RATE_LIMIT_KEYS } from '../src/routes/index.js';
 import { createTestApp } from './helpers.js';
@@ -36,6 +36,14 @@ describe('loadConfig', () => {
     expect(loadConfig({ NODE_ENV: 'development' }).insecureSecret).toBe(true);
     expect(loadConfig({}, { allowMissingSecret: true }).insecureSecret).toBe(true);
     expect(loadConfig({ SECRET_KEY: 'x'.repeat(32) }).insecureSecret).toBe(false);
+  });
+
+  it('warns when TRUST_PROXY trusts hops by position only', () => {
+    const warnings = (env: Record<string, string>) => configWarnings(loadConfig({ NODE_ENV: 'test', ...env }));
+    expect(warnings({ TRUST_PROXY: 'true' })).toEqual([expect.stringMatching(/TRUST_PROXY=1 trusts the nearest hop/)]);
+    expect(warnings({ TRUST_PROXY: '2' })).toHaveLength(1);
+    expect(warnings({ TRUST_PROXY: '10.0.0.0/8' })).toEqual([]);
+    expect(warnings({})).toEqual([]);
   });
 
   it('treats empty values as unset', () => {
