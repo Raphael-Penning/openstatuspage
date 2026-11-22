@@ -26,6 +26,9 @@ lower case), so a fork publishes to its own namespace without changes.
 
 - Only the `image` job, which never runs for pull requests, gets
   `packages: write`. `image-build` has read access only.
+- On pull requests the `image` check shows as skipped, which GitHub counts as
+  passed. If branch protection requires a status check for the image build,
+  require `image-build` instead of `image`.
 - Both jobs depend on the `check` (typecheck, tests, build) and `postgres`
   (migrations and seed against PostgreSQL) jobs. Nothing is pushed unless both
   passed.
