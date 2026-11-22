@@ -91,6 +91,34 @@ describe('POST /api/ingest/:sourceId', () => {
     expect(await checks(id)).toEqual([]);
   });
 
+  it('authenticates before the body is read or parsed', async () => {
+    const { id, token } = await t.insertSource({ type: 'webhook' });
+    const unparsable = '{"checks": ['.padEnd(2 * 1024 * 1024, ' ');
+    for (const [url, headers] of [
+      [`/api/ingest/${id}`, {}],
+      [`/api/ingest/${id}`, { authorization: `Bearer ${token}x` }],
+      [`/api/ingest/${id}/uptimekuma`, {}],
+      ['/api/ingest/00000000-0000-0000-0000-000000000000', { authorization: `Bearer ${token}` }],
+    ] as const) {
+      const res = await t.app.inject({
+        method: 'POST',
+        url,
+        headers: { ...headers, 'content-type': 'application/json' },
+        payload: unparsable,
+      });
+      // A parsed body would answer 400 (invalid JSON); the hook answers first.
+      expect(res.statusCode, url).toBeOneOf([401, 404]);
+    }
+    // Authenticated, the same body reaches the parser (and up to 5 MiB are allowed).
+    const parsed = await t.app.inject({
+      method: 'POST',
+      url: `/api/ingest/${id}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: unparsable,
+    });
+    expect(parsed.statusCode).toBe(400);
+  });
+
   it('returns 404 for unknown sources and formats', async () => {
     const { id, token } = await t.insertSource({ type: 'webhook' });
     const unknown = await t.app.inject({

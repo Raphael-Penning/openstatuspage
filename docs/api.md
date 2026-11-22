@@ -4264,7 +4264,9 @@ Content-Type: application/vnd.api+json
 `/api/ingest`. Monitoring systems push check results. Authentication:
 `Authorization: Bearer <ingest token>` of the source (or the `?token=` query
 parameter for systems that cannot set headers; its value is redacted in the request
-log).
+log). Source, token and rate limit are checked before the body is read, so a request
+without a valid token is answered `404`/`401` without parsing its body; only
+authenticated requests may send bodies of up to 5 MiB.
 
 Request bodies are the native payloads below (`application/json`; JSON sent as
 `text/plain` is accepted, too), not JSON:API documents. Responses are JSON:API: a

@@ -12,6 +12,8 @@
  *
  * Ingest authentication: `Authorization: Bearer <token>` or `?token=<token>`;
  * the SHA-256 of the token is compared with `monitor_sources.ingest_token_hash`.
+ * Source, token and rate limit are checked in an onRequest hook, before the
+ * body is read: only authenticated requests get the 5 MiB body limit parsed.
  */
 import { BUNDLE_SOURCE_TYPE, type MonitorSourceTestResult } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -60,19 +62,28 @@ export async function registerAdapterRoutes(app: FastifyInstance, options: Adapt
       }
     });
 
+    // Authenticate before the body is read and parsed (see authorizeIngest).
+    const authorized = new WeakMap<FastifyRequest, AuthorizedIngest>();
+    scope.addHook('onRequest', async (req, reply) => {
+      const params = req.params as { sourceId?: string; type?: string };
+      authorized.set(req, await authorizeIngest(app.ctx, limiter, req, reply, params.sourceId ?? '', params.type ?? null));
+    });
+    const authorizedOf = (req: FastifyRequest): AuthorizedIngest => {
+      const auth = authorized.get(req);
+      if (!auth) throw unauthorized('Invalid or missing ingest token');
+      return auth;
+    };
+
     // Tokens may arrive in the query string: keep these routes out of info-level request logs.
     // Full syncs of large sources can exceed the global 1 MiB body limit.
     const routeOptions = { logLevel: 'warn' as const, bodyLimit: 5 * 1024 * 1024 };
 
-    scope.post<{ Params: { sourceId: string } }>('/api/ingest/:sourceId', routeOptions, async (req, reply) =>
-      metaDocument({ ...(await handleIngest(app.ctx, limiter, req, reply, req.params.sourceId, null)) }),
+    scope.post('/api/ingest/:sourceId', routeOptions, async (req) =>
+      metaDocument({ ...(await handleIngest(app.ctx, req, authorizedOf(req))) }),
     );
 
-    scope.post<{ Params: { sourceId: string; type: string } }>(
-      '/api/ingest/:sourceId/:type',
-      routeOptions,
-      async (req, reply) =>
-        metaDocument({ ...(await handleIngest(app.ctx, limiter, req, reply, req.params.sourceId, req.params.type)) }),
+    scope.post('/api/ingest/:sourceId/:type', routeOptions, async (req) =>
+      metaDocument({ ...(await handleIngest(app.ctx, req, authorizedOf(req))) }),
     );
   });
 
@@ -128,14 +139,24 @@ function tooManyRequests(retryAfterSeconds: number): HttpError {
   return new HttpError(429, 'rate_limited', `Too many requests for this source, retry in ${retryAfterSeconds}s`);
 }
 
-async function handleIngest(
+interface AuthorizedIngest {
+  source: Pick<MonitorSource, 'id' | 'type'>;
+  parser: PushParser;
+}
+
+/**
+ * Everything that does not need the body: format, source, token, source state
+ * and rate limit. Runs in onRequest, so unauthenticated requests are answered
+ * before their body is read or parsed.
+ */
+async function authorizeIngest(
   ctx: AppContext,
   limiter: TokenBucketLimiter,
   req: FastifyRequest,
   reply: FastifyReply,
   sourceId: string,
   format: string | null,
-): Promise<IngestResult> {
+): Promise<AuthorizedIngest> {
   let parser: PushParser = genericPushParser;
   if (format !== null) {
     const adapter = getAdapter(format);
@@ -167,7 +188,10 @@ async function handleIngest(
     reply.header('retry-after', String(retryAfter));
     throw tooManyRequests(retryAfter);
   }
+  return { source, parser };
+}
 
+async function handleIngest(ctx: AppContext, req: FastifyRequest, { source, parser }: AuthorizedIngest): Promise<IngestResult> {
   let parsed;
   try {
     parsed = parser.parse(req.body, req.headers);
