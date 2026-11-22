@@ -52,6 +52,9 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, 'shutting down');
     ctx.worker.stop();
+    // Running polls see the abort and clear their in-progress marker, so the next
+    // start does not treat them as polls that crashed the process.
+    await ctx.worker.drain(10_000);
     await app.close();
     await db.destroy();
     process.exit(0);

@@ -280,6 +280,10 @@ async function pollSource(ctx: AppContext, source: MonitorSource, options: Runne
   try {
     checks = await fetchSourceChecks(ctx, source, options);
   } catch (err) {
+    if (options.signal?.aborted) {
+      // Stopped by a shutdown, not by the source: no failed poll to record.
+      return { ok: false, message: 'The poll was cancelled because the server is shutting down.' };
+    }
     const message = errorMessage(err);
     ctx.log.warn({ sourceId, error: message }, 'monitoring source poll failed');
     await ctx.ingest.recordPoll(sourceId, false, message);

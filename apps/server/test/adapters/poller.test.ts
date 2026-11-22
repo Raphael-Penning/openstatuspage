@@ -232,6 +232,31 @@ describe('crash-safe polling', () => {
   });
 });
 
+describe('shutdown during a poll', () => {
+  it('cancels the scheduled poll, clears its marker and records no failed poll', async () => {
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    // A first poll that succeeds, so a recorded failure would be visible.
+    await pollAndStore(t.ctx, id, { fetchFactory: () => kumaFetch().fetch });
+    let started!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => (started = resolve));
+    const hanging: FetchFn = ((_url: string, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        started();
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+      })) as FetchFn;
+    await syncPollers(t.ctx, { fetchFactory: () => hanging });
+    const running = t.ctx.worker.runScheduled(pollTaskName(id));
+    await fetchStarted;
+    expect((await sourceRow(id)).poll_started_at).not.toBeNull();
+
+    // As on SIGTERM: stop the worker and wait for the running poll before the database closes.
+    t.ctx.worker.stop();
+    expect(await t.ctx.worker.drain(5000)).toBe(true);
+    await running;
+    expect(await sourceRow(id)).toMatchObject({ poll_started_at: null, poll_aborts: 0, last_poll_ok: 1, last_error: null });
+  });
+});
+
 describe('syncPollers', () => {
   it('schedules enabled pull sources and unschedules removed or disabled ones', async () => {
     const kuma = await t.insertSource({ type: 'uptimekuma', config: kumaConfig, pollIntervalSeconds: 30 });
