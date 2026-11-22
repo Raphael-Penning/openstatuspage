@@ -338,6 +338,16 @@ export function describeTransportError(err: unknown): string {
     case 'ENETUNREACH':
       return `host unreachable (${code})`;
   }
-  const message = cause?.message ?? e?.message ?? String(err);
+  const message = stripUrlCredentials(cause?.message ?? e?.message ?? String(err));
   return code ? `${message} (${code})` : message;
+}
+
+const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi;
+
+/**
+ * Replaces every URL in a message by its form without userinfo, query string and
+ * fragment (undici, for one, quotes the full URL including the password).
+ */
+export function stripUrlCredentials(message: string): string {
+  return message.replace(URL_IN_TEXT, (url) => describeUrl(url));
 }

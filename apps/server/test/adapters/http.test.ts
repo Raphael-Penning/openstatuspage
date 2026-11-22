@@ -153,6 +153,19 @@ describe('requestJson errors', () => {
     expect(err.message).toBe('Mon returned HTTP 500 for https://mon.example.com/x');
   });
 
+  it('never passes URL credentials or query strings of transport errors on', async () => {
+    // undici quotes the complete URL in this message.
+    const err = (await requestJson(fetch, 'https://svc:url-pass-123@mon.example.com/x?apikey=key-456', { system: 'Mon' }).catch(
+      (e: Error) => e,
+    )) as Error;
+    expect(err).toBeInstanceOf(AdapterError);
+    expect(err.message).toContain('https://mon.example.com/x');
+    expect(err.message).not.toMatch(/url-pass-123|key-456|svc:/);
+    expect(describeTransportError(new Error('failed for http://u:p@h.example.com:8080/a?b=c#d and ftp://x@y.example.com'))).toBe(
+      'failed for http://h.example.com:8080/a and ftp://y.example.com/',
+    );
+  });
+
   it('describes TLS and DNS failures', () => {
     expect(describeTransportError(Object.assign(new TypeError('fetch failed'), { cause: { code: 'DEPTH_ZERO_SELF_SIGNED_CERT' } }))).toMatch(
       /TLS certificate verification failed .* disable TLS verification/,
@@ -228,6 +241,11 @@ describe('response size limits', () => {
 });
 
 describe('redactSecrets', () => {
+  it('removes the userinfo of the base URL', () => {
+    const config = { baseUrl: 'https://svc-user:p%40ss-word@mon.example.com', apiKey: 'k' };
+    expect(redactSecrets('svc-user p%40ss-word p@ss-word', config, ['apiKey'])).toBe('*** *** ***');
+  });
+
   it('removes secrets and their basic-auth encodings', () => {
     const config = { username: 'svc', password: 'hunter2-pass', apiKey: 'k' };
     const b64 = Buffer.from('svc:hunter2-pass').toString('base64');

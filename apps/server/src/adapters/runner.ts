@@ -93,9 +93,30 @@ export async function fetchSourceChecks(
   }
 }
 
-/** Removes secret config values (and their Basic-auth encodings) from a message. */
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/** Removes secret config values, userinfo of the base URL and Basic-auth encodings from a message. */
 export function redactSecrets(message: string, config: Record<string, unknown>, secretKeys: readonly string[]): string {
   const secrets = new Set<string>();
+  // Userinfo in the base URL is a credential, too.
+  if (typeof config.baseUrl === 'string') {
+    try {
+      const { username, password } = new URL(config.baseUrl);
+      for (const value of [password, username]) {
+        if (value.length < 4) continue;
+        secrets.add(value);
+        secrets.add(safeDecode(value));
+      }
+    } catch {
+      // not a URL: nothing to add
+    }
+  }
   for (const key of secretKeys) {
     const value = config[key];
     if (typeof value !== 'string' || value.length < 4) continue;
