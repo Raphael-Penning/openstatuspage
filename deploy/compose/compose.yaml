@@ -12,7 +12,8 @@
 #        printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
 #        chmod 600 .env
 #   4. Edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD (and HOST_PORT /
-#      TRUST_PROXY for your proxy).
+#      TRUST_PROXY for your proxy). The port is published on 127.0.0.1 only
+#      by default, for a reverse proxy on the same host.
 #   5. docker compose up -d
 #
 # All settings live in .env next to this file; every option of the
@@ -29,12 +30,16 @@ services:
     image: ${OSP_IMAGE:-ghcr.io/raphael-penning/openstatuspage}:${OSP_VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-3000}:3000"
+      # Localhost only by default: with TRUST_PROXY=1 a client that reaches the
+      # port directly, around the proxy, could set its own X-Forwarded-For. To
+      # publish on all interfaces (HOST_PORT=3000), set TRUST_PROXY to the
+      # proxy's addresses instead of a hop count.
+      - "${HOST_PORT:-127.0.0.1:3000}:3000"
     # Every setting from .env reaches the app.
     env_file: .env
     environment:
       # The container always listens on 0.0.0.0:3000; HOST_PORT in .env
-      # changes the published port instead.
+      # changes the published address and port instead.
       HOST: 0.0.0.0
       PORT: "3000"
       # Fail early with a clear message instead of starting without a key.
