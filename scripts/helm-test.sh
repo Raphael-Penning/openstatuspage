@@ -66,13 +66,19 @@ count() { # count <file> <kind>
   grep -c "^kind: $2\$" "$TMP/$1.yaml" || true
 }
 
+# The document is captured first: with pipefail, grep -q exiting at the first
+# match would otherwise turn the writer's SIGPIPE into a spurious failure.
 has() { # has <file> <kind> <name> <extended regex>
-  doc "$1" "$2" "$3" | grep -Eq -- "$4"
+  local d
+  d="$(doc "$1" "$2" "$3")"
+  grep -Eq -- "$4" <<<"$d"
 }
 
 # True when the container env of a Deployment sets <env> to the literal <value>.
 env_is() { # env_is <file> <deployment> <env> <value>
-  doc "$1" Deployment "$2" | grep -A1 -- "- name: $3\$" | grep -Eq -- "value: \"?$4\"?\$"
+  local d
+  d="$(doc "$1" Deployment "$2" | grep -A1 -- "- name: $3\$")" || return 1
+  grep -Eq -- "value: \"?$4\"?\$" <<<"$d"
 }
 
 # True when the Deployment references exactly the given Secrets (sorted, space separated).
