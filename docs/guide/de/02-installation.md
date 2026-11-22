@@ -98,7 +98,7 @@ ADMIN_PASSWORD=ein-langes-passwort
 | --- | --- |
 | `BASE_URL` | Die öffentliche URL, wie [oben](#minimale-konfiguration) beschrieben. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Der [erste Administrator](#der-erste-administrator); wird nur angelegt, solange die Datenbank keinen Benutzer enthält. |
-| `HOST_PORT` | Port auf dem Host, Standard `3000`, siehe [HOST_PORT](#host_port). |
+| `HOST_PORT` | Adresse und Port auf dem Host, Standard `127.0.0.1:3000` (nur localhost), siehe [HOST_PORT](#host_port). |
 | `TRUST_PROXY` | Anzahl der Reverse Proxys vor der Anwendung, `1` in der Vorlage. Ohne Proxy lässt du den Wert leer, siehe [TRUST_PROXY](03-reverse-proxy.md#trust_proxy). |
 | `OSP_VERSION` | [Image-Tag](#image-tags), der laufen soll. Leg dich auf ein Release fest. |
 | `OSP_IMAGE` | Image ohne Tag, Standard `ghcr.io/raphael-penning/openstatuspage`. Ändere es für einen Fork oder einen eigenen Registry-Mirror. |
@@ -126,13 +126,24 @@ Die Datei landet also weder in einem Commit noch in einem Image.
 
 ### HOST_PORT
 
-Im Container lauscht die Anwendung auf Port 3000. `HOST_PORT` (Standard
-`3000`) legt fest, unter welchem Port sie auf dem Host erreichbar ist:
+Im Container lauscht die Anwendung auf Port 3000. `HOST_PORT` legt fest,
+unter welcher Adresse und welchem Port sie auf dem Host erreichbar ist:
 
-- `HOST_PORT=8080` veröffentlicht Port 8080 auf allen Schnittstellen.
-- `HOST_PORT=127.0.0.1:3000` veröffentlicht ihn nur auf localhost. Das ist
-  richtig, wenn ein Reverse Proxy auf demselben Host HTTPS übernimmt: Der
-  unverschlüsselte Port ist dann von außen nicht erreichbar.
+- `HOST_PORT=127.0.0.1:3000` (der Standard in `compose.yaml` und in der
+  Vorlage) veröffentlicht ihn nur auf localhost. Das ist richtig, wenn ein
+  Reverse Proxy auf demselben Host HTTPS übernimmt: Der unverschlüsselte Port
+  ist von außen nicht erreichbar, und niemand kann den Proxy umgehen.
+- `HOST_PORT=8080` veröffentlicht Port 8080 auf allen Schnittstellen, etwa für
+  einen Proxy auf einem anderen Host. Dann setzt du `TRUST_PROXY` auf die
+  Adresse oder das Netz des Proxys (z. B. `TRUST_PROXY=192.0.2.10`) statt auf
+  eine Anzahl: Mit `1` könnte ein Client, der den Port direkt erreicht, über
+  `X-Forwarded-For` seine eigene IP bestimmen (siehe
+  [TRUST_PROXY](03-reverse-proxy.md#trust_proxy)).
+
+`.env`-Dateien aus Releases vor diesem Standard enthalten noch
+`HOST_PORT=3000` und veröffentlichen weiter auf allen Schnittstellen; läuft
+dein Proxy auf demselben Host, änderst du die Zeile in
+`HOST_PORT=127.0.0.1:3000`.
 
 ### Start prüfen
 

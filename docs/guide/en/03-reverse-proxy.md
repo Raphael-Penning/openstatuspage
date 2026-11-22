@@ -10,9 +10,9 @@ it that terminates HTTPS. Three things must fit together:
    client IP.
 
 Publish the app port on localhost only (`HOST_PORT=127.0.0.1:3000` in
-`.env` with Docker Compose, `-p 127.0.0.1:3000:3000` with a single
-container, `HOST=127.0.0.1` from source) when the proxy runs on the same
-host, so nobody can bypass the proxy. On Kubernetes the
+`.env` with Docker Compose, the default there; `-p 127.0.0.1:3000:3000` with
+a single container, `HOST=127.0.0.1` from source) when the proxy runs on the
+same host, so nobody can bypass the proxy. On Kubernetes the
 [ingress](#kubernetes-ingress) takes the role of the proxy.
 
 With Docker Compose `BASE_URL`, `TRUST_PROXY` and `HOST_PORT` go into `.env`
@@ -51,6 +51,13 @@ and takes it from `X-Forwarded-For` only as far as you allow:
 number of proxies you operate: entries further left in `X-Forwarded-For` come
 from the client and can be forged. A value that is too high lets clients
 choose their own IP and bypass rate limits.
+
+A hop count trusts whoever connects to the app. It is only safe while the app
+port is reachable through the proxy alone (published on localhost, or only
+inside a private network). If the port is reachable from other hosts, set
+`TRUST_PROXY` to the proxy's addresses or networks instead (e.g.
+`TRUST_PROXY=192.0.2.10` or `TRUST_PROXY=10.0.0.0/8`), so a client that
+bypasses the proxy cannot set its own `X-Forwarded-For`.
 
 ## Caddy
 
