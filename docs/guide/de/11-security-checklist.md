@@ -106,8 +106,10 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
 - [ ] SPF, DKIM und DMARC sind für die Absender-Domain eingerichtet.
 - [ ] Die Datenschutzerklärung beschreibt die E-Mail-Abonnements (Zweck,
       Speicherung, Abmeldung) und ist im Footer verlinkt.
-- [ ] `MAIL_TRANSPORT=log` wird nicht produktiv genutzt: Das Server-Log
-      enthielte sonst die Bestätigungs- und Verwaltungslinks.
+- [ ] `MAIL_TRANSPORT=log` wird nicht produktiv genutzt: Es wird keine
+      E-Mail versendet. (Mit `NODE_ENV=production` sind die Tokens der
+      geloggten Links geschwärzt; in anderen Modi enthält das Log
+      funktionierende Bestätigungs- und Verwaltungslinks.)
 
 ## Betrieb
 

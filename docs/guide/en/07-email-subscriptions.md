@@ -24,7 +24,7 @@ subscriptions without a transport, the settings page shows a warning.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, otherwise `none` | `smtp` sends via SMTP. `log` writes every email to the server log instead of sending it (for development and tests only: the log then contains the links of confirmation and manage emails). `none` disables email, even when `SMTP_HOST` is set. |
+| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, otherwise `none` | `smtp` sends via SMTP. `log` writes every email to the server log instead of sending it (for development and tests only: the log then contains the links of confirmation and manage emails; with `NODE_ENV=production`, the default of the container image, their tokens are replaced by `[redacted]`). `none` disables email, even when `SMTP_HOST` is set. |
 | `SMTP_HOST` | – | Host name of the SMTP server or relay. Required for `smtp`. |
 | `SMTP_PORT` | `587` | Port of the SMTP server. |
 | `SMTP_SECURE` | `false` | `true` for implicit TLS (usually port 465). With `false` the connection is upgraded with STARTTLS when the server offers it. |

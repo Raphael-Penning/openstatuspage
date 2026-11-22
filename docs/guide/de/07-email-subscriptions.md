@@ -25,7 +25,7 @@ du Abonnements ohne Versandart, zeigt die Einstellungsseite eine Warnung.
 
 | Variable | Standard | Beschreibung |
 | --- | --- | --- |
-| `MAIL_TRANSPORT` | `smtp`, wenn `SMTP_HOST` gesetzt ist, sonst `none` | `smtp` versendet per SMTP. `log` schreibt jede E-Mail ins Server-Log, statt sie zu versenden (nur für Entwicklung und Tests: Das Log enthält dann die Links aus Bestätigungs- und Verwaltungs-E-Mails). `none` schaltet E-Mail ab, auch wenn `SMTP_HOST` gesetzt ist. |
+| `MAIL_TRANSPORT` | `smtp`, wenn `SMTP_HOST` gesetzt ist, sonst `none` | `smtp` versendet per SMTP. `log` schreibt jede E-Mail ins Server-Log, statt sie zu versenden (nur für Entwicklung und Tests: Das Log enthält dann die Links aus Bestätigungs- und Verwaltungs-E-Mails; mit `NODE_ENV=production`, dem Standard des Container-Images, stehen dort statt der Tokens `[redacted]`). `none` schaltet E-Mail ab, auch wenn `SMTP_HOST` gesetzt ist. |
 | `SMTP_HOST` | – | Hostname des SMTP-Servers oder Relays. Pflicht für `smtp`. |
 | `SMTP_PORT` | `587` | Port des SMTP-Servers. |
 | `SMTP_SECURE` | `false` | `true` für implizites TLS (meist Port 465). Bei `false` wird die Verbindung per STARTTLS verschlüsselt, sofern der Server es anbietet. |

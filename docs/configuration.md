@@ -167,7 +167,7 @@ for setup examples, deliverability and troubleshooting.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, else `none` | `smtp` sends via SMTP, `log` writes emails to the server log instead of sending them (development only, the log then contains confirmation links), `none` disables email. |
+| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, else `none` | `smtp` sends via SMTP, `log` writes emails to the server log instead of sending them (development only: the log then contains confirmation and manage links; with `NODE_ENV=production` their tokens are logged as `[redacted]`), `none` disables email. |
 | `SMTP_HOST` | – | SMTP server, e.g. `smtp.example.com`. Required for `smtp`. |
 | `SMTP_PORT` | `587` | SMTP port. |
 | `SMTP_SECURE` | `false` | `true` = implicit TLS (usually port 465). With `false` the connection is upgraded with STARTTLS when the server offers it. |

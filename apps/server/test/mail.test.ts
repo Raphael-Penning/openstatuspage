@@ -205,6 +205,28 @@ describe('createMailer', () => {
     expect(JSON.stringify(logged[0])).toContain('Body text');
   });
 
+  it('redacts the link tokens of logged mails in production', async () => {
+    const message = {
+      to: 'a@example.com',
+      subject: 'Confirm',
+      text: 'Confirm: https://status.example.com/subscription/confirm?id=sub-1&token=SECRETconfirm_-1\n' +
+        'Old: https://status.example.com/subscription/confirm?id=sub-1#token=SECRETfragment',
+      html: '<p>Confirm</p>',
+      headers: { 'List-Unsubscribe': '<https://status.example.com/api/public/subscriptions/sub-1/unsubscribe?token=SECREToneclick>' },
+    };
+    const env = { ...base, MAIL_TRANSPORT: 'log', SMTP_FROM: 'status@example.com' };
+    logged.length = 0;
+    await createMailer(loadConfig({ ...env, NODE_ENV: 'production' }), log).send(message);
+    const entry = JSON.stringify(logged[0]);
+    expect(entry).not.toContain('SECRET');
+    expect(entry).toContain('/subscription/confirm?id=sub-1&token=[redacted]');
+    expect(entry).toContain('unsubscribe?token=[redacted]');
+    // Development keeps the links usable.
+    logged.length = 0;
+    await createMailer(loadConfig({ ...env, NODE_ENV: 'development' }), log).send(message);
+    expect(JSON.stringify(logged[0])).toContain('token=SECRETconfirm_-1');
+  });
+
   it('never sends from a public instance, but keeps the configured kind', async () => {
     const env = {
       ...base,
