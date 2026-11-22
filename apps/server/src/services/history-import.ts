@@ -688,7 +688,10 @@ export class HistoryImportService {
     }
   }
 
-  /** Fails jobs without progress, expires old previews and drops their staged data. */
+  /**
+   * Fails jobs without progress, expires old previews and drops their staged
+   * data, and drops staged data left behind by finished jobs.
+   */
   async cleanup(now = Date.now()): Promise<void> {
     await this.expirePreviews(now);
     const stale = iso(now - IMPORT_STALE_MS);
@@ -704,6 +707,14 @@ export class HistoryImportService {
       const message = 'The import was interrupted (e.g. by a restart); nothing was written.';
       if (await this.finish(r.id, 'failed', 'interrupted', message, [status])) await this.discardStaging(r.id);
     }
+    // Staged data of finished jobs is normally dropped when they finish; a
+    // process that died in between leaves it behind.
+    await this.db
+      .deleteFrom('history_import_intervals')
+      .where('import_id', 'in', (eb) =>
+        eb.selectFrom('history_imports').select('id').where('status', 'in', ['completed', 'failed', 'cancelled']),
+      )
+      .execute();
   }
 }
 

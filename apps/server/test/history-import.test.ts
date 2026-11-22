@@ -579,6 +579,45 @@ describe('history import (sources)', () => {
     expect(row.status).toBe('failed');
     expect(row.credentials_encrypted).toBeNull();
   });
+
+  it('drops staged data that finished jobs left behind', async () => {
+    const { sourceId, checkIds } = await twoChecks();
+    const checkId = checkIds['web01!http']!;
+    const ts = new Date(now).toISOString();
+    type Status = 'failed' | 'cancelled' | 'completed' | 'ready';
+    const job = (id: string, status: Status) => ({
+      id,
+      source_id: sourceId,
+      status,
+      range_from: at(-2 * DAY),
+      range_to: at(-DAY),
+      only_linked: 1,
+      progress: null,
+      credentials_encrypted: null,
+      fetch_summary: null,
+      preview: null,
+      result: null,
+      error: null,
+      error_code: null,
+      created_by: null,
+      created_at: ts,
+      updated_at: ts,
+      finished_at: status === 'ready' ? null : ts,
+    });
+    // A process died between finishing these jobs and discarding their staging rows.
+    const ids = { failed: newId(), cancelled: newId(), completed: newId(), ready: newId() };
+    for (const [status, id] of Object.entries(ids) as [Status, string][]) {
+      await t.db.insertInto('history_imports').values(job(id, status)).execute();
+      await t.db
+        .insertInto('history_import_intervals')
+        .values({ id: newId(), import_id: id, check_id: checkId, service_id: null, state: 'ok', started_at: at(-2 * DAY), ended_at: at(-DAY) })
+        .execute();
+    }
+    await t.app.ctx.historyImports.cleanup();
+    const left = await t.db.selectFrom('history_import_intervals').select('import_id').execute();
+    // A preview waiting for confirmation keeps its data.
+    expect(left.map((r) => r.import_id)).toEqual([ids.ready]);
+  });
 });
 
 describe('live check history', () => {
