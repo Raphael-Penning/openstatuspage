@@ -290,6 +290,24 @@ describe('private page', () => {
     expect((await get(`/p/${page.token}`)).statusCode).toBe(404);
   });
 
+  it('counts page views and requests of the private page API against one budget per client', async () => {
+    const token = newPrivatePageToken();
+    // Page views until the budget is used up (a slow runner gets a few more than 60).
+    for (let i = 1; i < 120 && (await get(`/p/${token}`)).statusCode !== 429; i++) expect(i).toBeLessThan(100);
+    const res = await t.app.inject({ method: 'GET', url: '/api/public/private-page', headers: { 'x-private-page-token': token } });
+    expect(res.statusCode).toBe(429);
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('counts an IPv6 client by its /64 network', async () => {
+    const token = newPrivatePageToken();
+    const from = (remoteAddress: string) => t.app.inject({ method: 'GET', url: `/p/${token}`, remoteAddress });
+    // A fresh address of the same /64 for every view, until the budget is used up.
+    for (let i = 1; i < 120 && (await from(`2001:db8:1:2::${i.toString(16)}`)).statusCode !== 429; i++) expect(i).toBeLessThan(100);
+    expect((await from('2001:db8:1:2:ffff::1')).statusCode).toBe(429);
+    expect((await from('2001:db8:1:3::1')).statusCode).toBe(404);
+  });
+
   it('counts every spelling of a private path against the same limit', async () => {
     const token = newPrivatePageToken();
     for (let i = 0; i < 60; i++) await get(`/P/${token}`);

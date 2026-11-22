@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath, PRIVATE_PAGE_REQUESTS_PER_MINUTE } from '@openstatuspage/shared';
+import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath } from '@openstatuspage/shared';
 import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -12,8 +12,7 @@ import { FRAMELESS_PAGE_CSP, PERMISSIONS_POLICY, PUBLIC_PAGE_CSP } from './lib/s
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
 import { roleFeatures } from './role.js';
-import { TokenBucketLimiter } from './adapters/rate-limit.js';
-import { RATE_LIMIT_KEYS, registerRoutes } from './routes/index.js';
+import { registerRoutes } from './routes/index.js';
 import { sendTooManyRequests } from './ssr/busy.js';
 import type { RenderModule, SsrPages } from './ssr/pages.js';
 import { staticCacheControl, webAssetPolicy } from './web-assets.js';
@@ -201,12 +200,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         if (cacheControl) reply.header('Cache-Control', cacheControl);
       },
     });
-    // Page views of private pages per client, like the rate limit of their API (routes/public.ts).
-    const privatePageLimiter = new TokenBucketLimiter({
-      capacity: PRIVATE_PAGE_REQUESTS_PER_MINUTE,
-      refillPerSecond: PRIVATE_PAGE_REQUESTS_PER_MINUTE / 60,
-      maxKeys: RATE_LIMIT_KEYS,
-    });
+    // Page views of private pages per client, from the same budget as their API (routes/public.ts).
+    const { takePrivatePageRequest } = await import('./lib/private-page-limit.js');
     // Public pages are rendered on the server (ssr/pages.ts) where the web build has
     // the render bundle and the role serves the public web client.
     let ssr: SsrPages | null = null;
@@ -258,7 +253,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         }
         // Private pages: as many page views per client as their API allows (against guessing tokens).
         if (isPrivatePagePath(path)) {
-          const retryAfter = privatePageLimiter.take(req.ip);
+          const retryAfter = takePrivatePageRequest(ctx, req.ip);
           if (retryAfter > 0) {
             await sendTooManyRequests(req, reply, retryAfter);
             return reply;

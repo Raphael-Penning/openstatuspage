@@ -257,9 +257,45 @@ describe('private page API', () => {
 
   it('is rate limited per client', async () => {
     const token = newPrivatePageToken();
-    let last = 0;
-    for (let i = 0; i < 61; i++) last = (await api('/api/public/private-page', token)).statusCode;
-    expect(last).toBe(429);
+    // One token per second comes back, so a slow runner may get a few more than 60 through.
+    let last = await api('/api/public/private-page', token);
+    let sent = 1;
+    while (last.statusCode !== 429 && sent < 120) {
+      last = await api('/api/public/private-page', token);
+      sent++;
+    }
+    expect(last.statusCode).toBe(429);
+    expect(sent).toBeGreaterThan(60);
+    expect(Number(last.headers['retry-after'])).toBeGreaterThan(0);
+    expect(last.headers['cache-control']).toBe('private, no-store');
+    expect(last.json().errors[0]).toMatchObject({ status: '429', code: 'rate_limited' });
+  });
+
+  it('counts every route and method of the private page API against one budget per client', async () => {
+    const token = newPrivatePageToken();
+    const headers = { [PRIVATE_PAGE_TOKEN_HEADER]: token };
+    const routes = ['/api/public/private-page', '/api/public/private-page/services/x', '/api/public/private-page/incidents/x'];
+    // Until the budget is used up (a slow runner gets a few more than 60), across routes and methods.
+    for (let i = 0; i < 120; i++) {
+      const res = await t.app.inject({ method: i % 2 ? 'HEAD' : 'GET', url: routes[i % routes.length]!, headers });
+      if (res.statusCode === 429) break;
+      expect(i, 'requests before the limit').toBeLessThan(100);
+    }
+    expect((await t.app.inject({ method: 'HEAD', url: '/api/public/private-page/maintenances/x', headers })).statusCode).toBe(429);
+    expect((await api('/api/public/private-page/services/y', token)).statusCode).toBe(429);
+  });
+
+  it('counts an IPv6 client by its /64 network', async () => {
+    const token = newPrivatePageToken();
+    const from = (remoteAddress: string) =>
+      t.app.inject({ method: 'GET', url: '/api/public/private-page', remoteAddress, headers: { [PRIVATE_PAGE_TOKEN_HEADER]: token } });
+    // A fresh address of the same /64 for every request, until the budget is used up.
+    for (let i = 1; i < 120 && (await from(`2001:db8:1:2::${i.toString(16)}`)).statusCode !== 429; i++) {
+      expect(i, 'requests before the limit').toBeLessThan(100);
+    }
+    expect((await from('2001:db8:1:2:ffff::1')).statusCode).toBe(429);
+    // Another /64 has its own budget.
+    expect((await from('2001:db8:1:3::1')).statusCode).toBe(404);
   });
 });
 
