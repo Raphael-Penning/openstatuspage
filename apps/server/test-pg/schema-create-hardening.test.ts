@@ -115,7 +115,7 @@ describe('a) a superuser migrates while PUBLIC may CREATE on public', () => {
   });
 });
 
-describe('b) the owner of the database (not a superuser) migrates while PUBLIC may CREATE on public', () => {
+describe('b) PostgreSQL 15+ layout: the owner of the database (not a superuser) migrates while PUBLIC may CREATE on public', () => {
   it('takes CREATE away from PUBLIC and keeps its own (pg_database_owner owns the schema public)', async () => {
     const pgdb = await testDatabase();
     const app = await appRole(pgdb, `alter database ${databaseOf(pgdb)} owner to {role}; grant create on schema public to public`);
@@ -130,6 +130,10 @@ describe('b) the owner of the database (not a superuser) migrates while PUBLIC m
     expect(await mayCreate(db, app.name, 'public')).toBe(true);
     const pub = await connect(pgdb, 'public');
     expect(await connectionRestricted(pub)).toBe(true);
+    // It may not add an overload with a default argument next to a helper of the definer functions.
+    await expect(
+      sql.raw('create function public.osp_iso(timestamptz, integer default 0) returns text language sql as $$ select null $$').execute(pub),
+    ).rejects.toThrow(/permission denied/);
   });
 });
 
@@ -200,6 +204,108 @@ describe('c) an app role that may not revoke (the schema belongs to a superuser)
     expect(log.warnings).toEqual([expect.stringContaining(command)]);
     // It did not take CREATE away from itself.
     expect(await mayCreate(db, app.name, 'public')).toBe(true);
+  });
+});
+
+describe('c2) PostgreSQL 14 layout: the app role owns the database, a superuser the schema public', () => {
+  /** pg_namespace row version of the schema public: changes on every write of its ACL. */
+  async function rowVersion(db: DB): Promise<string> {
+    const { rows } = await sql<{ xmin: string }>`select xmin::text as xmin from pg_namespace where nspname = 'public'`.execute(db);
+    return rows[0]!.xmin;
+  }
+
+  it('stays in the warning state without writing the schema row, also for parallel starts', async () => {
+    const pgdb = await testDatabase();
+    // CREATE DATABASE ... OWNER app on PostgreSQL 14: public belongs to the bootstrap superuser
+    // and PUBLIC may CREATE there.
+    const app = await appRole(
+      pgdb,
+      `alter database ${databaseOf(pgdb)} owner to {role}; alter schema public owner to current_user;
+       grant create on schema public to public`,
+    );
+    const asApp = (text: string) => queryIn(app.url, databaseOf(pgdb), text);
+    const config = configFor(pgdb, app.url, 'admin');
+    const first = await createDb(config);
+    cleanups.push(() => first.destroy());
+    await prepareDatabase(first, config, newLog());
+    const command = `GRANT CREATE ON SCHEMA public TO ${app.name}; REVOKE CREATE ON SCHEMA public FROM PUBLIC;`;
+    expect(await schemaCreateLeft(first, pgdb.publicRole)).toEqual([command]);
+    // The hardening runs no statement that would change nothing (it wrote the row on every call).
+    const before = await rowVersion(first);
+    await sql`select osp_harden_schema_create(${pgdb.publicRole})`.execute(first);
+    expect(await rowVersion(first)).toBe(before);
+    // 30 calls at once from separate connections: none fails with "tuple concurrently updated".
+    await Promise.all(Array.from({ length: 30 }, () => asApp(`select osp_harden_schema_create('${pgdb.publicRole}')`)));
+
+    // Admin and worker restarting together after a rollout, several times over.
+    const dbs: DB[] = [];
+    for (let i = 0; i < 6; i++) {
+      const db = await createDb(configFor(pgdb, app.url, i % 2 === 0 ? 'admin' : 'worker'));
+      cleanups.push(() => db.destroy());
+      dbs.push(db);
+    }
+    const logs = dbs.map(() => newLog());
+    for (let round = 0; round < 3; round++) {
+      await Promise.all(dbs.map((db, i) => prepareDatabase(db, configFor(pgdb, app.url, i % 2 === 0 ? 'admin' : 'worker'), logs[i]!)));
+    }
+    for (const log of logs) {
+      expect(log.warnings.length).toBe(3);
+      for (const warning of log.warnings) expect(warning).toContain(command);
+    }
+    expect(await holdsCreate(first, 'public', 'public')).toBe(true);
+
+    const pub = await connect(pgdb, 'public');
+    expect(await connectionRestricted(pub)).toBe(true);
+
+    // Closing it with the command from the warning, as a superuser, ends the warning.
+    await asSuperuser(pgdb, command);
+    const log = newLog();
+    await prepareDatabase(first, config, log);
+    expect(log.warnings).toEqual([]);
+    expect(await mayCreate(first, app.name, 'public')).toBe(true);
+  });
+
+  it('the public role may still break its own functions with an overload while the warning lasts', async () => {
+    const pgdb = await testDatabase();
+    const app = await appRole(
+      pgdb,
+      `alter database ${databaseOf(pgdb)} owner to {role}; alter schema public owner to current_user;
+       grant create on schema public to public`,
+    );
+    const config = configFor(pgdb, app.url, 'admin');
+    const db = await createDb(config);
+    cleanups.push(() => db.destroy());
+    await prepareDatabase(db, config, newLog());
+    // Not a takeover (search_path pinned, the overload is never called), but an ambiguous call:
+    // the reason the warning asks for the command instead of calling this harmless.
+    const pub = await connect(pgdb, 'public');
+    await sql
+      .raw('create function public.osp_is_public_role(name, integer default 0) returns boolean language sql as $$ select false $$')
+      .execute(pub);
+    await expect(connectionRestricted(pub)).rejects.toThrow(/is not unique/);
+    // Only its own functions: the policies hold the helper by oid, and admin and worker still start.
+    await prepareDatabase(db, config, newLog());
+  });
+});
+
+describe('down to 0012', () => {
+  it('restores the refusal of osp_grant_public_role and connection_restricted', async () => {
+    const pgdb = await testDatabase();
+    const owner = await connect(pgdb, 'admin');
+    await prepareDatabase(owner, pgdb.config('admin'), newLog());
+    const migrator = new Migrator({ db: owner, provider: { getMigrations: async () => migrations } });
+    expect((await migrator.migrateTo('0012_definer_search_path')).error).toBeUndefined();
+    const pub = await connect(pgdb, 'public');
+    expect(await connectionRestricted(pub)).toBe(true);
+    await sql.raw('grant create on schema public to public').execute(owner);
+    expect(await connectionRestricted(pub)).toBe(false);
+    await expect(sql`select osp_grant_public_role(${pgdb.publicRole})`.execute(owner)).rejects.toThrow(
+      /may create objects .*REVOKE CREATE ON SCHEMA public FROM PUBLIC/,
+    );
+    // And up again: fixed without a manual step.
+    await migrateToLatest(owner);
+    expect(await holdsCreate(owner, 'public', 'public')).toBe(false);
+    expect(await connectionRestricted(pub)).toBe(true);
   });
 });
 
