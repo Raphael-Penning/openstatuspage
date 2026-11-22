@@ -58,12 +58,12 @@ export async function grantPublicRole(db: DB, role: string): Promise<PublicRoleG
 }
 
 /**
- * Takes CREATE on the table schema and osp_public away from `role` and from PUBLIC
- * as far as this role may, and returns the commands for what is left (to be run by
- * the schema owner or a superuser). Empty when the role may create nothing there.
+ * Read only: the commands (for the schema owner or a superuser) that would take
+ * CREATE on the table schema and osp_public away from `role` where grantPublicRole
+ * could not. Empty when the role may create nothing there.
  */
 export async function schemaCreateLeft(db: DB, role: string): Promise<string[]> {
-  const { rows } = await sql<{ left: string[] | null }>`select osp_harden_schema_create(${role}) as left`.execute(db);
+  const { rows } = await sql<{ left: string[] | null }>`select osp_schema_create_left(${role}) as left`.execute(db);
   return rows[0]?.left ?? [];
 }
 
