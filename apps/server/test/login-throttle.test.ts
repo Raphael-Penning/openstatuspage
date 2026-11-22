@@ -45,12 +45,21 @@ describe('LoginThrottle', () => {
   it('reserves an attempt before the password check, so concurrent attempts are counted', () => {
     const { throttle } = make();
     // Four attempts start before any of them finishes: the fourth starts the block.
-    const started = Array.from({ length: 6 }, () => throttle.attempt('a@example.com'));
+    const started = Array.from({ length: 6 }, () => throttle.attempt('a@example.com', true));
     expect(started.slice(0, 4)).toEqual([0, 0, 0, 0]);
     expect(started[4]).toBeGreaterThan(0);
     expect(started[5]).toBeGreaterThan(0);
     // A valid password among them clears the reservation.
     throttle.recordSuccess('a@example.com');
-    expect(throttle.attempt('a@example.com')).toBe(0);
+    expect(throttle.attempt('a@example.com', true)).toBe(0);
+  });
+
+  it('does not let failures for unknown e-mails evict an existing account', () => {
+    const { throttle } = make({ maxEntries: 2, freeFailures: 0 });
+    throttle.recordFailure('admin@example.com', true);
+    for (let i = 0; i < 10; i++) throttle.recordFailure(`ghost${i}@example.com`);
+    expect(throttle.retryAfterMs('admin@example.com')).toBeGreaterThan(0);
+    expect(throttle.retryAfterMs('ghost0@example.com')).toBe(0); // evicted
+    expect(throttle.retryAfterMs('ghost9@example.com')).toBeGreaterThan(0);
   });
 });

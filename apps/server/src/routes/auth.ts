@@ -79,7 +79,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         const user = await db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
         // Check and reserve the attempt in one synchronous step, before the first await of the
         // password check: concurrent attempts are counted before any of them is verified.
-        const retryAfterMs = throttle.attempt(email);
+        const retryAfterMs = throttle.attempt(email, user !== undefined);
         if (retryAfterMs > 0) {
           const seconds = Math.ceil(retryAfterMs / 1000);
           reply.header('retry-after', String(seconds));

@@ -16,7 +16,9 @@
  * is recorded.
  *
  * Unknown e-mails are counted the same way, so the throttle reveals nothing
- * about which accounts exist.
+ * about which accounts exist. They are kept apart from existing accounts, each
+ * group bounded by maxEntries and evicting its oldest entry first, so failures
+ * against made-up addresses cannot push a real account's count out of memory.
  */
 export interface LoginThrottleOptions {
   /** Failures without any delay. */
@@ -26,7 +28,7 @@ export interface LoginThrottleOptions {
   maxDelayMs?: number;
   /** Failures are forgotten this long after the last one. */
   resetAfterMs?: number;
-  /** Accounts tracked at most (oldest entries go first). */
+  /** Accounts tracked at most, per group (existing and unknown); oldest entries go first. */
   maxEntries?: number;
   now?: () => number;
 }
@@ -38,7 +40,10 @@ interface Entry {
 }
 
 export class LoginThrottle {
-  private readonly entries = new Map<string, Entry>();
+  /** Entries of existing accounts. */
+  private readonly known = new Map<string, Entry>();
+  /** Entries of e-mails without an account. */
+  private readonly unknown = new Map<string, Entry>();
   private readonly freeFailures: number;
   private readonly baseDelayMs: number;
   private readonly maxDelayMs: number;
@@ -59,19 +64,24 @@ export class LoginThrottle {
     return email.trim().toLowerCase();
   }
 
-  private current(key: string): Entry | undefined {
-    const entry = this.entries.get(key);
+  private current(entries: Map<string, Entry>, key: string): Entry | undefined {
+    const entry = entries.get(key);
     if (entry && this.now() - entry.lastFailure >= this.resetAfterMs) {
-      this.entries.delete(key);
+      entries.delete(key);
       return undefined;
     }
     return entry;
   }
 
+  private blockedFor(entries: Map<string, Entry>, key: string): number {
+    const entry = this.current(entries, key);
+    return entry ? Math.max(0, entry.blockedUntil - this.now()) : 0;
+  }
+
   /** Milliseconds until the next attempt for this account is allowed (0: now). */
   retryAfterMs(email: string): number {
-    const entry = this.current(LoginThrottle.key(email));
-    return entry ? Math.max(0, entry.blockedUntil - this.now()) : 0;
+    const key = LoginThrottle.key(email);
+    return Math.max(this.blockedFor(this.known, key), this.blockedFor(this.unknown, key));
   }
 
   /**
@@ -80,17 +90,18 @@ export class LoginThrottle {
    * after counting the attempt as a failure. Call recordSuccess when the password
    * turns out valid.
    */
-  attempt(email: string): number {
+  attempt(email: string, accountExists = false): number {
     const retryAfterMs = this.retryAfterMs(email);
     if (retryAfterMs > 0) return retryAfterMs;
-    this.recordFailure(email);
+    this.recordFailure(email, accountExists);
     return 0;
   }
 
-  recordFailure(email: string): void {
+  recordFailure(email: string, accountExists = false): void {
     const key = LoginThrottle.key(email);
+    const entries = accountExists ? this.known : this.unknown;
     const now = this.now();
-    const entry = this.current(key) ?? { failures: 0, lastFailure: now, blockedUntil: 0 };
+    const entry = this.current(entries, key) ?? { failures: 0, lastFailure: now, blockedUntil: 0 };
     entry.failures += 1;
     entry.lastFailure = now;
     const over = entry.failures - this.freeFailures;
@@ -99,14 +110,16 @@ export class LoginThrottle {
       entry.blockedUntil = now + delay;
     }
     // Re-insert so the Map order is by last failure; evict the oldest beyond the bound.
-    this.entries.delete(key);
-    this.entries.set(key, entry);
-    while (this.entries.size > this.maxEntries) {
-      this.entries.delete(this.entries.keys().next().value!);
+    entries.delete(key);
+    entries.set(key, entry);
+    while (entries.size > this.maxEntries) {
+      entries.delete(entries.keys().next().value!);
     }
   }
 
   recordSuccess(email: string): void {
-    this.entries.delete(LoginThrottle.key(email));
+    const key = LoginThrottle.key(email);
+    this.known.delete(key);
+    this.unknown.delete(key);
   }
 }
