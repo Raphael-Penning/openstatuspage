@@ -90,14 +90,45 @@ describe('login / logout / session', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('rate limits login attempts', async () => {
+  it('rate limits login attempts per client', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 11; i++) {
-      const res = await t.app.inject(loginRequest('ghost@example.com', 'nope'));
+      // A different account each time, so only the per-client limit applies.
+      const res = await t.app.inject(loginRequest(`ghost${i}@example.com`, 'nope'));
       codes.push(res.statusCode);
     }
     expect(codes.slice(0, 10).every((c) => c === 401)).toBe(true);
     expect(codes[10]).toBe(429);
+  });
+
+  it('throttles failed logins per account whatever the client address', async () => {
+    const proxied = await createTestApp({ TRUST_PROXY: '1' });
+    try {
+      await createUser(proxied.db, { email: 'admin@example.com', role: 'admin' });
+      const codes: number[] = [];
+      for (let i = 0; i < 11; i++) {
+        // A client that may set X-Forwarded-For gets a new address for every attempt.
+        const res = await proxied.app.inject(
+          loginRequest('Admin@example.com', `wrong-password-${i}`, { 'x-forwarded-for': `198.51.100.${i + 1}` }),
+        );
+        codes.push(res.statusCode);
+        if (res.statusCode === 429) {
+          expect(errors(res)[0]).toMatchObject({ code: 'rate_limited' });
+          expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+        }
+      }
+      expect(codes.slice(0, 3)).toEqual([401, 401, 401]);
+      expect(codes).toContain(429);
+      // Even the right password waits while the account is blocked.
+      const blocked = await proxied.app.inject(loginRequest('admin@example.com', PASSWORD, { 'x-forwarded-for': '198.51.100.99' }));
+      expect(blocked.statusCode).toBe(429);
+      // Other accounts are not affected.
+      await createUser(proxied.db, { email: 'editor@example.com', role: 'editor' });
+      const other = await proxied.app.inject(loginRequest('editor@example.com', PASSWORD, { 'x-forwarded-for': '198.51.100.98' }));
+      expect(other.statusCode).toBe(200);
+    } finally {
+      await proxied.close();
+    }
   });
 
   it('expires sessions and extends them (sliding expiry)', async () => {

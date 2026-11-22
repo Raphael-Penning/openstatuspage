@@ -21,6 +21,7 @@ import {
   resolveOidcUser,
 } from '../services/oidc.js';
 import { createSession, deleteSession, deleteUserSessions, SESSION_COOKIE, sessionTtlMs } from '../services/sessions.js';
+import { LoginThrottle } from '../services/login-throttle.js';
 import { toAdminUser } from '../services/users.js';
 import { document, Included, noContent } from '../lib/jsonapi.js';
 import { useJsonApi } from '../plugins/jsonapi.js';
@@ -39,6 +40,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const { ctx } = app;
   const { config, db } = ctx;
   const oidc = config.oidcEnabled ? new OidcClient(config) : null;
+  // Per account, on top of the per-client rate limit of the route (see login-throttle.ts).
+  const throttle = new LoginThrottle();
 
   async function startSession(req: FastifyRequest, reply: FastifyReply, userId: string): Promise<void> {
     const session = await createSession(ctx, userId, { ip: req.ip, userAgent: req.headers['user-agent'] ?? null });
@@ -77,16 +80,21 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       async (req, reply) => {
         if (!config.LOCAL_LOGIN_ENABLED) throw forbidden('Local login is disabled');
         const body = parse(LoginInput, req.body);
-        const user = await db
-          .selectFrom('users')
-          .selectAll()
-          .where('email', '=', body.email.trim().toLowerCase())
-          .executeTakeFirst();
+        const email = LoginThrottle.key(body.email);
+        const retryAfterMs = throttle.retryAfterMs(email);
+        if (retryAfterMs > 0) {
+          const seconds = Math.ceil(retryAfterMs / 1000);
+          reply.header('retry-after', String(seconds));
+          throw new HttpError(429, 'rate_limited', `Too many failed logins for this account, retry in ${seconds}s`);
+        }
+        const user = await db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
         // Always verify a hash so response times do not reveal whether the account exists.
         const valid = await verifyPassword(user?.password_hash ?? (await getDummyHash()), body.password);
         if (!user || !user.password_hash || !valid) {
+          throttle.recordFailure(email);
           throw new HttpError(401, 'invalid_credentials', 'Invalid e-mail or password');
         }
+        throttle.recordSuccess(email);
         await startSession(req, reply, user.id);
         await audit(db, { userId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, details: { method: 'password' } });
         return sessionDocument(await sessionInfo(user.id));

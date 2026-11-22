@@ -39,7 +39,8 @@ Sessions expire after `SESSION_TTL_HOURS` (default 168 hours = 7 days) without
 activity; active sessions are extended automatically, but never beyond
 `SESSION_MAX_AGE_HOURS` (default 720 hours = 30 days) after the login. Then
 everybody has to log in again. The login is rate limited to 10 attempts per
-minute per client IP.
+minute per client IP; in addition, repeated failed logins for one account make
+its login wait (at most one minute), whatever the IP.
 
 Locked out? Use the `create-user` command to set a new password, see
 [Installation](02-installation.md#the-first-administrator). It also signs the

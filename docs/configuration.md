@@ -309,7 +309,11 @@ management UI (`/admin`) never loads the tracker.
 
 ## Rate limits
 
-- `POST /api/auth/login`: 10 requests per minute per client IP.
+- `POST /api/auth/login`: 10 requests per minute per client IP. In addition, failed
+  logins are counted per account (e-mail address), whatever the client IP: after 3
+  failures each further one blocks that account's login for 1, 2, 4, ... seconds, at
+  most 1 minute (`429` with `Retry-After`). A success or 15 minutes without failure
+  resets the count.
 - `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`: 30 requests per minute per client IP.
 - `POST /api/public/subscriptions`: 5 requests per minute per client IP; the other
   subscription endpoints 30 requests per minute per client IP.

@@ -37,7 +37,9 @@ Sitzungen laufen nach `SESSION_TTL_HOURS` (Standard 168 Stunden = 7 Tage) ohne
 Aktivität ab; aktive Sitzungen verlängern sich automatisch, aber nie über
 `SESSION_MAX_AGE_HOURS` (Standard 720 Stunden = 30 Tage) nach der Anmeldung
 hinaus. Danach muss sich jeder neu anmelden. Die Anmeldung ist auf 10 Versuche
-pro Minute und Client-IP begrenzt.
+pro Minute und Client-IP begrenzt; zusätzlich muss nach wiederholten
+Fehlversuchen für ein Konto dessen Anmeldung kurz warten (höchstens eine
+Minute), egal von welcher IP.
 
 Ausgesperrt? Mit dem Befehl `create-user` setzt du ein neues Passwort, siehe
 [Installation](02-installation.md#der-erste-administrator). Der Befehl meldet
