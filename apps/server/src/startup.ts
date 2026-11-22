@@ -6,7 +6,14 @@ import { syncPollers } from './adapters/poller.js';
 import type { Config } from './config.js';
 import type { AppContext } from './context.js';
 import { migrateToLatest, waitForSchema, type DB } from './db/index.js';
-import { connectionRestricted, PUBLIC_SCHEMA, publicSchemaHint, setUpPublicRole } from './db/public-role.js';
+import {
+  connectionCreateSchemas,
+  connectionRestricted,
+  PUBLIC_SCHEMA,
+  publicSchemaHint,
+  schemaCreateHint,
+  setUpPublicRole,
+} from './db/public-role.js';
 import { roleFeatures } from './role.js';
 import { registerBundleTasks } from './services/bundles.js';
 import { registerHistoryImportTasks } from './services/history-import.js';
@@ -35,7 +42,9 @@ export interface StartupLog {
  * A public instance never migrates: it waits up to SCHEMA_WAIT_SECONDS for another
  * instance to do it and fails clearly otherwise. On PostgreSQL it refuses to start
  * when its login is not a registered public role (ALLOW_UNRESTRICTED_PUBLIC_DB=true
- * only warns).
+ * only warns). A public role that may still create objects in the table schema or
+ * in osp_public (CREATE the migrating role could not take away) is only a warning,
+ * on both sides.
  */
 export async function prepareDatabase(
   db: DB,
@@ -68,6 +77,9 @@ export async function prepareDatabase(
             ? 'public database role granted'
             : 'public database role does not exist (only needed for APP_ROLE=public, see deploy/postgres/roles.sql)',
         );
+        if (granted && result.createLeft.length > 0) {
+          (log.warn ?? log.info).call(log, { role, commands: result.createLeft }, schemaCreateHint(role, result.createLeft));
+        }
         if (granted && result.ownerIsSuperuser) {
           (log.warn ?? log.info).call(
             log,
@@ -95,9 +107,8 @@ export async function prepareDatabase(
   });
   if (postgres && !(await connectionRestricted(db))) {
     const message =
-      'the database login of this public instance is not a registered public role (DB_PUBLIC_ROLE), or it may ' +
-      'create objects in the table schema or in osp_public, so the database does not restrict it ' +
-      '(see docs/security-model.md and deploy/postgres/harden.sql)';
+      'the database login of this public instance is not a registered public role (DB_PUBLIC_ROLE), so the ' +
+      'database does not restrict it (see docs/security-model.md)';
     if (!config.ALLOW_UNRESTRICTED_PUBLIC_DB) {
       throw new Error(
         `Refusing to start: ${message}. Connect with the public role, or set ALLOW_UNRESTRICTED_PUBLIC_DB=true ` +
@@ -106,6 +117,19 @@ export async function prepareDatabase(
     }
     const warn = log.warn ?? log.info;
     warn.call(log, { role: config.DB_PUBLIC_ROLE }, message);
+    return;
+  }
+  if (postgres) {
+    const schemas = await connectionCreateSchemas(db);
+    if (schemas.length > 0) {
+      (log.warn ?? log.info).call(
+        log,
+        { schemas },
+        'the database login of this public instance may create objects in the table schema or in osp_public. ' +
+          'Such objects cannot take over the database functions (search_path pinned), so this instance starts; the ' +
+          'log of the admin or worker instance names the command that takes the privilege away (see docs/security-model.md)',
+      );
+    }
   }
 }
 

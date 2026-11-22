@@ -21,7 +21,8 @@
 --                                  role for admin and worker: it gets the advisory
 --                                  locks that harden.sql takes from everyone else)
 -- It also runs harden.sql (next to this file): no advisory locks, large objects,
--- temporary tables or CREATE on the schema "public" for the public role. Rerun it after an upgrade that changes it.
+-- temporary tables or CREATE on the schema "public" for the public role. Rerun it after an upgrade that changes it
+-- (optional for CREATE: the instances revoke it themselves where the app role may).
 -- The passwords above are placeholders: never commit real ones, read them from your
 -- secret store when you run the script.
 

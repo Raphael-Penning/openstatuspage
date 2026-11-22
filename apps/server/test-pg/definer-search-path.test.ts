@@ -1,9 +1,10 @@
 /**
  * The SECURITY DEFINER functions of the public role and their helpers resolve
- * built-ins in pg_catalog only (migration 0012_definer_search_path), and a public
- * role that may create objects in the table schema is refused: on PostgreSQL 14
- * and older (and clusters upgraded from them) PUBLIC may CREATE in the schema
- * "public" by default. Every query of the "public" connection runs AS that role.
+ * built-ins in pg_catalog only (migration 0012_definer_search_path), and CREATE on
+ * the table schema is taken away from a public role (0013_schema_create_hardening):
+ * on PostgreSQL 14 and older (and clusters upgraded from them) PUBLIC may CREATE in
+ * the schema "public" by default. Every query of the "public" connection runs AS
+ * that role.
  */
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -152,24 +153,27 @@ describe('functions of the public role', () => {
 });
 
 describe('a public role that may create objects in the table schema', () => {
+  const publicCreate = async (schema: string) =>
+    (
+      await ownerRows<{ found: boolean }>(`select exists (select 1 from pg_namespace n, aclexplode(n.nspacl) a
+        where n.nspname = '${schema}' and a.grantee = 0 and a.privilege_type = 'CREATE') as found`)
+    )[0]!.found;
+
   for (const schema of ['public', 'osp_public']) {
-    it(`is refused when PUBLIC has CREATE on ${schema}`, async () => {
+    it(`loses CREATE granted to PUBLIC on ${schema} when it is granted`, async () => {
       await sql.raw(`grant create on schema ${schema} to public`).execute(owner);
-      try {
-        // The migrating instance does not grant it ...
-        await expect(sql`select osp_grant_public_role(${pgdb.publicRole})`.execute(owner)).rejects.toThrow(
-          /may create objects in the schema/,
-        );
-        await expect(prepareDatabase(owner, pgdb.config('admin'), log)).rejects.toThrow(/REVOKE CREATE ON SCHEMA/);
-        // ... and a public instance does not start.
-        expect(await connectionRestricted(pub)).toBe(false);
-        await expect(prepareDatabase(pub, pgdb.config('public'), log)).rejects.toThrow(/Refusing to start/);
-      } finally {
-        await sql.raw(`revoke create on schema ${schema} from public`).execute(owner);
-      }
+      expect(await publicCreate(schema)).toBe(true);
+      const warnings: string[] = [];
+      const collect = { info: () => undefined, warn: (_: object, msg: string) => warnings.push(msg) };
+      // The migrating instance (a superuser here) takes it away and starts without a warning ...
+      const { rows } = await sql<{ granted: boolean }>`select osp_grant_public_role(${pgdb.publicRole}) as granted`.execute(owner);
+      expect(rows[0]!.granted).toBe(true);
+      expect(await publicCreate(schema)).toBe(false);
+      await prepareDatabase(owner, pgdb.config('admin'), collect);
+      // ... and so does the public instance.
       expect(await connectionRestricted(pub)).toBe(true);
-      await prepareDatabase(owner, pgdb.config('admin'), log);
-      await prepareDatabase(pub, pgdb.config('public'), log);
+      await prepareDatabase(pub, pgdb.config('public'), collect);
+      expect(warnings.filter((w) => !w.includes('superuser'))).toEqual([]);
     });
   }
 

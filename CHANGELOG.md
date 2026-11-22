@@ -6,6 +6,46 @@ breaking changes.
 
 ## [Unreleased]
 
+### Upgrading
+
+- From 0.2.x or 0.3.0 on PostgreSQL: no manual step to start. The `GRANT
+  CREATE ON SCHEMA public TO <app role>` and the `harden.sql` rerun that 0.3.0
+  asked for before the upgrade are no longer needed; a database where 0.3.0
+  refused to start because of them starts with this version as it is.
+- On PostgreSQL 14 or older (or a cluster upgraded from one) the app usually
+  cannot remove `PUBLIC`'s `CREATE` on schema `public` itself: with `CREATE
+  DATABASE ... OWNER <app role>` the schema `public` still belongs to the
+  bootstrap superuser. Everything keeps running, but the instances that migrate
+  log a warning on every start until a superuser runs the command it names once
+  (typically `REVOKE CREATE ON SCHEMA public FROM PUBLIC;`).
+
+### Changed
+
+- **PostgreSQL: `CREATE` for the public role is taken away automatically
+  instead of blocking the start.** Migration `0013_schema_create_hardening`
+  and every grant on start (`osp_grant_public_role`) revoke `CREATE` on the
+  table schema and on `osp_public` from `PUBLIC` and from the public role
+  (`DB_PUBLIC_ROLE`) where the migrating role may (it has the schema owner's
+  privileges). `PUBLIC` keeps it when the migrating role would lose its own
+  `CREATE` by that. A revoke that would change nothing is not run, so repeated
+  and parallel starts write nothing. Databases without a registered public role
+  (`APP_ROLE=all` only) are not changed. What the migrating role may not change
+  no longer stops admin, worker or public instances: the instances that
+  migrate log a warning on every start with the exact command for the schema
+  owner or a superuser (`pnpm db:migrate` prints it too), the public instance
+  logs that its login may still create objects. A public instance refuses to
+  start only when its login is not a registered public role, as before 0.3.0;
+  `ALLOW_UNRESTRICTED_PUBLIC_DB` only concerns that case now.
+
+### Security
+
+- While the public role may still create objects in the table schema (the
+  warning above), the `search_path` pinning of migration `0012` keeps them from
+  taking over the functions of the public role. The role can still break those
+  functions with an overload (a denial of service of the public instance), and
+  admin and worker sessions have the table schema on their `search_path`, so
+  run the command from the warning.
+
 ## [0.3.0] - 2026-11-22
 
 ### Upgrading from 0.2.x
