@@ -131,6 +131,38 @@ describe('login / logout / session', () => {
     }
   });
 
+  it('counts concurrent failed logins for one account before any password is checked', async () => {
+    const proxied = await createTestApp({ TRUST_PROXY: '1' });
+    try {
+      await createUser(proxied.db, { email: 'admin@example.com', role: 'admin' });
+      // A burst sent at the same moment, each from a new forwarded address.
+      const responses = await Promise.all(
+        Array.from({ length: 10 }, (_, i) =>
+          proxied.app.inject(loginRequest('admin@example.com', `wrong-password-${i}`, { 'x-forwarded-for': `198.51.100.${i + 1}` })),
+        ),
+      );
+      const codes = responses.map((res) => res.statusCode);
+      // Three free failures plus the one that starts the block are checked; the rest wait.
+      expect(codes.filter((c) => c === 401)).toHaveLength(4);
+      expect(codes.filter((c) => c === 429)).toHaveLength(6);
+    } finally {
+      await proxied.close();
+    }
+  });
+
+  it('lets a valid password through after failures below the limit and clears them', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    for (let i = 0; i < 3; i++) {
+      expect((await t.app.inject(loginRequest('admin@example.com', `wrong-password-${i}`))).statusCode).toBe(401);
+    }
+    expect((await t.app.inject(loginRequest('admin@example.com', PASSWORD))).statusCode).toBe(200);
+    // The success reset the count: three more failures are free again.
+    for (let i = 0; i < 3; i++) {
+      expect((await t.app.inject(loginRequest('admin@example.com', `wrong-again-${i}`))).statusCode).toBe(401);
+    }
+    expect((await t.app.inject(loginRequest('admin@example.com', PASSWORD))).statusCode).toBe(200);
+  });
+
   it('expires sessions and extends them (sliding expiry)', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const cookie = await login(t.app, 'admin@example.com');

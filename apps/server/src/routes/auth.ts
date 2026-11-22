@@ -76,17 +76,18 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         if (!config.LOCAL_LOGIN_ENABLED) throw forbidden('Local login is disabled');
         const body = parse(LoginInput, req.body);
         const email = LoginThrottle.key(body.email);
-        const retryAfterMs = throttle.retryAfterMs(email);
+        const user = await db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
+        // Check and reserve the attempt in one synchronous step, before the first await of the
+        // password check: concurrent attempts are counted before any of them is verified.
+        const retryAfterMs = throttle.attempt(email);
         if (retryAfterMs > 0) {
           const seconds = Math.ceil(retryAfterMs / 1000);
           reply.header('retry-after', String(seconds));
           throw new HttpError(429, 'rate_limited', `Too many failed logins for this account, retry in ${seconds}s`);
         }
-        const user = await db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
         // Always verify a hash so response times do not reveal whether the account exists.
         const valid = await verifyPassword(user?.password_hash ?? (await getDummyHash()), body.password);
         if (!user || !user.password_hash || !valid) {
-          throttle.recordFailure(email);
           throw new HttpError(401, 'invalid_credentials', 'Invalid e-mail or password');
         }
         throttle.recordSuccess(email);

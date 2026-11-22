@@ -41,4 +41,16 @@ describe('LoginThrottle', () => {
     expect(throttle.retryAfterMs('a@example.com')).toBe(0);
     expect(throttle.retryAfterMs('c@example.com')).toBeGreaterThan(0);
   });
+
+  it('reserves an attempt before the password check, so concurrent attempts are counted', () => {
+    const { throttle } = make();
+    // Four attempts start before any of them finishes: the fourth starts the block.
+    const started = Array.from({ length: 6 }, () => throttle.attempt('a@example.com'));
+    expect(started.slice(0, 4)).toEqual([0, 0, 0, 0]);
+    expect(started[4]).toBeGreaterThan(0);
+    expect(started[5]).toBeGreaterThan(0);
+    // A valid password among them clears the reservation.
+    throttle.recordSuccess('a@example.com');
+    expect(throttle.attempt('a@example.com')).toBe(0);
+  });
 });

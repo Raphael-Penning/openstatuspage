@@ -9,6 +9,12 @@
  * at MAX_DELAY_MS. The cap keeps the price of a deliberate lockout low: a
  * legitimate user waits at most that long before the next attempt.
  *
+ * An attempt is counted as a failure synchronously, before the password is
+ * checked (`attempt`), and a valid password then clears the count
+ * (`recordSuccess`). Counting after the asynchronous password check instead would
+ * let a burst of concurrent attempts all pass the check before the first failure
+ * is recorded.
+ *
  * Unknown e-mails are counted the same way, so the throttle reveals nothing
  * about which accounts exist.
  */
@@ -66,6 +72,19 @@ export class LoginThrottle {
   retryAfterMs(email: string): number {
     const entry = this.current(LoginThrottle.key(email));
     return entry ? Math.max(0, entry.blockedUntil - this.now()) : 0;
+  }
+
+  /**
+   * Checks and reserves one attempt in a single synchronous step: returns the
+   * milliseconds to wait while the account is blocked (nothing recorded), or 0
+   * after counting the attempt as a failure. Call recordSuccess when the password
+   * turns out valid.
+   */
+  attempt(email: string): number {
+    const retryAfterMs = this.retryAfterMs(email);
+    if (retryAfterMs > 0) return retryAfterMs;
+    this.recordFailure(email);
+    return 0;
   }
 
   recordFailure(email: string): void {
