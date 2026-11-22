@@ -44,7 +44,7 @@ import { badRequest, conflict, isUniqueViolation, notFound } from '../lib/errors
 import { newId } from '../lib/ids.js';
 import type { Valued } from '../lib/intervals.js';
 import { nowIso } from '../lib/time.js';
-import { CsvImportError, parseHistoryCsv } from '../importers/csv.js';
+import { CsvImportError, parseHistoryCsv, type ParsedHistoryCsv } from '../importers/csv.js';
 import type { ImporterRegistry } from '../importers/index.js';
 import type { ImportedHistory, ImportTarget } from '../importers/types.js';
 import type { Worker } from '../worker.js';
@@ -188,10 +188,11 @@ export class HistoryImportService {
 
     const config = this.sourceConfig(source);
     const credentials = cleanCredentials(input.credentials);
-    let csvRows = 0;
+    // Parsed once here; the background fetch uses the result.
+    let csv: ParsedHistoryCsv | undefined;
     if (input.csv !== undefined) {
       try {
-        csvRows = parseHistoryCsv(input.csv).rows;
+        csv = parseHistoryCsv(input.csv);
       } catch (err) {
         if (err instanceof CsvImportError) throw badRequest(err.message, err.errors);
         throw err;
@@ -251,8 +252,8 @@ export class HistoryImportService {
         importId: id,
         from: iso(from),
         to: iso(to),
-        method: input.csv !== undefined ? 'csv' : source.type,
-        ...(input.csv !== undefined ? { csvRows } : {}),
+        method: csv ? 'csv' : source.type,
+        ...(csv ? { csvRows: csv.rows } : {}),
         onlyLinkedChecks: input.onlyLinkedChecks,
         ...(actor.apiToken ? { apiToken: actor.apiToken } : {}),
       },
@@ -261,7 +262,7 @@ export class HistoryImportService {
     const controller = new AbortController();
     this.running.set(id, controller);
     this.worker.runDetached(`history-import:${id}`, () =>
-      this.runFetch(id, source, input.csv, controller.signal).finally(() => this.running.delete(id)),
+      this.runFetch(id, source, csv, controller.signal).finally(() => this.running.delete(id)),
     );
     return this.get(source.id, id);
   }
@@ -299,7 +300,7 @@ export class HistoryImportService {
     if (Number(result.numUpdatedRows) === 0) throw new CancelledError();
   }
 
-  private async runFetch(id: string, source: MonitorSource, csv: string | undefined, cancel: AbortSignal): Promise<void> {
+  private async runFetch(id: string, source: MonitorSource, csv: ParsedHistoryCsv | undefined, cancel: AbortSignal): Promise<void> {
     const signal = AbortSignal.any([cancel, AbortSignal.timeout(IMPORT_FETCH_TIMEOUT_MS)]);
     let config: Record<string, unknown> = {};
     try {
@@ -317,9 +318,8 @@ export class HistoryImportService {
       };
 
       let fetched: ImportedHistory;
-      if (csv !== undefined) {
-        const parsed = parseHistoryCsv(csv);
-        fetched = { checks: parsed.checks, services: parsed.services, warnings: [] };
+      if (csv) {
+        fetched = { checks: csv.checks, services: csv.services, warnings: [] };
       } else {
         const importer = (await this.importerRegistry())[source.type];
         if (!importer) throw new Error('No importer for this source type');
