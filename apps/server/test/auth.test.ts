@@ -205,7 +205,7 @@ describe('login / logout / session', () => {
     expect(await t.db.selectFrom('sessions').select('id').execute()).toHaveLength(1);
   });
 
-  it('changes the password and signs out other sessions', async () => {
+  it('changes the password, signs out other sessions and rotates the current one', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const first = await login(t.app, 'admin@example.com');
     const second = await login(t.app, 'admin@example.com');
@@ -215,10 +215,26 @@ describe('login / logout / session', () => {
     expect(bad.statusCode).toBe(400);
     const ok = await c.post('/api/auth/password', { currentPassword: PASSWORD, newPassword: 'a-new-long-password' });
     expect(ok.statusCode).toBe(204);
+    const rotated = ok.cookies.find((cookie) => cookie.name === 'osp_session')!;
+    expect(`osp_session=${rotated.value}`).not.toBe(first);
 
-    expect((await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie: first } })).statusCode).toBe(200);
-    expect((await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie: second } })).statusCode).toBe(401);
+    const session = (cookie: string) => t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } });
+    expect((await session(`osp_session=${rotated.value}`)).statusCode).toBe(200);
+    expect((await session(first)).statusCode).toBe(401);
+    expect((await session(second)).statusCode).toBe(401);
+    expect(await t.db.selectFrom('sessions').select('id').execute()).toEqual([{ id: sha256(rotated.value) }]);
     await login(t.app, 'admin@example.com', 'a-new-long-password');
+  });
+
+  it('rotates the session when admins change their own password in user management', async () => {
+    const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const first = await login(t.app, 'admin@example.com');
+    const res = await client(t.app, { cookie: first }).patch(`/api/admin/users/${adminId}`, { password: 'a-new-long-password' });
+    expect(res.statusCode).toBe(200);
+    const rotated = res.cookies.find((cookie) => cookie.name === 'osp_session')!;
+    const session = (cookie: string) => t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } });
+    expect((await session(first)).statusCode).toBe(401);
+    expect((await session(`osp_session=${rotated.value}`)).statusCode).toBe(200);
   });
 
   it('exposes the auth configuration', async () => {

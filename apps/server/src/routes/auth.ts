@@ -122,8 +122,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         .set({ password_hash: await hashPassword(body.newPassword), updated_at: nowIso() })
         .where('id', '=', userId)
         .execute();
-      // Sign out every other session of this user.
-      await deleteUserSessions(db, userId, req.cookies[SESSION_COOKIE]);
+      // Sign out every session of this user and continue in a new one: a session token that
+      // leaked before the change does not survive it.
+      await deleteUserSessions(db, userId);
+      await startSession(ctx, req, reply, userId);
       await audit(db, { userId, action: 'user.password_change', entityType: 'user', entityId: userId });
       return noContent(reply);
     });

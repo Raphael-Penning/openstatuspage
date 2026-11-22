@@ -6,8 +6,8 @@ import { newId } from '../../lib/ids.js';
 import { IdParams, parse } from '../../lib/http.js';
 import { hashPassword } from '../../lib/password.js';
 import { nowIso } from '../../lib/time.js';
-import { actorUserId, owningUserId } from '../../plugins/auth.js';
-import { newApiToken, SESSION_COOKIE } from '../../services/sessions.js';
+import { actorUserId, owningUserId, startSession } from '../../plugins/auth.js';
+import { newApiToken } from '../../services/sessions.js';
 import { changeUserRole, countAdmins, revokeUserCredentials, toAdminUser } from '../../services/users.js';
 import { collection, created, document, noContent, selfLink } from '../../lib/jsonapi.js';
 import { useJsonApi } from '../../plugins/jsonapi.js';
@@ -70,7 +70,7 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
     document(userResource(toAdminUser(await getUser(parse(IdParams, req.params).id))), { links: { self: selfLink(req) } }),
   );
 
-  app.patch('/api/admin/users/:id', usersRoute, async (req) => {
+  app.patch('/api/admin/users/:id', usersRoute, async (req, reply) => {
     const { id } = parse(IdParams, req.params);
     const input = parse(UserUpdateInput, req.body);
     const user = await getUser(id);
@@ -99,10 +99,13 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
       })
       .where('id', '=', id)
       .execute();
-    // A new or removed password signs the user out everywhere (except the admin's own current
-    // session). A reset is also how a compromised account is recovered, so it revokes the API
-    // tokens they created as well.
-    if (passwordChanged) await revokeUserCredentials(db, id, isSelf ? req.cookies[SESSION_COOKIE] : null);
+    // A new or removed password signs the user out everywhere; an admin changing their own
+    // password continues in a new session. A reset is also how a compromised account is
+    // recovered, so it revokes the API tokens they created as well.
+    if (passwordChanged) {
+      await revokeUserCredentials(db, id);
+      if (isSelf) await startSession(app.ctx, req, reply, id);
+    }
 
     await auditRequest(db, req, 'user.update', 'user', id, {
       fields: Object.keys(input).filter((k) => k !== 'password'),
