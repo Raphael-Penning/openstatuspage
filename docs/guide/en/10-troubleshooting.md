@@ -55,15 +55,19 @@ Updates take `CREATE` on the table schema away from the public role and from
 `PUBLIC` by themselves (PostgreSQL before version 15, and clusters upgraded from
 one, let everybody create objects in schema `public`). This warning means the
 role that runs the migrations was not allowed to, usually because a superuser
-owns the schema. Everything keeps running: the functions of the public role
-ignore such objects anyway, so this is an additional safeguard only. To close
-it, run the command from the warning once as a superuser (or the schema owner)
-in that database, typically `REVOKE CREATE ON SCHEMA public FROM PUBLIC;`. If
-the warning starts with `GRANT CREATE ON SCHEMA public TO <app role>;`, run that
+owns the schema; on PostgreSQL 14 or older that is the normal case. Everything
+keeps running, and such objects cannot take over the functions of the public
+role. The public role can still break them, though, so close it: run the
+command from the warning once as a superuser (or the schema owner) in that
+database, typically `REVOKE CREATE ON SCHEMA public FROM PUBLIC;`. If the
+warning starts with `GRANT CREATE ON SCHEMA public TO <app role>;`, run that
 part too, first: the app role needs it for later updates. Rerunning
-`deploy/postgres/harden.sql` as a superuser does the same for schema `public`.
-The warning disappears on the next start. The public instance logs a matching
-warning ("may create objects in the table schema") with the same cause.
+`deploy/postgres/harden.sql` as a superuser is the same only when the warning
+does not start with that `GRANT`; otherwise run the `GRANT` first (or rerun
+`deploy/postgres/roles.sql`, which grants it). The warning appears on every
+start until then and disappears on the next start after. The public instance
+logs a matching warning ("may create objects in the table schema") with the
+same cause.
 
 0.3.0 refused to start in this situation (*"The public database role ... may
 create objects in the schema ..."*); a later version starts without any manual

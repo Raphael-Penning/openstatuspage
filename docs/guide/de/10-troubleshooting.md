@@ -59,16 +59,20 @@ Updates entziehen der öffentlichen Rolle und `PUBLIC` das Recht `CREATE` im
 Tabellenschema selbst (PostgreSQL vor Version 15 und davon aktualisierte Cluster
 erlauben allen, im Schema `public` Objekte anzulegen). Die Warnung bedeutet, dass
 die Rolle, die die Migrationen ausführt, das nicht durfte, meist weil das Schema
-einem Superuser gehört. Alles läuft weiter: Die Funktionen der öffentlichen
-Rolle ignorieren solche Objekte ohnehin, das ist nur eine zusätzliche
-Absicherung. Um sie zu schließen, führe den Befehl aus der Warnung einmal als
-Superuser (oder Eigentümer des Schemas) in dieser Datenbank aus, meist
+einem Superuser gehört; bei PostgreSQL 14 oder älter ist das der Normalfall.
+Alles läuft weiter, und solche Objekte können die Funktionen der öffentlichen
+Rolle nicht übernehmen. Die öffentliche Rolle kann sie aber noch stören, also
+schließe die Lücke: Führe den Befehl aus der Warnung einmal als Superuser (oder
+Eigentümer des Schemas) in dieser Datenbank aus, meist
 `REVOKE CREATE ON SCHEMA public FROM PUBLIC;`. Beginnt die Warnung mit
 `GRANT CREATE ON SCHEMA public TO <App-Rolle>;`, führe diesen Teil zuerst aus:
 Die App-Rolle braucht ihn für spätere Updates. `deploy/postgres/harden.sql`
-erneut als Superuser auszuführen, bewirkt dasselbe für das Schema `public`.
-Beim nächsten Start ist die Warnung weg. Die öffentliche Instanz meldet dieselbe
-Ursache mit einer eigenen Warnung („may create objects in the table schema“).
+erneut als Superuser auszuführen, bewirkt nur dann dasselbe, wenn die Warnung
+nicht mit diesem `GRANT` beginnt; sonst führe zuerst das `GRANT` aus (oder
+`deploy/postgres/roles.sql` erneut, das es vergibt). Bis dahin erscheint die
+Warnung bei jedem Start, beim nächsten Start danach ist sie weg. Die öffentliche
+Instanz meldet dieselbe Ursache mit einer eigenen Warnung („may create objects
+in the table schema“).
 
 0.3.0 startete in dieser Lage nicht (*„The public database role ... may create
 objects in the schema ...“*); eine neuere Version startet ohne manuellen
