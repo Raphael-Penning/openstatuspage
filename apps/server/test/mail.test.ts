@@ -60,6 +60,11 @@ describe('mail templates', () => {
     expect(mail.subject).not.toMatch(/[\r\n]/);
     expect(mail.html).not.toContain('javascript:');
     expect(mail.html).toContain('href="#"');
+    // Unicode line breaks too.
+    for (const separator of ['\u2028', '\u2029', '\u0085']) {
+      const other = confirmationMail({ ...site, siteName: `Example${separator}Bcc: x@example.com` }, 'en', 'https://example.com');
+      expect(other.subject).toBe('[Example Bcc: x@example.com] Confirm your subscription');
+    }
   });
 
   it('renders maintenance windows in UTC and default texts for empty messages', () => {

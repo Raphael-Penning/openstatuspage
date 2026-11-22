@@ -187,9 +187,13 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Subjects are single-line header values. */
+/**
+ * Subjects are single-line header values: CR, LF, tab and the Unicode line breaks
+ * (NEL U+0085, LINE SEPARATOR U+2028, PARAGRAPH SEPARATOR U+2029) become spaces,
+ * whatever the transport does with them.
+ */
 function oneLine(value: string): string {
-  return value.replace(/[\r\n\t]+/g, ' ').trim();
+  return value.replace(/[\r\n\t\u0085\u2028\u2029]+/g, ' ').trim();
 }
 
 /** Only http(s) URLs end up in links. */
