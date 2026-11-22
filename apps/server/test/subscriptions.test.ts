@@ -2,6 +2,7 @@ import type { LightMyRequestResponse } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import {
+  subscribe as startSubscription,
   subscriberTokens,
   subscriptionToken,
   syncSubscriptionTokenHashes,
@@ -203,6 +204,17 @@ describe('subscribe and confirm', () => {
     expect((await deliver()).length).toBe(0);
     const services = await t.db.selectFrom('subscriber_services').select('service_id').execute();
     expect(services.map((s) => s.service_id)).toEqual([publicService]);
+  });
+
+  it('sends one mail for concurrent requests for the same existing address', async () => {
+    await subscribe({ email: 'jane@example.com' });
+    expect((await deliver()).length).toBe(1);
+    const old = new Date(Date.now() - 11 * 60_000).toISOString();
+    await t.db.updateTable('subscribers').set({ confirmation_sent_at: old }).execute();
+    // The throttle is claimed atomically: only one of them queues the mail again.
+    const input = { email: 'jane@example.com', locale: 'en' as const, allServices: true, serviceIds: [] };
+    await Promise.all([1, 2, 3].map(() => startSubscription(t.app.ctx, input)));
+    expect((await deliver()).length).toBe(1);
   });
 
   it('answers before the subscribe work runs, and logs its failures', async () => {

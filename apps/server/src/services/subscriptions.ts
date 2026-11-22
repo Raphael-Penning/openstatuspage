@@ -248,14 +248,24 @@ export async function toPublicSubscription(db: DB, sub: Subscriber): Promise<Pub
   };
 }
 
-function throttled(sub: Subscriber, now: Date): boolean {
-  return (
-    sub.confirmation_sent_at !== null &&
-    now.getTime() - new Date(sub.confirmation_sent_at).getTime() < CONFIRMATION_THROTTLE_MS
-  );
+/**
+ * Claims the account mail of a subscriber: sets confirmation_sent_at unless a mail
+ * went out within CONFIRMATION_THROTTLE_MS. One conditional UPDATE, so of several
+ * concurrent requests only one claims it. True when this call did.
+ */
+async function claimAccountMail(db: DB, subscriberId: string, now: Date): Promise<boolean> {
+  const cutoff = new Date(now.getTime() - CONFIRMATION_THROTTLE_MS).toISOString();
+  const result = await db
+    .updateTable('subscribers')
+    .set({ confirmation_sent_at: now.toISOString() })
+    .where('id', '=', subscriberId)
+    .where((eb) => eb.or([eb('confirmation_sent_at', 'is', null), eb('confirmation_sent_at', '<=', cutoff)]))
+    .executeTakeFirst();
+  return Number(result.numUpdatedRows ?? 0) > 0;
 }
 
-async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm' | 'manage', now: Date): Promise<void> {
+/** Queues a confirmation or manage mail; the caller has claimed it (claimAccountMail). */
+async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm' | 'manage'): Promise<void> {
   const settings = await getSettings(ctx.db);
   const site = { siteName: settings.siteName, baseUrl: ctx.config.PUBLIC_BASE_URL, accentColor: settings.accentColor };
   // Placeholders only: the real token is filled in right before sending.
@@ -264,11 +274,6 @@ async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm
     kind === 'confirm'
       ? confirmationMail(site, sub.locale, links.confirmUrl)
       : manageMail(site, sub.locale, links.manageUrl);
-  await ctx.db
-    .updateTable('subscribers')
-    .set({ confirmation_sent_at: now.toISOString() })
-    .where('id', '=', sub.id)
-    .execute();
   await ctx.notifications.enqueue([{ subscriberId: sub.id, recipient: sub.email, kind, ...mail }]);
 }
 
@@ -313,15 +318,15 @@ export async function subscribe(ctx: AppContext, input: SubscribeInput, now = ne
       if (await db.selectFrom('subscribers').select('id').where('email', '=', email).executeTakeFirst()) return;
       throw err;
     }
-    await queueAccountMail(ctx, sub, 'confirm', now);
+    if (await claimAccountMail(db, sub.id, now)) await queueAccountMail(ctx, sub, 'confirm');
     return;
   }
 
   // Existing address: never change preferences without the manage token. A pending
   // one gets the confirmation again (its owner can adjust the choice after confirming),
   // a confirmed one the manage link.
-  if (!throttled(existing, now)) {
-    await queueAccountMail(ctx, existing, existing.confirmed_at === null ? 'confirm' : 'manage', now);
+  if (await claimAccountMail(db, existing.id, now)) {
+    await queueAccountMail(ctx, existing, existing.confirmed_at === null ? 'confirm' : 'manage');
   }
 }
 
