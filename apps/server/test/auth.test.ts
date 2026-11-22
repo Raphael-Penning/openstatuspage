@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { sha256 } from '../src/lib/crypto.js';
 import { cleanupExpiredSessions } from '../src/services/sessions.js';
-import { createOrResetLocalUser } from '../src/services/users.js';
+import { createOrResetLocalUser, insertApiToken } from '../src/services/users.js';
 import { PASSWORD, client, createTestApp, createUser, data, doc, errors, login, loginRequest, page, type TestApp } from './helpers.js';
 
 const HOUR_MS = 3600_000;
@@ -448,6 +448,30 @@ describe('token ownership', () => {
     expect((await admin.patch(`/api/admin/users/${secondId}`, { role: 'editor' })).statusCode).toBe(200);
     expect((await client(t.app, { token: childToken.token }).get('/api/admin/overview')).statusCode).toBe(401);
     expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
+  });
+});
+
+describe('api token owner check', () => {
+  it('stores a token only while its owner is still an admin', async () => {
+    const ownerId = await createUser(t.db, { email: 'owner@example.com', role: 'admin' });
+    const token = (id: string, createdBy: string | null) => ({
+      id,
+      name: id,
+      role: 'admin' as const,
+      tokenHash: sha256(id),
+      createdBy,
+      createdAt: new Date().toISOString(),
+    });
+    expect(await insertApiToken(t.db, token('first', ownerId))).toBe(true);
+
+    // Demoted after the request was authorized: the insert re-checks and stores nothing.
+    await t.db.updateTable('users').set({ role: 'editor' }).where('id', '=', ownerId).execute();
+    expect(await insertApiToken(t.db, token('second', ownerId))).toBe(false);
+    expect(await insertApiToken(t.db, token('gone', 'no-such-user'))).toBe(false);
+    // Tokens without a known owner are not tied to a user's role.
+    expect(await insertApiToken(t.db, token('orphan', null))).toBe(true);
+    const ids = await t.db.selectFrom('api_tokens').select('id').orderBy('id').execute();
+    expect(ids.map((r) => r.id)).toEqual(['first', 'orphan']);
   });
 });
 

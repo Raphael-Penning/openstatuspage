@@ -1,14 +1,14 @@
 import { ApiTokenCreateInput, UserCreateInput, UserUpdateInput, type AdminApiToken } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
 import { sha256 } from '../../lib/crypto.js';
-import { badRequest, conflict, notFound } from '../../lib/errors.js';
+import { badRequest, conflict, forbidden, notFound } from '../../lib/errors.js';
 import { newId } from '../../lib/ids.js';
 import { IdParams, parse } from '../../lib/http.js';
 import { hashPassword } from '../../lib/password.js';
 import { nowIso } from '../../lib/time.js';
 import { actorUserId, owningUserId, startSession } from '../../plugins/auth.js';
 import { newApiToken } from '../../services/sessions.js';
-import { changeUserRole, countAdmins, revokeUserCredentials, toAdminUser } from '../../services/users.js';
+import { changeUserRole, deleteUser, insertApiToken, revokeUserCredentials, toAdminUser } from '../../services/users.js';
 import { collection, created, document, noContent, selfLink } from '../../lib/jsonapi.js';
 import { useJsonApi } from '../../plugins/jsonapi.js';
 import { apiTokenResource, AUTH_TYPES, userResource } from '../../serializers/auth-users.js';
@@ -118,13 +118,11 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
     const { id } = parse(IdParams, req.params);
     const user = await getUser(id);
     if (actorUserId(req) === id) throw conflict('You cannot delete yourself');
-    if (user.role === 'admin' && (await countAdmins(db)) <= 1) throw conflict('The last admin cannot be deleted');
     // Sessions cascade; authored records keep their content with created_by = NULL.
     // API tokens created by the user are revoked with the account.
-    await db.transaction().execute(async (trx) => {
-      await trx.deleteFrom('api_tokens').where('created_by', '=', id).execute();
-      await trx.deleteFrom('users').where('id', '=', id).execute();
-    });
+    const result = await deleteUser(db, id);
+    if (result === 'not_found') throw notFound('User');
+    if (result === 'last_admin') throw conflict('The last admin cannot be deleted');
     await auditRequest(db, req, 'user.delete', 'user', id, { email: user.email });
     return noContent(reply);
   });
@@ -153,19 +151,16 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
     const id = newId();
     const token = newApiToken();
     const now = nowIso();
-    await db
-      .insertInto('api_tokens')
-      .values({
-        id,
-        name: input.name,
-        role: input.role,
-        token_hash: sha256(token),
-        // Owned by the session user or, when created with a token, by that token's owner.
-        created_by: owningUserId(req),
-        created_at: now,
-        last_used_at: null,
-      })
-      .execute();
+    const stored = await insertApiToken(db, {
+      id,
+      name: input.name,
+      role: input.role,
+      tokenHash: sha256(token),
+      // Owned by the session user or, when created with a token, by that token's owner.
+      createdBy: owningUserId(req),
+      createdAt: now,
+    });
+    if (!stored) throw forbidden('The owner of this request is no longer an admin');
     await auditRequest(db, req, 'api_token.create', 'api_token', id, { name: input.name, role: input.role });
     const body: AdminApiToken = { id, name: input.name, role: input.role, createdAt: now, lastUsedAt: null, token };
     return created(reply, document(apiTokenResource(body)), `/api/admin/api-tokens/${id}`);
