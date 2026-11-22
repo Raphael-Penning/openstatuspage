@@ -192,7 +192,8 @@ for setup examples, deliverability and troubleshooting.
 With Docker Compose every variable goes into the `.env` next to `compose.yaml`
 (`deploy/compose/.env` in a clone); the whole file reaches the container and
 `docker compose up -d` applies changes. Only `DATABASE_URL`, `HOST` and `PORT`
-are set by `compose.yaml` itself (use `HOST_PORT` for the published port).
+are set by `compose.yaml` itself (use `HOST_PORT` for the published address
+and port, default `127.0.0.1:3000`).
 
 `BASE_URL` must be the public URL of the status page: all links in emails use it.
 Confirmation and unsubscribe links are signed with `SUBSCRIPTION_TOKEN_KEY`

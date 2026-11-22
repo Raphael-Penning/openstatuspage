@@ -106,6 +106,14 @@ fi
 
 [ -n "${OSP_URL:-}" ] || die "OSP_URL is required"
 [ -n "${OSP_TOKEN:-}" ] || die "OSP_TOKEN is required"
+# Ingest tokens are base64url (letters, numbers, "-" and "_"). Anything else is
+# rejected before the token is written into curl's config, where a quote,
+# backslash or line break could add curl options. The set is spelled out so the
+# check does not depend on the locale.
+case $OSP_TOKEN in
+  *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-]*)
+    die "OSP_TOKEN contains characters that are not part of an ingest token" ;;
+esac
 command -v curl > /dev/null 2>&1 || die "curl is not installed"
 
 INSECURE=""

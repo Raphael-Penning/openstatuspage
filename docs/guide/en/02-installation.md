@@ -93,7 +93,7 @@ ADMIN_PASSWORD=a-long-password
 | --- | --- |
 | `BASE_URL` | The public URL, as described [above](#minimal-configuration). |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The [first administrator](#the-first-administrator), created only while the database has no user. |
-| `HOST_PORT` | Port published on the host, default `3000`, see [HOST_PORT](#host_port). |
+| `HOST_PORT` | Address and port published on the host, default `127.0.0.1:3000` (localhost only), see [HOST_PORT](#host_port). |
 | `TRUST_PROXY` | Number of reverse proxies in front of the app, `1` in the template. Leave it empty when no proxy is used, see [TRUST_PROXY](03-reverse-proxy.md#trust_proxy). |
 | `OSP_VERSION` | [Image tag](#image-tags) to run. Pin a release. |
 | `OSP_IMAGE` | Image without tag, default `ghcr.io/raphael-penning/openstatuspage`. Change it for a fork or your own registry mirror. |
@@ -120,13 +120,22 @@ so the file ends up neither in a commit nor in an image.
 
 ### HOST_PORT
 
-The app listens on port 3000 inside the container. `HOST_PORT` (default
-`3000`) selects the port published on the host:
+The app listens on port 3000 inside the container. `HOST_PORT` selects the
+address and port published on the host:
 
-- `HOST_PORT=8080` publishes port 8080 on all interfaces.
-- `HOST_PORT=127.0.0.1:3000` publishes it on localhost only. Use this when a
-  reverse proxy on the same host terminates HTTPS, so the plain HTTP port is
-  not reachable from outside.
+- `HOST_PORT=127.0.0.1:3000` (the default in `compose.yaml` and in the
+  template) publishes it on localhost only. This is right when a reverse proxy
+  on the same host terminates HTTPS: the plain HTTP port is not reachable from
+  outside, and nobody can bypass the proxy.
+- `HOST_PORT=8080` publishes port 8080 on all interfaces, e.g. for a proxy on
+  another host. Then set `TRUST_PROXY` to the proxy's address or network
+  (e.g. `TRUST_PROXY=192.0.2.10`) instead of a hop count: with `1`, a client
+  that connects to the port directly could choose its own IP through
+  `X-Forwarded-For` (see [TRUST_PROXY](03-reverse-proxy.md#trust_proxy)).
+
+`.env` files from releases before this default still contain
+`HOST_PORT=3000` and keep publishing on all interfaces; change the line to
+`HOST_PORT=127.0.0.1:3000` if your proxy runs on the same host.
 
 ### Check the installation
 
@@ -242,6 +251,12 @@ admin instance has brought the schema up to date. The database role `osp_public`
 sees only the public views and calls only the subscription functions, see
 [security-model.md](../../security-model.md).
 
+The compose file uses two networks: `public` holds the public container and
+the database, `backend` the admin container, the worker and the database. The
+public container therefore reaches PostgreSQL, but not the admin or worker
+container, and cannot bypass the restrictions of the admin proxy host. Your
+reverse proxies use the published host ports, not these networks.
+
 ### Setup
 
 You need the same as for [Docker Compose](#docker-compose), plus a clone of the
@@ -267,7 +282,9 @@ In `.env`, uncomment and set the variables of the section *Split deployment*:
   [Minimal configuration](#minimal-configuration)).
 - `TRUST_PROXY`, the number of proxies in front of each instance (1 for one proxy).
 - `PUBLIC_BIND` and `ADMIN_BIND` keep the default `127.0.0.1` when your reverse
-  proxy runs on the same host.
+  proxy runs on the same host. If you bind a port to another address, set
+  `TRUST_PROXY` to the proxy's addresses instead of a hop count, see
+  [TRUST_PROXY](03-reverse-proxy.md#trust_proxy).
 
 Use letters and digits only in `POSTGRES_PASSWORD`, `POSTGRES_PUBLIC_PASSWORD`
 and `POSTGRES_APP_PASSWORD`: they are part of connection URLs. `BASE_URL` in `.env` is not used by this file;
@@ -346,7 +363,12 @@ docker compose -f compose.split.yaml up -d public admin worker
 
 On Kubernetes use the [Helm chart](#kubernetes-with-helm) with
 `split.enabled=true`, or the plain manifests in `deploy/kubernetes/split/`
-(apply them with `kubectl apply -k deploy/kubernetes/split`).
+(apply them with `kubectl apply -k deploy/kubernetes/split`). They include a
+NetworkPolicy (`networkpolicy.yaml`) that lets the public pods accept traffic
+only from the ingress controller's namespace and connect only to DNS and
+PostgreSQL; check the namespaces in it before applying, and add a rule for
+the Umami server if you set `UMAMI_URL`. It needs a network plugin that
+enforces NetworkPolicies.
 
 ## Single container with SQLite
 

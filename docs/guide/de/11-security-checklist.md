@@ -10,7 +10,8 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
 - [ ] `BASE_URL` beginnt mit `https://`, damit Sitzungs-Cookies als `Secure`
       markiert sind.
 - [ ] `TRUST_PROXY` entspricht der Anzahl der Proxys vor der Anwendung, nie
-      mehr.
+      mehr; ist der Port der Anwendung ohne den Proxy erreichbar, enthält es
+      stattdessen die Adressen des Proxys.
 - [ ] Host, Docker und der Cluster bekommen Sicherheitsupdates.
 - [ ] Das Image ist auf ein Release festgelegt (`OSP_VERSION=1.2.3`, `newTag`
       unter Kubernetes), optional auf seinen Digest, und im Produktivbetrieb

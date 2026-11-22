@@ -74,6 +74,14 @@ describe.skipIf(!hasSh)('contrib/icinga2/openstatuspage-notify.sh', () => {
     expect(run(icingaScript, [], { OSP_DRY_RUN: '1', OSP_TYPE: 'service', OSP_HOST: 'x', OSP_STATE: 'OK' }).status).toBe(3);
     expect(run(icingaScript, [], { OSP_HOST: 'x', OSP_STATE: 'OK' }).stderr).toContain('OSP_URL is required');
   });
+
+  it('rejects tokens outside the base64url alphabet before calling curl', () => {
+    for (const token of ['a"b', 'a\\b', 'a\nurl = "http://example.com"', 'a b']) {
+      const res = run(icingaScript, [], { OSP_URL: 'http://127.0.0.1:9/x', OSP_TOKEN: token, OSP_HOST: 'x', OSP_STATE: 'OK' });
+      expect(res.status).toBe(3);
+      expect(res.stderr).toContain('OSP_TOKEN contains characters');
+    }
+  });
 });
 
 describe.skipIf(!hasSh)('contrib/openitcockpit/openstatuspage-notify.sh', () => {
@@ -105,6 +113,12 @@ describe.skipIf(!hasSh)('contrib/openitcockpit/openstatuspage-notify.sh', () => 
 
   it('rejects missing state', () => {
     expect(run(oitcScript, ['-n', '-H', 'h'], {}).status).toBe(3);
+  });
+
+  it('rejects tokens outside the base64url alphabet before calling curl', () => {
+    const res = run(oitcScript, ['-H', 'h', '-s', '0'], { OSP_URL: 'http://127.0.0.1:9/x', OSP_TOKEN: 'a"\nheader = "X: y' });
+    expect(res.status).toBe(3);
+    expect(res.stderr).toContain('OSP_TOKEN contains characters');
   });
 });
 

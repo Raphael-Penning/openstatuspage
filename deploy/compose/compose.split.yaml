@@ -2,7 +2,15 @@
 # and the background worker, sharing one PostgreSQL database. Every role runs in
 # its own container with its own database role. Only "public" and "admin"
 # publish a port, each for its own domain; "worker" and "db" are reachable only
-# inside the compose network. Guide: docs/guide/en/02-installation.md#split-deployment
+# inside the compose networks. Guide: docs/guide/en/02-installation.md#split-deployment
+#
+# Networks: "public" holds the public instance and the database, "backend" the
+# admin instance, the worker and the database. The public container can reach
+# PostgreSQL (with its restricted role) but not the admin or worker container,
+# so it cannot bypass the restrictions of the admin proxy host. The reverse
+# proxies reach the instances through the published host ports, not through
+# these networks. Both networks keep outbound access (SMTP, OIDC, monitoring
+# systems, the optional Umami server).
 #
 # Setup (from a clone of the repository, the file needs deploy/postgres/):
 #
@@ -51,6 +59,7 @@ services:
       # Runs once, on an empty data volume (see deploy/postgres/init-roles.sh).
       - ../postgres:/osp-postgres:ro
       - ../postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    networks: [public, backend]
     healthcheck:
       # -h localhost: during its init phase the image accepts socket connections
       # only, so the check passes once the server really listens on TCP.
@@ -65,6 +74,8 @@ services:
     <<: *image
     ports:
       - "${PUBLIC_BIND:-127.0.0.1}:${PUBLIC_HOST_PORT:-3000}:3000"
+    # Only the database, never admin or worker.
+    networks: [public]
     # No env_file: the public instance gets only the settings listed here, not
     # SECRET_KEY, the admin password, the OIDC or the SMTP secrets.
     environment:
@@ -73,6 +84,8 @@ services:
       PORT: "3000"
       WORKER_ENABLED: "false"
       BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL in .env}
+      # A hop count is safe while PUBLIC_BIND stays 127.0.0.1; on another
+      # address set TRUST_PROXY to the proxy's addresses in .env.
       TRUST_PROXY: ${TRUST_PROXY:-1}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Subscriptions are offered when mails are configured; the worker sends them.
@@ -100,6 +113,7 @@ services:
     <<: *image
     ports:
       - "${ADMIN_BIND:-127.0.0.1}:${ADMIN_HOST_PORT:-3001}:3000"
+    networks: [backend]
     # The rest of .env reaches the admin instance (ADMIN_*, OIDC_*, SMTP_*, ...).
     env_file: .env
     environment:
@@ -139,6 +153,11 @@ services:
       # Start after the admin instance has migrated the schema.
       admin:
         condition: service_healthy
+    networks: [backend]
+
+networks:
+  public:
+  backend:
 
 volumes:
   pg:

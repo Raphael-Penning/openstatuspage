@@ -30,6 +30,8 @@
 #      PUBLIC_BASE_URL in the Deployments) and the image tag below.
 #   3. Route the domains with one Ingress per instance (see ../ingress.yaml for
 #      an example). Restrict the admin domain, for example with an IP allowlist.
+#      Check the namespaces of the ingress controller and of DNS in
+#      networkpolicy.yaml (it limits the public pods to those and PostgreSQL).
 #   4. kubectl apply -k deploy/kubernetes/split
 #
 # The public Deployment holds only the public role's database URL and the key of
@@ -52,6 +54,9 @@ resources:
   - public.yaml
   - admin.yaml
   - worker.yaml
+  # Restricts the public pods to the ingress controller, DNS and PostgreSQL.
+  # Check the namespace and labels in it first.
+  - networkpolicy.yaml
 # Secrets are created by hand (see above) and deliberately not listed here.
 images:
   - name: ghcr.io/raphael-penning/openstatuspage

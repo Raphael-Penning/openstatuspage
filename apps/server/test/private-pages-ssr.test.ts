@@ -310,7 +310,12 @@ describe('private page', () => {
 
   it('counts every spelling of a private path against the same limit', async () => {
     const token = newPrivatePageToken();
-    for (let i = 0; i < 60; i++) await get(`/P/${token}`);
+    // The bucket refills one view per second, so a slow runner may get a few more
+    // than 60 through: spend it with one spelling until it answers 429.
+    let sent = 0;
+    while (sent < 120 && (await get(`/P/${token}`)).statusCode !== 429) sent++;
+    expect(sent).toBeGreaterThanOrEqual(60);
+    // The other spelling is limited by the same, now empty bucket.
     expect((await get(`/p/${token}`)).statusCode).toBe(429);
     // A dot-segment path never reaches the page (and so cannot be used to guess either).
     expect((await getAsIs(`/./p/${token}`)).statusCode).toBe(404);

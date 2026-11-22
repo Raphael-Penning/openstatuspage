@@ -13,9 +13,11 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -41,9 +43,11 @@ jobs:
     env:
       DATABASE_URL: postgres://osp:osp@localhost:5432/osp
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -117,11 +121,46 @@ jobs:
           "$RUNNER_TEMP/kubeconform/kubeconform" -strict -summary \
             -kubernetes-version "$version" "$renders"
 
+  image-build:
+    # Pull requests only: builds the container image (docker/Dockerfile) for
+    # linux/amd64 to check that it still builds. Nothing is pushed, so the job
+    # gets no write permission; "packages: write" belongs to the "image" job
+    # below, which never runs for pull requests.
+    if: github.event_name == 'pull_request'
+    needs: [check, postgres]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    concurrency:
+      # A newer push to a pull request replaces its running build.
+      group: image-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build (not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          # Pull requests read the cache of main but do not write their own.
+          cache-from: type=gha
+          provenance: false
+
   image:
-    # Builds the container image (docker/Dockerfile). Pull requests only build it
-    # (linux/amd64, nothing is pushed). Pushes to main and version tags publish a
-    # multi-arch image to the GitHub Container Registry, but only after "check"
-    # and "postgres" passed. Tags are described in docs/releasing.md.
+    # Pushes to main and version tags only: builds the multi-arch container image
+    # (docker/Dockerfile) and publishes it to the GitHub Container Registry, but
+    # only after "check" and "postgres" passed. Tags are described in
+    # docs/releasing.md. Pull requests use "image-build" above instead, so
+    # "packages: write" is never granted to a pull request run.
+    if: github.event_name == 'push'
     needs: [check, postgres]
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -129,19 +168,16 @@ jobs:
       contents: read
       packages: write
     concurrency:
-      # One image build per ref. A newer push to a pull request replaces its running
-      # build; builds of main and release tags always finish, so every commit of
-      # main gets its sha- tag.
+      # One image build per ref. Builds of main and release tags always finish,
+      # so every commit of main gets its sha- tag.
       group: image-${{ github.ref }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    env:
-      PUSH: ${{ github.event_name == 'push' }}
+      cancel-in-progress: false
     outputs:
       # "true" when a stable tag is the highest release overall (see "Release
       # channels"); empty for everything else. Used by the "release" job.
       latest: ${{ steps.release.outputs.latest }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -186,10 +222,10 @@ jobs:
 
       - name: Image metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         env:
-          # Index annotations need a pushed multi-arch image.
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: ${{ env.PUSH == 'true' && 'manifest,index' || 'manifest' }}
+          # Index annotations need a pushed multi-arch image (always the case here).
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ${{ steps.image.outputs.name }}
           flavor: latest=false
@@ -200,7 +236,6 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},enable=${{ steps.release.outputs.minor == 'true' }}
             type=semver,pattern={{major}},enable=${{ steps.release.outputs.major == 'true' }}
             type=raw,value=latest,enable=${{ steps.release.outputs.latest == 'true' }}
-            type=ref,event=pr
           labels: |
             org.opencontainers.image.title=OpenStatusPage
             org.opencontainers.image.description=Self-hosted status page that keeps your infrastructure private
@@ -212,34 +247,31 @@ jobs:
             org.opencontainers.image.licenses=AGPL-3.0-only
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
-      - uses: docker/setup-qemu-action@v4
-        if: env.PUSH == 'true'
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to the GitHub Container Registry
-        if: env.PUSH == 'true'
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: docker/Dockerfile
-          platforms: ${{ env.PUSH == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-          push: ${{ env.PUSH == 'true' }}
+          platforms: linux/amd64,linux/arm64
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
-          # Pull requests read the cache of main but do not write their own.
-          cache-to: ${{ env.PUSH == 'true' && 'type=gha,mode=max' || '' }}
-          provenance: ${{ env.PUSH == 'true' && 'mode=max' || 'false' }}
-          sbom: ${{ env.PUSH == 'true' }}
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
 
   release:
     # For a version tag: creates (or updates) the GitHub release with generated
@@ -257,7 +289,7 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 

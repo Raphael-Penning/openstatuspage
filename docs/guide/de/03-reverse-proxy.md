@@ -11,8 +11,8 @@ Reverse Proxy, der HTTPS übernimmt. Drei Dinge müssen zusammenpassen:
 
 Läuft der Proxy auf demselben Host, veröffentlichst du den Port der Anwendung
 nur auf localhost (`HOST_PORT=127.0.0.1:3000` in `.env` mit Docker
-Compose, `-p 127.0.0.1:3000:3000` beim einzelnen Container, `HOST=127.0.0.1`
-beim Betrieb aus dem Quellcode). So kann niemand den Proxy umgehen. Unter
+Compose, dort der Standard; `-p 127.0.0.1:3000:3000` beim einzelnen
+Container, `HOST=127.0.0.1` beim Betrieb aus dem Quellcode). So kann niemand den Proxy umgehen. Unter
 Kubernetes übernimmt der [Ingress](#kubernetes-ingress) die Rolle des Proxys.
 
 Mit Docker Compose kommen `BASE_URL`, `TRUST_PROXY` und `HOST_PORT` in
@@ -54,6 +54,22 @@ weit, wie du es erlaubst:
 die Anzahl der Proxys, die du betreibst: Einträge weiter links in
 `X-Forwarded-For` stammen vom Client und können gefälscht sein. Ist der Wert
 zu hoch, können Clients sich ihre IP aussuchen und Rate Limits umgehen.
+
+Eine Anzahl vertraut jedem, der sich mit der Anwendung verbindet. Sie ist nur
+sicher, solange der Port der Anwendung allein über den Proxy erreichbar ist
+(auf localhost veröffentlicht oder nur in einem privaten Netz). Ist der Port
+von anderen Hosts erreichbar, setzt du `TRUST_PROXY` stattdessen auf die
+Adressen oder Netze des Proxys (z. B. `TRUST_PROXY=192.0.2.10` oder
+`TRUST_PROXY=10.0.0.0/8`). So kann ein Client, der den Proxy umgeht, kein
+eigenes `X-Forwarded-For` setzen.
+
+Die Adresse muss die sein, die die Anwendung als Gegenstelle der Verbindung
+sieht, und das ist nicht immer die eigene Adresse des Proxys. Verbindet sich der
+Proxy über einen Port, den Dockers Userland-Proxy veröffentlicht (rootless
+Docker, Docker Desktop oder ein Proxy auf demselben Host), sieht die Anwendung
+das Gateway des Docker-Netzes (z. B. `172.17.0.1`). Prüfe die Client-Adresse im
+Request-Log und trage in diesem Fall das Gateway oder Subnetz des Docker-Netzes
+ein.
 
 ## Caddy
 
