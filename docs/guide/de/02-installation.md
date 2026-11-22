@@ -264,6 +264,13 @@ Stand gebracht hat. Die Datenbankrolle `osp_public` sieht nur die öffentlichen
 Views und ruft nur die Abonnement-Funktionen auf, siehe
 [Sicherheitsmodell](../../security-model.md).
 
+Die Compose-Datei nutzt zwei Netze: `public` enthält den öffentlichen Container
+und die Datenbank, `backend` den Admin-Container, den Worker und die Datenbank.
+Der öffentliche Container erreicht also PostgreSQL, aber weder den Admin- noch
+den Worker-Container, und kann die Einschränkungen des Admin-Proxy-Hosts nicht
+umgehen. Deine Reverse Proxys nutzen die veröffentlichten Host-Ports, nicht
+diese Netze.
+
 ### Einrichtung
 
 Du brauchst dasselbe wie für [Docker Compose](#docker-compose), dazu einen Klon
@@ -290,7 +297,9 @@ das Kommentarzeichen davor:
   [Minimale Konfiguration](#minimale-konfiguration)).
 - `TRUST_PROXY`, die Anzahl der Proxys vor jeder Instanz (1 bei einem Proxy).
 - `PUBLIC_BIND` und `ADMIN_BIND` behältst du auf `127.0.0.1`, wenn dein Reverse
-  Proxy auf demselben Host läuft.
+  Proxy auf demselben Host läuft. Bindest du einen Port an eine andere Adresse,
+  setzt du `TRUST_PROXY` auf die Adressen des Proxys statt auf eine Anzahl,
+  siehe [TRUST_PROXY](03-reverse-proxy.md#trust_proxy).
 
 Verwende in `POSTGRES_PASSWORD`, `POSTGRES_PUBLIC_PASSWORD` und
 `POSTGRES_APP_PASSWORD` nur Buchstaben und Ziffern: Sie stehen in

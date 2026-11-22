@@ -251,6 +251,12 @@ admin instance has brought the schema up to date. The database role `osp_public`
 sees only the public views and calls only the subscription functions, see
 [security-model.md](../../security-model.md).
 
+The compose file uses two networks: `public` holds the public container and
+the database, `backend` the admin container, the worker and the database. The
+public container therefore reaches PostgreSQL, but not the admin or worker
+container, and cannot bypass the restrictions of the admin proxy host. Your
+reverse proxies use the published host ports, not these networks.
+
 ### Setup
 
 You need the same as for [Docker Compose](#docker-compose), plus a clone of the
@@ -276,7 +282,9 @@ In `.env`, uncomment and set the variables of the section *Split deployment*:
   [Minimal configuration](#minimal-configuration)).
 - `TRUST_PROXY`, the number of proxies in front of each instance (1 for one proxy).
 - `PUBLIC_BIND` and `ADMIN_BIND` keep the default `127.0.0.1` when your reverse
-  proxy runs on the same host.
+  proxy runs on the same host. If you bind a port to another address, set
+  `TRUST_PROXY` to the proxy's addresses instead of a hop count, see
+  [TRUST_PROXY](03-reverse-proxy.md#trust_proxy).
 
 Use letters and digits only in `POSTGRES_PASSWORD`, `POSTGRES_PUBLIC_PASSWORD`
 and `POSTGRES_APP_PASSWORD`: they are part of connection URLs. `BASE_URL` in `.env` is not used by this file;
