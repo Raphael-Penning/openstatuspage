@@ -208,7 +208,8 @@ of an existing address (they only change through the manage link): pending
 subscribers get the confirmation email again, confirmed subscribers an email with
 their manage link instead; at most
 one confirmation or manage email is sent per address every 10 minutes, and the
-subscribe endpoint is limited to 5 requests per minute per client IP. Behind a
+subscribe endpoint and the subscribe form are limited to 5 requests per minute per
+client IP together. Behind a
 reverse proxy set `TRUST_PROXY` so the limit applies per visitor.
 
 The form also contains a hidden honeypot field (`website`) that people never fill

@@ -167,6 +167,28 @@ describe('POST /subscribe', () => {
     expect(elements(root, 'input').find((i) => i.name === 'email')).toMatchObject({ value: 'jane@example.com' });
   });
 
+  it('shares one rate limit with the JSON:API subscribe route', async () => {
+    const client = '203.0.113.10';
+    const api = (email: string) =>
+      t.app.inject({
+        method: 'POST',
+        url: '/api/public/subscriptions',
+        headers: { 'content-type': 'application/vnd.api+json' },
+        payload: JSON.stringify({ data: { type: 'subscriptions', attributes: { email } } }),
+        remoteAddress: client,
+      });
+    const codes: number[] = [];
+    for (let i = 0; i < 3; i++) codes.push((await api(`api${i}@example.com`)).statusCode);
+    for (let i = 0; i < 2; i++) codes.push((await post('/subscribe', [['email', `form${i}@example.com`]], { ip: client })).statusCode);
+    expect(codes).toEqual([202, 202, 202, 303, 303]);
+    // Five in this minute, whichever way: the sixth is refused on both.
+    expectFormPage(await post('/subscribe', [['email', 'form9@example.com']], { ip: client }), 429);
+    const limited = await api('api9@example.com');
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json().errors[0]).toMatchObject({ status: '429', code: 'rate_limited' });
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
   it('sends visitors back to the page when subscriptions are off', async () => {
     await admin.patch('/api/admin/settings', { emailSubscriptionsEnabled: false });
     const res = await post('/subscribe', [['email', 'jane@example.com']]);

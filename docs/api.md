@@ -318,7 +318,8 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
   sends it). Bearer-token requests are exempt.
 - Every mutating admin call writes an audit log entry. Mutations through API tokens
   are audited with `userId = null` and `details.apiToken = <token name>`.
-- Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP,
+- Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP (the API and the
+  HTML form `POST /subscribe` together),
   subscription token endpoints 30/min per IP, ingest 120/min per source.
 
 ```sh

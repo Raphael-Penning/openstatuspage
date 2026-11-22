@@ -308,7 +308,8 @@ management UI (`/admin`) never loads the tracker.
 
 - `POST /api/auth/login`: 10 requests per minute per client IP.
 - `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`: 30 requests per minute per client IP.
-- `POST /api/public/subscriptions`: 5 requests per minute per client IP; the other
+- `POST /api/public/subscriptions` and the form `POST /subscribe`: 5 requests per minute
+  per client IP together; the other
   subscription endpoints 30 requests per minute per client IP.
 - Analytics proxy: `GET /pulse/p.js` 60 and `POST /pulse/api/send` 120 requests per
   minute per client IP (see [Analytics](#analytics)).

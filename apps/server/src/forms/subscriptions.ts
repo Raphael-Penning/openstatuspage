@@ -34,7 +34,7 @@ import type { AppContext } from '../context.js';
 import type { DB } from '../db/index.js';
 import { HttpError } from '../lib/errors.js';
 import { unique } from '../lib/http.js';
-import { subscribeAfterAnswer } from '../routes/subscriptions.js';
+import { subscribeAfterAnswer, subscribeRateLimit } from '../routes/subscriptions.js';
 import type { FormPage } from '../ssr/pages.js';
 import { confirm, getManaged, unsubscribe, updateManaged } from '../services/subscription-flow.js';
 import { assertPublicServices, subscriptionsAvailable } from '../services/subscriptions.js';
@@ -43,8 +43,10 @@ import { field, fieldList, formFields, isCrossSite, rejectCrossSite, seeOther, w
 /** Renders a page answering a form (SsrPages.sendForm); false when it cannot be rendered. */
 export type FormPageRenderer = (req: FastifyRequest, reply: FastifyReply, page: FormPage) => Promise<boolean>;
 
-/** The same limits as the JSON:API routes. preHandler: the rate-limited answer still shows what was entered. */
-const SUBSCRIBE_LIMIT = { rateLimit: { max: 5, timeWindow: '1 minute', hook: 'preHandler' as const } };
+/**
+ * The same limits as the JSON:API routes; subscribing shares one counter with the
+ * API (subscribeRateLimit). preHandler: the rate-limited answer still shows what was entered.
+ */
 const MANAGE_LIMIT = { rateLimit: { max: 30, timeWindow: '1 minute', hook: 'preHandler' as const } };
 
 const MANAGE_PAGE = '/subscription/manage';
@@ -135,7 +137,7 @@ export function registerSubscriptionForms(scope: FastifyInstance, renderPage: Fo
     return answerWithPage(req, reply, { url, form: { values: echo(fields), error: 'rate_limited' }, status: 429 }, 'rate_limited');
   });
 
-  scope.post(FORM_PATHS.subscribe, { config: SUBSCRIBE_LIMIT }, async (req, reply) => {
+  scope.post(FORM_PATHS.subscribe, { preHandler: subscribeRateLimit(scope) }, async (req, reply) => {
     if (isCrossSite(req, ctx.config.PUBLIC_BASE_URL)) return rejectCrossSite(reply);
     // The page itself says that subscriptions are not offered.
     if (!(await subscriptionsAvailable(ctx))) return seeOther(reply, SUBSCRIBE_PAGE);

@@ -126,7 +126,8 @@ Details, die Abonnenten und deinen Mailserver schützen:
   sich nach der Bestätigung auf der Verwaltungsseite ändern); eine bestätigte
   Adresse bekommt stattdessen eine E-Mail mit dem Link zur Verwaltung. Solche
   E-Mails gehen höchstens alle 10 Minuten an dieselbe Adresse.
-- Das Formular ist auf 5 Anfragen pro Minute und Client-IP begrenzt, die
+- Das Abonnieren ist auf 5 Anfragen pro Minute und Client-IP begrenzt (das
+  Formular mit und ohne JavaScript zusammen), die
   Links zum Bestätigen, Verwalten und Abmelden auf 30 pro Minute. Hinter einem
   Reverse Proxy braucht das ein korrektes `TRUST_PROXY` (siehe
   [Reverse Proxy](03-reverse-proxy.md#trust_proxy)).

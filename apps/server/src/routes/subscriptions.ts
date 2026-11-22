@@ -1,7 +1,8 @@
 /**
  * /api/public/subscriptions: email subscriptions with double opt-in (no login), JSON:API.
  *
- *   POST   /api/public/subscriptions                 subscribe (always 202, work runs after the answer, rate limited)
+ *   POST   /api/public/subscriptions                 subscribe (always 202, work runs after the answer, rate limited
+ *                                                    together with the HTML form, see subscribeRateLimit)
  *   POST   /api/public/subscriptions/:id/confirm     confirm with the emailed token
  *   GET    /api/public/subscriptions/:id             \
  *   PATCH  /api/public/subscriptions/:id              } manage, token in X-Subscription-Token
@@ -24,6 +25,7 @@ import {
   SubscriptionConfirmInput,
   SubscriptionPreferencesInput,
 } from '@openstatuspage/shared';
+import type {} from '@fastify/rate-limit';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../context.js';
 import { z } from 'zod';
@@ -34,6 +36,7 @@ import { useJsonApi } from '../plugins/jsonapi.js';
 import { AUTH_TYPES, subscriptionResource } from '../serializers/auth-users.js';
 import { confirm, getManaged, startSubscription, unsubscribe, updateManaged } from '../services/subscription-flow.js';
 import { assertPublicServices, subscriberLinks, subscriptionsAvailable } from '../services/subscriptions.js';
+import { RATE_LIMIT_KEYS } from './index.js';
 
 const TokenQuery = z.object({ token: z.string().max(256).optional() });
 /** Relationships of a subscription request document. */
@@ -42,6 +45,38 @@ const SUBSCRIPTION_RELATIONSHIPS = { services: AUTH_TYPES.service };
 function headerToken(req: FastifyRequest): string | undefined {
   const value = req.headers[SUBSCRIPTION_TOKEN_HEADER];
   return typeof value === 'string' && value.length <= 256 ? value : undefined;
+}
+
+/** Subscribe requests per client and minute: the JSON:API and the HTML form (forms/subscriptions.ts) together. */
+export const SUBSCRIBE_REQUESTS_PER_MINUTE = 5;
+
+type LimitHook = (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+const subscribeLimits = new WeakMap<AppContext, LimitHook>();
+
+/**
+ * The hook that limits subscribe requests (SUBSCRIBE_REQUESTS_PER_MINUTE per client
+ * address, IPv6 per /64). One counter for both ways to subscribe: per-route limits
+ * would allow the documented number on each of them. Throws a 429 error like
+ * @fastify/rate-limit (the JSON:API and the form answer it in their own format).
+ */
+export function subscribeRateLimit(app: FastifyInstance): LimitHook {
+  const { ctx } = app;
+  let hook = subscribeLimits.get(ctx);
+  if (!hook) {
+    const limit = app.createRateLimit({
+      max: SUBSCRIBE_REQUESTS_PER_MINUTE,
+      timeWindow: '1 minute',
+      ...{ cache: RATE_LIMIT_KEYS },
+    });
+    hook = async (req, reply) => {
+      const result = await limit(req);
+      if (result.isAllowed || !result.isExceeded) return;
+      reply.header('retry-after', String(result.ttlInSeconds));
+      throw Object.assign(new Error(`Rate limit exceeded, retry in ${result.ttlInSeconds} seconds`), { statusCode: 429 });
+    };
+    subscribeLimits.set(ctx, hook);
+  }
+  return hook;
 }
 
 export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<void> {
@@ -78,7 +113,7 @@ export async function registerSubscriptionRoutes(app: FastifyInstance): Promise<
 
     await scope.register(async (api) => {
       useJsonApi(api);
-      registerSubscriptionApi(api, manageRoute, queryTokenRoute);
+      registerSubscriptionApi(api, manageRoute, queryTokenRoute, subscribeRateLimit(app));
     });
   });
 }
@@ -105,6 +140,7 @@ function registerSubscriptionApi(
   scope: FastifyInstance,
   manageRoute: ManageRoute,
   queryTokenRoute: ManageRoute & { logLevel: 'warn' },
+  subscribeLimit: LimitHook,
 ): void {
   const { ctx } = scope;
   /** The answer to every subscribe request, whatever happens afterwards. */
@@ -112,7 +148,7 @@ function registerSubscriptionApi(
 
   scope.post(
     '/api/public/subscriptions',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, jsonapi: { type: AUTH_TYPES.subscription, relationships: SUBSCRIPTION_RELATIONSHIPS } } },
+    { onRequest: subscribeLimit, config: { jsonapi: { type: AUTH_TYPES.subscription, relationships: SUBSCRIPTION_RELATIONSHIPS } } },
     async (req, reply) => {
       if (!(await subscriptionsAvailable(ctx))) throw notFound('Subscriptions');
       const input = parse(SubscribeInput, req.body);

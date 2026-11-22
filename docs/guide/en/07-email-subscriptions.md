@@ -119,7 +119,8 @@ Details that protect subscribers and your mail server:
   the manage page after confirming); a confirmed address gets a "manage your
   subscription" email with the manage link instead. Such emails go out at
   most once per 10 minutes per address.
-- The form is limited to 5 requests per minute per client IP, the confirm,
+- Subscribing is limited to 5 requests per minute per client IP (the form
+  with and without JavaScript together), the confirm,
   manage and unsubscribe links to 30 per minute. Behind a reverse proxy this
   needs a correct `TRUST_PROXY` (see
   [Reverse proxy](03-reverse-proxy.md#trust_proxy)).
