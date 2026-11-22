@@ -110,24 +110,26 @@ export const uptimeKumaPollAdapter: PollAdapter<UptimeKumaConfig> = {
 // Push: native webhook notification
 // ---------------------------------------------------------------------------
 
+// Length bounds follow the generic push format (GenericIngestPayload): 500 for
+// names and hosts, 5000 for messages. URLs get more room; only their host is kept.
 const KumaWebhook = z.object({
   heartbeat: z
     .object({
       status: z.number(),
-      msg: z.string().nullish(),
-      time: z.string().nullish(),
+      msg: z.string().max(5000).nullish(),
+      time: z.string().max(64).nullish(),
     })
     .nullish(),
   monitor: z
     .object({
-      id: z.union([z.number(), z.string()]).nullish(),
+      id: z.union([z.number(), z.string().max(500)]).nullish(),
       name: z.string().min(1).max(500),
-      url: z.string().nullish(),
-      hostname: z.string().nullish(),
-      type: z.string().nullish(),
+      url: z.string().max(8192).nullish(),
+      hostname: z.string().max(500).nullish(),
+      type: z.string().max(100).nullish(),
     })
     .nullish(),
-  msg: z.string().nullish(),
+  msg: z.string().max(5000).nullish(),
 });
 
 /** Heartbeat times are UTC in the format `YYYY-MM-DD HH:mm:ss.SSS`. */
