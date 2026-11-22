@@ -11,6 +11,8 @@ import {
   TOKEN_PLACEHOLDERS,
 } from '../src/services/subscriptions.js';
 import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
+import { mapError } from '../src/lib/jsonapi-errors.js';
+import { databaseInputError } from '../src/services/subscription-flow.js';
 import { adminClient, BASE_URL, createTestApp, data, doc, errors, type Client, type TestApp } from './helpers.js';
 
 const JSONAPI_HEADERS = { 'content-type': JSONAPI_MEDIA_TYPE };
@@ -446,5 +448,23 @@ describe('token hashes', () => {
       expect(r.token_key).toBe(tokenKeyFingerprint(rotated));
       expect(r.confirm_token_hash).toBe(tokenHash(subscriptionToken(rotated, 'confirm', r.id, r.token_salt)));
     }
+  });
+});
+
+describe('input errors of the database functions (PostgreSQL public role)', () => {
+  const pgError = (message: string, code = '22023') => Object.assign(new Error(message), { code });
+
+  it('pass on only the messages the functions raise themselves', () => {
+    expect(mapError(databaseInputError(pgError('Unknown service'))).errors[0]).toMatchObject({
+      status: '400',
+      code: 'bad_request',
+      detail: 'Unknown service',
+    });
+    // PostgreSQL's own errors with this code can quote values and internals.
+    const internal = databaseInputError(pgError('invalid value for parameter "search_path": "osp_public, public"'));
+    expect(mapError(internal).errors[0]).toMatchObject({ status: '400', detail: 'Invalid input' });
+    expect(JSON.stringify(mapError(internal))).not.toContain('search_path');
+    expect(databaseInputError(pgError('Subscriptions are disabled', '55000'))).toBeNull();
+    expect(databaseInputError(new Error('boom'))).toBeNull();
   });
 });
