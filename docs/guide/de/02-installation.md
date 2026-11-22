@@ -492,7 +492,7 @@ Strategie `Recreate` sorgt dafür, dass bei einem Update nie zwei Versionen
 gleichzeitig mit derselben Datenbank arbeiten.
 
 Die Befehle `create-user` und `seed` laufen im Pod genauso wie bei Docker,
-z. B. `kubectl -n openstatuspage exec deployment/openstatuspage -- node server/dist/cli/create-user.js ...`.
+z. B. `kubectl -n openstatuspage exec -it deployment/openstatuspage -- node server/dist/cli/create-user.js ...`.
 
 ## Image selbst bauen
 
@@ -582,28 +582,36 @@ Für das erste Konto gibt es zwei Wege:
    mit anschließendem `docker compose up -d` oder aus dem Kubernetes-Secret)
    und ändere das Passwort im Benutzermenü.
 2. **Der Befehl `create-user`** legt einen Benutzer an oder setzt, wenn die
-   Adresse schon existiert, ein neues Passwort und die Rolle und beendet die
-   Sitzungen des Benutzers:
+   Adresse schon existiert, ein neues Passwort und die Rolle, beendet die
+   Sitzungen des Benutzers und widerruft die API-Tokens, die er angelegt hat.
+   Das Passwort fragt der Befehl ab (zweimal, ohne es anzuzeigen):
 
    ```bash
    # Docker Compose
    docker compose exec openstatuspage \
-     node server/dist/cli/create-user.js admin@example.com 'ein-langes-passwort' admin 'Erika Mustermann'
+     node server/dist/cli/create-user.js admin@example.com admin 'Erika Mustermann'
 
    # einzelner Container
-   docker exec openstatuspage node server/dist/cli/create-user.js admin@example.com 'ein-langes-passwort' admin
+   docker exec -it openstatuspage node server/dist/cli/create-user.js admin@example.com admin
 
    # Kubernetes
-   kubectl -n openstatuspage exec deployment/openstatuspage -- \
-     node server/dist/cli/create-user.js admin@example.com 'ein-langes-passwort' admin
+   kubectl -n openstatuspage exec -it deployment/openstatuspage -- \
+     node server/dist/cli/create-user.js admin@example.com admin
 
    # aus dem Quellcode
-   pnpm --filter @openstatuspage/server create-user admin@example.com 'ein-langes-passwort' admin
+   pnpm --filter @openstatuspage/server create-user admin@example.com admin
    ```
 
-   Argumente: E-Mail, Passwort (mindestens 10 Zeichen), Rolle `admin` oder
-   `editor` (Standard `admin`) und optional ein Anzeigename. So kommst du
-   auch wieder hinein, wenn alle Administratoren ihr Passwort vergessen haben.
+   Argumente: E-Mail, Rolle `admin` oder `editor` (Standard `admin`) und
+   optional ein Anzeigename. Das Passwort (mindestens 10 Zeichen) ist nie ein
+   Argument, weil Prozessliste und Shell-Verlauf es sonst festhalten. Ohne
+   Terminal liest der Befehl es aus der ersten Zeile von stdin (z. B.
+   `docker compose exec -T openstatuspage node server/dist/cli/create-user.js
+   admin@example.com admin < passwort.txt`) oder aus der Umgebungsvariable
+   `OSP_USER_PASSWORD`. So kommst du auch wieder hinein, wenn alle
+   Administratoren ihr Passwort vergessen haben. Für ein Konto, das mit Single
+   Sign-On verknüpft ist, verweigert der Befehl die Änderung, solange du nicht
+   `--unlink-oidc` angibst, siehe [`docs/oidc.md`](../../oidc.md#account-linking) (Englisch).
 
 Gibt es keinen Benutzer und wurde keiner der beiden Wege genutzt, schreibt der
 Server bei jedem Start eine Warnung ins Log.

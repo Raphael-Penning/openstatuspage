@@ -55,7 +55,10 @@ Only used when the database contains no user at all.
 | `ADMIN_PASSWORD` | – | Password of the first admin (at least 10 characters). Remove it from the environment after the first start. |
 
 Alternatively create users with
-`pnpm --filter @openstatuspage/server create-user <email> <password> [admin|editor] [name]`.
+`pnpm --filter @openstatuspage/server create-user <email> [admin|editor] [name] [--unlink-oidc]`.
+The command asks for the password on a terminal; otherwise it reads the first line
+of stdin or the environment variable `OSP_USER_PASSWORD`. It never takes the password
+as an argument.
 
 ## Authentication
 
