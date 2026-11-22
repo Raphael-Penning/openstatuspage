@@ -17,6 +17,8 @@ export interface FakeKumaOptions {
   beats: Record<number, [string, number][]>;
   /** Monitor ids whose getMonitorBeats answer is larger than the response limit (51 MiB, streamed). */
   oversized?: number[];
+  /** Before answering getMonitorBeats, push `count` events named `event` with a padding of `size` characters each. */
+  flood?: { event: string; count: number; size?: number };
 }
 
 export interface FakeKuma {
@@ -83,6 +85,10 @@ export function fakeKuma(options: FakeKumaOptions): FakeKuma {
     if (event === 'getMonitorBeats') {
       const [monitorId, period] = args as [number, number];
       if (period == null) return ack({ ok: false, msg: 'Invalid period.' });
+      if (options.flood) {
+        const pad = 'y'.repeat(options.flood.size ?? 16);
+        for (let n = 0; n < options.flood.count; n++) enqueue(s, `42${JSON.stringify([options.flood.event, { n, pad }])}`);
+      }
       if (options.oversized?.includes(monitorId)) {
         s.oversized = true;
         s.waiter?.();

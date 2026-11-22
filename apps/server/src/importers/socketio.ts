@@ -10,10 +10,20 @@
  * several packets in one HTTP body are separated by \x1e.
  * Socket.IO packets (inside "4"): 0 connect, 1 disconnect, 2 event,
  * 3 ack, 4 connect_error; an ack id follows the type ("421[...]").
+ *
+ * Memory: the response size limit applies to one poll only, so the client also
+ * bounds what it keeps across polls. Events nobody listens for are dropped
+ * unless their name is listed in `expectedEvents`; those are kept for a later
+ * waitFor() within a count and size budget, and the session fails with an
+ * AdapterError when a peer exceeds it.
  */
 import { AdapterError, joinUrl, requestText, type FetchFn } from '../adapters/http.js';
 
 const SEPARATOR = '\x1e';
+/** Budget for expected events received before waitFor() asked for them. */
+export const SOCKETIO_MAX_BUFFERED_EVENTS = 16;
+/** Characters of buffered event payloads (JSON text) kept at most. */
+export const SOCKETIO_MAX_BUFFERED_CHARS = 16 * 1024 * 1024;
 
 export interface SocketIoOptions {
   /** Base URL of the server; the client uses `<baseUrl>/socket.io/`. */
@@ -22,6 +32,11 @@ export interface SocketIoOptions {
   signal: AbortSignal;
   /** Name of the remote system for error messages. */
   system: string;
+  /**
+   * Events that may arrive before waitFor() asks for them and are kept until
+   * then (within the buffer budget). Other events without a listener are dropped.
+   */
+  expectedEvents?: readonly string[];
 }
 
 type Listener = (...args: unknown[]) => void;
@@ -31,7 +46,9 @@ export class SocketIoClient {
   private closed = false;
   private readonly acks = new Map<number, { resolve: (args: unknown[]) => void; reject: (err: Error) => void }>();
   private readonly listeners = new Map<string, Listener[]>();
-  private readonly buffered = new Map<string, unknown[][]>();
+  private readonly buffered = new Map<string, { payload: unknown[]; chars: number }[]>();
+  private bufferedCount = 0;
+  private bufferedChars = 0;
   private nextAck = 1;
   private connectWaiter: { resolve: () => void; reject: (err: Error) => void } | null = null;
   private loop: Promise<void> | null = null;
@@ -106,9 +123,16 @@ export class SocketIoClient {
     }
   }
 
+  private clearBuffer(): void {
+    this.buffered.clear();
+    this.bufferedCount = 0;
+    this.bufferedChars = 0;
+  }
+
   private fail(err: Error): void {
     this.failure = err;
     this.closed = true;
+    this.clearBuffer();
     this.connectWaiter?.reject(err);
     this.connectWaiter = null;
     for (const ack of this.acks.values()) ack.reject(err);
@@ -165,12 +189,21 @@ export class SocketIoClient {
         if (!args || typeof args[0] !== 'string') return;
         const [event, ...payload] = args as [string, ...unknown[]];
         const listeners = this.listeners.get(event);
-        if (listeners && listeners.length > 0) for (const l of listeners) l(...payload);
-        else {
-          const list = this.buffered.get(event) ?? [];
-          list.push(payload);
-          this.buffered.set(event, list);
+        if (listeners && listeners.length > 0) {
+          for (const l of listeners) l(...payload);
+          return;
         }
+        // Nobody asked for it: keep only expected events, within the budget.
+        if (!this.options.expectedEvents?.includes(event)) return;
+        this.bufferedCount += 1;
+        this.bufferedChars += rest.length;
+        if (this.bufferedCount > SOCKETIO_MAX_BUFFERED_EVENTS || this.bufferedChars > SOCKETIO_MAX_BUFFERED_CHARS) {
+          this.fail(new AdapterError(`${this.options.system}: too many unexpected Socket.IO events`));
+          return;
+        }
+        const list = this.buffered.get(event) ?? [];
+        list.push({ payload, chars: rest.length });
+        this.buffered.set(event, list);
         return;
       }
       case '3': {
@@ -198,9 +231,14 @@ export class SocketIoClient {
 
   /** Resolves with the arguments of the next `event` (also one received before the call). */
   waitFor(event: string, timeoutMs: number): Promise<unknown[]> {
-    const buffered = this.buffered.get(event);
-    if (buffered && buffered.length > 0) return Promise.resolve(buffered.shift()!);
     if (this.failure) return Promise.reject(this.failure);
+    if (this.closed) return Promise.reject(new AdapterError(`${this.options.system}: connection closed`));
+    const buffered = this.buffered.get(event)?.shift();
+    if (buffered) {
+      this.bufferedCount -= 1;
+      this.bufferedChars -= buffered.chars;
+      return Promise.resolve(buffered.payload);
+    }
     return new Promise((resolve, reject) => {
       const onFail = (err: Error) => {
         remove();
@@ -232,6 +270,7 @@ export class SocketIoClient {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.clearBuffer();
     try {
       if (this.sid) await this.post('1');
     } catch {
