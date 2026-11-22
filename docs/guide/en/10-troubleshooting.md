@@ -43,6 +43,21 @@ The message lists every invalid variable, e.g. `BASE_URL: Invalid URL` or
 In production (the default `NODE_ENV`) the key is mandatory. Generate one with
 `openssl rand -base64 48`.
 
+**"SECRET_KEY: is a published example value".**
+The key (or `SUBSCRIPTION_TOKEN_KEY`) is still the value from the
+documentation or an example file. Generate your own with
+`openssl rand -base64 48`. On an existing installation this makes stored
+monitoring credentials unreadable, so re-enter them afterwards.
+
+**PostgreSQL: "The public database role ... may create objects in the
+schema ...".**
+The public role may create objects in the table schema, usually because
+PostgreSQL before version 15 (or a cluster upgraded from one) lets everybody
+create objects in schema `public`. The instance does not start until that is
+revoked: run `deploy/postgres/harden.sql` again as a superuser in that database, as described in the
+[security model](../../security-model.md), or run
+`REVOKE CREATE ON SCHEMA public FROM PUBLIC` as a superuser (if the tables live in another schema, revoke it there as well).
+
 **`docker compose` says "set SECRET_KEY in .env" or "set POSTGRES_PASSWORD
 in .env".**
 The variable is missing or empty in `.env`. On a new installation append both
