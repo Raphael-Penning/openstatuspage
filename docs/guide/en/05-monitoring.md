@@ -247,3 +247,7 @@ For the CSV format and the details per system, see the
   (`POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`); a larger answer fails the poll.
   For very large monitoring systems raise both together with the heap cap
   (`NODE_OPTIONS`), see the configuration reference.
+- If the server stops during a poll, it does not poll that source again right
+  after restarting: automatic polls wait at least one interval, longer if it
+  happens again (up to 6 hours), and the source shows why. **Poll now** or
+  saving the source retries at once.

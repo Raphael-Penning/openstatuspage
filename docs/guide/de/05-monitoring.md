@@ -266,3 +266,8 @@ Das CSV-Format und die Details je System findest du in der
   (`POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`); eine größere Antwort lässt die
   Abfrage fehlschlagen. Bei sehr großen Monitoring-Systemen erhöhst du beide
   zusammen mit der Heap-Grenze (`NODE_OPTIONS`), siehe Konfigurationsreferenz.
+- Stoppt der Server während einer Abfrage, fragt er diese Quelle nach dem
+  Neustart nicht sofort wieder ab: Automatische Abfragen warten mindestens ein
+  Intervall, bei Wiederholung länger (bis zu 6 Stunden), und die Quelle zeigt
+  den Grund an. **Jetzt abfragen** oder Speichern der Quelle versucht es sofort
+  erneut.

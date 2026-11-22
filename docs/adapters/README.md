@@ -33,6 +33,11 @@ in the public API (not even their number).
   before parsing) are rejected as an error. Both are sized against the heap cap
   of the image; for very large sources raise them together with
   `--max-old-space-size` (see [configuration](../configuration.md#monitoring)).
+- a poll that never finished because the server stopped during it (e.g. out of
+  memory) is noticed on the next start: automatic polls of that source wait one
+  poll interval (at least a minute), doubled for every further unfinished poll in
+  a row, up to 6 hours, and the source shows the reason as its error. "Poll now"
+  and saving the source retry right away.
 
 **Push** – the monitoring system calls OpenStatusPage on every state change:
 

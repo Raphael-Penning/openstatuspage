@@ -180,6 +180,9 @@ async function monitoringRoutes(app: FastifyInstance): Promise<void> {
         enabled: input.enabled ? 1 : 0,
         config_encrypted: secrets.encryptJson(sourceConfig),
         poll_interval_seconds: input.pollIntervalSeconds,
+        // An edited source gets a fresh try: no back-off from unfinished polls.
+        poll_started_at: null,
+        poll_aborts: 0,
         updated_at: nowIso(),
       })
       .where('id', '=', id)

@@ -173,6 +173,10 @@ export interface MonitorSourcesTable {
   last_poll_at: string | null;
   last_poll_ok: Bool | null;
   last_error: string | null;
+  /** Start of the running poll; left behind when the process stopped during a poll (0010). */
+  poll_started_at: string | null;
+  /** Polls in a row that never finished; scheduled polls back off by it (0010). */
+  poll_aborts: Generated<number>;
   created_at: string;
   updated_at: string;
 }
