@@ -408,6 +408,21 @@ describe('create-user reset', () => {
     await login(t.app, 'new@example.com', 'another-long-password');
   });
 
+  it('refuses accounts linked to an SSO identity unless the link is removed', async () => {
+    const id = await createUser(t.db, { email: 'newhire@example.com', role: 'editor', password: null });
+    await t.db.updateTable('users').set({ oidc_subject: 'idp-subject' }).where('id', '=', id).execute();
+    const input = { email: 'newhire@example.com', password: 'a-new-long-password', role: 'admin' as const, name: 'X' };
+
+    expect(await createOrResetLocalUser(t.db, input)).toEqual({ ok: false, error: 'oidc_linked' });
+    const unchanged = await t.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
+    expect(unchanged).toMatchObject({ role: 'editor', password_hash: null, oidc_subject: 'idp-subject' });
+
+    expect(await createOrResetLocalUser(t.db, input, { unlinkOidc: true })).toEqual({ ok: true, created: false });
+    const reset = await t.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
+    expect(reset).toMatchObject({ role: 'admin', oidc_subject: null });
+    await login(t.app, 'newhire@example.com', 'a-new-long-password');
+  });
+
   it('applies the demotion rules', async () => {
     const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const input = { email: 'admin@example.com', password: 'a-new-long-password', role: 'editor' as const, name: 'X' };

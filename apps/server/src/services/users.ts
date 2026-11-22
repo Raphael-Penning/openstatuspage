@@ -52,7 +52,7 @@ export async function changeUserRole(db: DB, userId: string, role: UserRole): Pr
   });
 }
 
-export type LocalUserResult = { ok: true; created: boolean } | { ok: false; error: 'last_admin' };
+export type LocalUserResult = { ok: true; created: boolean } | { ok: false; error: 'last_admin' | 'oidc_linked' };
 
 /**
  * Ends every session of a user and revokes the API tokens they created: the
@@ -68,19 +68,31 @@ export async function revokeUserCredentials(db: DB, userId: string, exceptSessio
  * Creates a local user or, when the e-mail exists, sets a new password and role
  * (create-user CLI). A reset is also the answer to a compromised account, so it
  * signs the user out everywhere and revokes the API tokens they created.
+ *
+ * An account linked to an SSO identity is refused (`oidc_linked`) unless
+ * `unlinkOidc` is set: the password and role would otherwise also reach whoever
+ * holds that IdP identity, which is not necessarily the owner of the address.
+ * With `unlinkOidc` the link is removed; the next SSO login links again only
+ * through a verified e-mail.
  */
 export async function createOrResetLocalUser(
   db: DB,
   input: { email: string; password: string; role: UserRole; name: string },
+  options: { unlinkOidc?: boolean } = {},
 ): Promise<LocalUserResult> {
   const email = input.email.trim().toLowerCase();
   const password_hash = await hashPassword(input.password);
   const now = nowIso();
-  const existing = await db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst();
+  const existing = await db.selectFrom('users').select(['id', 'oidc_subject']).where('email', '=', email).executeTakeFirst();
   if (existing) {
+    if (existing.oidc_subject && !options.unlinkOidc) return { ok: false, error: 'oidc_linked' };
     // Role first: a refused demotion leaves the account untouched.
     if ((await changeUserRole(db, existing.id, input.role)) === 'last_admin') return { ok: false, error: 'last_admin' };
-    await db.updateTable('users').set({ password_hash, updated_at: now }).where('id', '=', existing.id).execute();
+    await db
+      .updateTable('users')
+      .set({ password_hash, ...(existing.oidc_subject ? { oidc_subject: null } : {}), updated_at: now })
+      .where('id', '=', existing.id)
+      .execute();
     await revokeUserCredentials(db, existing.id);
     return { ok: true, created: false };
   }

@@ -99,6 +99,12 @@ membership) to resolve it.
 Linked users can still use their local password unless you set
 `LOCAL_LOGIN_ENABLED=false`.
 
+The `create-user` command refuses to set a password or role on an account that
+is linked to an IdP identity, since whoever holds that identity would get them
+too. After checking that the account belongs to the owner of the address, run
+it again with `--unlink-oidc`: it sets password and role and removes the link
+(the next SSO login links again only through a verified e-mail).
+
 ## Offboarding
 
 The IdP is only asked at login. Removing or disabling someone in the IdP, or
