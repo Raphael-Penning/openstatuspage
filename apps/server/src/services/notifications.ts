@@ -14,8 +14,10 @@
  * kind and status stay for the status view.
  *
  * Delivery: a worker task sends due rows in batches and retries failures with
- * backoff (1 min, 5 min, 15 min, 1 h); only a failed send is retried, never a
- * database error after the transport accepted the mail. After MAX_ATTEMPTS a row is marked failed
+ * backoff (1 min, 5 min, 15 min, 1 h); only a failed send is retried, not a
+ * database error after the transport accepted the mail (if marking it sent keeps
+ * failing, the row is due again once its claim expires, so the mail can go out
+ * once more). After MAX_ATTEMPTS a row is marked failed
  * (and keeps its placeholder bodies, so an admin can retry it). Email addresses
  * in SMTP errors are masked before they are logged or stored. Sent and failed
  * rows are purged after OUTBOX_RETENTION_MS. Mails of a deleted subscriber are
