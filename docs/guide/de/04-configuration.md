@@ -20,7 +20,7 @@ wichtigsten Variablen:
 | --- | --- | --- |
 | `BASE_URL` | `http://localhost:3000` | Öffentliche URL ohne abschließenden Schrägstrich. Siehe [Reverse Proxy](03-reverse-proxy.md#base_url). |
 | `PUBLIC_BASE_URL` | `BASE_URL` | Getrennter Betrieb: die öffentliche URL auf Admin- und Worker-Instanzen, für alle Links in E-Mails und Feeds. Auch die Daten für Suchmaschinen (kanonische Links, Sitemaps, `robots.txt`, `llms.txt`) verwenden sie. |
-| `SECRET_KEY` | – | Im Produktivbetrieb Pflicht, mindestens 32 Zeichen. Siehe [Betrieb](09-operations.md#secret_key). |
+| `SECRET_KEY` | – | Im Produktivbetrieb Pflicht, mindestens 32 Zeichen und kein Beispielwert aus der Dokumentation. Siehe [Betrieb](09-operations.md#secret_key). |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<Pfad>` oder `postgres://benutzer:passwort@host:5432/datenbank`. |
 | `TRUST_PROXY` | `false` | Anzahl der Reverse Proxys vor der Anwendung oder deren Adressen. Siehe [Reverse Proxy](03-reverse-proxy.md#trust_proxy). |
 | `HOST` / `PORT` | `0.0.0.0` / `3000` | Schnittstelle und Port, auf denen der Server lauscht. |

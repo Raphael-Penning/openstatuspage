@@ -38,6 +38,29 @@ describe('loadConfig', () => {
     expect(loadConfig({ SECRET_KEY: 'x'.repeat(32) }).insecureSecret).toBe(false);
   });
 
+  it('refuses published example secrets in production', () => {
+    for (const value of ['change-me-to-a-long-random-value', 'insecure-development-secret-change-me-please']) {
+      expect(() => loadConfig({ NODE_ENV: 'production', SECRET_KEY: value })).toThrow(/SECRET_KEY: is a published example value/);
+      expect(() => loadConfig({ NODE_ENV: 'production', SECRET_KEY: 'x'.repeat(32), SUBSCRIPTION_TOKEN_KEY: value })).toThrow(
+        /SUBSCRIPTION_TOKEN_KEY: is a published example value/,
+      );
+      // Development and test setups, and CLI commands that never use the secret, still accept them.
+      expect(loadConfig({ NODE_ENV: 'development', SECRET_KEY: value }).SECRET_KEY).toBe(value);
+      expect(loadConfig({ NODE_ENV: 'production', SECRET_KEY: value }, { allowMissingSecret: true }).SECRET_KEY).toBe(value);
+    }
+    expect(loadConfig({ NODE_ENV: 'production', SECRET_KEY: 'x'.repeat(32) }).insecureSecret).toBe(false);
+  });
+
+  it('warns in production when BASE_URL is plain http for a public host', () => {
+    const warnings = (env: Record<string, string>) =>
+      configWarnings(loadConfig({ NODE_ENV: 'production', SECRET_KEY: 'x'.repeat(32), ...env }));
+    expect(warnings({ BASE_URL: 'http://status.example.com' })).toEqual([expect.stringMatching(/without the Secure flag/)]);
+    expect(warnings({ BASE_URL: 'https://status.example.com' })).toEqual([]);
+    expect(warnings({ BASE_URL: 'http://localhost:3000' })).toEqual([]);
+    expect(warnings({})).toEqual([]);
+    expect(configWarnings(loadConfig({ NODE_ENV: 'test', BASE_URL: 'http://status.example.com' }))).toEqual([]);
+  });
+
   it('warns when TRUST_PROXY trusts hops by position only', () => {
     const warnings = (env: Record<string, string>) => configWarnings(loadConfig({ NODE_ENV: 'test', ...env }));
     expect(warnings({ TRUST_PROXY: 'true' })).toEqual([expect.stringMatching(/TRUST_PROXY=1 trusts the nearest hop/)]);

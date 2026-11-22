@@ -18,7 +18,7 @@ The complete reference with every option lives in
 | --- | --- | --- |
 | `BASE_URL` | `http://localhost:3000` | Public URL without trailing slash. See [Reverse proxy](03-reverse-proxy.md#base_url). |
 | `PUBLIC_BASE_URL` | `BASE_URL` | Split deployment: the public URL on admin and worker instances, used for all links in emails and feeds. Search engine data (canonical links, sitemaps, `robots.txt`, `llms.txt`) uses it as well. |
-| `SECRET_KEY` | – | Required in production, at least 32 characters. See [Operations](09-operations.md#secret_key). |
+| `SECRET_KEY` | – | Required in production, at least 32 characters and not an example value from the documentation. See [Operations](09-operations.md#secret_key). |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` or `postgres://user:password@host:5432/database`. |
 | `TRUST_PROXY` | `false` | Number of reverse proxies in front of the app, or their addresses. See [Reverse proxy](03-reverse-proxy.md#trust_proxy). |
 | `HOST` / `PORT` | `0.0.0.0` / `3000` | Interface and port the server listens on. |
