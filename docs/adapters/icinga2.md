@@ -188,6 +188,15 @@ postgres://osp_history:<password>@db.example.com:5432/icingadb?sslmode=require
 append `?ssl={"rejectUnauthorized":true}`. Special characters in the password
 must be URL encoded.
 
+The connection string must name a host (no Unix socket) and may carry only
+one parameter: `sslmode` for PostgreSQL (`disable`, `prefer`, `require`,
+`verify-ca`, `verify-full`, `no-verify`) or `ssl` for MySQL/MariaDB. Other
+parameters are rejected, because the database drivers read them as
+connection options, some of them file paths on the status page server
+(`sslcert`, `sslkey`, `sslrootcert`) or local sockets (`host`,
+`socketPath`). `verify-ca` and `verify-full` check the server certificate
+against the CA certificates Node.js trusts on the status page server.
+
 - **Retention**: Icinga DB removes history after `retention.history-days`
   (per category `retention.options.state`) of its configuration. For objects
   whose state did not change since before the range, the current state fills

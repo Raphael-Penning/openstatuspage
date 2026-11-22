@@ -798,12 +798,40 @@ export interface AdminServiceHistory {
 // Monitoring sources & checks (internal only)
 // ---------------------------------------------------------------------------
 
-/** Connection string of a MySQL/MariaDB or PostgreSQL database. */
+/**
+ * Query parameters a connection string may carry. The database drivers read
+ * others as connection options, some of them file paths on the server
+ * (PostgreSQL `sslcert`, `sslkey`, `sslrootcert`) or local sockets (`host`,
+ * MySQL `socketPath`), so only the TLS switch of each driver is allowed.
+ */
+const DATABASE_URL_PARAMS: Record<string, string> = { postgres: 'sslmode', postgresql: 'sslmode', mysql: 'ssl', mariadb: 'ssl' };
+const PG_SSLMODES = ['disable', 'prefer', 'require', 'verify-ca', 'verify-full', 'no-verify'];
+
+function databaseUrlTargetOk(value: string): boolean {
+  if (value === SECRET_MASK) return true;
+  const url = parseUrl(value);
+  // A percent-encoded host is a socket path for the PostgreSQL driver; a fragment is never needed.
+  if (!url || url.hostname === '' || url.hostname.includes('%') || url.hash !== '') return false;
+  const allowed = DATABASE_URL_PARAMS[value.slice(0, value.indexOf(':')).toLowerCase()];
+  for (const key of url.searchParams.keys()) {
+    if (key !== allowed || url.searchParams.getAll(key).length !== 1) return false;
+    if (key === 'sslmode' && !PG_SSLMODES.includes(url.searchParams.getAll(key)[0]!)) return false;
+  }
+  return true;
+}
+
+/**
+ * Connection string of a MySQL/MariaDB or PostgreSQL database: a host name and
+ * at most the parameter `sslmode` (PostgreSQL) or `ssl` (MySQL/MariaDB).
+ */
 export const zDatabaseUrl = z
   .string()
   .max(2000)
   .refine((v) => /^(mysql|mariadb|postgres|postgresql):\/\/[^\s]+$/i.test(v) || v === SECRET_MASK, {
     message: 'must be a mysql://, mariadb:// or postgres:// URL',
+  })
+  .refine(databaseUrlTargetOk, {
+    message: 'must name a host and may only carry the parameter sslmode (PostgreSQL) or ssl (MySQL/MariaDB)',
   });
 
 const zHttpBase = z.object({
