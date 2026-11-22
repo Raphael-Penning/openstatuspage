@@ -127,6 +127,21 @@ const EnvSchema = z.object({
    * use 3 poll intervals (at least 5 minutes) instead.
    */
   BUNDLE_PUSH_STALE_SECONDS: z.coerce.number().int().min(60).max(7 * 24 * 3600).default(3600),
+  /**
+   * Most checks one monitoring source may have. Pushes and polls that would exceed
+   * it are rejected and store nothing.
+   */
+  MAX_CHECKS_PER_SOURCE: z.coerce.number().int().min(100).max(1_000_000).default(20_000),
+  /**
+   * Pull adapters: most MiB of one (decompressed) response body. Sized against the
+   * image's heap cap (NODE_OPTIONS --max-old-space-size=96); raise both together.
+   */
+  POLL_MAX_RESPONSE_MB: z.coerce.number().min(1).max(512).default(8),
+  /**
+   * Pull adapters: most values one response body may hold (JSON objects, arrays and
+   * elements; lines of text), checked before parsing. Raise together with the heap cap.
+   */
+  POLL_MAX_VALUES: z.coerce.number().int().min(1000).max(100_000_000).default(500_000),
 
   /**
    * How notification mails are delivered: `smtp`, `log` (written to the server log,

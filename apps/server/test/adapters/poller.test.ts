@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchFn } from '../../src/adapters/http.js';
 import { pollTaskName, syncPollers } from '../../src/adapters/poller.js';
 import { pollMonitorSourceNow, testMonitorSource } from '../../src/adapters/routes.js';
-import { pollAndStore } from '../../src/adapters/runner.js';
+import { abortedPollBackoffMs, pollAndStore } from '../../src/adapters/runner.js';
 import { HttpError } from '../../src/lib/errors.js';
+import { adminClient } from '../helpers.js';
 import { createTestApp, fixture, mockFetch, type TestApp } from './helpers.js';
 
 let t: TestApp;
@@ -82,6 +83,34 @@ describe('pollAndStore', () => {
     expect(outcome.message).toBe('Uptime Kuma: request to https://kuma.example.com/metrics failed: connection refused (ECONNREFUSED)');
   });
 
+  it('stores nothing and records the error when a poll exceeds MAX_CHECKS_PER_SOURCE', async () => {
+    await t.close();
+    t = await createTestApp({ MAX_CHECKS_PER_SOURCE: '100' });
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    const many = Array.from({ length: 101 }, (_, i) => `monitor_status{monitor_name="m${i}",monitor_type="http"} 1`).join('\n');
+    const outcome = await pollAndStore(t.ctx, id, { fetchFactory: () => mockFetch(() => new Response(many)).fetch });
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining('at most 100') });
+    expect(await checkStates(id)).toEqual({});
+    expect((await sourceRow(id)).last_error).toContain('MAX_CHECKS_PER_SOURCE');
+  });
+
+  it('applies POLL_MAX_RESPONSE_MB and POLL_MAX_VALUES to polls', async () => {
+    await t.close();
+    t = await createTestApp({ POLL_MAX_VALUES: '1000', POLL_MAX_RESPONSE_MB: '1' });
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    const many = 'x 1\n'.repeat(600);
+    const tooMany = await pollAndStore(t.ctx, id, { fetchFactory: () => mockFetch(() => new Response(many)).fetch });
+    expect(tooMany).toMatchObject({ ok: false, message: expect.stringContaining('POLL_MAX_VALUES') });
+    const large = `${'#'.repeat(1024 * 1024)}\n`;
+    const tooLarge = await pollAndStore(t.ctx, id, { fetchFactory: () => mockFetch(() => new Response(large)).fetch });
+    expect(tooLarge).toMatchObject({ ok: false, message: expect.stringContaining('exceeds 1 MiB') });
+    expect((await sourceRow(id)).last_poll_ok).toBe(0);
+    // The default fetch gets the byte limit, too.
+    const factory = vi.fn(() => kumaFetch().fetch);
+    await pollAndStore(t.ctx, id, { fetchFactory: factory });
+    expect(factory).toHaveBeenCalledWith({ verifyTls: true, maxResponseBytes: 1024 * 1024 });
+  });
+
   it('does not wipe existing checks when the system suddenly returns none', async () => {
     const { id } = await t.insertSource({
       type: 'icinga2',
@@ -125,6 +154,81 @@ describe('pollAndStore', () => {
     ]);
     expect(a).toBe(b);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('crash-safe polling', () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const leftMarker = (id: string, startedAt: string, aborts = 0) =>
+    t.ctx.db.updateTable('monitor_sources').set({ poll_started_at: startedAt, poll_aborts: aborts }).where('id', '=', id).execute();
+
+  it('marks a running poll and clears the mark when it ends, whatever the outcome', async () => {
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    let during: { poll_started_at: string | null; poll_aborts: number } | undefined;
+    const fetchFactory = () =>
+      mockFetch(async () => {
+        during = await sourceRow(id);
+        return new Response(metrics);
+      }).fetch;
+    await pollAndStore(t.ctx, id, { fetchFactory, scheduled: true });
+    expect(during).toMatchObject({ poll_started_at: expect.any(String), poll_aborts: 0 });
+    expect(await sourceRow(id)).toMatchObject({ poll_started_at: null, poll_aborts: 0 });
+
+    await pollAndStore(t.ctx, id, { fetchFactory: () => failingFetch(503), scheduled: true });
+    expect(await sourceRow(id)).toMatchObject({ poll_started_at: null, last_poll_ok: 0 });
+  });
+
+  it('does not poll a source again right after a poll that never finished', async () => {
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    // The process died during this poll (e.g. out of memory on the answer) and restarted.
+    await leftMarker(id, ago(1000));
+    const kuma = kumaFetch();
+    const skipped = await pollAndStore(t.ctx, id, { fetchFactory: () => kuma.fetch, scheduled: true });
+    expect(skipped).toMatchObject({ ok: false, message: expect.stringContaining('did not finish') });
+    expect(kuma.calls).toHaveLength(0);
+    expect(await sourceRow(id)).toMatchObject({ last_poll_ok: 0, last_error: expect.stringContaining('Automatic polls resume') });
+
+    // "Poll now" runs anyway, counts the unfinished poll while it runs and clears it when done.
+    let aborts: number | undefined;
+    const manual = await pollAndStore(t.ctx, id, {
+      fetchFactory: () =>
+        mockFetch(async () => {
+          aborts = (await sourceRow(id)).poll_aborts;
+          return new Response(metrics);
+        }).fetch,
+    });
+    expect(manual.ok).toBe(true);
+    expect(aborts).toBe(1);
+    expect(await sourceRow(id)).toMatchObject({ poll_started_at: null, poll_aborts: 0 });
+  });
+
+  it('backs off exponentially while polls keep not finishing', async () => {
+    expect(abortedPollBackoffMs(60, 0)).toBe(60_000);
+    expect(abortedPollBackoffMs(10, 0)).toBe(60_000);
+    expect(abortedPollBackoffMs(300, 2)).toBe(1_200_000);
+    expect(abortedPollBackoffMs(60, 50)).toBe(6 * 60 * 60_000);
+
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig, pollIntervalSeconds: 60 });
+    // Two unfinished polls in a row: wait 4 intervals after the last one started.
+    await leftMarker(id, ago(3 * 60_000), 2);
+    expect((await pollAndStore(t.ctx, id, { fetchFactory: () => kumaFetch().fetch, scheduled: true })).ok).toBe(false);
+    await leftMarker(id, ago(4 * 60_000 + 1000), 2);
+    expect((await pollAndStore(t.ctx, id, { fetchFactory: () => kumaFetch().fetch, scheduled: true })).ok).toBe(true);
+    expect(await sourceRow(id)).toMatchObject({ poll_started_at: null, poll_aborts: 0 });
+  });
+
+  it('applies to the scheduled poll task, and editing the source resets the back-off', async () => {
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    await leftMarker(id, ago(1000));
+    const kuma = kumaFetch();
+    await syncPollers(t.ctx, { fetchFactory: () => kuma.fetch });
+    await t.ctx.worker.runScheduled(pollTaskName(id));
+    expect(kuma.calls).toHaveLength(0);
+
+    const admin = await adminClient({ app: t.app, db: t.ctx.db, config: t.ctx.config, close: async () => {} });
+    const res = await admin.patch(`/api/admin/monitor-sources/${id}`, { name: 'Renamed' });
+    expect(res.statusCode).toBe(200);
+    expect(await sourceRow(id)).toMatchObject({ poll_started_at: null, poll_aborts: 0 });
   });
 });
 

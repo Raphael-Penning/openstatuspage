@@ -42,7 +42,8 @@ mode**: a compromised status page then cannot reach into your monitoring.
 For pull, create a dedicated **read-only** API user restricted to the objects
 that feed the status page. Keep TLS verification on; for an internal CA set
 `NODE_EXTRA_CA_CERTS=/path/to/ca.pem` in the environment instead of disabling
-verification.
+verification. To turn verification off for a source, enter its password or API
+key again (as when you change the URL or user name).
 
 ## Connecting a source
 
@@ -89,7 +90,8 @@ only for **Webhook** sources (other types get their list from polling, and
 the server answers `400`). As a safety net, a full push that would remove more than half
 of the checks linked to services or used in check bundles is rejected with
 `409` and changes nothing; unlink those checks (or take them out of the
-bundle) first if the removal is intended.
+bundle) first if the removal is intended. The half counts over 24 hours:
+checks that earlier full pushes removed within that time count as well.
 
 ## Composing services from checks
 
@@ -240,3 +242,13 @@ For the CSV format and the details per system, see the
   no checks, look for renamed hosts or monitors.
 - Ingest endpoints are rate limited to 120 requests per minute per source.
   Batch many results into one request (up to 5000 checks, 5 MiB).
+- A source holds at most 20000 checks (`MAX_CHECKS_PER_SOURCE`). A push or poll
+  that would add more is rejected and stores nothing.
+- A poll answer may be up to 8 MiB with up to 500000 values
+  (`POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`); a larger answer fails the poll.
+  For very large monitoring systems raise both together with the heap cap
+  (`NODE_OPTIONS`), see the configuration reference.
+- If the server stops during a poll, it does not poll that source again right
+  after restarting: automatic polls wait at least one interval, longer if it
+  happens again (up to 6 hours), and the source shows why. **Poll now** or
+  saving the source retries at once.

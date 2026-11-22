@@ -91,6 +91,34 @@ describe('POST /api/ingest/:sourceId', () => {
     expect(await checks(id)).toEqual([]);
   });
 
+  it('authenticates before the body is read or parsed', async () => {
+    const { id, token } = await t.insertSource({ type: 'webhook' });
+    const unparsable = '{"checks": ['.padEnd(2 * 1024 * 1024, ' ');
+    for (const [url, headers] of [
+      [`/api/ingest/${id}`, {}],
+      [`/api/ingest/${id}`, { authorization: `Bearer ${token}x` }],
+      [`/api/ingest/${id}/uptimekuma`, {}],
+      ['/api/ingest/00000000-0000-0000-0000-000000000000', { authorization: `Bearer ${token}` }],
+    ] as const) {
+      const res = await t.app.inject({
+        method: 'POST',
+        url,
+        headers: { ...headers, 'content-type': 'application/json' },
+        payload: unparsable,
+      });
+      // A parsed body would answer 400 (invalid JSON); the hook answers first.
+      expect(res.statusCode, url).toBeOneOf([401, 404]);
+    }
+    // Authenticated, the same body reaches the parser (and up to 5 MiB are allowed).
+    const parsed = await t.app.inject({
+      method: 'POST',
+      url: `/api/ingest/${id}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: unparsable,
+    });
+    expect(parsed.statusCode).toBe(400);
+  });
+
   it('returns 404 for unknown sources and formats', async () => {
     const { id, token } = await t.insertSource({ type: 'webhook' });
     const unknown = await t.app.inject({
@@ -242,6 +270,59 @@ describe('POST /api/ingest/:sourceId', () => {
     const wipe = await push({ checks: [{ id: 'x', state: 0 }], full: true });
     expect(wipe.statusCode).toBe(409);
     expect(await links()).toEqual(['a', 'b']);
+  });
+
+  it('counts linked checks removed by earlier full pushes within 24 hours', async () => {
+    const { id, token } = await t.insertSource({ type: 'webhook' });
+    const push = (ids: string[], full = true) =>
+      t.app.inject({
+        method: 'POST',
+        url: `/api/ingest/${id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { checks: ids.map((c) => ({ id: c, state: 0 })), full },
+      });
+    await push(['a', 'b', 'c', 'd'], false);
+    const rows = await t.ctx.db.selectFrom('monitor_checks').select('id').where('source_id', '=', id).execute();
+    const now = nowIso();
+    const serviceId = newId();
+    await t.ctx.db
+      .insertInto('services')
+      .values({
+        id: serviceId,
+        slug: 'api',
+        name: 'API',
+        kind: 'service',
+        sort_order: 0,
+        is_public: 1,
+        status_mode: 'auto',
+        manual_status: 'operational',
+        aggregation: 'worst',
+        current_status: 'operational',
+        monitor_status: 'operational',
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+    await t.ctx.db
+      .insertInto('service_checks')
+      .values(rows.map((r) => ({ service_id: serviceId, check_id: r.id })))
+      .execute();
+
+    // Half of the four linked checks: allowed.
+    expect((await push(['a', 'b'])).statusCode).toBe(200);
+    // One more of the remaining two would be three of four within the window.
+    const next = await push(['a']);
+    expect(next.statusCode).toBe(409);
+    expect(next.json().errors[0].detail).toContain('2 more were removed by full pushes in the last 24 hours');
+    expect((await checks(id)).map((c) => c.external_id)).toEqual(['a', 'b']);
+
+    // After the window, the count starts again.
+    await t.ctx.db
+      .updateTable('monitor_sources')
+      .set({ full_sync_window_at: new Date(Date.now() - 25 * 60 * 60_000).toISOString() })
+      .where('id', '=', id)
+      .execute();
+    expect((await push(['a'])).statusCode).toBe(200);
   });
 
   it(`rate limits to ${INGEST_RATE_LIMIT_PER_MINUTE} requests per minute and source`, async () => {

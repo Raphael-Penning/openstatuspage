@@ -3162,8 +3162,8 @@ Content-Type: application/vnd.api+json
 - `PATCH` on sources: left-out attributes keep their values; the `config` is kept
   when left out and replaced as a whole otherwise. Secrets equal to `SECRET_MASK`
   keep the stored value only while `sourceType`, `baseUrl` and `username`
-  (`historyUsername` for `historyPassword`) are unchanged, otherwise `400`
-  `secret_required`; `icingaDbUrl` is kept regardless.
+  (`historyUsername` for `historyPassword`) are unchanged and `verifyTls` is not
+  turned off, otherwise `400` `secret_required`; `icingaDbUrl` is kept regardless.
 - History import ([adapters/README.md](adapters/README.md#history-import)):
   `HistoryImportCreateInput` = `{ from, to, onlyLinkedChecks = true, credentials?, csv? }`
   with `to` capped at now and a range of at most 731 days. `credentials`
@@ -4264,7 +4264,9 @@ Content-Type: application/vnd.api+json
 `/api/ingest`. Monitoring systems push check results. Authentication:
 `Authorization: Bearer <ingest token>` of the source (or the `?token=` query
 parameter for systems that cannot set headers; its value is redacted in the request
-log).
+log). Source, token and rate limit are checked before the body is read, so a request
+without a valid token is answered `404`/`401` without parsing its body; only
+authenticated requests may send bodies of up to 5 MiB.
 
 Request bodies are the native payloads below (`application/json`; JSON sent as
 `text/plain` is accepted, too), not JSON:API documents. Responses are JSON:API: a
@@ -4281,9 +4283,14 @@ errors are error documents whose `source.pointer` points into the body as sent
 
 `full: true` (remove checks missing from the payload) is accepted only for sources
 of type `webhook` (`400` otherwise); a full push that would remove more than half of
-the checks linked to services or used as bundle members is rejected with `409` and
+the checks linked to services or used as bundle members (counted over 24 hours,
+including those removed by earlier full pushes) is rejected with `409` and
 stores nothing (see [adapters/README.md](adapters/README.md)). Rate limited per
 source (default 120 requests/min).
+
+Result times are capped at the server clock plus 5 minutes. A result whose time is
+older than the stored result of the same check (a delayed or replayed push) is
+ignored and not counted in `updated`.
 
 Examples:
 

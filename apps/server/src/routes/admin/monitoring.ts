@@ -147,11 +147,15 @@ async function monitoringRoutes(app: FastifyInstance): Promise<void> {
     });
 
     // SECRET_MASK means "keep the stored value". Only allowed when the type, URL and
-    // username are unchanged, so stored credentials can never be redirected to another host.
+    // username are unchanged, so stored credentials can never be redirected to another host,
+    // and while TLS verification stays on, so they never go out unverified without re-entry.
     const stored = current.type === input.sourceType ? decryptSourceConfig(secrets, current) : {};
     const sourceConfig = { ...(input.config as Record<string, unknown>) };
+    // verifyTls defaults to true (also in configs stored before it existed).
+    const tlsTurnedOff = sourceConfig.verifyTls === false && stored.verifyTls !== false;
     // The history login of Uptime Kuma belongs to its own user name.
     const sameTarget = (key: string) =>
+      !tlsTurnedOff &&
       ['baseUrl', key === 'historyPassword' ? 'historyUsername' : 'username'].every(
         (k) => (sourceConfig[k] ?? null) === (stored[k] ?? null),
       );
@@ -160,7 +164,10 @@ async function monitoringRoutes(app: FastifyInstance): Promise<void> {
       const previous = stored[key];
       if (typeof previous !== 'string' || previous === '') throw secretRequired(key);
       if (!SELF_CONTAINED_SECRETS.includes(key) && !sameTarget(key)) {
-        throw secretRequired(key, `config.${key} must be entered again when the URL or username changes`);
+        throw secretRequired(
+          key,
+          `config.${key} must be entered again when the URL or username changes or TLS verification is turned off`,
+        );
       }
       sourceConfig[key] = previous;
     }
@@ -173,6 +180,9 @@ async function monitoringRoutes(app: FastifyInstance): Promise<void> {
         enabled: input.enabled ? 1 : 0,
         config_encrypted: secrets.encryptJson(sourceConfig),
         poll_interval_seconds: input.pollIntervalSeconds,
+        // An edited source gets a fresh try: no back-off from unfinished polls.
+        poll_started_at: null,
+        poll_aborts: 0,
         updated_at: nowIso(),
       })
       .where('id', '=', id)

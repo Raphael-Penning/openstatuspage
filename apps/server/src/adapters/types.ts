@@ -8,6 +8,7 @@
  * `IngestService.ingest()` stores.
  */
 import type { CheckState, MonitorSourceType } from '@openstatuspage/shared';
+import type { ResponseLimits } from './http.js';
 
 export interface NormalizedCheck {
   /** Stable ID within the source, e.g. `web01!http` for Icinga 2. */
@@ -31,6 +32,8 @@ export interface AdapterContext {
   signal: AbortSignal;
   /** fetch that honours the source's verifyTls setting. */
   fetch: typeof fetch;
+  /** Bounds for every response body (POLL_MAX_RESPONSE_MB, POLL_MAX_VALUES); pass them to each request. */
+  limits: ResponseLimits;
 }
 
 export interface PollAdapter<Config = Record<string, unknown>> {

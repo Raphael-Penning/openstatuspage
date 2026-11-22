@@ -122,6 +122,18 @@ describe('Uptime Kuma webhook parser', () => {
     expect(() => uptimeKumaPushParser.parse({ heartbeat: { status: 'up' }, monitor: { name: 'x' } }, {})).toThrow();
   });
 
+  it('bounds the length of webhook fields like the generic push format', () => {
+    const body = (heartbeat: Record<string, unknown>, monitor: Record<string, unknown>) => ({
+      heartbeat: { status: 1, ...heartbeat },
+      monitor: { name: 'web', ...monitor },
+    });
+    expect(uptimeKumaPushParser.parse(body({ msg: 'x'.repeat(5000) }, { hostname: 'h'.repeat(500) }), {}).checks).toHaveLength(1);
+    expect(() => uptimeKumaPushParser.parse(body({}, { hostname: 'h'.repeat(501) }), {})).toThrow();
+    expect(() => uptimeKumaPushParser.parse(body({}, { url: `https://example.com/${'a'.repeat(8192)}` }), {})).toThrow();
+    expect(() => uptimeKumaPushParser.parse(body({ msg: 'x'.repeat(5001) }, {}), {})).toThrow();
+    expect(() => uptimeKumaPushParser.parse({ ...body({}, {}), msg: 'x'.repeat(5001) }, {})).toThrow();
+  });
+
   it('parses heartbeat times as UTC', () => {
     expect(kumaTimeToIso('2026-11-17 08:15:30.123')).toBe('2026-11-17T08:15:30.123Z');
     expect(kumaTimeToIso('2026-11-17T08:15:30+01:00')).toBe('2026-11-17T07:15:30.000Z');

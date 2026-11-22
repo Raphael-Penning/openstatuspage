@@ -6,7 +6,8 @@
  * the sources every 30 s). Tasks are named `poll:<sourceId>` and run every
  * `poll_interval_seconds`. On PostgreSQL every worker schedules every source,
  * and the lease `poll:<sourceId>` makes sure that only one of them polls it
- * per interval (lib/task-leases.ts).
+ * per interval (lib/task-leases.ts). Scheduled polls back off for a source
+ * whose last poll never finished (runner.ts, crash-safe polling).
  */
 import type { AppContext } from '../context.js';
 import type { Worker } from '../worker.js';
@@ -61,7 +62,7 @@ export async function syncPollers(ctx: AppContext, options: RunnerOptions = {}):
       intervalMs,
       async (signal) => {
         // The worker already holds the lease `poll:<id>`.
-        await pollAndStore(ctx, id, { ...options, signal, leaseHeld: true });
+        await pollAndStore(ctx, id, { ...options, signal, leaseHeld: true, scheduled: true });
       },
       { changedAt },
     );

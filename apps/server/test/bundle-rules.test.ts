@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bundleOutput,
   evaluateBundle,
+  MAX_CLOCK_SKEW_MS,
   memberReason,
   MIN_STALE_MS,
   staleAfterMs,
@@ -162,6 +163,14 @@ describe('memberReason', () => {
     expect(memberReason({ state: 'ok', lastCheckAt: ago(59 * 60_000) }, push, now)).toBe('reporting');
     expect(memberReason({ state: 'ok', lastCheckAt: ago(61 * 60_000) }, push, now)).toBe('stale');
     expect(memberReason({ state: 'ok', lastCheckAt: ago(11 * 60_000) }, push, now, 10 * 60_000)).toBe('stale');
+  });
+
+  it('never counts a result from the future beyond clock skew as fresh', () => {
+    const ahead = (ms: number) => new Date(now + ms).toISOString();
+    expect(memberReason({ state: 'ok', lastCheckAt: ahead(MAX_CLOCK_SKEW_MS) }, push, now)).toBe('reporting');
+    expect(memberReason({ state: 'ok', lastCheckAt: ahead(MAX_CLOCK_SKEW_MS + 1) }, push, now)).toBe('stale');
+    expect(memberReason({ state: 'ok', lastCheckAt: '2099-01-01T00:00:00.000Z' }, push, now)).toBe('stale');
+    expect(memberReason({ state: 'ok', lastCheckAt: '2099-01-01T00:00:00.000Z' }, pull, now)).toBe('stale');
   });
 
   it('checks the source before the result', () => {

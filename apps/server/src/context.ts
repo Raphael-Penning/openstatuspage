@@ -59,7 +59,7 @@ export function createContext(
     log,
     secrets,
     engine,
-    ingest: new IngestService(db, engine, bundles),
+    ingest: new IngestService(db, engine, bundles, { maxChecksPerSource: config.MAX_CHECKS_PER_SOURCE }),
     bundles,
     historyImports: new HistoryImportService(db, secrets, worker, log, config.database.dialect),
     worker,

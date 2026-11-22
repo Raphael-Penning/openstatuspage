@@ -33,7 +33,8 @@ FROM node:22-bookworm-slim
 # Memory (docs/architecture.md#memory): a small young generation and a cap on the
 # old generation keep an instance below 100 MB; fewer malloc arenas and libuv
 # threads keep native memory small. Override NODE_OPTIONS to raise the cap, e.g.
-# for large history imports on an admin instance.
+# for large history imports on an admin instance. POLL_MAX_RESPONSE_MB (8) and
+# POLL_MAX_VALUES (500000) are sized against this cap; raise them together.
 ENV NODE_ENV=production \
     PORT=3000 \
     DATABASE_URL=sqlite:/data/openstatuspage.db \
