@@ -331,6 +331,22 @@ describe('user management guards', () => {
     expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/email' } });
   });
 
+  it("revokes the user's sessions and API tokens when an admin resets their password", async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const userId = await createUser(t.db, { email: 'second@example.com', role: 'admin' });
+    const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
+    const ownCookie = await login(t.app, 'second@example.com');
+    const own = client(t.app, { cookie: ownCookie });
+    const { token } = data<{ token: string }>(await own.post('/api/admin/api-tokens', { name: 'ops', role: 'editor' }));
+    const { token: otherToken } = data<{ token: string }>(await admin.post('/api/admin/api-tokens', { name: 'ci', role: 'editor' }));
+
+    expect((await admin.patch(`/api/admin/users/${userId}`, { password: 'a-brand-new-password' })).statusCode).toBe(200);
+    expect((await own.get('/api/admin/overview')).statusCode).toBe(401);
+    expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
+    // Tokens of other users stay valid.
+    expect((await client(t.app, { token: otherToken }).get('/api/admin/overview')).statusCode).toBe(200);
+  });
+
   it('protects the last admin against other admins being removed via token', async () => {
     const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
@@ -366,6 +382,9 @@ describe('create-user reset', () => {
   it('sets the password, ends existing sessions and creates new users', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const cookie = await login(t.app, 'admin@example.com');
+    const { token } = data<{ token: string }>(
+      await client(t.app, { cookie }).post('/api/admin/api-tokens', { name: 'ops', role: 'editor' }),
+    );
 
     const reset = await createOrResetLocalUser(t.db, {
       email: 'Admin@Example.com',
@@ -375,6 +394,8 @@ describe('create-user reset', () => {
     });
     expect(reset).toEqual({ ok: true, created: false });
     expect((await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } })).statusCode).toBe(401);
+    // A reset recovers a compromised account: the tokens it created are revoked too.
+    expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
     await login(t.app, 'admin@example.com', 'a-new-long-password');
 
     const created = await createOrResetLocalUser(t.db, {

@@ -27,7 +27,8 @@ small.
 - Create users with name, email, role and a password (at least 10
   characters). For accounts that only use single sign-on, leave the password
   empty.
-- Changing a user's password signs that user out everywhere.
+- Changing a user's password signs that user out everywhere and revokes the
+  API tokens they created.
 - You cannot delete yourself, change your own role or remove the last
   administrator.
 
@@ -42,8 +43,8 @@ minute per client IP.
 
 Locked out? Use the `create-user` command to set a new password, see
 [Installation](02-installation.md#the-first-administrator). It also signs the
-user out everywhere, so it is the way to reset a compromised account from the
-server.
+user out everywhere and revokes the API tokens they created, so it is the way
+to reset a compromised account from the server.
 
 ## Single sign-on (OIDC)
 

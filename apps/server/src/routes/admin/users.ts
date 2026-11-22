@@ -7,8 +7,8 @@ import { IdParams, parse } from '../../lib/http.js';
 import { hashPassword } from '../../lib/password.js';
 import { nowIso } from '../../lib/time.js';
 import { actorUserId, owningUserId } from '../../plugins/auth.js';
-import { deleteUserSessions, newApiToken, SESSION_COOKIE } from '../../services/sessions.js';
-import { changeUserRole, countAdmins, toAdminUser } from '../../services/users.js';
+import { newApiToken, SESSION_COOKIE } from '../../services/sessions.js';
+import { changeUserRole, countAdmins, revokeUserCredentials, toAdminUser } from '../../services/users.js';
 import { collection, created, document, noContent, selfLink } from '../../lib/jsonapi.js';
 import { useJsonApi } from '../../plugins/jsonapi.js';
 import { apiTokenResource, AUTH_TYPES, userResource } from '../../serializers/auth-users.js';
@@ -99,8 +99,10 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
       })
       .where('id', '=', id)
       .execute();
-    // A new or removed password signs the user out everywhere (except the admin's own current session).
-    if (passwordChanged) await deleteUserSessions(db, id, isSelf ? req.cookies[SESSION_COOKIE] : null);
+    // A new or removed password signs the user out everywhere (except the admin's own current
+    // session). A reset is also how a compromised account is recovered, so it revokes the API
+    // tokens they created as well.
+    if (passwordChanged) await revokeUserCredentials(db, id, isSelf ? req.cookies[SESSION_COOKIE] : null);
 
     await auditRequest(db, req, 'user.update', 'user', id, {
       fields: Object.keys(input).filter((k) => k !== 'password'),

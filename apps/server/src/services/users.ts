@@ -55,9 +55,19 @@ export async function changeUserRole(db: DB, userId: string, role: UserRole): Pr
 export type LocalUserResult = { ok: true; created: boolean } | { ok: false; error: 'last_admin' };
 
 /**
+ * Ends every session of a user and revokes the API tokens they created: the
+ * response to a password reset, which is also how a compromised account is
+ * recovered. Tokens would otherwise keep working with the old credentials.
+ */
+export async function revokeUserCredentials(db: DB, userId: string, exceptSessionToken?: string | null): Promise<void> {
+  await deleteUserSessions(db, userId, exceptSessionToken);
+  await db.deleteFrom('api_tokens').where('created_by', '=', userId).execute();
+}
+
+/**
  * Creates a local user or, when the e-mail exists, sets a new password and role
  * (create-user CLI). A reset is also the answer to a compromised account, so it
- * signs the user out everywhere.
+ * signs the user out everywhere and revokes the API tokens they created.
  */
 export async function createOrResetLocalUser(
   db: DB,
@@ -71,7 +81,7 @@ export async function createOrResetLocalUser(
     // Role first: a refused demotion leaves the account untouched.
     if ((await changeUserRole(db, existing.id, input.role)) === 'last_admin') return { ok: false, error: 'last_admin' };
     await db.updateTable('users').set({ password_hash, updated_at: now }).where('id', '=', existing.id).execute();
-    await deleteUserSessions(db, existing.id);
+    await revokeUserCredentials(db, existing.id);
     return { ok: true, created: false };
   }
   await db

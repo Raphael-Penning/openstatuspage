@@ -3873,7 +3873,8 @@ Content-Type: application/vnd.api+json
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
 
 - `PATCH /api/admin/users/:id` with `password: null` removes the local password (not
-  allowed for yourself). Changing a password signs that user out everywhere.
+  allowed for yourself). Changing or removing a password signs that user out everywhere
+  and revokes the API tokens they created.
 - API tokens are prefixed with `osp_`. They are revoked when their creator is
   deleted; admin tokens are revoked when their creator loses the admin role.
 - Logins are audited as `auth.login`.

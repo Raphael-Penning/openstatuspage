@@ -25,7 +25,8 @@ Desk), die Rolle Redakteur, und halte die Zahl der Administratoren klein.
 
 - Benutzer mit Name, E-Mail, Rolle und Passwort (mindestens 10 Zeichen)
   anlegen. Für Konten, die nur Single Sign-On nutzen, bleibt das Passwort leer.
-- Ein neues Passwort meldet den Benutzer überall ab.
+- Ein neues Passwort meldet den Benutzer überall ab und widerruft die
+  API-Tokens, die er angelegt hat.
 - Du kannst dich nicht selbst löschen, deine eigene Rolle nicht ändern und den
   letzten Administrator nicht entfernen.
 
@@ -40,8 +41,8 @@ pro Minute und Client-IP begrenzt.
 
 Ausgesperrt? Mit dem Befehl `create-user` setzt du ein neues Passwort, siehe
 [Installation](02-installation.md#der-erste-administrator). Der Befehl meldet
-den Benutzer auch überall ab; damit setzt du ein kompromittiertes Konto vom
-Server aus zurück.
+den Benutzer auch überall ab und widerruft die API-Tokens, die er angelegt
+hat; damit setzt du ein kompromittiertes Konto vom Server aus zurück.
 
 ## Single Sign-On (OIDC)
 

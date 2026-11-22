@@ -87,7 +87,8 @@ user created. Use the `create-user` command, see
 
 **I forgot the administrator password.**
 Run `create-user` with the same email address: it sets a new password and
-role for the existing user and signs them out everywhere.
+role for the existing user, signs them out everywhere and revokes the API
+tokens they created.
 
 **I am logged out right after logging in, or the login does not stick.**
 `BASE_URL` starts with `https://` but the page is opened via `http://`: the
