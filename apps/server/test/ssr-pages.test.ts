@@ -574,7 +574,7 @@ describe('overload: stale pages and 503', () => {
       if (input.url === '/block') await blocked;
       if (failing) throw new Error('boom');
       return {
-        status: 200,
+        status: input.url.startsWith('/missing') ? 404 : 200,
         html: `<main>${input.url} v${version}</main>`,
         hoisted: '',
         head: { title: 'Page' },
@@ -698,6 +698,29 @@ describe('overload: stale pages and 503', () => {
     expect(res.statusCode).toBe(503);
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).not.toContain(secret);
+  });
+
+  it('keeps no 404 renders, so unknown URLs cannot push real pages out', async () => {
+    await start({ cacheEntries: 2 });
+    await page('/a');
+    for (let i = 0; i < 5; i++) expect((await page(`/missing-${i}`)).statusCode).toBe(404);
+    expect(ssr.cacheSize.entries).toBe(1);
+    await sleep(80);
+    await overload();
+    expect((await page('/a')).headers['x-cache']).toBe('STALE');
+  });
+
+  it('drops the least recently used page first', async () => {
+    await start({ cacheEntries: 2, cacheSeconds: 5 });
+    await page('/a');
+    await page('/b');
+    await page('/a');
+    await page('/c');
+    await overload();
+    // /a was used after /b, so /b went when /c came in.
+    expect((await page('/a')).body).toContain('/a v1');
+    expect((await page('/c')).body).toContain('/c v1');
+    expect((await page('/b')).statusCode).toBe(503);
   });
 
   it('keeps stale pages within the byte limit, dropping the oldest', async () => {

@@ -297,9 +297,12 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   with a weak `ETag`, `Vary: Accept-Language, Cookie, Accept-Encoding` and
   `Cache-Control: public, max-age=10, stale-while-revalidate=60` (`private,
   no-store` for the personal subscription links). If-None-Match answers 304.
+  Only pages rendered with status 200 are kept (a 404 for an unknown URL is
+  rendered per request), and the least recently used page is dropped first, so
+  a flood of distinct URLs cannot push the pages visitors use out of the cache.
 - **Overload.** An expired page stays in the same bounded cache for a stale
-  window of 10 minutes (the 16-page and 1 MiB limits still apply, oldest
-  first). Within the 5 s a page is fresh it is sent as before; after that a
+  window of 10 minutes (the 16-page and 1 MiB limits still apply, least
+  recently used first). Within the 5 s a page is fresh it is sent as before; after that a
   request renders it again when a render slot or waiting place is free. When
   the queue is full (or the render fails), the last rendered version answers
   with `X-Cache: STALE`, its own `ETag` (If-None-Match still answers 304) and

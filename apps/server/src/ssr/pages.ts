@@ -20,7 +20,9 @@
  * concurrent requests for the same key share one render) and is sent with an
  * ETag and a short shared Cache-Control. After that it stays in the same
  * bounded map for a stale window (10 minutes) to answer when no render slot is
- * free or a render fails. A render error without such a copy is logged and the
+ * free or a render fails. Only pages rendered with status 200 are kept, and the
+ * least recently used one is dropped first, so requests for countless unknown
+ * URLs cannot push the pages visitors use out of the map. A render error without such a copy is logged and the
  * caller sends the plain client-rendered page instead.
  *
  * The analytics opt-out cookie is part of the cache key (entry-server.tsx), so a
@@ -443,7 +445,10 @@ export class SsrPages {
     const now = Date.now();
 
     let cached = this.cache.get(key);
-    if (cached && cached.expires > now) return { page: cached };
+    if (cached && cached.expires > now) {
+      this.touch(key, cached);
+      return { page: cached };
+    }
     if (cached && cached.staleUntil <= now) {
       this.evict(key);
       cached = undefined;
@@ -465,21 +470,30 @@ export class SsrPages {
     } catch (err) {
       // Queue full or render error: the last rendered version, if there is one.
       if (!cached) throw err;
+      if (this.cache.get(key) === cached) this.touch(key, cached);
       return { page: cached, stale: { error: err } };
     }
   }
 
   private remember(key: string, page: RenderedPage): void {
-    if (this.ttlMs <= 0 || pageBytes(page) > this.maxBytes) return;
+    // Only real pages: a 404 for each of countless unknown URLs would push the pages
+    // visitors ask for (and their stale copies, the fallback under load) out of the cache.
+    if (page.status !== 200 || this.ttlMs <= 0 || pageBytes(page) > this.maxBytes) return;
     this.evict(key);
     this.cache.set(key, page);
     this.cachedBytes += pageBytes(page);
-    // Oldest first: drop beyond the limits.
+    // Least recently used first: drop beyond the limits.
     while (this.cache.size > this.maxEntries || this.cachedBytes > this.maxBytes) this.evict(this.cache.keys().next().value!);
     // Pages past the stale window do not wait for the next request of their key.
     setTimeout(() => {
       if (this.cache.get(key) === page) this.evict(key);
     }, this.ttlMs + this.staleMs).unref();
+  }
+
+  /** Marks a page as just used: it is dropped last (the map keeps insertion order). */
+  private touch(key: string, page: RenderedPage): void {
+    this.cache.delete(key);
+    this.cache.set(key, page);
   }
 
   private evict(key: string): void {
