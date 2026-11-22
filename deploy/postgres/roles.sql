@@ -20,8 +20,8 @@
 --           -v app_role=<name>    (default osp_app; also when you keep an existing
 --                                  role for admin and worker: it gets the advisory
 --                                  locks that harden.sql takes from everyone else)
--- It also runs harden.sql (next to this file): no advisory locks, large objects
--- or temporary tables for the public role. Rerun it after an upgrade that changes it.
+-- It also runs harden.sql (next to this file): no advisory locks, large objects,
+-- temporary tables or CREATE on the schema "public" for the public role. Rerun it after an upgrade that changes it.
 -- The passwords above are placeholders: never commit real ones, read them from your
 -- secret store when you run the script.
 
@@ -63,10 +63,8 @@ SELECT format('GRANT CONNECT, CREATE ON DATABASE %I TO %I', current_database(), 
 SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'app_role') \gexec
 \endif
 
--- Nobody but the owner creates objects in the schema "public" (the default since PostgreSQL 15).
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-
--- No advisory locks, large objects or temporary tables for roles that do not need them.
+-- No advisory locks, large objects, temporary tables or CREATE on the schema
+-- "public" for roles that do not need them.
 \ir harden.sql
 -- The admin and worker instances serialise work with advisory locks (and the
 -- migrations take one): grant them back to the app role. A superuser needs no

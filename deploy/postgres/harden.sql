@@ -11,6 +11,11 @@
 -- - Large objects: lo_create and friends store data outside any table, which a
 --   restricted role could use to fill the disk.
 -- - Temporary tables: the public role needs none.
+-- - CREATE on the schema "public": PUBLIC holds it by default before PostgreSQL 15
+--   (and on clusters upgraded or restored from such a version). Nobody but the
+--   owner creates objects there; a public role that may is refused by the
+--   instances (osp_grant_public_role, connection_restricted). If the tables live
+--   in another schema, revoke CREATE on that one from PUBLIC as well.
 --
 -- These privileges live in each database: run it again in every database you
 -- create for OpenStatusPage. Other applications in the same database lose them too
@@ -35,5 +40,13 @@ FROM PUBLIC;
 DO $$
 BEGIN
   EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
+END
+$$;
+
+DO $$
+BEGIN
+  IF to_regnamespace('public') IS NOT NULL THEN
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+  END IF;
 END
 $$;
