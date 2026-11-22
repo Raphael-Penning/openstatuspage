@@ -8,10 +8,16 @@ breaking changes.
 
 ### Upgrading
 
-- From 0.2.x or 0.3.0 on PostgreSQL: no manual step. The `GRANT CREATE ON
-  SCHEMA public TO <app role>` and the `harden.sql` rerun that 0.3.0 asked for
-  before the upgrade are no longer needed; a database where 0.3.0 refused to
-  start because of them starts with this version as it is.
+- From 0.2.x or 0.3.0 on PostgreSQL: no manual step to start. The `GRANT
+  CREATE ON SCHEMA public TO <app role>` and the `harden.sql` rerun that 0.3.0
+  asked for before the upgrade are no longer needed; a database where 0.3.0
+  refused to start because of them starts with this version as it is.
+- On PostgreSQL 14 or older (or a cluster upgraded from one) the app usually
+  cannot remove `PUBLIC`'s `CREATE` on schema `public` itself: with `CREATE
+  DATABASE ... OWNER <app role>` the schema `public` still belongs to the
+  bootstrap superuser. Everything keeps running, but the instances that migrate
+  log a warning on every start until a superuser runs the command it names once
+  (typically `REVOKE CREATE ON SCHEMA public FROM PUBLIC;`).
 
 ### Changed
 
@@ -19,13 +25,12 @@ breaking changes.
   instead of blocking the start.** Migration `0013_schema_create_hardening`
   and every grant on start (`osp_grant_public_role`) revoke `CREATE` on the
   table schema and on `osp_public` from `PUBLIC` and from the public role
-  (`DB_PUBLIC_ROLE`), as far as the migrating role may. Before revoking from
-  `PUBLIC` it makes sure the migrating role keeps its own `CREATE` there
-  (granting it to itself where it may) and leaves `PUBLIC` alone when it
-  cannot. Databases without a registered public role (`APP_ROLE=all` only)
-  are not changed. What the migrating role may not change (for example the
-  schema `public` belongs to a superuser on PostgreSQL 14 and the app role is
-  none) no longer stops admin, worker or public instances: the instances that
+  (`DB_PUBLIC_ROLE`) where the migrating role may (it has the schema owner's
+  privileges). `PUBLIC` keeps it when the migrating role would lose its own
+  `CREATE` by that. A revoke that would change nothing is not run, so repeated
+  and parallel starts write nothing. Databases without a registered public role
+  (`APP_ROLE=all` only) are not changed. What the migrating role may not change
+  no longer stops admin, worker or public instances: the instances that
   migrate log a warning on every start with the exact command for the schema
   owner or a superuser (`pnpm db:migrate` prints it too), the public instance
   logs that its login may still create objects. A public instance refuses to
@@ -34,10 +39,12 @@ breaking changes.
 
 ### Security
 
-- The `CREATE` check of 0.3.0 is defence in depth: the `search_path` pinning of
-  migration `0012` keeps objects in the table schema out of the functions of
-  the public role whether or not it may create them, which the PostgreSQL tests
-  now also check for a public role that keeps `CREATE` through `PUBLIC`.
+- While the public role may still create objects in the table schema (the
+  warning above), the `search_path` pinning of migration `0012` keeps them from
+  taking over the functions of the public role. The role can still break those
+  functions with an overload (a denial of service of the public instance), and
+  admin and worker sessions have the table schema on their `search_path`, so
+  run the command from the warning.
 
 ## [0.3.0] - 2026-11-22
 
