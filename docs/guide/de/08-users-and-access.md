@@ -25,7 +25,8 @@ Desk), die Rolle Redakteur, und halte die Zahl der Administratoren klein.
 
 - Benutzer mit Name, E-Mail, Rolle und Passwort (mindestens 10 Zeichen)
   anlegen. Für Konten, die nur Single Sign-On nutzen, bleibt das Passwort leer.
-- Ein neues Passwort meldet den Benutzer überall ab.
+- Ein neues Passwort meldet den Benutzer überall ab und widerruft die
+  API-Tokens, die er angelegt hat.
 - Du kannst dich nicht selbst löschen, deine eigene Rolle nicht ändern und den
   letzten Administrator nicht entfernen.
 
@@ -36,12 +37,14 @@ Sitzungen laufen nach `SESSION_TTL_HOURS` (Standard 168 Stunden = 7 Tage) ohne
 Aktivität ab; aktive Sitzungen verlängern sich automatisch, aber nie über
 `SESSION_MAX_AGE_HOURS` (Standard 720 Stunden = 30 Tage) nach der Anmeldung
 hinaus. Danach muss sich jeder neu anmelden. Die Anmeldung ist auf 10 Versuche
-pro Minute und Client-IP begrenzt.
+pro Minute und Client-IP begrenzt; zusätzlich muss nach wiederholten
+Fehlversuchen für ein Konto dessen Anmeldung kurz warten (höchstens eine
+Minute), egal von welcher IP.
 
 Ausgesperrt? Mit dem Befehl `create-user` setzt du ein neues Passwort, siehe
 [Installation](02-installation.md#der-erste-administrator). Der Befehl meldet
-den Benutzer auch überall ab; damit setzt du ein kompromittiertes Konto vom
-Server aus zurück.
+den Benutzer auch überall ab und widerruft die API-Tokens, die er angelegt
+hat; damit setzt du ein kompromittiertes Konto vom Server aus zurück.
 
 ## Single Sign-On (OIDC)
 
@@ -75,8 +78,10 @@ passt, als Redakteur anmelden. Die Gruppen stehen im Claim
 Standardmäßig dürfen sich nur Benutzer anmelden, die es in OpenStatusPage
 schon gibt (bei der ersten Anmeldung über eine bestätigte E-Mail-Adresse
 zugeordnet). `OIDC_AUTO_CREATE_USERS=true` legt Benutzer bei der ersten
-Anmeldung an; aktiviere das nur zusammen mit den Gruppen-Variablen, sonst wird
-jedes Konto des Identity Providers zum Redakteur.
+Anmeldung an, aber nur, wenn der Identity Provider die E-Mail-Adresse als
+bestätigt markiert (`email_verified`); aktiviere das nur zusammen mit den
+Gruppen-Variablen, sonst wird jedes Konto des Identity Providers zum
+Redakteur.
 
 Funktioniert SSO und ist ein SSO-Benutzer Administrator, kannst du die
 Anmeldung per Passwort mit `LOCAL_LOGIN_ENABLED=false` abschalten.

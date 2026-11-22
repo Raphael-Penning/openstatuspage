@@ -93,7 +93,8 @@ wurde ein Benutzer angelegt. Nutze den Befehl `create-user`, siehe
 
 **Ich habe das Administrator-Passwort vergessen.**
 Führe `create-user` mit derselben E-Mail-Adresse aus: Der Befehl setzt für den
-bestehenden Benutzer ein neues Passwort und die Rolle und meldet ihn überall ab.
+bestehenden Benutzer ein neues Passwort und die Rolle, meldet ihn überall ab
+und widerruft die API-Tokens, die er angelegt hat.
 
 **Direkt nach der Anmeldung bin ich wieder abgemeldet.**
 `BASE_URL` beginnt mit `https://`, die Seite ist aber über `http://`

@@ -1,5 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
+const GCM_TAG_BYTES = 16;
+
 /**
  * Symmetric encryption for secrets stored in the database (monitoring
  * credentials). AES-256-GCM with a key derived from SECRET_KEY.
@@ -23,8 +25,13 @@ export class SecretBox {
   decrypt(payload: string): string {
     const [version, iv, tag, data] = payload.split('.');
     if (version !== 'v1' || !iv || !tag || data === undefined) throw new Error('Unsupported secret format');
-    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(iv, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+    const authTag = Buffer.from(tag, 'base64url');
+    // Only full 16-byte tags: GCM accepts truncated ones, which are easier to forge.
+    if (authTag.length !== GCM_TAG_BYTES) throw new Error('Unsupported secret format');
+    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(iv, 'base64url'), {
+      authTagLength: GCM_TAG_BYTES,
+    });
+    decipher.setAuthTag(authTag);
     return Buffer.concat([decipher.update(Buffer.from(data, 'base64url')), decipher.final()]).toString('utf8');
   }
 

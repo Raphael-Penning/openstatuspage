@@ -850,7 +850,7 @@ describe('a public instance', () => {
 
   it('serves the public API from the views', async () => {
     const health = await publicApp.inject('/api/health');
-    expect(health.json()).toMatchObject({ status: 'ok', role: 'public' });
+    expect(health.json()).toEqual({ status: 'ok' });
     const res = await publicApp.inject('/api/public/services');
     expect(res.statusCode).toBe(200);
     const names = (res.json() as { data: { attributes: { name: string } }[] }).data.map((s) => s.attributes.name);

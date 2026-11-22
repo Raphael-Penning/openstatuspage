@@ -17,7 +17,7 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `NODE_ENV` | `production` | `development`, `production` or `test`. `pnpm dev` uses `development`. Outside development/test `SECRET_KEY` is mandatory and logs are JSON. |
 | `HOST` | `0.0.0.0` | Interface the HTTP server binds to. |
 | `PORT` | `3000` | HTTP port. |
-| `BASE_URL` | `http://localhost:3000` | URL of this instance, without trailing slash: the public URL of the status page, or the admin domain of an `admin` instance. Used for OIDC redirect URIs and ingest URLs, and for feed and email links unless `PUBLIC_BASE_URL` is set. When it starts with `https://` cookies are marked `Secure`. |
+| `BASE_URL` | `http://localhost:3000` | URL of this instance, without trailing slash: the public URL of the status page, or the admin domain of an `admin` instance. Used for OIDC redirect URIs and ingest URLs, and for feed and email links unless `PUBLIC_BASE_URL` is set. When it starts with `https://` cookies are marked `Secure`; in production an `http://` URL for a host other than `localhost` logs a warning on start. |
 | `PUBLIC_BASE_URL` | `BASE_URL` | Public URL of the status page, used for every link in feeds and emails (incident and maintenance pages, confirm, manage and one-click unsubscribe links). Set it on `admin` and `worker` instances of a [split deployment](#split-deployment), so mails sent from the admin domain still link to the public page. The server-rendered public pages use it for their canonical and language URLs, link previews and JSON-LD, and `robots.txt`, the sitemaps and `llms.txt` for every URL they list. |
 | `TRUST_PROXY` | `false` | Behind a reverse proxy (nginx, Traefik, Caddy, ...) client IPs (rate limiting, session metadata) and the protocol are taken from `X-Forwarded-*` headers. Set the number of proxies in front of the app (`1` for a single proxy; `true` means `1`) or a comma separated list of trusted proxy addresses/CIDRs (e.g. `10.0.0.0/8,127.0.0.1`). Entries further left in `X-Forwarded-For` are set by the client and are never trusted. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
@@ -32,7 +32,7 @@ keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large his
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
+| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** In production the published example values (the development fallback and the value in `deploy/kubernetes/secret.example.yaml`) are refused, here and for `SUBSCRIPTION_TOKEN_KEY`. Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
 | `SUBSCRIPTION_TOKEN_KEY` | `SECRET_KEY` | At least 32 characters. Key of the email subscription links (confirm, manage, unsubscribe). A split deployment sets its own value, the same on every instance, and gives the `public` instance only this key instead of `SECRET_KEY`. Changing it invalidates links in emails already sent; the admin and worker instances refresh the stored token hashes on their next start. |
 | `SESSION_TTL_HOURS` | `168` (7 days) | Session lifetime. The expiry slides: active sessions are extended, idle ones expire after this many hours. Range 1–2160. |
 | `SESSION_MAX_AGE_HOURS` | `720` (30 days) | Absolute session lifetime, counted from the login. Active sessions are never extended past it, so everybody has to log in again (and SSO users pass the IdP checks again) at least this often. Range 1–8760, at least `SESSION_TTL_HOURS`; when unset and `SESSION_TTL_HOURS` is longer, that value is used. |
@@ -55,7 +55,10 @@ Only used when the database contains no user at all.
 | `ADMIN_PASSWORD` | – | Password of the first admin (at least 10 characters). Remove it from the environment after the first start. |
 
 Alternatively create users with
-`pnpm --filter @openstatuspage/server create-user <email> <password> [admin|editor] [name]`.
+`pnpm --filter @openstatuspage/server create-user <email> [admin|editor] [name] [--unlink-oidc]`.
+The command asks for the password on a terminal; otherwise it reads the first line
+of stdin or the environment variable `OSP_USER_PASSWORD`. It never takes the password
+as an argument.
 
 ## Authentication
 
@@ -101,7 +104,7 @@ instances, e.g. `status.admin.example.org` (internal network or VPN) and
 | Public status page, `/api/public/*`, feeds, subscriptions | ✓ | ✓ | – | ✓ |
 | Management UI (`/admin`), `/api/admin/*`, `/api/auth/*` (login, OIDC) | – | ✓ | – | ✓ |
 | Ingest endpoints `/api/ingest/*` (webhooks of monitoring systems) | – | ✓ | – | ✓ |
-| `/api/health` (reports `role` and `worker`) | ✓ | ✓ | ✓ | ✓ |
+| `/api/health` | ✓ | ✓ | ✓ | ✓ |
 | Background tasks (pollers, scheduler, mail delivery, cleanup) | never | `WORKER_ENABLED=true` | ✓ | ✓ (default) |
 | Runs migrations on start | never (waits) | ✓ | ✓ | ✓ |
 | Creates the initial admin (`ADMIN_EMAIL`) | – | ✓ | – | ✓ |
@@ -316,7 +319,11 @@ management UI (`/admin`) never loads the tracker.
 
 ## Rate limits
 
-- `POST /api/auth/login`: 10 requests per minute per client IP.
+- `POST /api/auth/login`: 10 requests per minute per client IP. In addition, failed
+  logins are counted per account (e-mail address), whatever the client IP: after 3
+  failures each further one blocks that account's login for 1, 2, 4, ... seconds, at
+  most 1 minute (`429` with `Retry-After`). A success or 15 minutes without failure
+  resets the count.
 - `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`: 30 requests per minute per client IP.
 - `POST /api/public/subscriptions`: 5 requests per minute per client IP; the other
   subscription endpoints 30 requests per minute per client IP.
@@ -324,7 +331,9 @@ management UI (`/admin`) never loads the tracker.
   minute per client IP (see [Analytics](#analytics)).
 
 Behind a reverse proxy set `TRUST_PROXY` (hop count or proxy addresses), otherwise all
-clients share the proxy's IP.
+clients share the proxy's IP. With a hop count the server logs a warning on start: it
+trusts the nearest hop whatever its address, so the app port must only be reachable
+through the proxy.
 
 The counters live in the memory of each instance. With *n* instances behind a load
 balancer a client can make up to *n* times as many requests. For exact limits route

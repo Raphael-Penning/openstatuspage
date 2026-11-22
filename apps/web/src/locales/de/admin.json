@@ -796,7 +796,7 @@
     "ownRoleHelp": "Deine eigene Rolle kannst du nicht ändern.",
     "passwordHelp": "Mindestens 10 Zeichen.",
     "passwordOptionalHelp": "Mindestens 10 Zeichen. Für reine Single-Sign-On-Konten leer lassen.",
-    "newPasswordHelp": "Leer lassen, um das aktuelle Passwort zu behalten. Ein neues Passwort meldet den Benutzer überall ab.",
+    "newPasswordHelp": "Leer lassen, um das aktuelle Passwort zu behalten. Ein neues Passwort meldet den Benutzer überall ab und widerruft seine API-Tokens.",
     "removePassword": "Passwort entfernen",
     "removePasswordHelp": "Der Benutzer kann sich dann nur noch per Single Sign-On anmelden.",
     "oidcLinkedHelp": "Dieses Konto ist mit einer Single-Sign-On-Identität verknüpft.",

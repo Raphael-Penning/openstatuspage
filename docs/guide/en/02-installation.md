@@ -581,7 +581,7 @@ strategy makes sure two versions never run against the same database during
 an upgrade.
 
 The `create-user` and seed commands run in the pod the same way as with
-Docker, e.g. `kubectl -n openstatuspage exec deployment/openstatuspage -- node server/dist/cli/create-user.js ...`.
+Docker, e.g. `kubectl -n openstatuspage exec -it deployment/openstatuspage -- node server/dist/cli/create-user.js ...`.
 
 ## Building the image yourself
 
@@ -668,34 +668,42 @@ There are two ways to create the first account:
    (`.env` followed by `docker compose up -d`, or the Kubernetes secret)
    after the first login and change the password in the user menu.
 2. **The `create-user` command**, which creates a user or, if the address
-   already exists, sets a new password and role and ends the user's sessions:
+   already exists, sets a new password and role, ends the user's sessions and
+   revokes the API tokens they created. It asks for the password (twice,
+   without showing it):
 
    ```bash
    # Docker Compose
    docker compose exec openstatuspage \
-     node server/dist/cli/create-user.js admin@example.com 'a-long-password' admin 'Jane Doe'
+     node server/dist/cli/create-user.js admin@example.com admin 'Jane Doe'
 
    # single container
-   docker exec openstatuspage node server/dist/cli/create-user.js admin@example.com 'a-long-password' admin
+   docker exec -it openstatuspage node server/dist/cli/create-user.js admin@example.com admin
 
    # Kubernetes
-   kubectl -n openstatuspage exec deployment/openstatuspage -- \
-     node server/dist/cli/create-user.js admin@example.com 'a-long-password' admin
+   kubectl -n openstatuspage exec -it deployment/openstatuspage -- \
+     node server/dist/cli/create-user.js admin@example.com admin
 
    # from source
-   pnpm --filter @openstatuspage/server create-user admin@example.com 'a-long-password' admin
+   pnpm --filter @openstatuspage/server create-user admin@example.com admin
    ```
 
-   Arguments: email, password (at least 10 characters), role `admin` or
-   `editor` (default `admin`) and an optional display name. This is also the
-   way back in if every administrator lost their password.
+   Arguments: email, role `admin` or `editor` (default `admin`) and an
+   optional display name. The password (at least 10 characters) is never an
+   argument, since the process list and the shell history would keep it.
+   Without a terminal the command reads it from the first line of stdin
+   (e.g. `docker compose exec -T openstatuspage node server/dist/cli/create-user.js
+   admin@example.com admin < password.txt`) or from the environment variable
+   `OSP_USER_PASSWORD`. This is also the way back in if every administrator
+   lost their password. For an account linked to single sign-on the command
+   refuses unless you add `--unlink-oidc`, see [`docs/oidc.md`](../../oidc.md#account-linking).
 
 When no user exists and neither way was used, the server logs a warning on
 every start.
 
 ## Checking the installation
 
-- `curl -fsS http://127.0.0.1:3000/api/health` returns `{"status":"ok",...}` when
+- `curl -fsS http://127.0.0.1:3000/api/health` returns `{"status":"ok"}` when
   the app and the database work. The Docker image uses the same endpoint for
   its built-in health check (`docker ps` shows `healthy`), the Kubernetes
   example for its readiness and liveness probes.

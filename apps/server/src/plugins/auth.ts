@@ -13,8 +13,16 @@
 import type { UserRole } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 import type { Config } from '../config.js';
+import type { AppContext } from '../context.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
-import { resolveApiToken, resolveSession, SESSION_COOKIE } from '../services/sessions.js';
+import {
+  createSession,
+  deleteSession,
+  resolveApiToken,
+  resolveSession,
+  SESSION_COOKIE,
+  sessionTtlMs,
+} from '../services/sessions.js';
 
 export interface AuthUser {
   id: string;
@@ -40,6 +48,11 @@ export const CSRF_VALUE = 'openstatuspage';
 const ROLE_RANK: Record<UserRole, number> = { editor: 1, admin: 2 };
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/** Routes that resolve the session or API token (route paths, see registerAuth). */
+export function isAuthenticatedPath(route: string): boolean {
+  return route.startsWith('/api/admin/') || route.startsWith('/api/auth/') || route === '/api/admin' || route === '/api/auth';
+}
+
 export function hasRole(user: Pick<AuthUser, 'role'>, role: UserRole): boolean {
   return ROLE_RANK[user.role] >= ROLE_RANK[role];
 }
@@ -56,6 +69,18 @@ export function sessionCookieOptions(config: Config, maxAgeSeconds: number) {
 }
 
 /**
+ * Starts a session for `userId` and sets the cookie. A session the browser
+ * still holds (e.g. of another account) is deleted, not just replaced in the
+ * cookie, so switching accounts or re-authenticating leaves no live session behind.
+ */
+export async function startSession(ctx: AppContext, req: FastifyRequest, reply: FastifyReply, userId: string): Promise<void> {
+  const previous = req.cookies[SESSION_COOKIE];
+  if (previous) await deleteSession(ctx.db, previous);
+  const session = await createSession(ctx, userId, { ip: req.ip, userAgent: req.headers['user-agent'] ?? null });
+  reply.setCookie(SESSION_COOKIE, session.token, sessionCookieOptions(ctx.config, Math.floor(sessionTtlMs(ctx) / 1000)));
+}
+
+/**
  * Decorates every request with `authUser`. With `enabled: false` (instances
  * without the admin API) every request stays anonymous and the session and
  * token tables are never read.
@@ -64,8 +89,10 @@ export async function registerAuth(app: FastifyInstance, options: { enabled?: bo
   app.decorateRequest('authUser', null);
   if (options.enabled === false) return;
   app.addHook('onRequest', async (req, reply) => {
-    const path = req.url;
-    if (!path.startsWith('/api/admin') && !path.startsWith('/api/auth')) return;
+    // The matched route, not the raw URL: the router decodes the path, so a spelling like
+    // /api/%61dmin reaches an /api/admin handler and must be authenticated the same way.
+    const route = req.routeOptions.url;
+    if (!route || !isAuthenticatedPath(route)) return;
     req.authUser = await authenticate(app, req, reply);
   });
 }

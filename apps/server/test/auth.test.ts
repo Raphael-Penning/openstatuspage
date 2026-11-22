@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { sha256 } from '../src/lib/crypto.js';
 import { cleanupExpiredSessions } from '../src/services/sessions.js';
-import { createOrResetLocalUser } from '../src/services/users.js';
+import { createOrResetLocalUser, insertApiToken } from '../src/services/users.js';
 import { PASSWORD, client, createTestApp, createUser, data, doc, errors, login, loginRequest, page, type TestApp } from './helpers.js';
 
 const HOUR_MS = 3600_000;
@@ -90,14 +90,45 @@ describe('login / logout / session', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('rate limits login attempts', async () => {
+  it('rate limits login attempts per client', async () => {
     const codes: number[] = [];
     for (let i = 0; i < 11; i++) {
-      const res = await t.app.inject(loginRequest('ghost@example.com', 'nope'));
+      // A different account each time, so only the per-client limit applies.
+      const res = await t.app.inject(loginRequest(`ghost${i}@example.com`, 'nope'));
       codes.push(res.statusCode);
     }
     expect(codes.slice(0, 10).every((c) => c === 401)).toBe(true);
     expect(codes[10]).toBe(429);
+  });
+
+  it('throttles failed logins per account whatever the client address', async () => {
+    const proxied = await createTestApp({ TRUST_PROXY: '1' });
+    try {
+      await createUser(proxied.db, { email: 'admin@example.com', role: 'admin' });
+      const codes: number[] = [];
+      for (let i = 0; i < 11; i++) {
+        // A client that may set X-Forwarded-For gets a new address for every attempt.
+        const res = await proxied.app.inject(
+          loginRequest('Admin@example.com', `wrong-password-${i}`, { 'x-forwarded-for': `198.51.100.${i + 1}` }),
+        );
+        codes.push(res.statusCode);
+        if (res.statusCode === 429) {
+          expect(errors(res)[0]).toMatchObject({ code: 'rate_limited' });
+          expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+        }
+      }
+      expect(codes.slice(0, 3)).toEqual([401, 401, 401]);
+      expect(codes).toContain(429);
+      // Even the right password waits while the account is blocked.
+      const blocked = await proxied.app.inject(loginRequest('admin@example.com', PASSWORD, { 'x-forwarded-for': '198.51.100.99' }));
+      expect(blocked.statusCode).toBe(429);
+      // Other accounts are not affected.
+      await createUser(proxied.db, { email: 'editor@example.com', role: 'editor' });
+      const other = await proxied.app.inject(loginRequest('editor@example.com', PASSWORD, { 'x-forwarded-for': '198.51.100.98' }));
+      expect(other.statusCode).toBe(200);
+    } finally {
+      await proxied.close();
+    }
   });
 
   it('expires sessions and extends them (sliding expiry)', async () => {
@@ -174,7 +205,7 @@ describe('login / logout / session', () => {
     expect(await t.db.selectFrom('sessions').select('id').execute()).toHaveLength(1);
   });
 
-  it('changes the password and signs out other sessions', async () => {
+  it('changes the password, signs out other sessions and rotates the current one', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const first = await login(t.app, 'admin@example.com');
     const second = await login(t.app, 'admin@example.com');
@@ -184,10 +215,26 @@ describe('login / logout / session', () => {
     expect(bad.statusCode).toBe(400);
     const ok = await c.post('/api/auth/password', { currentPassword: PASSWORD, newPassword: 'a-new-long-password' });
     expect(ok.statusCode).toBe(204);
+    const rotated = ok.cookies.find((cookie) => cookie.name === 'osp_session')!;
+    expect(`osp_session=${rotated.value}`).not.toBe(first);
 
-    expect((await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie: first } })).statusCode).toBe(200);
-    expect((await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie: second } })).statusCode).toBe(401);
+    const session = (cookie: string) => t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } });
+    expect((await session(`osp_session=${rotated.value}`)).statusCode).toBe(200);
+    expect((await session(first)).statusCode).toBe(401);
+    expect((await session(second)).statusCode).toBe(401);
+    expect(await t.db.selectFrom('sessions').select('id').execute()).toEqual([{ id: sha256(rotated.value) }]);
     await login(t.app, 'admin@example.com', 'a-new-long-password');
+  });
+
+  it('rotates the session when admins change their own password in user management', async () => {
+    const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const first = await login(t.app, 'admin@example.com');
+    const res = await client(t.app, { cookie: first }).patch(`/api/admin/users/${adminId}`, { password: 'a-new-long-password' });
+    expect(res.statusCode).toBe(200);
+    const rotated = res.cookies.find((cookie) => cookie.name === 'osp_session')!;
+    const session = (cookie: string) => t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } });
+    expect((await session(first)).statusCode).toBe(401);
+    expect((await session(`osp_session=${rotated.value}`)).statusCode).toBe(200);
   });
 
   it('exposes the auth configuration', async () => {
@@ -246,6 +293,32 @@ describe('authorization', () => {
 
     const logout = await t.app.inject({ method: 'POST', url: '/api/auth/logout', headers: { cookie } });
     expect(logout.statusCode).toBe(403);
+  });
+
+  it('authenticates and checks CSRF on encoded spellings of the routes like on the canonical ones', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const cookie = await login(t.app, 'admin@example.com');
+
+    // The router decodes the path, so these reach the admin and auth handlers.
+    const read = await t.app.inject({ method: 'GET', url: '/api/%61dmin/service-groups', headers: { cookie } });
+    expect(read.statusCode).toBe(200);
+    const session = await t.app.inject({ method: 'GET', url: '/api/%61uth/session', headers: { cookie } });
+    expect(session.statusCode).toBe(200);
+
+    const write = await t.app.inject({
+      method: 'POST',
+      url: '/api/%61dmin/service-groups',
+      headers: { cookie, 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
+    });
+    expect(write.statusCode).toBe(403);
+
+    // Logout without the CSRF header is refused and keeps the session.
+    for (const url of ['/api/%61uth/logout', '/%61pi/auth/logout', '/api/auth/%6cogout']) {
+      const logout = await t.app.inject({ method: 'POST', url, headers: { cookie } });
+      expect(logout.statusCode, url).toBe(403);
+    }
+    expect(await t.db.selectFrom('sessions').select('id').execute()).toHaveLength(1);
   });
 
   it('authenticates API tokens without CSRF header and honours their role', async () => {
@@ -331,6 +404,22 @@ describe('user management guards', () => {
     expect(errors(invalid)[0]).toMatchObject({ source: { pointer: '/data/attributes/email' } });
   });
 
+  it("revokes the user's sessions and API tokens when an admin resets their password", async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const userId = await createUser(t.db, { email: 'second@example.com', role: 'admin' });
+    const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
+    const ownCookie = await login(t.app, 'second@example.com');
+    const own = client(t.app, { cookie: ownCookie });
+    const { token } = data<{ token: string }>(await own.post('/api/admin/api-tokens', { name: 'ops', role: 'editor' }));
+    const { token: otherToken } = data<{ token: string }>(await admin.post('/api/admin/api-tokens', { name: 'ci', role: 'editor' }));
+
+    expect((await admin.patch(`/api/admin/users/${userId}`, { password: 'a-brand-new-password' })).statusCode).toBe(200);
+    expect((await own.get('/api/admin/overview')).statusCode).toBe(401);
+    expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
+    // Tokens of other users stay valid.
+    expect((await client(t.app, { token: otherToken }).get('/api/admin/overview')).statusCode).toBe(200);
+  });
+
   it('protects the last admin against other admins being removed via token', async () => {
     const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
@@ -362,10 +451,37 @@ describe('token ownership', () => {
   });
 });
 
+describe('api token owner check', () => {
+  it('stores a token only while its owner is still an admin', async () => {
+    const ownerId = await createUser(t.db, { email: 'owner@example.com', role: 'admin' });
+    const token = (id: string, createdBy: string | null) => ({
+      id,
+      name: id,
+      role: 'admin' as const,
+      tokenHash: sha256(id),
+      createdBy,
+      createdAt: new Date().toISOString(),
+    });
+    expect(await insertApiToken(t.db, token('first', ownerId))).toBe(true);
+
+    // Demoted after the request was authorized: the insert re-checks and stores nothing.
+    await t.db.updateTable('users').set({ role: 'editor' }).where('id', '=', ownerId).execute();
+    expect(await insertApiToken(t.db, token('second', ownerId))).toBe(false);
+    expect(await insertApiToken(t.db, token('gone', 'no-such-user'))).toBe(false);
+    // Tokens without a known owner are not tied to a user's role.
+    expect(await insertApiToken(t.db, token('orphan', null))).toBe(true);
+    const ids = await t.db.selectFrom('api_tokens').select('id').orderBy('id').execute();
+    expect(ids.map((r) => r.id)).toEqual(['first', 'orphan']);
+  });
+});
+
 describe('create-user reset', () => {
   it('sets the password, ends existing sessions and creates new users', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const cookie = await login(t.app, 'admin@example.com');
+    const { token } = data<{ token: string }>(
+      await client(t.app, { cookie }).post('/api/admin/api-tokens', { name: 'ops', role: 'editor' }),
+    );
 
     const reset = await createOrResetLocalUser(t.db, {
       email: 'Admin@Example.com',
@@ -375,6 +491,8 @@ describe('create-user reset', () => {
     });
     expect(reset).toEqual({ ok: true, created: false });
     expect((await t.app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie } })).statusCode).toBe(401);
+    // A reset recovers a compromised account: the tokens it created are revoked too.
+    expect((await client(t.app, { token }).get('/api/admin/overview')).statusCode).toBe(401);
     await login(t.app, 'admin@example.com', 'a-new-long-password');
 
     const created = await createOrResetLocalUser(t.db, {
@@ -385,6 +503,21 @@ describe('create-user reset', () => {
     });
     expect(created).toEqual({ ok: true, created: true });
     await login(t.app, 'new@example.com', 'another-long-password');
+  });
+
+  it('refuses accounts linked to an SSO identity unless the link is removed', async () => {
+    const id = await createUser(t.db, { email: 'newhire@example.com', role: 'editor', password: null });
+    await t.db.updateTable('users').set({ oidc_subject: 'idp-subject' }).where('id', '=', id).execute();
+    const input = { email: 'newhire@example.com', password: 'a-new-long-password', role: 'admin' as const, name: 'X' };
+
+    expect(await createOrResetLocalUser(t.db, input)).toEqual({ ok: false, error: 'oidc_linked' });
+    const unchanged = await t.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
+    expect(unchanged).toMatchObject({ role: 'editor', password_hash: null, oidc_subject: 'idp-subject' });
+
+    expect(await createOrResetLocalUser(t.db, input, { unlinkOidc: true })).toEqual({ ok: true, created: false });
+    const reset = await t.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
+    expect(reset).toMatchObject({ role: 'admin', oidc_subject: null });
+    await login(t.app, 'newhire@example.com', 'a-new-long-password');
   });
 
   it('applies the demotion rules', async () => {

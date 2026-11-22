@@ -108,8 +108,9 @@ export interface OidcLogger {
 
 /**
  * Finds (or creates) the local user for a verified ID token.
- * Linking order: `oidc_subject`, then verified e-mail. With group mapping
- * configured, the role is synchronised on every login.
+ * Linking order: `oidc_subject`, then verified e-mail. New users are only
+ * created for a verified e-mail. With group mapping configured, the role is
+ * synchronised on every login.
  */
 export async function resolveOidcUser(
   db: DB,
@@ -172,6 +173,9 @@ export async function resolveOidcUser(
 
   if (!config.OIDC_AUTO_CREATE_USERS) return { ok: false, error: 'no_account' };
   if (!email) return { ok: false, error: 'missing_email' };
+  // The e-mail becomes the account's unique identity (linking, create-user CLI), so it
+  // must be verified just like for linking: an unverified claim could squat an address.
+  if (!isVerified(claims.email_verified)) return { ok: false, error: 'email_not_verified' };
 
   const name =
     [claims.name, claims.preferred_username, email].find((v): v is string => typeof v === 'string' && v.trim() !== '') ??

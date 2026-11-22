@@ -79,8 +79,16 @@ membership) to resolve it.
 2. Otherwise a local user with the same e-mail address is linked, **only if
    the IdP marks the e-mail as verified** (`email_verified: true`) and the user
    is not linked to another subject yet.
-3. Otherwise a new user is created when `OIDC_AUTO_CREATE_USERS=true`
-   (requires an `email` claim). The default is `false`.
+3. Otherwise a new user is created when `OIDC_AUTO_CREATE_USERS=true`. The
+   default is `false`. This also requires an `email` claim **that the IdP marks
+   as verified** (`email_verified: true`): the address becomes the account's
+   unique identity, so an unverified one could claim the address of a person
+   who has no account yet.
+
+> **Note:** some IdPs never send `email_verified` (e.g. Microsoft Entra ID by
+> default, see below). With such an IdP neither linking by e-mail nor auto
+> creation works (`email_not_verified`) until you configure it to send the
+> claim. Users already linked by `sub` are not affected.
 
 > **Warning:** with `OIDC_AUTO_CREATE_USERS=true` and no group configured, every
 > account the issuer can authenticate becomes an editor. Never combine this with
@@ -90,6 +98,12 @@ membership) to resolve it.
 
 Linked users can still use their local password unless you set
 `LOCAL_LOGIN_ENABLED=false`.
+
+The `create-user` command refuses to set a password or role on an account that
+is linked to an IdP identity, since whoever holds that identity would get them
+too. After checking that the account belongs to the owner of the address, run
+it again with `--unlink-oidc`: it sets password and role and removes the link
+(the next SSO login links again only through a verified e-mail).
 
 ## Offboarding
 
@@ -120,7 +134,7 @@ have, and API tokens they created stay valid:
 | `forbidden` | User is not in an allowed group. |
 | `no_account` | No matching user and auto creation is disabled. |
 | `missing_email` | Auto creation needs an `email` claim. |
-| `email_not_verified` | A local user with this e-mail exists, but the IdP did not mark the address as verified. |
+| `email_not_verified` | The IdP did not mark the e-mail as verified, so it is neither linked to the local user with this address nor used to create a new user. |
 | `account_conflict` | The local user with this e-mail is already linked to another IdP identity. |
 
 ## Provider notes
@@ -149,7 +163,8 @@ have, and API tokens they created stay valid:
 - Groups: in *Token configuration* add a groups claim. Entra sends group
   **object IDs**, so use the IDs as `OIDC_ADMIN_GROUP` / `OIDC_EDITOR_GROUP`,
   or use *App roles* and set `OIDC_GROUPS_CLAIM=roles` with the role values.
-- Entra does not send `email_verified` by default, so existing local users are
-  not linked automatically by e-mail: their SSO login fails with
-  `email_not_verified`. Delete such local accounts (or change their e-mail)
-  and let the first SSO login create the user instead.
+- Entra does not send `email_verified` by default, so local users are not
+  linked by e-mail and `OIDC_AUTO_CREATE_USERS` creates nobody: the first SSO
+  login fails with `email_not_verified`. Configure the application to emit an
+  `email_verified` claim (e.g. with a claims mapping policy) only for
+  addresses your tenant actually owns.

@@ -1,8 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sha256 } from '../src/lib/crypto.js';
 import { newId } from '../src/lib/ids.js';
-import { extractGroups, mapOidcRole, parseLoginState, resolveOidcUser } from '../src/services/oidc.js';
+import {
+  extractGroups,
+  mapOidcRole,
+  OIDC_STATE_COOKIE,
+  OidcClient,
+  parseLoginState,
+  resolveOidcUser,
+} from '../src/services/oidc.js';
 import { createSession } from '../src/services/sessions.js';
-import { createTestApp, createUser, type TestApp } from './helpers.js';
+import { createTestApp, createUser, login, type TestApp } from './helpers.js';
 
 describe('extractGroups', () => {
   it('reads arrays, strings and nested claims', () => {
@@ -64,7 +72,7 @@ describe('resolveOidcUser', () => {
   });
 
   it('creates users on first login and links by subject afterwards', async () => {
-    const claims = { sub: 'abc', email: 'Jane@Example.com', name: 'Jane', groups: ['statuspage-editors'] };
+    const claims = { sub: 'abc', email: 'Jane@Example.com', email_verified: true, name: 'Jane', groups: ['statuspage-editors'] };
     const first = await resolveOidcUser(t.db, config, claims);
     expect(first).toMatchObject({ ok: true, created: true, user: { email: 'jane@example.com', role: 'editor' } });
 
@@ -100,6 +108,21 @@ describe('resolveOidcUser', () => {
     expect(other).toEqual({ ok: false, error: 'account_conflict' });
   });
 
+  it('creates users for a verified e-mail only', async () => {
+    const claims = { sub: 'squatter', email: 'newhire@example.com', groups: ['statuspage-editors'] };
+    for (const email_verified of [undefined, false, 'false']) {
+      expect(await resolveOidcUser(t.db, config, { ...claims, email_verified })).toEqual({
+        ok: false,
+        error: 'email_not_verified',
+      });
+    }
+    expect(await t.db.selectFrom('users').select('id').execute()).toEqual([]);
+
+    // The owner of the address can still sign up with a verified claim.
+    const owner = await resolveOidcUser(t.db, config, { ...claims, sub: 'owner', email_verified: 'true' });
+    expect(owner).toMatchObject({ ok: true, created: true, user: { email: 'newhire@example.com', oidc_subject: 'owner' } });
+  });
+
   it('rejects users without a matching group or account', async () => {
     expect(await resolveOidcUser(t.db, config, { sub: 'x', email: 'x@example.com', groups: [] })).toEqual({
       ok: false,
@@ -115,7 +138,7 @@ describe('resolveOidcUser', () => {
   });
 
   it('ends the sessions and API tokens of a linked user removed from the allowed groups', async () => {
-    const claims = { sub: 'abc', email: 'jane@example.com', groups: ['statuspage-editors'] };
+    const claims = { sub: 'abc', email: 'jane@example.com', email_verified: true, groups: ['statuspage-editors'] };
     const first = await resolveOidcUser(t.db, config, claims);
     if (!first.ok) throw new Error('login failed');
     await createSession(t.app.ctx, first.user.id);
@@ -202,6 +225,39 @@ describe('OIDC routes', () => {
       expect(callback.statusCode).toBe(302);
       expect(callback.headers.location).toBe('/admin/login?error=invalid_state');
     } finally {
+      await t.close();
+    }
+  });
+
+  it('deletes the session the browser held before an SSO login', async () => {
+    const t = await createTestApp({
+      OIDC_ISSUER_URL: 'https://idp.example.com/realms/example',
+      OIDC_CLIENT_ID: 'openstatuspage',
+    });
+    const finish = vi
+      .spyOn(OidcClient.prototype, 'finishLogin')
+      .mockResolvedValue({ sub: 'jane-sub', email: 'jane@example.com', email_verified: true });
+    try {
+      await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+      const janeId = await createUser(t.db, { email: 'jane@example.com', role: 'editor', password: null });
+      const previous = await login(t.app, 'admin@example.com');
+
+      const state = { v: 'verifier', s: 'state', n: 'nonce', e: Date.now() + 60_000 };
+      const signed = t.app.signCookie(JSON.stringify(state));
+      const callback = await t.app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=x&state=state',
+        headers: { cookie: `${previous}; ${OIDC_STATE_COOKIE}=${encodeURIComponent(signed)}` },
+      });
+      expect(callback.statusCode).toBe(302);
+      expect(callback.headers.location).toBe('/admin');
+      const issued = callback.cookies.find((c) => c.name === 'osp_session')!;
+
+      const sessions = await t.db.selectFrom('sessions').select(['id', 'user_id']).execute();
+      expect(sessions).toEqual([{ id: sha256(issued.value), user_id: janeId }]);
+      expect(finish).toHaveBeenCalledOnce();
+    } finally {
+      finish.mockRestore();
       await t.close();
     }
   });

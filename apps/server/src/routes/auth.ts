@@ -6,8 +6,8 @@
  * OIDC routes are browser redirects and stay plain.
  */
 import { ChangePasswordInput, LoginInput, type AuthConfig, type SessionInfo } from '@openstatuspage/shared';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { assertCsrf, requireSession, sessionCookieOptions } from '../plugins/auth.js';
+import type { FastifyInstance } from 'fastify';
+import { assertCsrf, requireSession, startSession } from '../plugins/auth.js';
 import { badRequest, forbidden, HttpError, notFound, unauthorized } from '../lib/errors.js';
 import { parse } from '../lib/http.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
@@ -20,7 +20,8 @@ import {
   parseLoginState,
   resolveOidcUser,
 } from '../services/oidc.js';
-import { createSession, deleteSession, deleteUserSessions, SESSION_COOKIE, sessionTtlMs } from '../services/sessions.js';
+import { deleteSession, deleteUserSessions, SESSION_COOKIE } from '../services/sessions.js';
+import { LoginThrottle } from '../services/login-throttle.js';
 import { toAdminUser } from '../services/users.js';
 import { document, Included, noContent } from '../lib/jsonapi.js';
 import { useJsonApi } from '../plugins/jsonapi.js';
@@ -39,11 +40,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const { ctx } = app;
   const { config, db } = ctx;
   const oidc = config.oidcEnabled ? new OidcClient(config) : null;
-
-  async function startSession(req: FastifyRequest, reply: FastifyReply, userId: string): Promise<void> {
-    const session = await createSession(ctx, userId, { ip: req.ip, userAgent: req.headers['user-agent'] ?? null });
-    reply.setCookie(SESSION_COOKIE, session.token, sessionCookieOptions(config, Math.floor(sessionTtlMs(ctx) / 1000)));
-  }
+  // Per account, on top of the per-client rate limit of the route (see login-throttle.ts).
+  const throttle = new LoginThrottle();
 
   async function sessionInfo(userId: string): Promise<SessionInfo> {
     const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirst();
@@ -77,17 +75,22 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       async (req, reply) => {
         if (!config.LOCAL_LOGIN_ENABLED) throw forbidden('Local login is disabled');
         const body = parse(LoginInput, req.body);
-        const user = await db
-          .selectFrom('users')
-          .selectAll()
-          .where('email', '=', body.email.trim().toLowerCase())
-          .executeTakeFirst();
+        const email = LoginThrottle.key(body.email);
+        const retryAfterMs = throttle.retryAfterMs(email);
+        if (retryAfterMs > 0) {
+          const seconds = Math.ceil(retryAfterMs / 1000);
+          reply.header('retry-after', String(seconds));
+          throw new HttpError(429, 'rate_limited', `Too many failed logins for this account, retry in ${seconds}s`);
+        }
+        const user = await db.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
         // Always verify a hash so response times do not reveal whether the account exists.
         const valid = await verifyPassword(user?.password_hash ?? (await getDummyHash()), body.password);
         if (!user || !user.password_hash || !valid) {
+          throttle.recordFailure(email);
           throw new HttpError(401, 'invalid_credentials', 'Invalid e-mail or password');
         }
-        await startSession(req, reply, user.id);
+        throttle.recordSuccess(email);
+        await startSession(ctx, req, reply, user.id);
         await audit(db, { userId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, details: { method: 'password' } });
         return sessionDocument(await sessionInfo(user.id));
       },
@@ -119,8 +122,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         .set({ password_hash: await hashPassword(body.newPassword), updated_at: nowIso() })
         .where('id', '=', userId)
         .execute();
-      // Sign out every other session of this user.
-      await deleteUserSessions(db, userId, req.cookies[SESSION_COOKIE]);
+      // Sign out every session of this user and continue in a new one: a session token that
+      // leaked before the change does not survive it.
+      await deleteUserSessions(db, userId);
+      await startSession(ctx, req, reply, userId);
       await audit(db, { userId, action: 'user.password_change', entityType: 'user', entityId: userId });
       return noContent(reply);
     });
@@ -180,7 +185,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         req.log.info({ reason: result.error }, 'OIDC login rejected');
         return fail(result.error);
       }
-      await startSession(req, reply, result.user.id);
+      await startSession(ctx, req, reply, result.user.id);
       await audit(db, {
         userId: result.user.id,
         action: result.created ? 'user.create' : 'auth.login',
