@@ -268,6 +268,28 @@ describe('private page', () => {
     expect((await get(`/p/${page.token}`)).statusCode).toBe(404);
   });
 
+  it('answers paths with a backslash with a plain, uncached 404 that renders nothing', async () => {
+    // The renderer's URL parser reads "\\" as "/": such a path must never reach it.
+    const paths = [`/p\\${page.token}`, `/P%5c${page.token}`, `/p%5C${page.token}/services/${ids.hiddenSlug}`, `/\\p/${page.token}`, `/services\\x`];
+    for (const path of paths) {
+      const res = await getAsIs(path);
+      expect(res.statusCode, path).toBe(404);
+      expect(res.body, path).not.toContain('Partner backend');
+      expect(res.body, path).not.toContain('ACME status');
+      expect(res.headers['cache-control'], path).toBe('no-store');
+      expect(res.headers.etag, path).toBeUndefined();
+    }
+    for (const path of paths.slice(0, 4)) {
+      const res = await getAsIs(path);
+      expect(res.headers['referrer-policy'], path).toBe('no-referrer');
+      expect(res.headers['x-robots-tag'], path).toBe('noindex, nofollow');
+    }
+    // Nothing of them ends up in the render cache: the real page still renders per request.
+    await admin.patch(`/api/admin/private-pages/${page.id}`, { enabled: false });
+    expect((await getAsIs(`/p\\${page.token}`)).statusCode).toBe(404);
+    expect((await get(`/p/${page.token}`)).statusCode).toBe(404);
+  });
+
   it('counts every spelling of a private path against the same limit', async () => {
     const token = newPrivatePageToken();
     for (let i = 0; i < 60; i++) await get(`/P/${token}`);

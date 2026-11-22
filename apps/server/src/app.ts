@@ -232,9 +232,10 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // after a deploy. A public instance answers /admin/... with 404.
     app.setNotFoundHandler(async (req, reply) => {
       const path = req.url.split('?')[0] ?? '';
-      // Browsers resolve "." and ".." before sending a request; a path that still has them
-      // (/./p/<token>, /a/../p/<token>) is hand-made and gets nothing but a plain 404.
-      if (hasDotSegments(path)) return routeNotFound(reply.header('Cache-Control', 'no-store'));
+      // Browsers resolve "." and ".." and turn "\" into "/" before sending a request; a path
+      // that still has them (/./p/<token>, /a/../p/<token>, /p\<token>, /p%5c<token>) is
+      // hand-made and gets nothing but a plain 404, before any redirect, rate limit or render.
+      if (isHandMadePath(path)) return routeNotFound(reply.header('Cache-Control', 'no-store'));
       const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
         // One URL per page for search engines: /SERVICES/ → 301 /services. Not personal
@@ -277,6 +278,15 @@ function routeNotFound(reply: FastifyReply) {
 function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((addr: string, hop: number) => boolean) {
   if (typeof value === 'number') return (_addr, hop) => hop < value;
   return value;
+}
+
+/**
+ * A request path no browser sends: with dot segments or a backslash (also as %5c),
+ * which the WHATWG URL parser turns into "/". The renderer would read such a path
+ * differently from the raw-path checks before it, so it is never answered with a page.
+ */
+function isHandMadePath(path: string): boolean {
+  return hasDotSegments(path) || /\\|%5c/i.test(path);
 }
 
 function isAdminPath(path: string): boolean {
