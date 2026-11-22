@@ -23,6 +23,8 @@ spec:
       labels:
         app.kubernetes.io/component: admin
     spec:
+      # The app never talks to the Kubernetes API: no service account token.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000 # "node" user of the image

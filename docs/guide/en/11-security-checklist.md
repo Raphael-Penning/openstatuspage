@@ -9,7 +9,8 @@ Go through this list before going live and after larger changes.
 - [ ] `BASE_URL` starts with `https://`, so session cookies are marked
       `Secure`.
 - [ ] `TRUST_PROXY` equals the number of proxies in front of the app, never
-      more.
+      more; if the app port is reachable without the proxy, it lists the
+      proxy's addresses instead.
 - [ ] The host, Docker and the cluster receive security updates.
 - [ ] The image is pinned to a release (`OSP_VERSION=1.2.3`, `newTag` in
       Kubernetes), optionally to its digest, and never `edge` in

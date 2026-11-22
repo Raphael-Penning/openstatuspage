@@ -13,4 +13,5 @@ Uptime Kuma needs no script: it has a native webhook notification
 
 The scripts only depend on POSIX `sh`, `curl`, `sed`, `awk` and `tr`. They pass
 the ingest token to curl via stdin so it never appears in the process list,
-and support a dry-run mode that prints the JSON payload instead of sending it.
+reject a token with characters outside the ingest token alphabet (letters,
+digits, `-` and `_`), and support a dry-run mode that prints the JSON payload instead of sending it.
