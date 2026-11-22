@@ -1,6 +1,6 @@
 import { loadConfig } from '../config.js';
 import { createDb, migrateToLatest } from '../db/index.js';
-import { publicSchemaHint, setUpPublicRole } from '../db/public-role.js';
+import { publicSchemaHint, schemaCreateHint, setUpPublicRole } from '../db/public-role.js';
 
 const config = loadConfig(process.env, { allowMissingSecret: true });
 const db = await createDb(config);
@@ -17,5 +17,6 @@ if (config.database.dialect === 'postgres') {
         ? `Note: ${publicSchemaHint()}.`
         : `Public database role "${config.DB_PUBLIC_ROLE}" does not exist (only needed for APP_ROLE=public).`,
   );
+  if (result.createLeft.length > 0) console.warn(`Warning: ${schemaCreateHint(config.DB_PUBLIC_ROLE, result.createLeft)}.`);
 }
 await db.destroy();
