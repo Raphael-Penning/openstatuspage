@@ -174,7 +174,9 @@ database do, and runs `deploy/postgres/harden.sql`: it revokes from `PUBLIC`
 the advisory lock functions (granted back to the app role), the functions that
 create large objects, `TEMPORARY` on the database and `CREATE` on the schema
 `public` (the default for `PUBLIC` before PostgreSQL 15, and on clusters
-upgraded from such a version). Session advisory locks
+upgraded from such a version; a migrating role that is not the schema owner
+needs its own `CREATE` grant there, which `roles.sql` gives and `harden.sql`
+warns about when it is missing). Session advisory locks
 outlive `statement_timeout`; without this a compromised public instance could
 hold the application's lock keys and stall status recomputes, bundle evaluation
 and history imports on every instance. These privileges exist per database and

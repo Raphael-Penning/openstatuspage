@@ -57,6 +57,12 @@ create objects in schema `public`. The instance does not start until that is
 revoked: run `deploy/postgres/harden.sql` again as a superuser in that database, as described in the
 [security model](../../security-model.md), or run
 `REVOKE CREATE ON SCHEMA public FROM PUBLIC` as a superuser (if the tables live in another schema, revoke it there as well).
+If the role that runs the migrations is not the owner of the schema and has
+created its tables only through that default (PostgreSQL 14 or older without
+`roles.sql`), it loses the right as well and the next update fails with
+"permission denied": first run `GRANT CREATE ON SCHEMA public TO <app role>`
+(`roles.sql` already does). `harden.sql` warns about every role that owns tables
+in the schema and can no longer create objects there.
 
 **`docker compose` says "set SECRET_KEY in .env" or "set POSTGRES_PASSWORD
 in .env".**

@@ -61,6 +61,13 @@ im Schema `public` Objekte anzulegen. Die Instanz startet erst, wenn das
 entzogen ist: Führe `deploy/postgres/harden.sql` erneut als Superuser in dieser Datenbank aus, wie im
 [Sicherheitsmodell](../../security-model.md) beschrieben, oder führe als
 Superuser `REVOKE CREATE ON SCHEMA public FROM PUBLIC` aus (liegen die Tabellen in einem anderen Schema, entziehe es dort ebenfalls).
+Ist die Rolle, die die Migrationen ausführt, nicht Eigentümerin des Schemas und
+hat sie ihre Tabellen nur über diese Voreinstellung angelegt (PostgreSQL 14 oder
+älter ohne `roles.sql`), verliert sie das Recht ebenfalls und das nächste Update
+scheitert mit „permission denied“: Führe vorher
+`GRANT CREATE ON SCHEMA public TO <App-Rolle>` aus (`roles.sql` macht das schon).
+`harden.sql` warnt vor jeder Rolle, der Tabellen im Schema gehören und die dort
+keine Objekte mehr anlegen darf.
 
 **`docker compose` meldet „set SECRET_KEY in .env“ oder „set
 POSTGRES_PASSWORD in .env“.**
