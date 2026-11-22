@@ -10,6 +10,9 @@
  * - Response bodies are read with a byte limit on both fetch paths, so a
  *   misconfigured or hostile endpoint cannot exhaust memory (fetch also
  *   decompresses gzip/brotli transparently, so the limit applies after that).
+ *   Pull adapters also bound the number of values a body may hold before it is
+ *   parsed (`ResponseLimits`): parsing materializes one heap object per value,
+ *   which costs many times the byte count for small values.
  *
  * Without TLS verification, requests go through `node:http(s)` because the
  * built-in fetch offers no per-request switch for certificate checks without
@@ -20,8 +23,34 @@ import http from 'node:http';
 import https from 'node:https';
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
-/** Upper bound for a single response body (protects memory on misconfigured URLs). */
+/**
+ * Upper bound for a single response body when the caller sets no `limits`
+ * (history imports, which document raising the heap for large imports).
+ */
 export const MAX_RESPONSE_BYTES = 50 * 1024 * 1024;
+
+/** Bounds for reading and parsing one response body. */
+export interface ResponseLimits {
+  /** Most bytes of the (decompressed) body. */
+  maxBytes: number;
+  /**
+   * Most values the body may hold, checked before parsing: for JSON the number
+   * of `{`, `[` and `,` (an over-count, as these also occur inside strings), for
+   * text two per line plus one per `=` (see countTextValues).
+   */
+  maxValues?: number;
+}
+
+/**
+ * Defaults of the pull adapters (POLL_MAX_RESPONSE_MB, POLL_MAX_VALUES), sized
+ * against the image's 96 MB old-space heap (docker/Dockerfile NODE_OPTIONS):
+ * the body string plus its parsed values stay well below it next to the rest
+ * of the server.
+ */
+export const DEFAULT_POLL_LIMITS: Readonly<Required<ResponseLimits>> = {
+  maxBytes: 8 * 1024 * 1024,
+  maxValues: 500_000,
+};
 /** Error bodies are only read for a short detail message. */
 export const MAX_ERROR_BODY_BYTES = 16 * 1024;
 
@@ -39,6 +68,8 @@ export class AdapterError extends Error {
 export interface AdapterFetchOptions {
   verifyTls: boolean;
   timeoutMs?: number;
+  /** Byte limit of the transport without TLS verification (default MAX_RESPONSE_BYTES). */
+  maxResponseBytes?: number;
 }
 
 export type FetchFn = typeof fetch;
@@ -46,9 +77,10 @@ export type FetchFn = typeof fetch;
 /** Creates the `fetch` used by a pull adapter for one source. */
 export function createAdapterFetch(options: AdapterFetchOptions): FetchFn {
   const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const maxBytes = options.maxResponseBytes ?? MAX_RESPONSE_BYTES;
   const base: (input: string | URL | Request, init?: RequestInit) => Promise<Response> = options.verifyTls
     ? (input, init) => globalThis.fetch(input, init)
-    : insecureFetch;
+    : (input, init) => insecureFetch(input, init, maxBytes);
   const wrapped = (input: string | URL | Request, init: RequestInit = {}) => {
     const signals = [AbortSignal.timeout(timeoutMs)];
     if (init.signal) signals.push(init.signal);
@@ -61,7 +93,11 @@ export function createAdapterFetch(options: AdapterFetchOptions): FetchFn {
  * Minimal fetch replacement on top of node:http(s) that skips certificate
  * verification. Supports string bodies, headers and abort signals.
  */
-export function insecureFetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+export function insecureFetch(
+  input: string | URL | Request,
+  init: RequestInit = {},
+  maxBytes: number = MAX_RESPONSE_BYTES,
+): Promise<Response> {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return Promise.reject(new TypeError(`Unsupported protocol ${url.protocol}`));
@@ -99,7 +135,7 @@ export function insecureFetch(input: string | URL | Request, init: RequestInit =
       let failure: Error | null = null;
       res.on('data', (chunk: Buffer) => {
         size += chunk.length;
-        if (size > MAX_RESPONSE_BYTES) {
+        if (size > maxBytes) {
           failure = new Error('Response body too large');
           req.destroy(failure);
           return;
@@ -165,11 +201,13 @@ export function basicAuth(username: string, password: string): string {
 export interface RequestOptions extends RequestInit {
   /** Human readable name of the remote system, e.g. "Icinga 2 API". */
   system: string;
+  /** Bounds of the response body; without them only MAX_RESPONSE_BYTES applies. */
+  limits?: ResponseLimits;
 }
 
 /** Performs a request and returns the response; non-2xx and transport errors become AdapterErrors. */
 export async function request(fetchFn: FetchFn, url: string, options: RequestOptions): Promise<Response> {
-  const { system, ...init } = options;
+  const { system, limits: _limits, ...init } = options;
   const where = describeUrl(url);
   let res: Response;
   try {
@@ -198,7 +236,14 @@ export async function request(fetchFn: FetchFn, url: string, options: RequestOpt
 
 export async function requestJson<T = unknown>(fetchFn: FetchFn, url: string, options: RequestOptions): Promise<T> {
   const res = await request(fetchFn, url, options);
-  const text = await readText(res, options.system, url);
+  const text = await readText(res, options.system, url, options.limits);
+  const maxValues = options.limits?.maxValues;
+  if (maxValues !== undefined && countJsonValues(text, maxValues) > maxValues) {
+    throw new AdapterError(
+      `${options.system}: the response of ${describeUrl(url)} has more than ${maxValues} JSON values. ` +
+        'Narrow the query (filters, permissions of the API user) or raise POLL_MAX_VALUES.',
+    );
+  }
   try {
     return JSON.parse(text) as T;
   } catch {
@@ -211,20 +256,67 @@ export async function requestJson<T = unknown>(fetchFn: FetchFn, url: string, op
 
 export async function requestText(fetchFn: FetchFn, url: string, options: RequestOptions): Promise<string> {
   const res = await request(fetchFn, url, options);
-  return readText(res, options.system, url);
+  const text = await readText(res, options.system, url, options.limits);
+  const maxValues = options.limits?.maxValues;
+  if (maxValues !== undefined && countTextValues(text, maxValues) > maxValues) {
+    throw new AdapterError(
+      `${options.system}: the response of ${describeUrl(url)} has too many lines or labels (more than ${maxValues} values). ` +
+        'Check the base URL or raise POLL_MAX_VALUES.',
+    );
+  }
+  return text;
 }
 
-async function readText(res: Response, system: string, url: string): Promise<string> {
+/**
+ * Upper estimate of the values JSON.parse would create: every object and array
+ * opens with `{` / `[`, and every further element or property follows a `,`.
+ * Stops counting once `stopAfter` is exceeded.
+ */
+export function countJsonValues(text: string, stopAfter = Infinity): number {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    // { [ ,
+    if ((c === 123 || c === 91 || c === 44) && ++count > stopAfter) break;
+  }
+  return count;
+}
+
+/**
+ * Upper estimate of the values parsing a line-based text (the Prometheus format)
+ * creates: two per line (the sample and its label set) and one per `=` (a label).
+ * Stops counting once `stopAfter` is exceeded.
+ */
+export function countTextValues(text: string, stopAfter = Infinity): number {
+  let count = 2;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    // \n counts the next line, = a label
+    if (c === 10) count += 2;
+    else if (c === 61) count++;
+    else continue;
+    if (count > stopAfter) break;
+  }
+  return count;
+}
+
+async function readText(res: Response, system: string, url: string, limits?: ResponseLimits): Promise<string> {
+  const maxBytes = limits?.maxBytes ?? MAX_RESPONSE_BYTES;
   try {
-    return await readBodyLimited(res, MAX_RESPONSE_BYTES);
+    return await readBodyLimited(res, maxBytes);
   } catch (err) {
     if (err instanceof ResponseTooLargeError) {
       throw new AdapterError(
-        `${system}: the response of ${describeUrl(url)} exceeds ${MAX_RESPONSE_BYTES / 1024 / 1024} MiB. Check the base URL.`,
+        `${system}: the response of ${describeUrl(url)} exceeds ${formatMiB(maxBytes)} MiB. ` +
+          `Check the base URL${limits ? ' or raise POLL_MAX_RESPONSE_MB' : ''}.`,
       );
     }
     throw new AdapterError(`${system}: reading the response of ${describeUrl(url)} failed: ${describeTransportError(err)}`);
   }
+}
+
+function formatMiB(bytes: number): string {
+  return String(Math.round((bytes / 1024 / 1024) * 100) / 100);
 }
 
 class ResponseTooLargeError extends Error {

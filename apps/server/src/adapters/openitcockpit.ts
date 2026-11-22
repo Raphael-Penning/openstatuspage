@@ -144,6 +144,7 @@ async function fetchAll(
       headers: { Accept: 'application/json', Authorization: `X-OITC-API ${config.apiKey}` },
       signal: ctx.signal,
       system: SYSTEM,
+      limits: ctx.limits,
     });
     const entries = extractEntries(body, kind);
     if (!entries) {

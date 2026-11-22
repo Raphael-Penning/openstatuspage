@@ -243,3 +243,7 @@ For the CSV format and the details per system, see the
   Batch many results into one request (up to 5000 checks, 5 MiB).
 - A source holds at most 20000 checks (`MAX_CHECKS_PER_SOURCE`). A push or poll
   that would add more is rejected and stores nothing.
+- A poll answer may be up to 8 MiB with up to 500000 values
+  (`POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`); a larger answer fails the poll.
+  For very large monitoring systems raise both together with the heap cap
+  (`NODE_OPTIONS`), see the configuration reference.

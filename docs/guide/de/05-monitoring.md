@@ -262,3 +262,7 @@ Das CSV-Format und die Details je System findest du in der
 - Eine Quelle hat höchstens 20000 Checks (`MAX_CHECKS_PER_SOURCE`). Ein Push
   oder eine Abfrage, die mehr anlegen würde, wird abgelehnt und speichert
   nichts.
+- Eine Antwort beim Abfragen darf bis zu 8 MiB mit bis zu 500000 Werten haben
+  (`POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`); eine größere Antwort lässt die
+  Abfrage fehlschlagen. Bei sehr großen Monitoring-Systemen erhöhst du beide
+  zusammen mit der Heap-Grenze (`NODE_OPTIONS`), siehe Konfigurationsreferenz.

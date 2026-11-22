@@ -640,7 +640,12 @@ What keeps it small:
   (about 40 MB every 30 s inside the container's memory limit).
 
 Raise the cap for a large history import on an admin instance, e.g.
-`NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=256`. Without the
+`NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=256`. Pull adapters
+read at most `POLL_MAX_RESPONSE_MB` (default 8) per response with at most
+`POLL_MAX_VALUES` (default 500000) values, checked before parsing: at the
+default cap that leaves room for a poll next to a running server (about 27 MB
+heap after GC). Raise both together with the cap for very large monitoring
+systems ([configuration.md](configuration.md#monitoring)). Without the
 image, set the same variables and start with `node --max-opt=2` yourself to get
 the numbers above; without them every role needs about 10–20 MB more.
 

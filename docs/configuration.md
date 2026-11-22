@@ -158,6 +158,8 @@ Limits for monitoring sources (see [adapters/README.md](adapters/README.md)).
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `POLL_MAX_RESPONSE_MB` | `8` | Largest response body (MiB after decompression, 1 to 512) a pull adapter (Icinga 2, Uptime Kuma, openITCockpit) reads per request; larger answers fail the poll. Sized against the image's heap cap (`NODE_OPTIONS=--max-old-space-size=96`, see [architecture.md](architecture.md#memory)): raise both together, e.g. `POLL_MAX_RESPONSE_MB=32` with `--max-old-space-size=256`. History imports keep their own 50 MiB limit. |
+| `POLL_MAX_VALUES` | `500000` | Most values one pull response may hold, counted before parsing (JSON objects, arrays and elements; Prometheus lines and labels). Parsing costs heap per value, many times the byte count for small values; answers with more values fail the poll. Raise it together with the heap cap. |
 | `MAX_CHECKS_PER_SOURCE` | `20000` | Most checks (100 to 1000000) one monitoring source may have. A push or poll that would give a source more checks is rejected (push: `409`; poll: recorded as a failed poll) and stores nothing; updates of existing checks are always accepted. |
 
 ## Check bundles

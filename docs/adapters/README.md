@@ -27,7 +27,12 @@ in the public API (not even their number).
   connection never turns your status page red or green on its own;
 - an empty result while checks exist is treated as an error as well (usually a
   broken filter or missing permissions), so service links are not lost;
-- responses larger than 50 MiB (after decompression) are rejected as an error.
+- responses larger than `POLL_MAX_RESPONSE_MB` (default 8 MiB, after
+  decompression) or with more than `POLL_MAX_VALUES` values (default 500000:
+  JSON objects, arrays and elements, or Prometheus lines and labels, counted
+  before parsing) are rejected as an error. Both are sized against the heap cap
+  of the image; for very large sources raise them together with
+  `--max-old-space-size` (see [configuration](../configuration.md#monitoring)).
 
 **Push** – the monitoring system calls OpenStatusPage on every state change:
 

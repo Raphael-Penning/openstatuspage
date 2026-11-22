@@ -93,6 +93,23 @@ describe('pollAndStore', () => {
     expect((await sourceRow(id)).last_error).toContain('MAX_CHECKS_PER_SOURCE');
   });
 
+  it('applies POLL_MAX_RESPONSE_MB and POLL_MAX_VALUES to polls', async () => {
+    await t.close();
+    t = await createTestApp({ POLL_MAX_VALUES: '1000', POLL_MAX_RESPONSE_MB: '1' });
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    const many = 'x 1\n'.repeat(600);
+    const tooMany = await pollAndStore(t.ctx, id, { fetchFactory: () => mockFetch(() => new Response(many)).fetch });
+    expect(tooMany).toMatchObject({ ok: false, message: expect.stringContaining('POLL_MAX_VALUES') });
+    const large = `${'#'.repeat(1024 * 1024)}\n`;
+    const tooLarge = await pollAndStore(t.ctx, id, { fetchFactory: () => mockFetch(() => new Response(large)).fetch });
+    expect(tooLarge).toMatchObject({ ok: false, message: expect.stringContaining('exceeds 1 MiB') });
+    expect((await sourceRow(id)).last_poll_ok).toBe(0);
+    // The default fetch gets the byte limit, too.
+    const factory = vi.fn(() => kumaFetch().fetch);
+    await pollAndStore(t.ctx, id, { fetchFactory: factory });
+    expect(factory).toHaveBeenCalledWith({ verifyTls: true, maxResponseBytes: 1024 * 1024 });
+  });
+
   it('does not wipe existing checks when the system suddenly returns none', async () => {
     const { id } = await t.insertSource({
       type: 'icinga2',

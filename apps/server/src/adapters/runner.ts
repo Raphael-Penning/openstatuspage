@@ -8,7 +8,13 @@ import type { AppContext } from '../context.js';
 import type { MonitorSource } from '../db/types.js';
 import { HttpError, notFound } from '../lib/errors.js';
 import type { IngestResult } from '../services/ingest.js';
-import { createAdapterFetch, describeTransportError, type AdapterFetchOptions, type FetchFn } from './http.js';
+import {
+  createAdapterFetch,
+  describeTransportError,
+  type AdapterFetchOptions,
+  type FetchFn,
+  type ResponseLimits,
+} from './http.js';
 import { withLease } from '../lib/task-leases.js';
 import { getAdapter } from './index.js';
 import type { NormalizedCheck } from './types.js';
@@ -78,10 +84,12 @@ export async function fetchSourceChecks(
   const signals = [AbortSignal.timeout(options.timeoutMs ?? POLL_TIMEOUT_MS)];
   if (options.signal) signals.push(options.signal);
   const signal = AbortSignal.any(signals);
+  const limits = pollLimits(ctx);
   try {
     const checks = await adapter.poll.poll(config, {
       signal,
-      fetch: fetchFactory({ verifyTls: config.verifyTls !== false }),
+      fetch: fetchFactory({ verifyTls: config.verifyTls !== false, maxResponseBytes: limits.maxBytes }),
+      limits,
     });
     if (signal.aborted) throw signal.reason;
     return checks;
@@ -91,6 +99,14 @@ export async function fetchSourceChecks(
       : `Poll ${describeTransportError(err)}`;
     throw new Error(redactSecrets(message, config, adapter.secretKeys));
   }
+}
+
+/** Response limits of polls (POLL_MAX_RESPONSE_MB, POLL_MAX_VALUES). */
+export function pollLimits(ctx: Pick<AppContext, 'config'>): Required<ResponseLimits> {
+  return {
+    maxBytes: Math.floor(ctx.config.POLL_MAX_RESPONSE_MB * 1024 * 1024),
+    maxValues: ctx.config.POLL_MAX_VALUES,
+  };
 }
 
 function safeDecode(value: string): string {

@@ -95,6 +95,7 @@ export const uptimeKumaPollAdapter: PollAdapter<UptimeKumaConfig> = {
       headers: { Accept: 'text/plain', Authorization: basicAuth('', config.apiKey) },
       signal: ctx.signal,
       system: SYSTEM,
+      limits: ctx.limits,
     });
     const { samples } = parsePrometheusText(text);
     if (!samples.some((s) => s.name === 'monitor_status')) {

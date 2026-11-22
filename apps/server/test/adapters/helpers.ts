@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MonitorSourceType } from '@openstatuspage/shared';
 import type { FastifyInstance } from 'fastify';
+import { DEFAULT_POLL_LIMITS } from '../../src/adapters/http.js';
 import type { AdapterContext } from '../../src/adapters/types.js';
 import { buildApp } from '../../src/app.js';
 import { loadConfig } from '../../src/config.js';
@@ -50,7 +51,7 @@ export function jsonResponse(body: unknown, status = 200): Response {
 }
 
 export function adapterContext(fetchFn: typeof fetch): AdapterContext {
-  return { fetch: fetchFn, signal: new AbortController().signal };
+  return { fetch: fetchFn, signal: new AbortController().signal, limits: DEFAULT_POLL_LIMITS };
 }
 
 export interface TestApp {
