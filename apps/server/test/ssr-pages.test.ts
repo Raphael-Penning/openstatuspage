@@ -348,6 +348,15 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     }
   });
 
+  it('answers other spellings of API paths with a 404, not a cacheable redirect', async () => {
+    for (const url of ['/API/public/services', '/Api/admin/users/', '/%61PI/nope', '//api//public//nope']) {
+      const res = await get(url);
+      expect(res.statusCode, url).toBe(404);
+      expect(res.headers.location, url).toBeUndefined();
+      expect(String(res.headers['cache-control'] ?? ''), url).not.toContain('public');
+    }
+  });
+
   it('never caches personal pages in another spelling of the path', async () => {
     // The router matches routes case-insensitively: these render the manage and confirm pages.
     for (const url of ['/SUBSCRIPTION/manage?id=x&token=y', '/Subscription/Confirm?id=x&token=y', '//subscription//manage?id=x']) {

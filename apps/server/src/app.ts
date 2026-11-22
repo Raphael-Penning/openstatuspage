@@ -244,7 +244,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
       // that still has them (/./p/<token>, /a/../p/<token>, /p\<token>, /p%5c<token>) is
       // hand-made and gets nothing but a plain 404, before any redirect, rate limit or render.
       if (isHandMadePath(path)) return routeNotFound(reply.header('Cache-Control', 'no-store'));
-      const isClientRoute = !isApiPath(path) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
+      // Other spellings of /api (/API/..., /%61pi/...) are no page either: a plain 404, never a redirect.
+      const isClientRoute = !isApiPath(normalizePath(path)) && !/\.[a-z0-9]+$/i.test(path) && web.servesRoute(path);
       if ((req.method === 'GET' || req.method === 'HEAD') && isClientRoute) {
         // One URL per page for search engines: /SERVICES/ → 301 /services. Not personal
         // pages (their token would go into a cacheable redirect; they are never indexed).
