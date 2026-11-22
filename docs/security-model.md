@@ -362,7 +362,10 @@ account) or obtains an API token.
   links) are only ever loaded by visitors' browsers.
 - **Guessing and keeping access is harder**: failed logins are throttled per
   account as well as per client IP, so rotating source addresses or forged
-  `X-Forwarded-For` headers do not multiply the attempts. SSO creates or links
+  `X-Forwarded-For` headers do not multiply the attempts. An attempt is counted
+  before its password is checked, so a burst of concurrent attempts is held to
+  the same limit, and failures for unknown e-mail addresses cannot push an
+  existing account out of the bounded counter. SSO creates or links
   an account only for an e-mail address the identity provider marks as
   verified. An admin resetting a user's password revokes that user's API tokens
   and sessions, a user changing their own password ends all their sessions
