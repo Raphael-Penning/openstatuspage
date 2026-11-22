@@ -128,7 +128,8 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
 - `notification-cleanup` (hourly): deletes unconfirmed subscriptions after 7 days and
   sent/failed mails after 30 days
 - `history-import-cleanup` (every 5 min): fails import jobs without progress for
-  15 minutes (e.g. after a restart) and discards previews older than 24 hours
+  15 minutes (e.g. after a restart), discards previews older than 24 hours and
+  drops staged rows (`history_import_intervals`) of finished jobs
 - `poller-sync` (every 30 s, on every instance): re-reads the monitoring sources
   and updates this instance's poll tasks
 - `task-lease-cleanup` (hourly, PostgreSQL only): removes leases unused for 7 days
