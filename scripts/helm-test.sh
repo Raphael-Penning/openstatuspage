@@ -366,6 +366,12 @@ expect_failure "unknown config variable fails (schema)" "additional properties '
   --set config.NOT_A_SETTING=1
 expect_failure "unknown egress mode fails (schema)" "smtp/enabled" "${BASE[@]}" "${KEY[@]}" \
   --set networkPolicy.egress.smtp.enabled=maybe
+render limits -f "$CI/sqlite-values.yaml" --set config.POLL_MAX_RESPONSE_MB=32 --set-string config.POLL_MAX_VALUES=2000000 \
+  --set config.MAX_CHECKS_PER_SOURCE=50000
+check "ConfigMap carries the monitoring limits" bash -c "grep -q 'POLL_MAX_RESPONSE_MB: \"32\"' '$TMP/limits.yaml' \
+  && grep -q 'POLL_MAX_VALUES: \"2000000\"' '$TMP/limits.yaml' && grep -q 'MAX_CHECKS_PER_SOURCE: \"50000\"' '$TMP/limits.yaml'"
+expect_failure "non-numeric monitoring limit fails (schema)" 'POLL_MAX_RESPONSE_MB' "${BASE[@]}" "${KEY[@]}" \
+  --set config.POLL_MAX_RESPONSE_MB=lots
 expect_failure "chart-managed variable in config fails (schema)" "additional properties 'SECRET_KEY'" "${BASE[@]}" "${KEY[@]}" \
   --set config.SECRET_KEY=x
 

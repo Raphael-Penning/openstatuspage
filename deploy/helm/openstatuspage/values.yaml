@@ -52,6 +52,12 @@ config:
   # OIDC_ISSUER_URL: https://sso.example.com/realms/example
   # OIDC_CLIENT_ID: openstatuspage
   # OIDC_ADMIN_GROUP: status-admins
+  # Monitoring limits. Raise the poll limits only together with the heap cap
+  # (NODE_OPTIONS in extraEnv, e.g. "--max-semi-space-size=1
+  # --max-old-space-size=256" for POLL_MAX_RESPONSE_MB "32") and the memory limit.
+  # POLL_MAX_RESPONSE_MB: "8"
+  # POLL_MAX_VALUES: "500000"
+  # MAX_CHECKS_PER_SOURCE: "20000"
 
 secrets:
   # -- Name of an existing Secret (recommended). The chart reads these keys from
