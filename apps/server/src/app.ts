@@ -51,20 +51,19 @@ export function redactUrlTokens(url: string): string {
 }
 
 /**
- * Replaces the token of a private page path in any spelling (`/p/<token>/...`,
- * `/P//<token>`, `/%70/<token>`, `/x/../p/<token>`): "/p/abc/services/web" →
- * "/p/[REDACTED]/services/web". A path with dot segments is logged resolved.
+ * Replaces the token of a private page path in any spelling the router or the
+ * renderer could read as one (`/p/<token>/...`, `/P//<token>`, `/%70/<token>`,
+ * `/p%2F<token>`, `/p\<token>`, `/x/../p/<token>`). Such a path is logged as the
+ * client router sees it: "/P/abc/services/Web" → "/p/[REDACTED]/services/web".
  */
 export function redactPrivatePagePath(url: string): string {
   const end = url.search(/[?#]/);
   const path = end === -1 ? url : url.slice(0, end);
-  if (hasDotSegments(path)) return redactPrivatePagePath(normalizePath(path) + (end === -1 ? '' : url.slice(end)));
-  const parts = path.split('/');
-  const first = parts.findIndex((part) => part !== '');
-  if (first === -1 || safeDecode(parts[first]!).toLowerCase() !== 'p') return url;
-  const token = parts.findIndex((part, i) => i > first && part !== '');
-  if (token === -1) return url;
-  parts[token] = '[REDACTED]';
+  // Escapes decoded one run at a time, so a malformed one elsewhere keeps no token in clear.
+  const normalized = normalizePath(path.replace(/(?:%[0-9a-f]{2})+/gi, safeDecode));
+  const parts = normalized.split('/');
+  if (parts[1] !== 'p' || !parts[2]) return url;
+  parts[2] = '[REDACTED]';
   return parts.join('/') + (end === -1 ? '' : url.slice(end));
 }
 

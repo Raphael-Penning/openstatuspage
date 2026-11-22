@@ -266,8 +266,16 @@ describe('private page API', () => {
 describe('log redaction', () => {
   it('replaces the token of private page paths in any spelling', () => {
     expect(redactPrivatePagePath('/p/abc/services/web?lang=de')).toBe('/p/[REDACTED]/services/web?lang=de');
-    expect(redactPrivatePagePath('/P//abc')).toBe('/P//[REDACTED]');
-    expect(redactPrivatePagePath('/%70/abc')).toBe('/%70/[REDACTED]');
+    expect(redactPrivatePagePath('/P//abc')).toBe('/p/[REDACTED]');
+    expect(redactPrivatePagePath('/%70/abc')).toBe('/p/[REDACTED]');
+    // Encoded slashes and backslashes: the renderer's URL parser reads them as separators.
+    expect(redactPrivatePagePath('/%2Fp/abc')).toBe('/p/[REDACTED]');
+    expect(redactPrivatePagePath('/p%2Fabc?lang=de')).toBe('/p/[REDACTED]?lang=de');
+    expect(redactPrivatePagePath('/%70%2Fabc/services/web')).toBe('/p/[REDACTED]/services/web');
+    expect(redactPrivatePagePath('/p\\abc')).toBe('/p/[REDACTED]');
+    expect(redactPrivatePagePath('/p%5Cabc')).toBe('/p/[REDACTED]');
+    expect(redactPrivatePagePath('/p/%2F/abc')).toBe('/p/[REDACTED]');
+    expect(redactPrivatePagePath('/p%2Fabc%E0')).toBe('/p/[REDACTED]');
     expect(redactPrivatePagePath('/p')).toBe('/p');
     expect(redactPrivatePagePath('/pages/abc')).toBe('/pages/abc');
     expect(redactPrivatePagePath('/history?return=/p/abc')).toBe('/history?return=/p/abc');
@@ -286,7 +294,7 @@ describe('log redaction', () => {
     await app.app.inject({ method: 'GET', url: `/p/${token}/services/web` });
     // Paths as-is, with dot segments (inject() would resolve them).
     const { port } = new URL(await app.app.listen({ host: '127.0.0.1', port: 0 }));
-    for (const path of [`/x/../p/${token}`, `/./p/${token}`, `/%2e/p/${token}`]) {
+    for (const path of [`/x/../p/${token}`, `/./p/${token}`, `/%2e/p/${token}`, `/p\\${token}`, `/p%2F${token}`, `/%2Fp/${token}`]) {
       await new Promise<void>((resolve, reject) => {
         const req = request({ host: '127.0.0.1', port, path }, (res) => res.resume().on('end', resolve));
         req.on('error', reject).end();
