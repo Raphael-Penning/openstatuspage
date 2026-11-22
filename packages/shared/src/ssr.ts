@@ -23,8 +23,10 @@ export const LANG_QUERY = 'lang';
  * Request path as the client router sees it: percent-decoded, lower-cased,
  * with repeated slashes collapsed (react-router matches routes case-insensitively)
  * and dot segments resolved ("/./p/x", "/a/../p/x" and "/%2e/p/x" are "/p/x",
- * as for the router and every browser). Malformed escapes keep the raw path,
- * which the router does not decode either.
+ * as for the router and every browser). A backslash is a path separator, as
+ * the WHATWG URL parser (and so the server-side renderer) treats it in http
+ * URLs: "/p\\abc" and "/p%5cabc" are "/p/abc". Malformed escapes keep the raw
+ * path, which the router does not decode either.
  */
 export function normalizePath(url: string): string {
   const raw = url.split(/[?#]/)[0] ?? '';
@@ -34,12 +36,12 @@ export function normalizePath(url: string): string {
   } catch {
     // keep the raw path
   }
-  return resolveDotSegments(path.toLowerCase().replace(/\/{2,}/g, '/'));
+  return resolveDotSegments(path.replace(/\\/g, '/').toLowerCase().replace(/\/{2,}/g, '/'));
 }
 
 /**
  * True when a path has a "." or ".." segment, also percent-encoded ("%2e",
- * "..%2f"). Browsers resolve them before sending a request, so only hand-made
+ * "..%2f", also between backslashes). Browsers resolve them before sending a request, so only hand-made
  * requests carry them.
  */
 export function hasDotSegments(url: string): boolean {
@@ -50,7 +52,7 @@ export function hasDotSegments(url: string): boolean {
   } catch {
     decoded = raw.replace(/%2e/gi, '.').replace(/%2f/gi, '/');
   }
-  return [raw.replace(/%2e/gi, '.'), decoded].some((path) => path.split('/').some((part) => part === '.' || part === '..'));
+  return [raw.replace(/%2e/gi, '.'), decoded].some((path) => path.split(/[\\/]/).some((part) => part === '.' || part === '..'));
 }
 
 /** RFC 3986 remove_dot_segments for an absolute path (never above "/"). */
