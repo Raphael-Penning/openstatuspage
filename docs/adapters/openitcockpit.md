@@ -191,3 +191,5 @@ services it can see.
   cleanup settings; older periods stay empty.
 - One request per check and page: keep "Only checks used by services or
   bundles" enabled for large installations.
+- An import keeps at most 500 000 state changes (all checks together); with
+  more, it fails. Import a shorter range or fewer checks.

@@ -213,6 +213,10 @@ Rules:
 - The configuration is not versioned: links, mappings and bundle votes of
   today are applied to the past.
 - Only hard states count (like the live adapters).
+- **Memory limits.** An Icinga DB or openITCockpit import keeps at most
+  500 000 state changes (all checks together) and fails with more; import a
+  shorter range or fewer checks. Uptime Kuma is limited per monitor by the
+  size of one response (see [uptime-kuma.md](uptime-kuma.md#history-import)).
 
 The current state of every check that existed before the upgrade is known since
 its last state change; that period counts as recorded history.

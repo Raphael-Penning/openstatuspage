@@ -3,6 +3,7 @@ import { Icinga2Config, OpenItCockpitConfig, UptimeKumaConfig } from '@openstatu
 import { describe, expect, it } from 'vitest';
 import { createIcingaDbImporter, toPgPlaceholders } from '../../src/importers/icingadb.js';
 import {
+  createOpenItCockpitImporter,
   mapStatehistoryEntries,
   openItCockpitImporter,
   parseOitcTime,
@@ -398,6 +399,43 @@ describe('openITCockpit importer', () => {
     // Hosts are only listed when a host check was requested.
     expect(calls.some((c) => c.url.includes('hosts/index.json'))).toBe(false);
     expect(result.warnings).toEqual([expect.objectContaining({ code: 'oitc_utc' })]);
+  });
+
+  it('keeps at most maxEvents state changes per import, across checks', async () => {
+    const from = t('2026-01-01T00:00:00Z');
+    const to = t('2026-01-02T00:00:00Z');
+    const { fetch } = mockFetch(({ url }) => {
+      const u = new URL(url);
+      if (u.pathname === '/services/index.json') {
+        return jsonResponse({
+          all_services: [11, 12].map((id) => ({
+            Service: { id, uuid: `svc-${id}`, servicename: `S${id}` },
+            Host: { id: 1, uuid: 'host-1', hostname: 'web01' },
+            Servicestatus: { currentState: 0, lastHardStateChange: '2025-12-01 00:00:00' },
+          })),
+          paging: { page: 1, pageCount: 1 },
+        });
+      }
+      if (u.pathname.startsWith('/statehistories/service/')) {
+        if (u.searchParams.get('direction') === 'desc') return jsonResponse({ all_statehistories: [] });
+        // Three state changes per check.
+        return jsonResponse({
+          all_statehistories: [1, 2, 3].map((h) => ({
+            StatehistoryService: { state: h % 2 === 0 ? 0 : 2, state_time: `2026-01-01 0${h}:00:00`, is_hardstate: true },
+          })),
+        });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    const targets = [
+      { checkId: 'a', externalId: 'host-1!svc-11' },
+      { checkId: 'b', externalId: 'host-1!svc-12' },
+    ];
+    const fits = await createOpenItCockpitImporter({ maxEvents: 6 }).fetch(config, {}, targets, { from, to }, ctx(fetch).ctx);
+    expect(fits.checks.get('host-1!svc-12')).toHaveLength(4);
+    await expect(
+      createOpenItCockpitImporter({ maxEvents: 5 }).fetch(config, {}, targets, { from, to }, ctx(fetch).ctx),
+    ).rejects.toThrow('openITCockpit API: more than 5 state changes in the range');
   });
 
   it('lets a real event at the start of the range win over the derived start state', async () => {
