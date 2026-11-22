@@ -138,7 +138,7 @@ describe('b) PostgreSQL 15+ layout: the owner of the database (not a superuser) 
 });
 
 describe('c) an app role that may not revoke (the schema belongs to a superuser) while PUBLIC may CREATE on public', () => {
-  it('migrates, warns with the command, starts every role, and the functions ignore a shadowing function', async () => {
+  it('migrates, warns with the command, starts every role, and a shadowing function does not take over the functions', async () => {
     const pgdb = await testDatabase();
     // As deploy/postgres/roles.sql sets up osp_app, in a database a superuser owns.
     const app = await appRole(

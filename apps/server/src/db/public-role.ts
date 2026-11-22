@@ -71,9 +71,10 @@ export async function schemaCreateLeft(db: DB, role: string): Promise<string[]> 
 export function schemaCreateHint(role: string, commands: string[]): string {
   return (
     `the public database role "${role}" may still create objects in the table schema or in ${PUBLIC_SCHEMA}, ` +
-    'and this instance may not take that away. The functions it may call ignore such objects (search_path pinned), ' +
-    `so this is defence in depth only. To close it, run as the schema owner or a superuser: ${commands.join(' ')} ` +
-    '(see docs/security-model.md)'
+    'and this instance may not take that away. Such objects cannot take over the functions it may call ' +
+    '(search_path pinned), but the role can still break those functions with an overload, and the sessions of ' +
+    'admin and worker instances have the table schema on their search_path. To close it, run once as the schema ' +
+    `owner or a superuser: ${commands.join(' ')} (see docs/security-model.md)`
   );
 }
 

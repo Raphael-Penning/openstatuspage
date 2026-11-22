@@ -126,8 +126,8 @@ export async function prepareDatabase(
         log,
         { schemas },
         'the database login of this public instance may create objects in the table schema or in osp_public. ' +
-          'The functions it may call ignore such objects (search_path pinned), so this instance starts; the log of ' +
-          'the admin or worker instance names the command that takes the privilege away (see docs/security-model.md)',
+          'Such objects cannot take over the database functions (search_path pinned), so this instance starts; the ' +
+          'log of the admin or worker instance names the command that takes the privilege away (see docs/security-model.md)',
       );
     }
   }
