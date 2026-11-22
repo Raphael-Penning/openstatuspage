@@ -109,8 +109,10 @@ from `/api/`, `/admin` and the personal subscription links.
   The recipient is always the subscriber's stored address.
 - **Use a subscription without its token.** The functions compare the SHA-256 of
   the given token with the stored hash (migration `0006`). The database never
-  sees the token key and never hands out a salt except to the holder of a valid
-  confirm token (who could derive the manage token anyway).
+  sees the token key and hands out a salt (from which the public instance
+  derives the manage token) only to the request that confirms a subscription
+  with its valid confirm token; confirming again returns none, so an old
+  confirmation mail is no lasting management credential.
 
 ## How it is enforced
 

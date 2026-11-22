@@ -111,6 +111,7 @@ describe('public pages without JavaScript', () => {
       '/subscribe',
       '/subscribe?sent=1',
       `/subscription/confirm?id=${sub.id}&token=${sub.confirm}`,
+      '/subscription/confirm?already=1',
       `/subscription/manage?id=${sub.id}&token=${sub.manage}`,
       `/subscription/manage?id=${sub.id}&token=${sub.manage}&unsubscribe=1`,
       '/subscription/manage?unsubscribed=1',

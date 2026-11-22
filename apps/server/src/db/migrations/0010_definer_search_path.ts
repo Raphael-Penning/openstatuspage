@@ -21,6 +21,8 @@ import { PostgresAdapter, sql, type Kysely } from 'kysely';
  * - osp_private_page_id is VOLATILE (it reads clock_timestamp()).
  * - osp_public.subscribe claims the mail throttle with one conditional UPDATE, like
  *   services/subscriptions.ts.
+ * - osp_public.subscription_confirm returns the token salt (from which the caller
+ *   derives the manage token) only to the request that confirms the subscription.
  *
  * When osp_public does not exist yet, its part (hardenPublicSchema) runs in
  * ensurePublicSchema (db/public-role.ts) right after the schema is created.
@@ -185,6 +187,29 @@ function publicStatements(schema: Schema): string[] {
     END
     $$`);
 
+  // Same as 0007, but the salt (from which the caller derives the manage token) only comes with the
+  // request that confirms: an old confirmation mail is no lasting management credential.
+  out.push(`CREATE OR REPLACE FUNCTION ${s}.subscription_confirm(p_id text, p_token text)
+    RETURNS TABLE (id text, email text, locale text, all_services integer, confirmed boolean, service_ids text[], token_salt text)
+    LANGUAGE plpgsql VOLATILE SECURITY DEFINER ${PIN} AS $$
+    DECLARE
+      v_sub ${b}.subscribers;
+      v_now text := ${b}.osp_iso(clock_timestamp());
+      v_confirmed_now boolean;
+    BEGIN
+      SELECT * INTO v_sub FROM ${b}.subscribers s WHERE s.id = p_id FOR UPDATE;
+      IF NOT FOUND OR NOT ${b}.osp_token_matches(v_sub.confirm_token_hash, p_token) THEN
+        RETURN;
+      END IF;
+      UPDATE ${b}.subscribers s SET confirmed_at = v_now, updated_at = v_now
+        WHERE s.id = v_sub.id AND s.confirmed_at IS NULL;
+      v_confirmed_now := FOUND;
+      RETURN QUERY SELECT r.id, r.email, r.locale, r.all_services, r.confirmed, r.service_ids,
+          CASE WHEN v_confirmed_now THEN v_sub.token_salt END
+        FROM ${b}.osp_subscription_row(v_sub.id) r;
+    END
+    $$`);
+
   // Restricted: registered, and no CREATE on the table schema or osp_public (also through PUBLIC).
   out.push(`CREATE OR REPLACE FUNCTION ${s}.connection_restricted() RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER ${PIN} AS $$
@@ -215,8 +240,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
 /**
  * Restores the grant function and the volatility of 0007/0009. The functions keep
- * the pinned search_path and the replaced bodies (they behave like before for
- * every valid call).
+ * the pinned search_path and the replaced bodies.
  */
 export async function down(db: Kysely<any>): Promise<void> {
   if (!(await isPostgres(db))) return;

@@ -6,7 +6,8 @@
  * restricted PostgreSQL public role).
  *
  *   POST /subscribe                  email, locale, scope, service…, group…, website → 303 /subscribe?sent=1
- *   POST /subscription/confirm       id, token                                       → 303 manage page (?confirmed=1)
+ *   POST /subscription/confirm       id, token                                       → 303 manage page (?confirmed=1),
+ *                                                                                      or /subscription/confirm?already=1
  *   POST /subscription/manage        id, token, locale, scope, service…, group…      → 303 manage page (?saved=1)
  *   POST /subscription/unsubscribe   id, token                                       → 303 /subscription/manage?unsubscribed=1
  *
@@ -169,6 +170,8 @@ export function registerSubscriptionForms(scope: FastifyInstance, renderPage: Fo
     if (!link) return seeOther(reply, withQuery(CONFIRM_PAGE, { error: 'invalid' }));
     try {
       const { subscription, manageToken } = await confirm(ctx, link.id, link.token);
+      // Confirmed before: the confirm link no longer opens the manage page.
+      if (!manageToken) return seeOther(reply, withQuery(CONFIRM_PAGE, { already: '1' }));
       return seeOther(reply, managePage({ id: subscription.id, token: manageToken }, { confirmed: '1' }));
     } catch (err) {
       if (isStatus(err, 404)) return seeOther(reply, withQuery(CONFIRM_PAGE, { error: 'invalid' }));

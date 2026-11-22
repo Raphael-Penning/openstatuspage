@@ -131,6 +131,11 @@ Details that protect subscribers and your mail server:
   query string out of it.
 - Confirming takes one click on **Confirm subscription**. Opening the link
   alone (for example by a link scanner of a mail provider) confirms nothing.
+- The confirmation link leads to the manage page only once. Used again
+  after the subscription is confirmed, it shows "This subscription is already
+  confirmed" with how to manage it: the link in any notification email, or
+  subscribing again with the same address, which sends a manage link. An old
+  confirmation email therefore does not stay a key to the subscription.
 - Subscribing, confirming, changing preferences and unsubscribing work
   without JavaScript as plain forms.
 - Every notification email contains a manage link and an unsubscribe link.

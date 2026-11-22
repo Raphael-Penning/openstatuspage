@@ -349,26 +349,40 @@ export async function findByToken(
   return sub;
 }
 
-/** Confirms a subscription (idempotent) and returns it together with the manage token. */
-export async function confirmSubscription(
-  ctx: AppContext,
-  id: string,
-  token: string,
-  now = new Date(),
-): Promise<{ subscription: PublicSubscription; manageToken: string }> {
+/**
+ * Result of a confirmation. `manageToken` only for the request that confirmed the
+ * subscription; null when it was confirmed before, so an old confirmation mail is
+ * no lasting management credential (the manage link comes with every mail, and
+ * subscribing again sends one).
+ */
+export interface ConfirmResult {
+  subscription: PublicSubscription;
+  manageToken: string | null;
+}
+
+/** Confirms a subscription (idempotent); the manage token only on the first confirmation. */
+export async function confirmSubscription(ctx: AppContext, id: string, token: string, now = new Date()): Promise<ConfirmResult> {
   let sub = await findByToken(ctx, id, 'confirm', token);
-  if (sub.confirmed_at === null) {
-    const nowIso = now.toISOString();
-    await ctx.db
-      .updateTable('subscribers')
-      .set({ confirmed_at: nowIso, updated_at: nowIso })
-      .where('id', '=', sub.id)
-      .execute();
+  const nowIso = now.toISOString();
+  // Conditional: of concurrent requests only one confirms (and gets the manage token).
+  const result = await ctx.db
+    .updateTable('subscribers')
+    .set({ confirmed_at: nowIso, updated_at: nowIso })
+    .where('id', '=', sub.id)
+    .where('confirmed_at', 'is', null)
+    .executeTakeFirst();
+  const confirmedNow = Number(result.numUpdatedRows ?? 0) > 0;
+  if (confirmedNow) {
     sub = { ...sub, confirmed_at: nowIso, updated_at: nowIso };
+  } else if (sub.confirmed_at === null) {
+    // Confirmed (or removed) by a concurrent request in between.
+    const current = await ctx.db.selectFrom('subscribers').selectAll().where('id', '=', sub.id).executeTakeFirst();
+    if (!current) throw notFound('Subscription');
+    sub = current;
   }
   return {
     subscription: await toPublicSubscription(ctx.db, sub),
-    manageToken: subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', sub.id, sub.token_salt),
+    manageToken: confirmedNow ? subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', sub.id, sub.token_salt) : null,
   };
 }
 

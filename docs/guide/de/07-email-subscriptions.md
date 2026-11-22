@@ -140,6 +140,12 @@ Details, die Abonnenten und deinen Mailserver schützen:
 - Zum Bestätigen braucht es einen Klick auf **Abonnement bestätigen**. Das
   bloße Öffnen des Links (etwa durch den Link-Scanner eines Mail-Anbieters)
   bestätigt nichts.
+- Der Bestätigungslink führt nur einmal zur Verwaltungsseite. Nutzt du ihn
+  nach der Bestätigung noch einmal, zeigt er „Dieses Abonnement ist bereits
+  bestätigt“ und erklärt, wie du es verwaltest: über den Link in einer
+  beliebigen Benachrichtigung oder indem du mit derselben Adresse erneut
+  abonnierst, dann kommt ein Verwaltungslink per E-Mail. Eine alte
+  Bestätigungs-E-Mail bleibt so kein Schlüssel zum Abonnement.
 - Anmelden, Bestätigen, Einstellungen ändern und Abmelden funktionieren auch
   ohne JavaScript als normale Formulare.
 - Jede Benachrichtigung enthält einen Link zur Verwaltung und einen Link zum

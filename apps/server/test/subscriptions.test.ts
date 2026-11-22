@@ -144,10 +144,13 @@ describe('subscribe and confirm', () => {
       manageToken: subscriptionToken(t.config.SECRET_KEY, 'manage', row.id, row.token_salt),
     });
 
-    // Idempotent.
+    // Idempotent, but the manage token only comes with the request that confirmed:
+    // an old confirmation mail is no lasting management credential.
     const again = await confirm(id, token);
     expect(again.statusCode).toBe(200);
-    expect(data<Subscription>(again).manageToken).toBe(body.manageToken);
+    expect(data<Subscription>(again)).toMatchObject({ id, confirmed: true });
+    expect(again.body).not.toContain(body.manageToken!);
+    expect(data(again)).not.toHaveProperty('manageToken');
   });
 
   it('answers unknown ids and wrong tokens identically', async () => {

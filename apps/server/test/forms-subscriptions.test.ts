@@ -194,6 +194,22 @@ describe('POST /subscription/confirm', () => {
     expect(rootOf(page)).toContain('jane@example.com');
   });
 
+  it('does not open the manage page for a subscription confirmed before', async () => {
+    const sub = await subscriberWithTokens();
+    const fields: [string, string][] = [
+      ['id', sub.id],
+      ['token', sub.confirm],
+    ];
+    expect((await post('/subscription/confirm', fields)).headers.location).toContain('confirmed=1');
+    const again = await post('/subscription/confirm', fields);
+    expect(again.statusCode).toBe(303);
+    expect(again.headers.location).toBe('/subscription/confirm?already=1');
+    const page = await t.app.inject({ method: 'GET', url: '/subscription/confirm?already=1' });
+    expect(page.statusCode).toBe(200);
+    expect(rootOf(page)).toContain('This subscription is already confirmed');
+    expect(rootOf(page)).not.toContain(sub.manage);
+  });
+
   it('sends a wrong token to the invalid link page', async () => {
     const sub = await subscriberWithTokens();
     const res = await post('/subscription/confirm', [

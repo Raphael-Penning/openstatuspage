@@ -10,8 +10,10 @@
  *   GET    /api/public/subscriptions/:id/unsubscribe?token=   browser redirect to the manage page (not JSON:API)
  *
  * Subscriptions are "subscriptions" resources with a `services` relationship
- * (`serviceIds` on the plain object). The confirm response also carries the
- * `manageToken` attribute for the following manage requests.
+ * (`serviceIds` on the plain object). The response of the request that confirms
+ * a subscription also carries the `manageToken` attribute for the following manage
+ * requests; confirming again answers without it (an old confirmation mail is no
+ * lasting management credential).
  *
  * Unknown ids and wrong tokens get the same 404. Managing and unsubscribing keep
  * working when subscriptions are disabled later; only subscribing needs them enabled.
@@ -123,12 +125,13 @@ function registerSubscriptionApi(
     },
   );
 
-  // Action: `{ data: { type: "subscriptions", id, attributes: { token } } }` → the subscription with `manageToken`.
+  // Action: `{ data: { type: "subscriptions", id, attributes: { token } } }` → the subscription (with `manageToken` when this request confirmed it).
   scope.post('/api/public/subscriptions/:id/confirm', { config: { ...manageRoute.config, jsonapi: { allowId: true } } }, async (req) => {
     const { id } = parse(IdParams, req.params);
     const { token } = parse(SubscriptionConfirmInput, req.body);
     const { subscription, manageToken } = await confirm(ctx, id, token);
-    return document(subscriptionResource(subscription, { manageToken }));
+    // Only the request that confirms gets the manage token; later ones get the subscription without it.
+    return document(subscriptionResource(subscription, manageToken ? { manageToken } : {}));
   });
 
   scope.get('/api/public/subscriptions/:id', manageRoute, async (req) => {

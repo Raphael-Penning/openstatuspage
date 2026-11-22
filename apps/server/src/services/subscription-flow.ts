@@ -20,6 +20,7 @@ import { badRequest, notFound } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import {
   confirmSubscription,
+  type ConfirmResult,
   deleteSubscriber,
   findByToken,
   normalizeEmail,
@@ -82,21 +83,23 @@ export async function startSubscription(ctx: AppContext, input: SubscribeInput):
   );
 }
 
-/** Confirms a subscription (idempotent) and returns it together with the manage token; 404 for a wrong token. */
-export async function confirm(
-  ctx: AppContext,
-  id: string,
-  token: string,
-): Promise<{ subscription: PublicSubscription; manageToken: string }> {
+/**
+ * Confirms a subscription (idempotent) and returns it; the manage token only for the
+ * request that confirmed it (null afterwards). 404 for a wrong token.
+ */
+export async function confirm(ctx: AppContext, id: string, token: string): Promise<ConfirmResult> {
   if (!usesDatabaseFunctions(ctx.config)) return confirmSubscription(ctx, id, token);
   const { rows } = await call(() =>
-    sql<SubscriptionRow & { token_salt: string }>`select * from osp_public.subscription_confirm(${id}, ${token})`.execute(ctx.db),
+    sql<SubscriptionRow & { token_salt: string | null }>`select * from osp_public.subscription_confirm(${id}, ${token})`.execute(
+      ctx.db,
+    ),
   );
   const row = rows[0];
   if (!row) throw notFound('Subscription');
+  // The function returns the salt only to the request that confirmed the subscription.
   return {
     subscription: fromRow(row),
-    manageToken: subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', row.id, row.token_salt),
+    manageToken: row.token_salt ? subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', row.id, row.token_salt) : null,
   };
 }
 
