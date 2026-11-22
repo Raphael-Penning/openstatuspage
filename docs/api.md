@@ -4283,7 +4283,8 @@ errors are error documents whose `source.pointer` points into the body as sent
 
 `full: true` (remove checks missing from the payload) is accepted only for sources
 of type `webhook` (`400` otherwise); a full push that would remove more than half of
-the checks linked to services or used as bundle members is rejected with `409` and
+the checks linked to services or used as bundle members (counted over 24 hours,
+including those removed by earlier full pushes) is rejected with `409` and
 stores nothing (see [adapters/README.md](adapters/README.md)). Rate limited per
 source (default 120 requests/min).
 

@@ -322,4 +322,7 @@ protect that configuration:
   nothing is stored (the push counterpart of the poller's "empty result"
   guard). Include the missing checks, unlink them (or take them out of the
   bundle) in the admin UI first, or push without `full`. Checks that are
-  neither linked nor bundle members are removed without this limit.
+  neither linked nor bundle members are removed without this limit. The half
+  is counted over 24 hours: linked checks removed by earlier full pushes in
+  that window count as well (against the linked checks at the window's start),
+  so repeated full pushes cannot remove the links step by step.

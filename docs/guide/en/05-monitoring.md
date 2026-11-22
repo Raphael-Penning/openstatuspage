@@ -90,7 +90,8 @@ only for **Webhook** sources (other types get their list from polling, and
 the server answers `400`). As a safety net, a full push that would remove more than half
 of the checks linked to services or used in check bundles is rejected with
 `409` and changes nothing; unlink those checks (or take them out of the
-bundle) first if the removal is intended.
+bundle) first if the removal is intended. The half counts over 24 hours:
+checks that earlier full pushes removed within that time count as well.
 
 ## Composing services from checks
 

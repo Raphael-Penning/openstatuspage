@@ -19,6 +19,9 @@ export interface IngestResult {
   stateChanges: number;
 }
 
+/** Window of the cumulative full-sync guard (see assertKeepsLinkedChecks). */
+export const FULL_SYNC_GUARD_WINDOW_MS = 24 * 60 * 60_000;
+
 /** Default for MAX_CHECKS_PER_SOURCE. */
 export const DEFAULT_MAX_CHECKS_PER_SOURCE = 20_000;
 
@@ -52,6 +55,8 @@ export class IngestService {
    * the checks linked to services or used as bundle members is rejected with
    * 409 and nothing is stored: service links and bundle memberships are
    * configured by administrators and do not come back when a check reappears.
+   * The half is counted over 24 hours, so repeated full syncs cannot remove the
+   * links step by step either.
    * With `deferBundleRecompute` (poll path), the source's bundles are not
    * re-evaluated here because `recordPoll` follows and does it with the new
    * poll outcome; bundles that lost a removed member are still re-evaluated.
@@ -99,7 +104,7 @@ export class IngestService {
       }
 
       if (options.full && options.guardLinkedChecks) {
-        await this.assertKeepsLinkedChecks(trx, sourceId, byExternalId);
+        await this.assertKeepsLinkedChecks(trx, sourceId, byExternalId, now);
       }
 
       for (const check of byExternalId.values()) {
@@ -209,9 +214,10 @@ export class IngestService {
    * forged full payload must not wipe most of the service mappings at once.
    */
   private async assertKeepsLinkedChecks(
-    db: Pick<DB, 'selectFrom'>,
+    db: Pick<DB, 'selectFrom' | 'updateTable'>,
     sourceId: string,
     incoming: Map<string, NormalizedCheck>,
+    now: string,
   ): Promise<void> {
     // Checks linked to services or used as bundle members (each counted once).
     const linked = await db
@@ -233,12 +239,31 @@ export class IngestService {
       )
       .execute();
     const removed = linked.filter((l) => !incoming.has(l.external_id)).length;
-    if (removed > 0 && removed * 2 > linked.length) {
+    if (removed === 0) return;
+
+    // Cumulative over a window: links removed by earlier full syncs in the window
+    // count as well, against the number of linked checks at the window's start.
+    const source = await db
+      .selectFrom('monitor_sources')
+      .select(['full_sync_window_at', 'full_sync_removed_links'])
+      .where('id', '=', sourceId)
+      .executeTakeFirst();
+    const windowAt = source?.full_sync_window_at ? Date.parse(source.full_sync_window_at) : NaN;
+    const inWindow = Number.isFinite(windowAt) && Date.parse(now) - windowAt < FULL_SYNC_GUARD_WINDOW_MS;
+    const earlier = inWindow ? (source?.full_sync_removed_links ?? 0) : 0;
+    const base = linked.length + earlier;
+    if ((removed + earlier) * 2 > base) {
       throw conflict(
-        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services or bundles. ` +
-          'Include these checks, unlink them in the admin UI first, or push without "full".',
+        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services or bundles` +
+          (earlier > 0 ? ` (${earlier} more were removed by full pushes in the last 24 hours)` : '') +
+          '. Include these checks, unlink them in the admin UI first, or push without "full".',
       );
     }
+    await db
+      .updateTable('monitor_sources')
+      .set(inWindow ? { full_sync_removed_links: earlier + removed } : { full_sync_window_at: now, full_sync_removed_links: removed })
+      .where('id', '=', sourceId)
+      .execute();
   }
 
   /** Records the outcome of a poll on the source row. */

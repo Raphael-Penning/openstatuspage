@@ -95,7 +95,9 @@ bekommen ihre Liste per Abfrage, dort antwortet der Server mit `400`. Als
 Schutz wird ein vollständiger Push, der mehr als die Hälfte der mit Services
 verknüpften oder in Check-Bündeln verwendeten Checks entfernen würde, mit `409`
 abgelehnt und ändert nichts. Ist das Entfernen gewollt, lös die Verknüpfungen
-vorher (bzw. nimm die Checks aus dem Bündel).
+vorher (bzw. nimm die Checks aus dem Bündel). Die Hälfte gilt über 24 Stunden:
+Checks, die frühere vollständige Pushes in dieser Zeit entfernt haben, zählen
+mit.
 
 ## Services aus Checks zusammensetzen
 

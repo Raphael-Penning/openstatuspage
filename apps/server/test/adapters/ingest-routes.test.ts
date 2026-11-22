@@ -272,6 +272,59 @@ describe('POST /api/ingest/:sourceId', () => {
     expect(await links()).toEqual(['a', 'b']);
   });
 
+  it('counts linked checks removed by earlier full pushes within 24 hours', async () => {
+    const { id, token } = await t.insertSource({ type: 'webhook' });
+    const push = (ids: string[], full = true) =>
+      t.app.inject({
+        method: 'POST',
+        url: `/api/ingest/${id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { checks: ids.map((c) => ({ id: c, state: 0 })), full },
+      });
+    await push(['a', 'b', 'c', 'd'], false);
+    const rows = await t.ctx.db.selectFrom('monitor_checks').select('id').where('source_id', '=', id).execute();
+    const now = nowIso();
+    const serviceId = newId();
+    await t.ctx.db
+      .insertInto('services')
+      .values({
+        id: serviceId,
+        slug: 'api',
+        name: 'API',
+        kind: 'service',
+        sort_order: 0,
+        is_public: 1,
+        status_mode: 'auto',
+        manual_status: 'operational',
+        aggregation: 'worst',
+        current_status: 'operational',
+        monitor_status: 'operational',
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+    await t.ctx.db
+      .insertInto('service_checks')
+      .values(rows.map((r) => ({ service_id: serviceId, check_id: r.id })))
+      .execute();
+
+    // Half of the four linked checks: allowed.
+    expect((await push(['a', 'b'])).statusCode).toBe(200);
+    // One more of the remaining two would be three of four within the window.
+    const next = await push(['a']);
+    expect(next.statusCode).toBe(409);
+    expect(next.json().errors[0].detail).toContain('2 more were removed by full pushes in the last 24 hours');
+    expect((await checks(id)).map((c) => c.external_id)).toEqual(['a', 'b']);
+
+    // After the window, the count starts again.
+    await t.ctx.db
+      .updateTable('monitor_sources')
+      .set({ full_sync_window_at: new Date(Date.now() - 25 * 60 * 60_000).toISOString() })
+      .where('id', '=', id)
+      .execute();
+    expect((await push(['a'])).statusCode).toBe(200);
+  });
+
   it(`rate limits to ${INGEST_RATE_LIMIT_PER_MINUTE} requests per minute and source`, async () => {
     const a = await t.insertSource({ type: 'webhook' });
     const b = await t.insertSource({ type: 'webhook' });
