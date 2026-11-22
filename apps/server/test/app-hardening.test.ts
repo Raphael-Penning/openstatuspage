@@ -123,6 +123,20 @@ describe('http hardening', () => {
     expect(api.headers['cross-origin-opener-policy']).toBeUndefined();
   });
 
+  it('sends the security headers with the answer to a malformed URL', async () => {
+    for (const url of ['/api/public/services/%E0', '/api/public/incidents/%E0%A4%A', '/api/public/private-page/services/%E0']) {
+      const res = await app.inject({ url });
+      expect(res.statusCode, url).toBe(400);
+      expect(res.headers['content-type'], url).toBe('application/vnd.api+json');
+      expect(res.json().errors[0], url).toMatchObject({ status: '400', code: 'bad_url' });
+      expect(res.body, url).not.toContain('%E0');
+      expect(res.headers['x-content-type-options'], url).toBe('nosniff');
+      expect(res.headers['x-frame-options'], url).toBe('DENY');
+      expect(res.headers['content-security-policy'], url).toBe("frame-ancestors 'none'");
+      expect(res.headers['referrer-policy'], url).toBe('strict-origin-when-cross-origin');
+    }
+  });
+
   it('denies framing of pages with a personal link token', async () => {
     for (const url of ['/subscription/manage?id=x&token=y', '/subscription/confirm?id=x&token=y', '/Subscription/Manage', '/%73ubscription/manage']) {
       const res = await app.inject({ url });

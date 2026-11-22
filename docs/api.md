@@ -160,7 +160,8 @@ with an error document, on every route (also on the
   `not_acceptable`, `invalid_document`, `type_mismatch`, `id_mismatch`,
   `invalid_parameter`, `unsupported_include`, `unsupported_sort`,
   `client_id_unsupported`, `unknown_relationship`, `invalid_json`, `empty_body`,
-  `payload_too_large`, `invalid_credentials`,
+  `payload_too_large`, `bad_url` (a malformed escape in the path), `uri_too_long`,
+  `invalid_credentials`,
   `invalid_password`, `secret_required`, ... Errors without a field (e.g. a line of
   an imported CSV file) keep their details in `meta`.
 

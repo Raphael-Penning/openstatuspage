@@ -2,12 +2,13 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath } from '@openstatuspage/shared';
-import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
 import { localPath } from './forms/http.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
+import { mapError } from './lib/jsonapi-errors.js';
 import { FRAMELESS_PAGE_CSP, PERMISSIONS_POLICY, PUBLIC_PAGE_CSP } from './lib/security-headers.js';
 import type { Mailer } from './mail/mailer.js';
 import { registerJsonApi, sendJsonApiError } from './plugins/jsonapi.js';
@@ -111,6 +112,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     redact: ['req.headers.authorization', 'req.headers.cookie'],
     serializers: { req: serializeRequest },
   };
+  const adminInstance = config.APP_ROLE === 'admin';
   const app = Fastify({
     logger: logStream
       ? { ...loggerBase, stream: logStream }
@@ -125,6 +127,15 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     trustProxy: trustProxyOption(config.TRUST_PROXY),
     // 1 MiB; routes that need more (bulk ingest) raise it per route.
     bodyLimit: 1024 * 1024,
+    // Errors Fastify answers before routing (a malformed URL): a JSON:API error document with
+    // the same security headers as every other answer; they skip the onSend hooks.
+    frameworkErrors: (err, req, reply) => {
+      securityHeaders(req, reply, { adminInstance, frameless: true });
+      const { status, errors } = mapError(err);
+      if (status >= 500) req.log.error({ err }, 'request failed');
+      // A Buffer: Fastify would add "; charset=utf-8" to a JSON string, which JSON:API forbids.
+      (reply as FastifyReply).status(status).type(JSONAPI_MEDIA_TYPE).send(Buffer.from(JSON.stringify(errorDocument(errors))));
+    },
   });
 
   if (onRoute) app.addHook('onRoute', onRoute);
@@ -145,35 +156,7 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     await app.register(cookie, { secret: config.SECRET_KEY });
   }
 
-  const adminInstance = config.APP_ROLE === 'admin';
-  // Basic hardening headers. The public page may be embedded (iframe) by
-  // customers; the management UI and the API may not.
-  app.addHook('onSend', async (req, reply) => {
-    reply.header('X-Content-Type-Options', 'nosniff');
-    // Request path as the client router sees it, so that /ADMIN/... or /%61dmin/...
-    // (served by the SPA fallback) cannot skip the checks below.
-    const path = normalizePath(req.url);
-    // Subscription pages have a token in their URL: it never leaves as a referrer.
-    reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
-    const admin = path === '/admin' || path.startsWith('/admin/');
-    // Pages with a personal link (private pages, subscription confirm and manage) are not embeddable
-    // either: whoever holds a link could otherwise show it on any site.
-    const framed = !(admin || isApiPath(path) || isPersonalPath(path));
-    if (!framed) reply.header('X-Frame-Options', 'DENY');
-    // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
-    const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
-    if (html) {
-      reply.header('Content-Security-Policy', framed ? PUBLIC_PAGE_CSP : FRAMELESS_PAGE_CSP);
-      reply.header('Cross-Origin-Opener-Policy', 'same-origin');
-      reply.header('Permissions-Policy', PERMISSIONS_POLICY);
-    } else if (!framed) {
-      reply.header('Content-Security-Policy', "frame-ancestors 'none'");
-    }
-    // The management UI is never indexed by search engines, nor is any page of an
-    // admin instance (its public pages are a preview; the status page is elsewhere).
-    // Private pages (/p/<token>) are never indexed nor followed, wherever they are served.
-    if (admin || (adminInstance && html) || isPrivatePagePath(path)) reply.header('X-Robots-Tag', 'noindex, nofollow');
-  });
+  app.addHook('onSend', async (req, reply) => securityHeaders(req, reply, { adminInstance }));
 
   registerJsonApi(app);
 
@@ -269,6 +252,38 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   }
 
   return app;
+}
+
+/**
+ * Basic hardening headers of every answer. The public page may be embedded
+ * (iframe) by customers; the management UI, the API and pages with a personal
+ * link may not, nor any answer with `frameless` (error documents).
+ */
+function securityHeaders(req: FastifyRequest, reply: FastifyReply, options: { adminInstance: boolean; frameless?: boolean }): void {
+  reply.header('X-Content-Type-Options', 'nosniff');
+  // Request path as the client router sees it, so that /ADMIN/... or /%61dmin/...
+  // (served by the SPA fallback) cannot skip the checks below.
+  const path = normalizePath(req.url);
+  // Subscription pages have a token in their URL: it never leaves as a referrer.
+  reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
+  const admin = path === '/admin' || path.startsWith('/admin/');
+  // Pages with a personal link (private pages, subscription confirm and manage) are not embeddable
+  // either: whoever holds a link could otherwise show it on any site.
+  const framed = !(options.frameless || admin || isApiPath(path) || isPersonalPath(path));
+  if (!framed) reply.header('X-Frame-Options', 'DENY');
+  // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
+  const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
+  if (html) {
+    reply.header('Content-Security-Policy', framed ? PUBLIC_PAGE_CSP : FRAMELESS_PAGE_CSP);
+    reply.header('Cross-Origin-Opener-Policy', 'same-origin');
+    reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+  } else if (!framed) {
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'");
+  }
+  // The management UI is never indexed by search engines, nor is any page of an
+  // admin instance (its public pages are a preview; the status page is elsewhere).
+  // Private pages (/p/<token>) are never indexed nor followed, wherever they are served.
+  if (admin || (options.adminInstance && html) || isPrivatePagePath(path)) reply.header('X-Robots-Tag', 'noindex, nofollow');
 }
 
 /** Redirects to the preferred spelling of a page path are kept for a day. */
