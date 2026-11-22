@@ -239,8 +239,9 @@ the public pages): `POST /subscribe`, `/subscription/confirm`,
 `application/x-www-form-urlencoded` bodies, next to the JSON:API (which they
 leave unchanged). They call the same subscription flow, so a public instance on
 PostgreSQL uses the `osp_public` functions above, and they have the same rate
-limits per client IP (5 subscribe requests, 30 confirm, manage and unsubscribe
-requests per minute; the forms and the API count separately).
+limits per client IP (5 subscribe requests per minute, shared by the form and
+the API, so switching between them gains nothing; 30 confirm, manage and
+unsubscribe requests per minute).
 
 - **Cross-site requests.** The forms carry no cookie (the public role sets
   none), but another site could still make a visitor's browser post one, for
@@ -357,6 +358,14 @@ account) or obtains an API token.
   ID. An admin account therefore cannot make the public instance request
   internal hosts (no SSRF through the settings). Admin-chosen URLs (logo,
   links) are only ever loaded by visitors' browsers.
+- **Guessing and keeping access is harder**: failed logins are throttled per
+  account as well as per client IP, so rotating source addresses or forged
+  `X-Forwarded-For` headers do not multiply the attempts. SSO creates or links
+  an account only for an e-mail address the identity provider marks as
+  verified. An admin resetting a user's password revokes that user's API tokens
+  and sessions, a user changing their own password ends all their sessions
+  and gets a fresh session cookie, and a new login replaces the session cookie it was sent with, so a
+  stolen password or session does not outlive the reset.
 - Keep the admin host off the internet (VPN, IP allow list), use OIDC with
   group mapping, and review the audit log.
 
