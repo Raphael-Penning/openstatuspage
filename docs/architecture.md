@@ -307,10 +307,12 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   the queue is full (or the render fails), the last rendered version answers
   with `X-Cache: STALE`, its own `ETag` (If-None-Match still answers 304) and
   `Cache-Control: public, max-age=5`. Without such a version a full queue
-  answers `503` with `Retry-After: 5`, `Cache-Control: no-store`,
-  `X-Robots-Tag: noindex` and a small static page in the request's language
-  (`ssr/busy.ts`: `?lang=`, cookie, Accept-Language, else English; no scripts).
-  Personal pages are never kept, so they get the 503 under overload.
+  sends the plain client-rendered entry page (`Cache-Control: no-cache`), which
+  costs no render. Personal pages are never kept and never get the entry page
+  instead of their render, so under overload they get `503` with
+  `Retry-After: 5`, `Cache-Control: no-store`, `X-Robots-Tag: noindex` and a
+  small static page in the request's language (`ssr/busy.ts`: `?lang=`, cookie,
+  Accept-Language, else English; no scripts).
 - **Compression.** Each render is gzip-compressed once and kept with the page;
   clients that accept gzip get that copy. Static files are compressed at build
   time (Brotli and gzip, `apps/web/tools/precompress.ts`) and sent as they are;
@@ -522,8 +524,8 @@ read after 15 s without requests.
 
 Public: four runs; the range is their spread. One page renders at a time and at
 most four wait; beyond that a request got the client-rendered page when this
-was measured (now the last rendered version from the cache or the small 503
-page, neither renders anything; the cache limits are unchanged). With two
+was measured (now the last rendered version from the cache if there is one,
+which renders nothing either; the cache limits are unchanged). With two
 renders and 32 waiting (the setting before) the same burst took the public
 instance to 110 MB (kernel peak 111 MB), with one render and 8 waiting to 98–99
 MB (kernel peak 100 MB).
@@ -608,7 +610,8 @@ What keeps it small:
   (about 500 kB, ASCII only, `renderToString` without the streaming renderer,
   only the `common` and `public` translations) is imported on the first page
   request, one page renders at a time (at most 4 wait, the rest get the
-  last rendered version or a 503 busy page).
+  last rendered version or the client-rendered entry page; personal pages a
+  503 busy page).
 - **Bounded caches.** The only response cache holds rendered public pages for
   5 s, and expired ones for another 10 minutes to answer under overload (at
   most 16 pages and 1 MiB together, as UTF-8 bytes); there is no query cache. The rate limiter

@@ -518,7 +518,7 @@ describe('render limits', () => {
     await t.close();
   });
 
-  it('answers 503 beyond the queue when no earlier version exists and logs that once, with a count', async () => {
+  it('sends the client-rendered page beyond the queue when no earlier version exists and logs that once, with a count', async () => {
     const real = await renderFromSource();
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => (release = resolve));
@@ -539,29 +539,25 @@ describe('render limits', () => {
     );
     const warnings: unknown[] = [];
     t.app.log.warn = ((obj: unknown) => warnings.push(obj)) as typeof t.app.log.warn;
-    // 1 renders, 4 wait, the rest gets 503 at once (no earlier version of these pages).
+    // 1 renders, 4 wait, the rest gets the client-rendered entry page at once (no earlier
+    // version of these pages, and the entry page costs no render).
     const pending = Array.from({ length: 10 }, (_, i) => get(`/services?q=${i}`));
     await new Promise((resolve) => setTimeout(resolve, 50));
     release();
     const pages = await Promise.all(pending);
-    const busy = pages.filter((p) => p.statusCode === 503);
-    expect(busy).toHaveLength(5);
-    expect(pages.filter((p) => p.statusCode === 200)).toHaveLength(5);
-    for (const res of busy) {
-      expect(res.headers['retry-after']).toBe('5');
-      expect(res.headers['cache-control']).toBe('no-store');
-      expect(res.headers['x-robots-tag']).toBe('noindex');
-      expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
-      expect(res.body).toContain('<meta name="robots" content="noindex">');
-      expect(res.body).toContain('<h1>Temporarily busy</h1>');
-      expect(res.body).not.toContain('<script');
+    const plain = pages.filter((p) => !p.body.includes('id="osp-state"'));
+    expect(plain).toHaveLength(5);
+    for (const res of pages) expect(res.statusCode).toBe(200);
+    for (const res of plain) {
+      expect(res.headers['cache-control']).toBe('no-cache');
+      expect(res.headers['content-type']).toContain('text/html');
     }
     expect(warnings).toEqual([{ requests: 1, stale: 0 }]);
     await t.close();
   });
 });
 
-describe('overload: stale pages and 503', () => {
+describe('overload: stale pages, client-rendered pages and 503', () => {
   /** Render bundle stand-in: the page shows its URL and a version; `/block` holds the only render slot. */
   let version: number;
   let failing: boolean;
@@ -653,25 +649,21 @@ describe('overload: stale pages and 503', () => {
     expect(fresh.headers.etag).not.toBe(first.headers.etag);
   });
 
-  it('answers 503 with Retry-After when there is no earlier version', async () => {
+  it('sends the client-rendered page when there is no earlier version', async () => {
     await start();
     await overload();
     const res = await page('/b', { 'accept-language': 'de-DE,de;q=0.9' });
-    expect(res.statusCode).toBe(503);
-    expect(res.headers['retry-after']).toBe('5');
-    expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.headers['x-robots-tag']).toBe('noindex');
-    expect(res.body).toContain('<html lang="de"');
-    expect(res.body).toContain('<h1>Vorübergehend ausgelastet</h1>');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe('plain page');
   });
 
-  it('answers 503 once the stale window is over', async () => {
+  it('sends the client-rendered page once the stale window is over', async () => {
     await start({ staleSeconds: 0.05 });
     await page('/a');
     await sleep(150);
     expect(ssr.cacheSize.entries).toBe(0);
     await overload();
-    expect((await page('/a')).statusCode).toBe(503);
+    expect((await page('/a')).body).toBe('plain page');
   });
 
   it('prefers the stale page to the plain page when rendering fails', async () => {
@@ -694,9 +686,15 @@ describe('overload: stale pages and 503', () => {
     expect((await page(url)).headers['cache-control']).toBe('private, no-store');
     expect(ssr.cacheSize.entries).toBe(0);
     await overload();
-    const res = await page(url);
+    // A 503 busy page in the visitor's language, never the client-rendered page or a stale copy.
+    const res = await page(url, { 'accept-language': 'de-DE,de;q=0.9' });
     expect(res.statusCode).toBe(503);
+    expect(res.headers['retry-after']).toBe('5');
     expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.headers['x-robots-tag']).toBe('noindex');
+    expect(res.body).toContain('<html lang="de"');
+    expect(res.body).toContain('<h1>Vorübergehend ausgelastet</h1>');
+    expect(res.body).not.toContain('<script');
     expect(res.body).not.toContain(secret);
   });
 
@@ -720,7 +718,7 @@ describe('overload: stale pages and 503', () => {
     // /a was used after /b, so /b went when /c came in.
     expect((await page('/a')).body).toContain('/a v1');
     expect((await page('/c')).body).toContain('/c v1');
-    expect((await page('/b')).statusCode).toBe(503);
+    expect((await page('/b')).body).toBe('plain page');
   });
 
   it('keeps stale pages within the byte limit, dropping the oldest', async () => {
@@ -737,7 +735,7 @@ describe('overload: stale pages and 503', () => {
     await overload();
     expect((await page('/p4')).headers['x-cache']).toBe('STALE');
     expect((await page('/p3')).headers['x-cache']).toBe('STALE');
-    expect((await page('/p0')).statusCode).toBe(503);
+    expect((await page('/p0')).body).toBe('plain page');
   });
 });
 
