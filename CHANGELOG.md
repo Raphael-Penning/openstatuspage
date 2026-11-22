@@ -6,6 +6,8 @@ breaking changes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
 ### Upgrading from 0.2.x
 
 Breaking changes from the security fixes; details under *Changed*.
