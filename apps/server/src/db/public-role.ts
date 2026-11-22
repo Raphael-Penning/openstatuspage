@@ -6,6 +6,7 @@ import { sql } from 'kysely';
 import type { DB } from './index.js';
 import { createPublicSchema } from './migrations/0007_public_role.js';
 import { createPrivatePageFunctions } from './migrations/0009_private_pages.js';
+import { hardenPublicSchema } from './migrations/0010_definer_search_path.js';
 
 /** Schema with the views and functions of the public role; its search_path. */
 export const PUBLIC_SCHEMA = 'osp_public';
@@ -34,6 +35,7 @@ export async function ensurePublicSchema(db: DB): Promise<PublicSchemaState> {
     if (!(await createPublicSchema(trx))) return 'missing';
     // Later migrations that add to osp_public (they skip it while the schema is missing).
     await createPrivatePageFunctions(trx);
+    await hardenPublicSchema(trx);
     return 'created';
   });
 }
@@ -43,7 +45,9 @@ export async function ensurePublicSchema(db: DB): Promise<PublicSchemaState> {
  * (idempotent, safe for concurrent starts). Returns `missing` when the role does
  * not exist yet and `no-schema` when osp_public does not exist. Fails when the
  * role is the connecting role, a superuser, has BYPASSRLS or is a member of any
- * role. Needs the table owner.
+ * role, and when the role may create objects in the table schema or in osp_public
+ * (e.g. CREATE on the schema "public" granted to PUBLIC, see deploy/postgres/harden.sql).
+ * Needs the table owner.
  */
 export async function grantPublicRole(db: DB, role: string): Promise<PublicRoleGrant> {
   if (!(await publicSchemaExists(db))) return 'no-schema';
@@ -62,8 +66,9 @@ export function publicSchemaHint(): string {
 }
 
 /**
- * On a public instance: whether its login is a registered public role, i.e. the
- * database itself limits what it can read and write.
+ * On a public instance: whether its login is a registered public role that may not
+ * create objects in the table schema or in osp_public, i.e. the database itself
+ * limits what it can read and write.
  */
 export async function connectionRestricted(db: DB): Promise<boolean> {
   const { rows } = await sql<{ restricted: boolean }>`select ${sql.id(PUBLIC_SCHEMA)}.connection_restricted() as restricted`.execute(db);
