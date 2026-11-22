@@ -187,33 +187,41 @@ existing installation to apply it.
 
 Before PostgreSQL 15 (and on clusters upgraded from such a version) `PUBLIC` may
 create objects in the schema `public`, so the public role could too. The pinned
-`search_path` of the functions (layer 4) already keeps such objects out of
-everything that runs with the owner's rights; taking `CREATE` away is defence
-in depth on top. It needs no manual step:
+`search_path` of the functions (layer 4) keeps such objects from taking over
+anything that runs with the owner's rights. It does not stop the public role
+from breaking its own functions: they call helpers schema-qualified in the
+table schema (for example `public.osp_iso(...)`), and an overload with a
+default argument there makes those calls ambiguous. And the sessions of admin
+and worker instances have the table schema on their `search_path`
+([CVE-2018-1058](https://wiki.postgresql.org/wiki/A_Guide_to_CVE-2018-1058%3A_Protect_Your_Search_Path)).
+So `CREATE` is taken away, without a manual step where the app role may:
 
 - Migration `0013_schema_create_hardening` and `osp_grant_public_role` (every
   start of an admin, worker or all instance, and `pnpm db:migrate`) revoke
   `CREATE` on the table schema and on `osp_public` from `PUBLIC` and from the
-  public role. Before revoking from `PUBLIC` they make sure the migrating role
-  keeps its own `CREATE` (it grants it to itself where it may; later migrations
-  add tables there) and leave `PUBLIC` as it is when it would lose it.
-  Databases without a registered public role are not changed.
-- Each statement runs on its own; one the migrating role may not run (the schema
-  belongs to another role, for example a superuser on PostgreSQL 14 while the
-  app role is none) changes nothing and fails nothing. If the public role may
-  still create objects there afterwards, the migration raises a `WARNING` and
-  the instances that migrate log on every start: *"the public database role
-  "osp_public" may still create objects in the table schema or in osp_public,
-  and this instance may not take that away …"*, with the exact commands, for
-  example `REVOKE CREATE ON SCHEMA public FROM PUBLIC;` (and
-  `GRANT CREATE ON SCHEMA public TO <app role>;` first when the app role created
-  its tables only through `PUBLIC`). Run them as the schema owner or a
-  superuser; `harden.sql` does the same for the schema `public`.
+  public role, under the advisory lock of the grant. They only run a revoke that
+  takes effect (the migrating role has the schema owner's privileges, which a
+  superuser and the owner of a PostgreSQL 15+ database have), so repeated and
+  parallel starts write nothing. They leave `PUBLIC` as it is when the
+  migrating role would lose its own `CREATE` by it (later migrations add tables
+  there). Databases without a registered public role are not changed.
+- If the public role may still create objects there afterwards, the migration
+  raises a `WARNING` and the instances that migrate log on every start: *"the
+  public database role "osp_public" may still create objects in the table
+  schema or in osp_public, and this instance may not take that away …"*, with
+  the exact commands, for example `REVOKE CREATE ON SCHEMA public FROM PUBLIC;`
+  (and `GRANT CREATE ON SCHEMA public TO <app role>;` first when the app role
+  created its tables only through `PUBLIC`). Run them once as the schema owner
+  or a superuser. `harden.sql` is equivalent only when the commands do not start
+  with that `GRANT`: it revokes from `PUBLIC` but grants nothing to the app role.
+- On PostgreSQL 14 or older this is the usual case: `CREATE DATABASE ... OWNER
+  <app role>` leaves the schema `public` with the bootstrap superuser, so the
+  app role cannot revoke from `PUBLIC` and only a superuser can close it.
 - A grant through a role the public role is a member of is only reported
   (`REVOKE <role> FROM osp_public;`); `osp_grant_public_role` refuses such a role
   anyway.
 - A public instance whose login may still create objects there logs a warning
-  and starts.
+  on every start and starts.
 
 PostgreSQL 11 is the minimum and 15 or newer is recommended: older servers do not support
 `security_invoker` views. There all views run with the owner's rights (as
