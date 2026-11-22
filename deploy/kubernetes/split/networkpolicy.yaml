@@ -5,8 +5,11 @@
 #
 # Needs a network plugin that enforces NetworkPolicies (Calico, Cilium, ...);
 # without one this object has no effect. Adjust before applying:
-#   - the namespace of your ingress controller (ingress-nginx below),
-#   - the namespace of your DNS service (kube-system below),
+#   - the namespace of your ingress controller (ingress-nginx below); an
+#     ingress controller with hostNetwork: true connects from the node
+#     addresses and needs an ipBlock with the node CIDR instead,
+#   - the namespace of your DNS service (kube-system below); with NodeLocal
+#     DNSCache add an ipBlock for its link-local address (e.g. 169.254.20.10/32),
 #   - PostgreSQL: by default any address on port 5432; narrow it with the
 #     commented "to" block (the address range of your database server),
 #   - with UMAMI_URL set, add an egress rule for the Umami server (the public
