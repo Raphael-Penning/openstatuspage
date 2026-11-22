@@ -214,8 +214,10 @@ they need no action.
 - The subscribe API and form share one rate-limit budget per client.
 - Mail logging in production redacts link tokens.
 - Mail subjects drop Unicode line separators.
-- A mail the transport already accepted is never retried because the
-  bookkeeping afterwards failed.
+- A mail the transport already accepted is no longer retried as a failed
+  delivery when the bookkeeping afterwards fails. If the database stays
+  unavailable through all attempts to mark it sent, the row keeps its 10-minute
+  claim and the mail can be sent once more after the claim expires.
 - Token placeholders in editor-written mail text are removed, so only the
   template's own links carry a subscriber's tokens.
 - Subscription errors from PostgreSQL pass on only the functions' own input
