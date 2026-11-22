@@ -1,0 +1,54 @@
+# NetworkPolicy of the public instance: it may only be reached from the ingress
+# controller and may only connect to DNS and PostgreSQL. A compromised public pod
+# therefore cannot reach the admin instance, the worker or the monitoring
+# systems around the ingress, and cannot send data anywhere else.
+#
+# Needs a network plugin that enforces NetworkPolicies (Calico, Cilium, ...);
+# without one this object has no effect. Adjust before applying:
+#   - the namespace of your ingress controller (ingress-nginx below),
+#   - the namespace of your DNS service (kube-system below),
+#   - PostgreSQL: by default any address on port 5432; narrow it with the
+#     commented "to" block (the address range of your database server),
+#   - with UMAMI_URL set, add an egress rule for the Umami server (the public
+#     pages proxy its script and events), e.g. port 443.
+# Probes of the kubelet are not affected on most network plugins.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openstatuspage-public
+  labels:
+    app.kubernetes.io/component: public
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: public
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        # The namespace of the ingress controller.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 3000
+          protocol: TCP
+  egress:
+    # DNS (kube-dns / CoreDNS) in kube-system. No podSelector here on purpose:
+    # the labels of kustomization.yaml (includeSelectors) would be added to it
+    # and no DNS pod would match.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # PostgreSQL.
+    - ports:
+        - port: 5432
+          protocol: TCP
+      # to:
+      #   - ipBlock:
+      #       cidr: 192.0.2.10/32
