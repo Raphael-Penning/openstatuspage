@@ -244,7 +244,11 @@ export function cleanPageUrl(value: string, baseUrl: string): string | null {
   return sameForm(value, url);
 }
 
-/** A referrer of an event: this site's personal pages become the site root, other URLs lose fragment and token. */
+/**
+ * A referrer of an event: a personal page (a link token in the path or query)
+ * becomes the root of its site, whichever origin it has (this instance may be
+ * reachable under several host names); other URLs lose fragment and token.
+ */
 export function cleanReferrer(value: string, baseUrl: string): string {
   if (!value) return value;
   let url: URL;
@@ -253,7 +257,7 @@ export function cleanReferrer(value: string, baseUrl: string): string {
   } catch {
     return '';
   }
-  if (url.origin === new URL(baseUrl).origin && isPersonalPath(url.pathname)) return `${url.origin}/`;
+  if (isPersonalPath(url.pathname)) return `${url.origin}/`;
   dropPersonal(url);
   return sameForm(value, url);
 }

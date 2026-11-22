@@ -257,7 +257,8 @@ What reaches Umami:
 - Only events for the configured website ID. Events of the personal subscription
   pages (`/subscription/...`) are dropped. The page URL and the referrer lose
   their `#fragment` and their `token` query parameters, together with the `id`
-  next to a token (a referrer on a subscription page becomes the site root).
+  next to a token (a referrer on a personal page, `/p/...` or
+  `/subscription/...` of any host, becomes the root of that host).
   Rendered subscription pages carry no tracker at all.
 - The event with the payload fields of Umami's tracker only (`website`,
   `hostname`, `url`, `referrer`, `title`, `language`, `screen`, `name`, `data`

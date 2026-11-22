@@ -9,6 +9,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   cleanEvent,
+  cleanReferrer,
   MAX_IN_FLIGHT,
   MAX_IN_FLIGHT_PER_CLIENT,
   registerAnalyticsRoutes,
@@ -315,6 +316,21 @@ describe('POST /pulse/api/send', () => {
       { url: '/history?type=incident', referrer: `${BASE_URL}/` },
       { url: '/', referrer: 'https://mail.example.com/read' },
     ]);
+  });
+
+  it('drops personal paths from a referrer of any origin', () => {
+    // Another host name or scheme of the same instance, or any other site: the path may hold a link token.
+    for (const referrer of [
+      'https://status-alias.example.com/p/abcdefghijklmnopqrstuvwxyz234567/services/web',
+      'http://status.example.com/P/abcdefghijklmnopqrstuvwxyz234567',
+      'https://other.example.net/subscription/manage?id=1',
+      'https://other.example.net/%70/abcdefghijklmnopqrstuvwxyz234567',
+    ]) {
+      const cleaned = cleanReferrer(referrer, BASE_URL);
+      expect(cleaned, referrer).toBe(`${new URL(referrer).origin}/`);
+    }
+    expect(cleanReferrer(`${BASE_URL}/p/abc`, BASE_URL)).toBe(`${new URL(BASE_URL).origin}/`);
+    expect(cleanReferrer('https://other.example.net/pages/abc', BASE_URL)).toBe('https://other.example.net/pages/abc');
   });
 
   it('removes fragments, tokens in custom data and fields the tracker never sends', async () => {
