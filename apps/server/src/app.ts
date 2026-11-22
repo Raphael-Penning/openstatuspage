@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type RouteOptions } f
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
 import type { DB } from './db/index.js';
+import { localPath } from './forms/http.js';
 import { errorDocument, JSONAPI_MEDIA_TYPE } from './lib/jsonapi.js';
 import { FRAMELESS_PAGE_CSP, PERMISSIONS_POLICY, PUBLIC_PAGE_CSP } from './lib/security-headers.js';
 import type { Mailer } from './mail/mailer.js';
@@ -249,6 +250,8 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         // pages (their token would go into a cacheable redirect; they are never indexed).
         const preferred = canonicalPath(path);
         if (preferred !== path && !isAdminPath(path) && !isPersonalPath(path)) {
+          // Only ever to a path on this site (one leading slash, no backslash), like the form redirects.
+          if (localPath(preferred) !== preferred) return routeNotFound(reply.header('Cache-Control', 'no-store'));
           return reply.header('Cache-Control', CANONICAL_REDIRECT_CACHE).redirect(preferred + req.url.slice(path.length), 301);
         }
         // Private pages: as many page views per client as their API allows (against guessing tokens).
@@ -288,11 +291,14 @@ function trustProxyOption(value: Config['TRUST_PROXY']): boolean | string[] | ((
 }
 
 /**
- * A request path no browser sends: with dot segments or a backslash (also as %5c),
- * which the WHATWG URL parser turns into "/". The renderer would read such a path
- * differently from the raw-path checks before it, so it is never answered with a page.
+ * A request target no browser sends: not starting with "/", or with dot segments
+ * or a backslash (also as %5c), which the WHATWG URL parser turns into "/". The
+ * renderer would read such a path differently from the raw-path checks before
+ * it, so it is never answered with a page or a redirect.
  */
 function isHandMadePath(path: string): boolean {
+  // Not a path at all: the absolute form (GET http://host/x), which browsers never send to a server.
+  if (!path.startsWith('/')) return true;
   return hasDotSegments(path) || /\\|%5c/i.test(path);
 }
 

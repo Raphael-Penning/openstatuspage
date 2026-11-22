@@ -6,6 +6,7 @@
  * is needed; the page template is a copy of what Vite writes.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { request, type IncomingHttpHeaders } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -103,6 +104,25 @@ async function seed(app: TestApp) {
 }
 
 const get = (url: string, headers: Record<string, string> = {}) => t.app.inject({ method: 'GET', url, headers });
+
+/**
+ * GET with the request target exactly as given (backslashes, absolute form):
+ * inject() and fetch() normalise it before sending, a hand-made request does not.
+ */
+async function getRaw(target: string): Promise<{ statusCode: number; headers: IncomingHttpHeaders; body: string }> {
+  const address = t.app.server.listening ? null : await t.app.listen({ host: '127.0.0.1', port: 0 });
+  const port = address ? Number(new URL(address).port) : (t.app.server.address() as { port: number }).port;
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path: target, method: 'GET' }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => (body += chunk));
+      res.on('end', () => resolve({ statusCode: res.statusCode ?? 0, headers: res.headers, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 /** Parsed state block of a rendered page. */
 function stateOf(res: LightMyRequestResponse): { lang: string; queries: { queries: { queryKey: unknown[]; state: { status: string } }[] } } {
@@ -317,6 +337,15 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     }
     expect((await get('/services')).statusCode).toBe(200);
     expect((await get('/')).statusCode).toBe(200);
+  });
+
+  it('never redirects off the site, whatever the request target', async () => {
+    for (const target of ['/\\evil.example/', '/\\evil.example', '/%5Cevil.example/', 'http://evil.example/X', 'http://evil.example//X/']) {
+      const res = await getRaw(target);
+      expect(res.statusCode, target).toBe(404);
+      expect(res.headers.location, target).toBeUndefined();
+      expect(res.headers['cache-control'], target).toBe('no-store');
+    }
   });
 
   it('never caches personal pages in another spelling of the path', async () => {
