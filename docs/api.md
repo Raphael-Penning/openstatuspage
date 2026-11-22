@@ -3162,8 +3162,8 @@ Content-Type: application/vnd.api+json
 - `PATCH` on sources: left-out attributes keep their values; the `config` is kept
   when left out and replaced as a whole otherwise. Secrets equal to `SECRET_MASK`
   keep the stored value only while `sourceType`, `baseUrl` and `username`
-  (`historyUsername` for `historyPassword`) are unchanged, otherwise `400`
-  `secret_required`; `icingaDbUrl` is kept regardless.
+  (`historyUsername` for `historyPassword`) are unchanged and `verifyTls` is not
+  turned off, otherwise `400` `secret_required`; `icingaDbUrl` is kept regardless.
 - History import ([adapters/README.md](adapters/README.md#history-import)):
   `HistoryImportCreateInput` = `{ from, to, onlyLinkedChecks = true, credentials?, csv? }`
   with `to` capped at now and a range of at most 731 days. `credentials`

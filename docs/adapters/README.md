@@ -62,7 +62,8 @@ page does not expose monitoring credentials.
   separate Uptime Kuma instance for public checks if needed).
 - Keep TLS verification enabled. Disable it only for self-signed certificates in
   trusted networks; prefer adding your internal CA to the system trust store
-  (`NODE_EXTRA_CA_CERTS=/path/to/ca.pem`).
+  (`NODE_EXTRA_CA_CERTS=/path/to/ca.pem`). Turning verification off requires
+  entering the password or API key again, like changing the URL or user name.
 - Monitoring credentials are stored encrypted with a key derived from
   `SECRET_KEY` and are never returned by the API (masked as `••••••••`).
 - Ingest tokens are stored as SHA-256 hashes; the token is shown once on

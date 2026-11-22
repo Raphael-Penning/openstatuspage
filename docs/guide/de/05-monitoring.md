@@ -44,7 +44,9 @@ kompromittierte Statusseite kommt dann nicht an dein Monitoring heran.
 Lege für Pull einen eigenen **Nur-Lese-Benutzer** an, der auf die Objekte
 beschränkt ist, die die Statusseite speisen. Lass die TLS-Prüfung an; für
 eine interne CA setzt du `NODE_EXTRA_CA_CERTS=/pfad/zur/ca.pem` in der
-Umgebung, statt die Prüfung abzuschalten.
+Umgebung, statt die Prüfung abzuschalten. Willst du die Prüfung für eine Quelle
+abschalten, gibst du ihr Passwort oder ihren API-Schlüssel erneut ein (wie beim
+Ändern der URL oder des Benutzernamens).
 
 ## Eine Quelle anbinden
 

@@ -42,7 +42,8 @@ mode**: a compromised status page then cannot reach into your monitoring.
 For pull, create a dedicated **read-only** API user restricted to the objects
 that feed the status page. Keep TLS verification on; for an internal CA set
 `NODE_EXTRA_CA_CERTS=/path/to/ca.pem` in the environment instead of disabling
-verification.
+verification. To turn verification off for a source, enter its password or API
+key again (as when you change the URL or user name).
 
 ## Connecting a source
 
