@@ -6,8 +6,8 @@
  * OIDC routes are browser redirects and stay plain.
  */
 import { ChangePasswordInput, LoginInput, type AuthConfig, type SessionInfo } from '@openstatuspage/shared';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { assertCsrf, requireSession, sessionCookieOptions } from '../plugins/auth.js';
+import type { FastifyInstance } from 'fastify';
+import { assertCsrf, requireSession, startSession } from '../plugins/auth.js';
 import { badRequest, forbidden, HttpError, notFound, unauthorized } from '../lib/errors.js';
 import { parse } from '../lib/http.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
@@ -20,7 +20,7 @@ import {
   parseLoginState,
   resolveOidcUser,
 } from '../services/oidc.js';
-import { createSession, deleteSession, deleteUserSessions, SESSION_COOKIE, sessionTtlMs } from '../services/sessions.js';
+import { deleteSession, deleteUserSessions, SESSION_COOKIE } from '../services/sessions.js';
 import { LoginThrottle } from '../services/login-throttle.js';
 import { toAdminUser } from '../services/users.js';
 import { document, Included, noContent } from '../lib/jsonapi.js';
@@ -42,11 +42,6 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const oidc = config.oidcEnabled ? new OidcClient(config) : null;
   // Per account, on top of the per-client rate limit of the route (see login-throttle.ts).
   const throttle = new LoginThrottle();
-
-  async function startSession(req: FastifyRequest, reply: FastifyReply, userId: string): Promise<void> {
-    const session = await createSession(ctx, userId, { ip: req.ip, userAgent: req.headers['user-agent'] ?? null });
-    reply.setCookie(SESSION_COOKIE, session.token, sessionCookieOptions(config, Math.floor(sessionTtlMs(ctx) / 1000)));
-  }
 
   async function sessionInfo(userId: string): Promise<SessionInfo> {
     const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirst();
@@ -95,7 +90,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           throw new HttpError(401, 'invalid_credentials', 'Invalid e-mail or password');
         }
         throttle.recordSuccess(email);
-        await startSession(req, reply, user.id);
+        await startSession(ctx, req, reply, user.id);
         await audit(db, { userId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, details: { method: 'password' } });
         return sessionDocument(await sessionInfo(user.id));
       },
@@ -188,7 +183,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         req.log.info({ reason: result.error }, 'OIDC login rejected');
         return fail(result.error);
       }
-      await startSession(req, reply, result.user.id);
+      await startSession(ctx, req, reply, result.user.id);
       await audit(db, {
         userId: result.user.id,
         action: result.created ? 'user.create' : 'auth.login',

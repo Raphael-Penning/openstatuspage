@@ -13,8 +13,16 @@
 import type { UserRole } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 import type { Config } from '../config.js';
+import type { AppContext } from '../context.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
-import { resolveApiToken, resolveSession, SESSION_COOKIE } from '../services/sessions.js';
+import {
+  createSession,
+  deleteSession,
+  resolveApiToken,
+  resolveSession,
+  SESSION_COOKIE,
+  sessionTtlMs,
+} from '../services/sessions.js';
 
 export interface AuthUser {
   id: string;
@@ -58,6 +66,18 @@ export function sessionCookieOptions(config: Config, maxAgeSeconds: number) {
     secure: config.BASE_URL.startsWith('https://'),
     maxAge: maxAgeSeconds,
   };
+}
+
+/**
+ * Starts a session for `userId` and sets the cookie. A session the browser
+ * still holds (e.g. of another account) is deleted, not just replaced in the
+ * cookie, so switching accounts or re-authenticating leaves no live session behind.
+ */
+export async function startSession(ctx: AppContext, req: FastifyRequest, reply: FastifyReply, userId: string): Promise<void> {
+  const previous = req.cookies[SESSION_COOKIE];
+  if (previous) await deleteSession(ctx.db, previous);
+  const session = await createSession(ctx, userId, { ip: req.ip, userAgent: req.headers['user-agent'] ?? null });
+  reply.setCookie(SESSION_COOKIE, session.token, sessionCookieOptions(ctx.config, Math.floor(sessionTtlMs(ctx) / 1000)));
 }
 
 /**

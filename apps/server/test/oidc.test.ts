@@ -1,8 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sha256 } from '../src/lib/crypto.js';
 import { newId } from '../src/lib/ids.js';
-import { extractGroups, mapOidcRole, parseLoginState, resolveOidcUser } from '../src/services/oidc.js';
+import {
+  extractGroups,
+  mapOidcRole,
+  OIDC_STATE_COOKIE,
+  OidcClient,
+  parseLoginState,
+  resolveOidcUser,
+} from '../src/services/oidc.js';
 import { createSession } from '../src/services/sessions.js';
-import { createTestApp, createUser, type TestApp } from './helpers.js';
+import { createTestApp, createUser, login, type TestApp } from './helpers.js';
 
 describe('extractGroups', () => {
   it('reads arrays, strings and nested claims', () => {
@@ -217,6 +225,39 @@ describe('OIDC routes', () => {
       expect(callback.statusCode).toBe(302);
       expect(callback.headers.location).toBe('/admin/login?error=invalid_state');
     } finally {
+      await t.close();
+    }
+  });
+
+  it('deletes the session the browser held before an SSO login', async () => {
+    const t = await createTestApp({
+      OIDC_ISSUER_URL: 'https://idp.example.com/realms/example',
+      OIDC_CLIENT_ID: 'openstatuspage',
+    });
+    const finish = vi
+      .spyOn(OidcClient.prototype, 'finishLogin')
+      .mockResolvedValue({ sub: 'jane-sub', email: 'jane@example.com', email_verified: true });
+    try {
+      await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+      const janeId = await createUser(t.db, { email: 'jane@example.com', role: 'editor', password: null });
+      const previous = await login(t.app, 'admin@example.com');
+
+      const state = { v: 'verifier', s: 'state', n: 'nonce', e: Date.now() + 60_000 };
+      const signed = t.app.signCookie(JSON.stringify(state));
+      const callback = await t.app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=x&state=state',
+        headers: { cookie: `${previous}; ${OIDC_STATE_COOKIE}=${encodeURIComponent(signed)}` },
+      });
+      expect(callback.statusCode).toBe(302);
+      expect(callback.headers.location).toBe('/admin');
+      const issued = callback.cookies.find((c) => c.name === 'osp_session')!;
+
+      const sessions = await t.db.selectFrom('sessions').select(['id', 'user_id']).execute();
+      expect(sessions).toEqual([{ id: sha256(issued.value), user_id: janeId }]);
+      expect(finish).toHaveBeenCalledOnce();
+    } finally {
+      finish.mockRestore();
       await t.close();
     }
   });
