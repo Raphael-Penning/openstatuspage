@@ -116,6 +116,30 @@ describe('incident notifications', () => {
     }
   });
 
+  it('puts tokens only into the links, never into what an editor wrote', async () => {
+    const id = await addSubscriber('all@example.com');
+    await admin.patch(`/api/admin/services/${api}`, { name: `API ${TOKEN_PLACEHOLDERS.confirm}` });
+    const created = await admin.post('/api/admin/incidents', {
+      title: `Outage ${TOKEN_PLACEHOLDERS.manage}`,
+      message: `See https://evil.example/?t=${TOKEN_PLACEHOLDERS.manage} or __OSP___OSP_MANAGE_TOKEN__MANAGE_TOKEN__ now`,
+      serviceIds: [api],
+    });
+    expect(created.statusCode).toBe(201);
+    const [mail] = await deliver();
+    const { token_salt } = await t.db.selectFrom('subscribers').select('token_salt').where('id', '=', id).executeTakeFirstOrThrow();
+    const manage = subscriptionToken(t.config.SECRET_KEY, 'manage', id, token_salt);
+    const confirm = subscriptionToken(t.config.SECRET_KEY, 'confirm', id, token_salt);
+    expect(mail!.subject).toBe('[Example Status] Incident: Outage');
+    expect(mail!.text).toContain('See https://evil.example/?t= or  now');
+    for (const part of [mail!.subject, mail!.text, mail!.html]) {
+      expect(part).not.toContain('evil.example/?t=' + manage);
+      expect(part).not.toContain(confirm);
+      expect(part).not.toContain('__OSP_');
+    }
+    // The manage and unsubscribe links still carry it.
+    expect(mail!.text).toContain(`/subscription/manage?id=${id}&token=${manage}`);
+  });
+
   it('selects recipients by affected public services', async () => {
     await seedSubscribers();
     const created = await admin.post('/api/admin/incidents', {

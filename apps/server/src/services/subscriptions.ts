@@ -57,7 +57,9 @@ export interface SubscriptionTokens {
 /**
  * Stand-ins for the real tokens in queued mails. The outbox only ever stores these;
  * NotificationService substitutes the derived tokens right before sending. They only
- * contain URL-safe characters, so they survive URL building and HTML escaping.
+ * contain URL-safe characters, so they survive URL building and HTML escaping. They
+ * match TOKEN_PLACEHOLDER_PATTERN of the templates, which remove them from every
+ * text but the link URLs.
  */
 export const TOKEN_PLACEHOLDERS: Readonly<SubscriptionTokens> = {
   confirm: '__OSP_CONFIRM_TOKEN__',
@@ -126,7 +128,11 @@ export async function syncSubscriptionTokenHashes(db: DB, secret: string, batch 
   }
 }
 
-/** Replaces the token placeholders in a mail body or header value with real tokens. */
+/**
+ * Replaces the token placeholders in a mail body or header value with real tokens.
+ * The rendered templates hold placeholders only in their link URLs (editor texts
+ * are stripped of them, see stripTokenPlaceholders).
+ */
 export function fillTokens(text: string, tokens: SubscriptionTokens): string {
   return text
     .replaceAll(TOKEN_PLACEHOLDERS.confirm, tokens.confirm)

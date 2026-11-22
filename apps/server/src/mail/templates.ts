@@ -4,6 +4,11 @@
  * Every template builds a neutral MailContent model that is rendered twice;
  * all dynamic values are escaped by the HTML renderer, so templates never
  * concatenate HTML themselves.
+ *
+ * Subscriber mails are rendered with token placeholders in their link URLs, which
+ * the delivery replaces with the subscriber's real tokens. Placeholders anywhere
+ * else (an editor's title or message, a service or site name) are removed while
+ * rendering, so only the template-built links can ever carry a token.
  */
 import { solidAccent, type SubscriptionLocale } from '@openstatuspage/shared';
 import { formatUtcDateTime } from '../lib/time.js';
@@ -203,9 +208,39 @@ function safeUrl(url: string): string {
 
 const DEFAULT_ACCENT = '#7c6cf2';
 
+/** The token placeholders of queued subscriber mails (TOKEN_PLACEHOLDERS in services/subscriptions.ts). */
+export const TOKEN_PLACEHOLDER_PATTERN = /__OSP_[A-Z]+_TOKEN__/g;
+
+/** Removes token placeholders from a text, also ones that removing an inner one would form. */
+export function stripTokenPlaceholders(value: string): string {
+  let out = value;
+  for (let before = ''; before !== out; ) {
+    before = out;
+    out = out.replace(TOKEN_PLACEHOLDER_PATTERN, '');
+  }
+  return out;
+}
+
+/** Every text of a mail without token placeholders; only the link URLs keep theirs. */
+function withoutPlaceholders(c: MailContent): MailContent {
+  const strip = stripTokenPlaceholders;
+  return {
+    subject: strip(c.subject),
+    heading: strip(c.heading),
+    paragraphs: c.paragraphs.map(strip),
+    fields: c.fields.map(([label, value]) => [strip(label), strip(value)]),
+    message: c.message === undefined ? undefined : strip(c.message),
+    action: c.action && { label: strip(c.action.label), url: c.action.url },
+    footer: c.footer.map(strip),
+    footerLinks: c.footerLinks.map((l) => ({ label: strip(l.label), url: l.url })),
+  };
+}
+
 function render(site: MailSite, locale: SubscriptionLocale, content: MailContent): RenderedMail {
-  const subject = oneLine(`[${site.siteName}] ${content.subject}`);
-  return { subject, text: renderText(content), html: renderHtml(site, locale, subject, content) };
+  const clean = withoutPlaceholders(content);
+  const cleanSite = { ...site, siteName: stripTokenPlaceholders(site.siteName) };
+  const subject = oneLine(`[${cleanSite.siteName}] ${clean.subject}`);
+  return { subject, text: renderText(clean), html: renderHtml(cleanSite, locale, subject, clean) };
 }
 
 function renderText(c: MailContent): string {

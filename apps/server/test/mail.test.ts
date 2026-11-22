@@ -8,6 +8,8 @@ import {
   formatWindow,
   incidentMail,
   maintenanceMail,
+  stripTokenPlaceholders,
+  TOKEN_PLACEHOLDER_PATTERN,
 } from '../src/mail/templates.js';
 import {
   fillTokens,
@@ -53,6 +55,13 @@ describe('mail templates', () => {
     expect(mail.text).toContain('<script>alert("x")</script>');
     expect(mail.text).toContain('Unsubscribe: https://status.example.com/subscription/manage?id=1&unsubscribe=1#token=abc');
     expect(mail.subject).toBe('[Example <Status>] Incident: <script>alert("x")</script>');
+  });
+
+  it('matches the token placeholders of queued mails with the pattern it strips from texts', () => {
+    for (const placeholder of Object.values(TOKEN_PLACEHOLDERS)) {
+      expect(placeholder.match(TOKEN_PLACEHOLDER_PATTERN)).toEqual([placeholder]);
+    }
+    expect(stripTokenPlaceholders('a __OSP___OSP_CONFIRM_TOKEN__MANAGE_TOKEN__ b')).toBe('a  b');
   });
 
   it('keeps subjects on one line and only links http(s) URLs', () => {

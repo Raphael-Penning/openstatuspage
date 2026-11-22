@@ -163,7 +163,9 @@ Tokens are never written to the outbox. Subscriber emails are queued with
 placeholders instead of the confirm and manage tokens; the delivery task derives
 the real tokens from `SECRET_KEY`, the subscriber id and its salt right before
 sending and fills them into the body (text and HTML) and the `List-Unsubscribe`
-header. After an email was sent, its bodies and headers are blanked in the outbox;
+header. Placeholders only ever stand in the links the templates build: one that
+an editor writes into a title or message (or a service or site name) is removed
+when the email is rendered, so it can never turn into a token. After an email was sent, its bodies and headers are blanked in the outbox;
 recipient, subject, kind and status stay for the status view. Failed emails keep
 their placeholder bodies so that **Retry failed** can send them again.
 
