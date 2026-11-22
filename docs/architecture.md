@@ -459,7 +459,9 @@ agents. Everything is built from the page settings and public data only.
     10 kB to an overview of seven services),
   - `canonical`: the path without query, lower case and without a trailing
     slash (the server answers other spellings of a path with a `301` to this
-    one); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
+    one, always a path on this site; a request target no browser sends, with
+    dot segments, a backslash or in absolute form, gets a plain uncached `404`,
+    and so do other spellings of `/api`); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
     `?lang=xx` for every language and the plain path (language from cookie,
     `Accept-Language` or the page default) as `x-default`. A service's
     canonical path is its slug.
