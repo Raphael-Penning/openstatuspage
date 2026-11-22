@@ -15,11 +15,14 @@
  * bounds what it keeps across polls. Events nobody listens for are dropped
  * unless their name is listed in `expectedEvents`; those are kept for a later
  * waitFor() within a count and size budget, and the session fails with an
- * AdapterError when a peer exceeds it.
+ * AdapterError when a peer exceeds it. Acknowledgements time out after
+ * `ackTimeoutMs`, so a peer that only answers with noops cannot hold a call open.
  */
 import { AdapterError, joinUrl, requestText, type FetchFn } from '../adapters/http.js';
 
 const SEPARATOR = '\x1e';
+/** Default time to wait for the acknowledgement of one emitted event. */
+export const SOCKETIO_ACK_TIMEOUT_MS = 5 * 60_000;
 /** Budget for expected events received before waitFor() asked for them. */
 export const SOCKETIO_MAX_BUFFERED_EVENTS = 16;
 /** Characters of buffered event payloads (JSON text) kept at most. */
@@ -37,6 +40,8 @@ export interface SocketIoOptions {
    * then (within the buffer budget). Other events without a listener are dropped.
    */
   expectedEvents?: readonly string[];
+  /** Time to wait for an acknowledgement (default SOCKETIO_ACK_TIMEOUT_MS). */
+  ackTimeoutMs?: number;
 }
 
 type Listener = (...args: unknown[]) => void;
@@ -224,9 +229,25 @@ export class SocketIoClient {
     if (this.failure) throw this.failure;
     if (this.closed) throw new AdapterError(`${this.options.system}: connection closed`);
     const id = this.nextAck++;
-    const result = new Promise<unknown[]>((resolve, reject) => this.acks.set(id, { resolve, reject }));
-    await this.post(`42${id}${JSON.stringify([event, ...args])}`);
-    return result;
+    const timeoutMs = this.options.ackTimeoutMs ?? SOCKETIO_ACK_TIMEOUT_MS;
+    let timer: NodeJS.Timeout | undefined;
+    const result = new Promise<unknown[]>((resolve, reject) => {
+      timer = setTimeout(() => {
+        this.acks.delete(id);
+        reject(new AdapterError(`${this.options.system}: no answer to "${event}" within ${Math.round(timeoutMs / 1000)}s`));
+      }, timeoutMs);
+      this.acks.set(id, { resolve, reject });
+    });
+    const settled = result.finally(() => clearTimeout(timer));
+    settled.catch(() => undefined);
+    try {
+      await this.post(`42${id}${JSON.stringify([event, ...args])}`);
+    } catch (err) {
+      this.acks.delete(id);
+      clearTimeout(timer);
+      throw err;
+    }
+    return settled;
   }
 
   /** Resolves with the arguments of the next `event` (also one received before the call). */

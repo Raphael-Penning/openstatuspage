@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SOCKETIO_MAX_BUFFERED_EVENTS, SocketIoClient } from '../../src/importers/socketio.js';
 import { fakeKuma, type FakeKumaOptions } from './fake-kuma.js';
 
-function client(options: FakeKumaOptions, extra: { expectedEvents?: string[] } = {}) {
+function client(options: FakeKumaOptions, extra: { expectedEvents?: string[]; ackTimeoutMs?: number } = {}) {
   const kuma = fakeKuma(options);
   const c = new SocketIoClient({
     baseUrl: 'https://kuma.example.com/',
@@ -55,5 +55,18 @@ describe('Socket.IO client', () => {
     await c.connect();
     await expect(c.emitWithAck('getMonitorBeats', 1, 1)).rejects.toThrow(/too many unexpected/);
     await c.close();
+  });
+
+  it('times out an acknowledgement that never comes', async () => {
+    const { client: c } = client({ monitors: [], beats: {}, silent: [1] }, { ackTimeoutMs: 100 });
+    await c.connect();
+    try {
+      await expect(c.emitWithAck('getMonitorBeats', 1, 1)).rejects.toThrow('Test: no answer to "getMonitorBeats" within 0s');
+      // The session itself stays usable.
+      const [res] = await c.emitWithAck('getMonitorBeats', 2, 1);
+      expect(res).toMatchObject({ ok: true });
+    } finally {
+      await c.close();
+    }
   });
 });

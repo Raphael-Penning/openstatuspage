@@ -236,7 +236,9 @@ Darauf kannst du dich verlassen:
   ändert ihn, und zwar nur für die Zeiten in ihren Zeilen.
 - **Uptime Kuma:** Ein Monitor mit sehr vielen Heartbeats (mehr als etwa
   200 000 vom Beginn des Zeitraums bis heute) wird übersprungen und in der
-  Vorschau genannt. Wähl für ihn einen späteren Beginn.
+  Vorschau genannt. Wähl für ihn einen späteren Beginn. Das gilt auch für
+  einen Monitor, dessen Heartbeats Uptime Kuma nicht innerhalb von 5 Minuten
+  schickt.
 - Jeder Import landet im Audit-Log.
 
 Das CSV-Format und die Details je System findest du in der
