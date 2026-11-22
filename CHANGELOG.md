@@ -64,10 +64,14 @@ Behaviour changes from the security fixes below. Check them before you upgrade.
   `DB_PUBLIC_ROLE` can `CREATE` in the table schema or in `osp_public`, also
   through a grant to `PUBLIC` (the default before PostgreSQL 15 and on
   clusters upgraded from such a version), granting the role fails and admin,
-  worker and public instances do not start. Rerun
-  `deploy/postgres/harden.sql` (it now revokes `CREATE` on schema `public` from
-  `PUBLIC`, which also affects other applications in the same database) or run
-  `REVOKE CREATE ON SCHEMA <schema> FROM PUBLIC` before you upgrade.
+  worker and public instances do not start. Before you upgrade, first run
+  `GRANT CREATE ON SCHEMA public TO <app role>` for the app role that owns the
+  tables (`roles.sql` already does; a role that created its tables only
+  through `PUBLIC`'s right would otherwise lose it, and the next `db:migrate`
+  fails with "permission denied"), then rerun `deploy/postgres/harden.sql` (it
+  now revokes `CREATE` on schema `public` from `PUBLIC`, which also affects
+  other applications in the same database) or run
+  `REVOKE CREATE ON SCHEMA <schema> FROM PUBLIC`.
   `ALLOW_UNRESTRICTED_PUBLIC_DB=true` still turns the public instance's
   refusal into a warning.
 - **Stricter URL validation.** `http(s)` URLs in settings and monitoring
