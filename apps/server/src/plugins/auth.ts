@@ -40,6 +40,11 @@ export const CSRF_VALUE = 'openstatuspage';
 const ROLE_RANK: Record<UserRole, number> = { editor: 1, admin: 2 };
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/** Routes that resolve the session or API token (route paths, see registerAuth). */
+export function isAuthenticatedPath(route: string): boolean {
+  return route.startsWith('/api/admin/') || route.startsWith('/api/auth/') || route === '/api/admin' || route === '/api/auth';
+}
+
 export function hasRole(user: Pick<AuthUser, 'role'>, role: UserRole): boolean {
   return ROLE_RANK[user.role] >= ROLE_RANK[role];
 }
@@ -64,8 +69,10 @@ export async function registerAuth(app: FastifyInstance, options: { enabled?: bo
   app.decorateRequest('authUser', null);
   if (options.enabled === false) return;
   app.addHook('onRequest', async (req, reply) => {
-    const path = req.url;
-    if (!path.startsWith('/api/admin') && !path.startsWith('/api/auth')) return;
+    // The matched route, not the raw URL: the router decodes the path, so a spelling like
+    // /api/%61dmin reaches an /api/admin handler and must be authenticated the same way.
+    const route = req.routeOptions.url;
+    if (!route || !isAuthenticatedPath(route)) return;
     req.authUser = await authenticate(app, req, reply);
   });
 }

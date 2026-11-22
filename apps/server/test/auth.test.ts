@@ -279,6 +279,32 @@ describe('authorization', () => {
     expect(logout.statusCode).toBe(403);
   });
 
+  it('authenticates and checks CSRF on encoded spellings of the routes like on the canonical ones', async () => {
+    await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
+    const cookie = await login(t.app, 'admin@example.com');
+
+    // The router decodes the path, so these reach the admin and auth handlers.
+    const read = await t.app.inject({ method: 'GET', url: '/api/%61dmin/service-groups', headers: { cookie } });
+    expect(read.statusCode).toBe(200);
+    const session = await t.app.inject({ method: 'GET', url: '/api/%61uth/session', headers: { cookie } });
+    expect(session.statusCode).toBe(200);
+
+    const write = await t.app.inject({
+      method: 'POST',
+      url: '/api/%61dmin/service-groups',
+      headers: { cookie, 'content-type': 'application/vnd.api+json' },
+      payload: doc('service-groups', { name: 'Platform' }),
+    });
+    expect(write.statusCode).toBe(403);
+
+    // Logout without the CSRF header is refused and keeps the session.
+    for (const url of ['/api/%61uth/logout', '/%61pi/auth/logout', '/api/auth/%6cogout']) {
+      const logout = await t.app.inject({ method: 'POST', url, headers: { cookie } });
+      expect(logout.statusCode, url).toBe(403);
+    }
+    expect(await t.db.selectFrom('sessions').select('id').execute()).toHaveLength(1);
+  });
+
   it('authenticates API tokens without CSRF header and honours their role', async () => {
     await createUser(t.db, { email: 'admin@example.com', role: 'admin' });
     const admin = client(t.app, { cookie: await login(t.app, 'admin@example.com') });
