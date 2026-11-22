@@ -257,13 +257,17 @@ docker buildx imagetools inspect ghcr.io/raphael-penning/openstatuspage:1.2.3 \
 ```
 
 The images are not signed (no cosign or Docker Content Trust signature).
-What ties an image to this repository is the provenance attestation that
-BuildKit attaches to every pushed image: check in the output of the
-`.Provenance` command above that the build ran from this repository's
-workflow (the builder ID is the URL of the GitHub Actions run) and that the
-recorded `vcs` source and revision are this repository and the commit of the
-release tag. The attestation only says how the image was built; it is not a
-signature. Pin the image by digest
+What ties an image to this repository is the registry namespace: only this
+repository's workflow can push to `ghcr.io/<owner>`, so the guarantee rests on
+the access control of that namespace. The provenance attestation that BuildKit
+attaches to every pushed image is unauthenticated metadata: anyone who can
+push to the namespace could attach any provenance. It is still useful as a
+consistency check: in the output of the `.Provenance` command above, the
+builder ID should be the URL of a GitHub Actions run of this repository, and
+the recorded `vcs` source and revision should be this repository and the
+commit of the release tag. Signed provenance (for example with GitHub artifact
+attestations, `actions/attest-build-provenance`) would be a possible future
+addition. Pin the image by digest
 (`ghcr.io/raphael-penning/openstatuspage@sha256:...`, shown by `imagetools
 inspect`) if you need a reference that cannot change.
 
