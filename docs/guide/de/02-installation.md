@@ -379,7 +379,12 @@ docker compose -f compose.split.yaml up -d public admin worker
 
 Auf Kubernetes nutzt du das [Helm-Chart](#kubernetes-mit-helm) mit
 `split.enabled=true` oder die einfachen Manifeste in `deploy/kubernetes/split/`
-(anwenden mit `kubectl apply -k deploy/kubernetes/split`).
+(anwenden mit `kubectl apply -k deploy/kubernetes/split`). Sie enthalten eine
+NetworkPolicy (`networkpolicy.yaml`): Die öffentlichen Pods nehmen nur
+Verbindungen aus dem Namespace des Ingress-Controllers an und verbinden sich
+nur mit DNS und PostgreSQL. Prüfe die Namespaces darin vor dem Anwenden, und
+ergänze eine Regel für den Umami-Server, wenn du `UMAMI_URL` setzt. Sie
+braucht ein Netzwerk-Plugin, das NetworkPolicies durchsetzt.
 
 ## Einzelner Container mit SQLite
 

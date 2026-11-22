@@ -363,7 +363,12 @@ docker compose -f compose.split.yaml up -d public admin worker
 
 On Kubernetes use the [Helm chart](#kubernetes-with-helm) with
 `split.enabled=true`, or the plain manifests in `deploy/kubernetes/split/`
-(apply them with `kubectl apply -k deploy/kubernetes/split`).
+(apply them with `kubectl apply -k deploy/kubernetes/split`). They include a
+NetworkPolicy (`networkpolicy.yaml`) that lets the public pods accept traffic
+only from the ingress controller's namespace and connect only to DNS and
+PostgreSQL; check the namespaces in it before applying, and add a rule for
+the Umami server if you set `UMAMI_URL`. It needs a network plugin that
+enforces NetworkPolicies.
 
 ## Single container with SQLite
 
