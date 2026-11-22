@@ -1,5 +1,11 @@
 # syntax=docker/dockerfile:1
 
+# The base images are referenced by tag (node:22-bookworm-slim), so a rebuild
+# picks up their security updates. For reproducible production builds pin them
+# by digest instead, e.g. node:22-bookworm-slim@sha256:<digest> (look it up with
+# `docker buildx imagetools inspect node:22-bookworm-slim`), and update the
+# digest deliberately.
+
 # The compiled JavaScript does not depend on the CPU architecture, so it is
 # built once on the native build platform. Emulating this step (e.g. arm64 on
 # an amd64 CI runner) is slow and can stall for a long time.
