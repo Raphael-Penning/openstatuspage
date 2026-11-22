@@ -229,6 +229,65 @@ describe('Icinga DB importer', () => {
     expect(fixture.closed).toBe(true);
   });
 
+  it('reads at most maxRows rows per query and splits busy windows', async () => {
+    const fixture = new IcingaDbImporterFixture();
+    // Eight state changes of one service and four of another within a day.
+    for (let i = 0; i < 8; i++) fixture.event('web01', 'http', t('2026-01-01T00:00:00Z') + i * H, i % 2 === 0 ? 2 : 0);
+    for (let i = 0; i < 4; i++) fixture.event('db01', 'disk', t('2026-01-01T00:30:00Z') + i * H, 1);
+    const runner = fixture.runner();
+    let largest = 0;
+    const importer = createIcingaDbImporter(
+      async () => ({
+        query: async (sql, params) => {
+          const rows = await runner.query(sql, params);
+          largest = Math.max(largest, rows.length);
+          return rows;
+        },
+        close: runner.close,
+      }),
+      { maxRows: 3 },
+    );
+    const result = await importer.fetch(
+      config,
+      {},
+      [{ checkId: '1', externalId: 'web01!http' }],
+      { from: t('2026-01-01T00:00:00Z'), to: t('2026-01-01T12:00:00Z') },
+      ctx().ctx,
+    );
+    // LIMIT maxRows + 1 detects an overflow; nothing larger is ever read.
+    expect(largest).toBeLessThanOrEqual(4);
+    expect(result.checks.get('web01!http')).toHaveLength(8);
+    expect(iso(result.checks.get('web01!http'))?.at(-1)).toEqual(['2026-01-01T07:00:00.000Z', '2026-01-01T12:00:00.000Z', 'ok']);
+
+    // More rows than allowed within one minute: the import fails instead of reading them all.
+    const dense = new IcingaDbImporterFixture();
+    for (let i = 0; i < 5; i++) dense.event('web01', 'http', t('2026-01-01T00:00:00Z') + i * 1000, i % 2 === 0 ? 2 : 0);
+    await expect(
+      createIcingaDbImporter(async () => dense.runner(), { maxRows: 3 }).fetch(
+        config,
+        {},
+        [{ checkId: '1', externalId: 'web01!http' }],
+        { from: t('2026-01-01T00:00:00Z'), to: t('2026-01-02T00:00:00Z') },
+        ctx().ctx,
+      ),
+    ).rejects.toThrow('Icinga DB: more than 3 rows in one query');
+  });
+
+  it('keeps at most maxEvents state changes per import', async () => {
+    const fixture = new IcingaDbImporterFixture();
+    for (let i = 0; i < 6; i++) fixture.event('web01', 'http', t('2026-01-01T00:00:00Z') + i * H, i % 2 === 0 ? 2 : 0);
+    const importer = createIcingaDbImporter(async () => fixture.runner(), { maxEvents: 5 });
+    await expect(
+      importer.fetch(
+        config,
+        {},
+        [{ checkId: '1', externalId: 'web01!http' }],
+        { from: t('2026-01-01T00:00:00Z'), to: t('2026-01-02T00:00:00Z') },
+        ctx().ctx,
+      ),
+    ).rejects.toThrow('Icinga DB: more than 5 state changes in the range');
+  });
+
   it('prefers the one-off connection string and reports connection errors without it', async () => {
     const importer = createIcingaDbImporter(async (url) => {
       throw new Error(`cannot reach ${new URL(url).hostname}`);

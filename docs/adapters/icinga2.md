@@ -194,4 +194,9 @@ must be URL encoded.
   the range even when older history is gone.
 - **Several environments** in one Icinga DB: objects are matched by name only;
   use unique host names across environments.
-- The range is queried in windows of 7 days.
+- The range is queried in windows of 7 days. Every query reads at most
+  50 000 rows: a window with more state changes (of all objects, not only the
+  imported ones) is split in halves until each part fits. If one minute
+  still holds more, or the import would keep more than 500 000 state changes
+  of the imported checks, the import fails; import a shorter range or fewer
+  checks.
