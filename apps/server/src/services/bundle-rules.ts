@@ -23,6 +23,12 @@ import type { BundleMemberReason, BundleVoteSummary, CheckState } from '@opensta
 export const STALE_POLL_INTERVALS = 3;
 /** ... but at least this long. */
 export const MIN_STALE_MS = 5 * 60_000;
+/**
+ * How far a result time may lie ahead of the server clock (clock skew between
+ * the monitoring system and this server). Ingest caps later times at the
+ * server clock; a stored time further in the future never counts as fresh.
+ */
+export const MAX_CLOCK_SKEW_MS = 5 * 60_000;
 /** Default for push-only sources (no poll interval): BUNDLE_PUSH_STALE_SECONDS. */
 export const DEFAULT_PUSH_STALE_SECONDS = 60 * 60;
 
@@ -70,7 +76,9 @@ export function memberReason(
     const polledAt = Date.parse(source.lastPollAt);
     if (Number.isFinite(polledAt) && now - polledAt <= limit) return 'reporting';
   }
-  if (now - at > limit) return 'stale';
+  // A result from the future (beyond clock skew) would otherwise stay fresh for as
+  // long as the producer chose; it never proves that the member still reports.
+  if (now - at > limit || at - now > MAX_CLOCK_SKEW_MS) return 'stale';
   return 'reporting';
 }
 

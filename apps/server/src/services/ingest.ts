@@ -7,6 +7,7 @@ import type { DB } from '../db/index.js';
 import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso, toIso } from '../lib/time.js';
+import { MAX_CLOCK_SKEW_MS } from './bundle-rules.js';
 import type { BundleService } from './bundles.js';
 import { recordCheckState } from './check-history.js';
 import type { StatusEngine } from './status-engine.js';
@@ -76,7 +77,7 @@ export class IngestService {
       }
 
       for (const check of byExternalId.values()) {
-        const checkedAt = check.checkedAt ? safeIso(check.checkedAt) ?? now : now;
+        const checkedAt = resultTime(check.checkedAt, now);
         const prev = existingByExternal.get(check.externalId);
         if (!prev) {
           const id = newId();
@@ -227,6 +228,17 @@ export class IngestService {
 function truncate(value: string | null | undefined, max = 4000): string | null {
   if (value == null) return null;
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+/**
+ * Time of a result: the producer's time, but never later than the server clock
+ * plus MAX_CLOCK_SKEW_MS (a later time is replaced by the server time), so a
+ * result cannot stay fresh in bundle votes longer than the stale window.
+ */
+function resultTime(value: string | null | undefined, now: string): string {
+  const at = value ? safeIso(value) : null;
+  if (!at || Date.parse(at) > Date.parse(now) + MAX_CLOCK_SKEW_MS) return now;
+  return at;
 }
 
 function safeIso(value: string): string | null {

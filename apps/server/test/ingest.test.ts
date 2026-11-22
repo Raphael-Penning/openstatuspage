@@ -52,4 +52,24 @@ describe('IngestService', () => {
     await ingest.ingest('src', [{ externalId: 'web01!http', state: 'warning' }], { full: false });
     expect((await stored()).name).toBe('web01!http');
   });
+
+  it('caps result times in the future at the server clock', async () => {
+    const before = Date.now();
+    await ingest.ingest(
+      'src',
+      [
+        { externalId: 'future', state: 'ok', checkedAt: '2099-01-01T00:00:00.000Z' },
+        { externalId: 'skew', state: 'ok', checkedAt: new Date(before + 60_000).toISOString() },
+        { externalId: 'past', state: 'ok', checkedAt: '2026-01-01T00:00:00.000Z' },
+      ],
+      { full: false },
+    );
+    const rows = await db.selectFrom('monitor_checks').select(['external_id', 'last_check_at']).execute();
+    const at = Object.fromEntries(rows.map((r) => [r.external_id, r.last_check_at!]));
+    expect(Date.parse(at.future!)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(at.future!)).toBeLessThanOrEqual(Date.now());
+    // Small clock skew is kept as reported.
+    expect(at.skew).toBe(new Date(before + 60_000).toISOString());
+    expect(at.past).toBe('2026-01-01T00:00:00.000Z');
+  });
 });
