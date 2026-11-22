@@ -32,6 +32,7 @@ The complete reference with every option lives in
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL login of the `public` instance. It can only read public data and manage subscriptions through checked functions. Create it with `deploy/postgres/roles.sql`; see [Security model](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; on PostgreSQL several instances may run them (coordinated through the database). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | Email delivery, see [Email subscriptions](07-email-subscriptions.md#mail-server). |
+| `POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`, `MAX_CHECKS_PER_SOURCE` | `8`, `500000`, `20000` | Limits per poll answer and per monitoring source, sized for the image's memory cap. See [Monitoring integration](05-monitoring.md#tips). |
 | `UMAMI_URL` | – | Your Umami server for page view statistics, see [Statistics with Umami](#statistics-with-umami). |
 
 Rules that apply to all variables:

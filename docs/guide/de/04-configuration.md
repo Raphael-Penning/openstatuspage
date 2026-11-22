@@ -33,6 +33,7 @@ wichtigsten Variablen:
 | `APP_ROLE` | `all` | `all`, oder mit PostgreSQL `public`, `admin` bzw. `worker`, wenn du Statusseite und Verwaltung als getrennte Instanzen betreibst. Siehe [Getrennter Betrieb](../../configuration.md#split-deployment). |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL-Login der `public`-Instanz. Sie darf nur öffentliche Daten lesen und Abonnements über geprüfte Funktionen verwalten. Lege die Rolle mit `deploy/postgres/roles.sql` an; siehe [Sicherheitsmodell](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` bei `APP_ROLE=admin`) | Hintergrundaufgaben; mit PostgreSQL dürfen mehrere Instanzen sie ausführen (Abstimmung über die Datenbank). |
+| `POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`, `MAX_CHECKS_PER_SOURCE` | `8`, `500000`, `20000` | Grenzen pro Antwort einer Abfrage und pro Monitoring-Quelle, passend zur Speichergrenze des Images. Siehe [Monitoring anbinden](05-monitoring.md#tipps). |
 | `UMAMI_URL` | – | Dein Umami-Server für Statistiken über Seitenaufrufe, siehe [Statistik mit Umami](#statistik-mit-umami). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | E-Mail-Versand, siehe [E-Mail-Abonnements](07-email-subscriptions.md#mailserver). |
 
