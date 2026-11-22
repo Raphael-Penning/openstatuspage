@@ -57,8 +57,19 @@ const MAX_ERRORS = 20;
 const BOM = String.fromCharCode(0xfeff);
 const ISO_WITH_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?([zZ]|[+-]\d{2}:\d{2})$/;
 
-/** Splits CSV text into records (array of fields) with their starting line numbers. */
-export function parseCsvRecords(text: string, separator: string): { line: number; fields: string[] }[] {
+const tooManyRows = (line: number, max: number) =>
+  new CsvImportError([issue(line, 'too_many_rows', `more than ${max} data rows`, { max })]);
+
+/**
+ * Splits CSV text into records (array of fields) with their starting line
+ * numbers. Stops with a `too_many_rows` error as soon as there are more than
+ * `maxDataRows` records after the header row, before reading the rest.
+ */
+export function parseCsvRecords(
+  text: string,
+  separator: string,
+  maxDataRows = Number.POSITIVE_INFINITY,
+): { line: number; fields: string[] }[] {
   const records: { line: number; fields: string[] }[] = [];
   let fields: string[] = [];
   let field = '';
@@ -68,7 +79,10 @@ export function parseCsvRecords(text: string, separator: string): { line: number
   let i = 0;
   const pushRecord = () => {
     fields.push(field);
-    if (!(fields.length === 1 && fields[0]!.trim() === '')) records.push({ line: recordLine, fields });
+    if (!(fields.length === 1 && fields[0]!.trim() === '')) {
+      if (records.length > maxDataRows) throw tooManyRows(records[0]!.line, maxDataRows);
+      records.push({ line: recordLine, fields });
+    }
     fields = [];
     field = '';
   };
@@ -111,7 +125,7 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
   const text = input.startsWith(BOM) ? input.slice(1) : input;
   const firstLine = text.split(/\r?\n/, 1)[0] ?? '';
   const separator = (firstLine.match(/;/g)?.length ?? 0) > (firstLine.match(/,/g)?.length ?? 0) ? ';' : ',';
-  const records = parseCsvRecords(text, separator);
+  const records = parseCsvRecords(text, separator, HISTORY_CSV_MAX_ROWS);
   const header = records.shift();
   if (!header) throw new CsvImportError([issue(1, 'empty', 'the file is empty')]);
 
@@ -131,9 +145,6 @@ export function parseHistoryCsv(input: string): ParsedHistoryCsv {
   if (col.state < 0) missing.push('"state"');
   if (missing.length > 0) throw new CsvImportError([issue(header.line, 'missing_columns', `missing column ${missing.join(', ')}`, { columns: missing.join(', ') })]);
   if (records.length === 0) throw new CsvImportError([issue(header.line, 'no_rows', 'no data rows')]);
-  if (records.length > HISTORY_CSV_MAX_ROWS) {
-    throw new CsvImportError([issue(header.line, 'too_many_rows', `more than ${HISTORY_CSV_MAX_ROWS} data rows`, { max: HISTORY_CSV_MAX_ROWS })]);
-  }
 
   const errors: CsvError[] = [];
   const fail = (line: number, code: string, message: string, params: Record<string, string | number> = {}) => {

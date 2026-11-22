@@ -49,7 +49,8 @@ key again (as when you change the URL or user name).
 
 1. **Monitoring → Sources → New source** (administrators): choose the type.
    - For pull, enter the base URL and the credentials, then use **Test
-     connection**. **Poll now** imports immediately.
+     connection**. **Poll now** imports immediately. Put user name and
+     password into their own fields; URLs with `user:password@` are rejected.
    - For push, copy the **ingest URL** and the **token**. The token is shown
      only once; it can be rotated later.
 2. Configure the monitoring side as described in the adapter documentation
@@ -223,7 +224,8 @@ What you can rely on:
   times in its rows.
 - **Uptime Kuma:** a monitor with very many heartbeats (more than about
   200 000 from the start of the range until today) is skipped and named in
-  the preview. Choose a later start for it.
+  the preview. Choose a later start for it. The same happens to a monitor
+  whose heartbeats Uptime Kuma does not send within 5 minutes.
 - Every import is recorded in the audit log.
 
 For the CSV format and the details per system, see the

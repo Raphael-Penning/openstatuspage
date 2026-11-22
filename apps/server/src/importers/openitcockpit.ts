@@ -15,6 +15,9 @@
  * Only hard states count, like the live adapter. The state before the first
  * event comes from the last event in the 30 days before the range, or from the
  * current status when its last hard state change lies before the range.
+ *
+ * Memory: one import keeps at most IMPORT_MAX_EVENTS state changes (all
+ * checks together) and fails when the history holds more.
  */
 import type { CheckState, HistoryImportWarning, OpenItCockpitConfig as OpenItCockpitConfigSchema } from '@openstatuspage/shared';
 import type { z } from 'zod';
@@ -22,6 +25,7 @@ import { AdapterError, joinUrl, requestJson } from '../adapters/http.js';
 import { extractEntries, hasNextPage, mapOitcHost, mapOitcService } from '../adapters/openitcockpit.js';
 import { hostState, isRecord, serviceState, str } from '../adapters/states.js';
 import { eventsToIntervals, type Valued } from '../lib/intervals.js';
+import { EventBudget, IMPORT_MAX_EVENTS } from './limits.js';
 import type { HistoryImporter, ImporterContext } from './types.js';
 
 type OpenItCockpitConfig = z.infer<typeof OpenItCockpitConfigSchema>;
@@ -170,6 +174,7 @@ async function loadEvents(
   obj: OitcObject,
   from: number,
   to: number,
+  budget: EventBudget,
 ): Promise<{ at: number; value: CheckState }[]> {
   const events: { at: number; value: CheckState }[] = [];
   const seen = new Set<string>();
@@ -181,6 +186,7 @@ async function loadEvents(
     for (const e of list) {
       const key = `${e.at}|${e.value}`;
       if (seen.has(key)) continue;
+      budget.take();
       seen.add(key);
       events.push(e);
       added++;
@@ -202,42 +208,52 @@ async function loadStateBefore(
   return list[0]?.value ?? null;
 }
 
-export const openItCockpitImporter: HistoryImporter<OpenItCockpitConfig> = {
-  type: 'openitcockpit',
-  async fetch(config, _credentials, targets, range, ctx) {
-    await ctx.progress('connecting', 0, targets.length);
-    const objects = new Map<string, OitcObject>();
-    const wantsHosts = targets.some((t) => !t.externalId.includes('!'));
-    await loadIndex(config, ctx, 'service', objects);
-    if (wantsHosts) await loadIndex(config, ctx, 'host', objects);
+export interface OpenItCockpitImporterOptions {
+  /** State changes per import (default IMPORT_MAX_EVENTS). */
+  maxEvents?: number;
+}
 
-    const checks = new Map<string, Valued<CheckState>[]>();
-    const warnings: HistoryImportWarning[] = [];
-    let done = 0;
-    for (const target of targets) {
-      await ctx.progress('fetching', done++, targets.length);
-      const obj = objects.get(target.externalId);
-      if (!obj) continue;
-      const events = await loadEvents(config, ctx, obj, range.from, range.to);
-      let initial = await loadStateBefore(config, ctx, obj, range.from);
-      // No event in the lookback window: the current state holds since its last change.
-      if (initial === null && obj.state && obj.lastChange !== null && obj.lastChange <= range.from) initial = obj.state;
-      // A real event at range.from wins over the derived start state (later events win on ties).
-      if (initial !== null && !events.some((e) => e.at === range.from)) events.unshift({ at: range.from, value: initial });
-      if (events.length === 0 && obj.state && obj.lastChange !== null && obj.lastChange < range.to) {
-        events.push({ at: Math.max(obj.lastChange, range.from), value: obj.state });
+export function createOpenItCockpitImporter(options: OpenItCockpitImporterOptions = {}): HistoryImporter<OpenItCockpitConfig> {
+  return {
+    type: 'openitcockpit',
+    async fetch(config, _credentials, targets, range, ctx) {
+      const budget = new EventBudget(SYSTEM, options.maxEvents ?? IMPORT_MAX_EVENTS);
+      await ctx.progress('connecting', 0, targets.length);
+      const objects = new Map<string, OitcObject>();
+      const wantsHosts = targets.some((t) => !t.externalId.includes('!'));
+      await loadIndex(config, ctx, 'service', objects);
+      if (wantsHosts) await loadIndex(config, ctx, 'host', objects);
+
+      const checks = new Map<string, Valued<CheckState>[]>();
+      const warnings: HistoryImportWarning[] = [];
+      let done = 0;
+      for (const target of targets) {
+        await ctx.progress('fetching', done++, targets.length);
+        const obj = objects.get(target.externalId);
+        if (!obj) continue;
+        const events = await loadEvents(config, ctx, obj, range.from, range.to, budget);
+        let initial = await loadStateBefore(config, ctx, obj, range.from);
+        // No event in the lookback window: the current state holds since its last change.
+        if (initial === null && obj.state && obj.lastChange !== null && obj.lastChange <= range.from) initial = obj.state;
+        // A real event at range.from wins over the derived start state (later events win on ties).
+        if (initial !== null && !events.some((e) => e.at === range.from)) events.unshift({ at: range.from, value: initial });
+        if (events.length === 0 && obj.state && obj.lastChange !== null && obj.lastChange < range.to) {
+          events.push({ at: Math.max(obj.lastChange, range.from), value: obj.state });
+        }
+        const intervals = eventsToIntervals(events, range.to);
+        if (intervals.length > 0) checks.set(target.externalId, intervals);
       }
-      const intervals = eventsToIntervals(events, range.to);
-      if (intervals.length > 0) checks.set(target.externalId, intervals);
-    }
-    await ctx.progress('fetching', done, targets.length);
-    if (checks.size > 0) {
-      warnings.push({
-        code: 'oitc_utc',
-        params: {},
-        message: "openITCockpit times without a time zone were read as UTC (set the API user's time zone to UTC).",
-      });
-    }
-    return { checks, warnings };
-  },
-};
+      await ctx.progress('fetching', done, targets.length);
+      if (checks.size > 0) {
+        warnings.push({
+          code: 'oitc_utc',
+          params: {},
+          message: "openITCockpit times without a time zone were read as UTC (set the API user's time zone to UTC).",
+        });
+      }
+      return { checks, warnings };
+    },
+  };
+}
+
+export const openItCockpitImporter = createOpenItCockpitImporter();

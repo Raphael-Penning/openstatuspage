@@ -40,6 +40,25 @@ import {
 // browser report a violation). Must run before the first schema is created.
 if ('window' in globalThis) z.config({ jitless: true });
 
+/** The WHATWG URL of Node.js and browsers (this package compiles without DOM or Node types). */
+interface WhatwgUrl {
+  readonly username: string;
+  readonly password: string;
+  readonly hostname: string;
+  readonly hash: string;
+  readonly searchParams: { keys(): Iterable<string>; getAll(name: string): string[] };
+}
+const Url = (globalThis as unknown as { URL: new (input: string) => WhatwgUrl }).URL;
+
+/** Parses an absolute URL; null when it is none. */
+function parseUrl(value: string): WhatwgUrl | null {
+  try {
+    return new Url(value);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
@@ -68,14 +87,18 @@ export const zSlug = z
 export const zId = z.string().min(1).max(64);
 const zOptionalText = (max: number) => z.string().max(max).nullish();
 
-/** Absolute http(s) URL. Rejects javascript:, data: and other schemes. */
-export const zHttpUrl = z.url({ protocol: /^https?$/, error: 'must be an http(s) URL' }).max(500);
-/** http(s) URL or a path on this site (`/logo.svg`), e.g. for logos. */
-export const zHttpUrlOrPath = z
-  .string()
+/**
+ * Absolute http(s) URL. Rejects javascript:, data: and other schemes, and a
+ * user name or password in the URL (credentials have their own fields; they
+ * would otherwise end up in error messages and logs).
+ */
+export const zHttpUrl = z
+  .url({ protocol: /^https?$/, error: 'must be an http(s) URL' })
   .max(500)
-  .refine((v) => (v.startsWith('/') && !v.startsWith('//')) || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path');
-
+  .refine((v) => {
+    const u = parseUrl(v);
+    return u !== null && u.username === '' && u.password === '';
+  }, 'must not contain a user name or password');
 /**
  * Path on this site for links (`/about`): a single leading slash, no `//` or
  * backslash (browsers read both as another host), no whitespace or control
@@ -85,6 +108,11 @@ export const zSitePath = z
   .string()
   .max(500)
   .regex(/^\/(?![/\\])[^\s\\\u0000-\u001f\u007f]*$/, 'must be a path on this site starting with a single /');
+/** http(s) URL or a path on this site (`/logo.svg`, same rules as {@link zSitePath}), e.g. for logos. */
+export const zHttpUrlOrPath = z
+  .string()
+  .max(500)
+  .refine((v) => zSitePath.safeParse(v).success || zHttpUrl.safeParse(v).success, 'must be an http(s) URL or a path');
 /**
  * Link target: an http(s) URL or a path on this site ({@link zSitePath}).
  * Leading and trailing whitespace is trimmed, like the http(s) URL fields.
@@ -770,12 +798,40 @@ export interface AdminServiceHistory {
 // Monitoring sources & checks (internal only)
 // ---------------------------------------------------------------------------
 
-/** Connection string of a MySQL/MariaDB or PostgreSQL database. */
+/**
+ * Query parameters a connection string may carry. The database drivers read
+ * others as connection options, some of them file paths on the server
+ * (PostgreSQL `sslcert`, `sslkey`, `sslrootcert`) or local sockets (`host`,
+ * MySQL `socketPath`), so only the TLS switch of each driver is allowed.
+ */
+const DATABASE_URL_PARAMS: Record<string, string> = { postgres: 'sslmode', postgresql: 'sslmode', mysql: 'ssl', mariadb: 'ssl' };
+const PG_SSLMODES = ['disable', 'prefer', 'require', 'verify-ca', 'verify-full', 'no-verify'];
+
+function databaseUrlTargetOk(value: string): boolean {
+  if (value === SECRET_MASK) return true;
+  const url = parseUrl(value);
+  // A percent-encoded host is a socket path for the PostgreSQL driver; a fragment is never needed.
+  if (!url || url.hostname === '' || url.hostname.includes('%') || url.hash !== '') return false;
+  const allowed = DATABASE_URL_PARAMS[value.slice(0, value.indexOf(':')).toLowerCase()];
+  for (const key of url.searchParams.keys()) {
+    if (key !== allowed || url.searchParams.getAll(key).length !== 1) return false;
+    if (key === 'sslmode' && !PG_SSLMODES.includes(url.searchParams.getAll(key)[0]!)) return false;
+  }
+  return true;
+}
+
+/**
+ * Connection string of a MySQL/MariaDB or PostgreSQL database: a host name and
+ * at most the parameter `sslmode` (PostgreSQL) or `ssl` (MySQL/MariaDB).
+ */
 export const zDatabaseUrl = z
   .string()
   .max(2000)
   .refine((v) => /^(mysql|mariadb|postgres|postgresql):\/\/[^\s]+$/i.test(v) || v === SECRET_MASK, {
     message: 'must be a mysql://, mariadb:// or postgres:// URL',
+  })
+  .refine(databaseUrlTargetOk, {
+    message: 'must name a host and may only carry the parameter sslmode (PostgreSQL) or ssl (MySQL/MariaDB)',
   });
 
 const zHttpBase = z.object({
