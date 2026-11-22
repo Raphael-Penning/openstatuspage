@@ -63,6 +63,14 @@ Adressen oder Netze des Proxys (z. B. `TRUST_PROXY=192.0.2.10` oder
 `TRUST_PROXY=10.0.0.0/8`). So kann ein Client, der den Proxy umgeht, kein
 eigenes `X-Forwarded-For` setzen.
 
+Die Adresse muss die sein, die die Anwendung als Gegenstelle der Verbindung
+sieht, und das ist nicht immer die eigene Adresse des Proxys. Verbindet sich der
+Proxy über einen Port, den Dockers Userland-Proxy veröffentlicht (rootless
+Docker, Docker Desktop oder ein Proxy auf demselben Host), sieht die Anwendung
+das Gateway des Docker-Netzes (z. B. `172.17.0.1`). Prüfe die Client-Adresse im
+Request-Log und trage in diesem Fall das Gateway oder Subnetz des Docker-Netzes
+ein.
+
 ## Caddy
 
 Caddy holt Zertifikate automatisch und setzt die Forwarding-Header von sich

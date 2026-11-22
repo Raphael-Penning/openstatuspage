@@ -59,6 +59,13 @@ inside a private network). If the port is reachable from other hosts, set
 `TRUST_PROXY=192.0.2.10` or `TRUST_PROXY=10.0.0.0/8`), so a client that
 bypasses the proxy cannot set its own `X-Forwarded-For`.
 
+The address must be the one the app sees as the peer of the connection, which
+is not always the proxy's own address. When the proxy connects through a port
+published by Docker's userland proxy (rootless Docker, Docker Desktop, or a
+proxy on the same host), the app sees the gateway of the Docker network (e.g.
+`172.17.0.1`). Check the client address in the request log and, in that case,
+list the gateway or subnet of the Docker network.
+
 ## Caddy
 
 Caddy obtains certificates automatically and sets the forwarding headers by
