@@ -29,7 +29,9 @@ breaking changes.
 
 - CI pins every third-party action to a full commit SHA, and pull requests
   build the image in a separate `image-build` job without `packages: write`;
-  only pushes to `main` and tags get the write permission.
+  only pushes to `main` and tags get the write permission. Branch protection
+  that requires the `image` check should require `image-build` instead, since
+  `image` is skipped (and counted as passed) on pull requests.
 - `compose.yaml` and the `.env` template publish the app port on
   `127.0.0.1:3000` by default (`HOST_PORT`), so clients cannot bypass the
   reverse proxy and spoof `X-Forwarded-For` under `TRUST_PROXY=1`. Existing
