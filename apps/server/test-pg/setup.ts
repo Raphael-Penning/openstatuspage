@@ -36,7 +36,7 @@ function withDatabase(url: string, database: string): string {
   return u.toString();
 }
 
-const HARDEN_SQL = readFileSync(new URL('../../../deploy/postgres/harden.sql', import.meta.url), 'utf8');
+export const HARDEN_SQL = readFileSync(new URL('../../../deploy/postgres/harden.sql', import.meta.url), 'utf8');
 
 /** Runs `text` in `database` as the user of `url`. */
 export async function queryIn(url: string, database: string, text: string): Promise<void> {
