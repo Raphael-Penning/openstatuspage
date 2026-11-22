@@ -141,7 +141,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 ```
 
 Nach ein paar Sekunden zeigt `ps` die Anwendung als `healthy`, und der
-Health-Endpunkt liefert `{"status":"ok",...}`. Sobald der Proxy steht, öffnest
+Health-Endpunkt liefert `{"status":"ok"}`. Sobald der Proxy steht, öffnest
 du deine `BASE_URL` mit `/admin` und meldest dich an. Mit einer
 `https://`-`BASE_URL` ist das Login-Cookie Secure, über unverschlüsseltes
 `http://<host>:3000` klappt die Anmeldung deshalb nicht. Willst du dich
@@ -618,7 +618,7 @@ Server bei jedem Start eine Warnung ins Log.
 
 ## Installation prüfen
 
-- `curl -fsS http://127.0.0.1:3000/api/health` liefert `{"status":"ok",...}`, wenn
+- `curl -fsS http://127.0.0.1:3000/api/health` liefert `{"status":"ok"}`, wenn
   Anwendung und Datenbank funktionieren. Das Docker-Image nutzt denselben
   Endpunkt für seinen eingebauten Health-Check (`docker ps` zeigt `healthy`),
   das Kubernetes-Beispiel für seine Readiness- und Liveness-Probes.

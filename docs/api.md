@@ -336,7 +336,7 @@ error documents like everywhere else.
 
 | Method | Path | Response |
 | --- | --- | --- |
-| GET | `/api/health` | `{ "status": "ok", "role": "all", "worker": true }` (`application/json`) for liveness/readiness probes; `role` is the instance's `APP_ROLE`, `worker` whether it runs the background tasks. Exists in every role. |
+| GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes, once the database answers. Exists in every role; the role itself is only logged on start. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 | GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
@@ -359,7 +359,7 @@ GET /api/health
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"status": "ok", "role": "all", "worker": true}
+{"status": "ok"}
 ```
 
 </details>

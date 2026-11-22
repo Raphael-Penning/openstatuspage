@@ -104,7 +104,7 @@ instances, e.g. `status.admin.example.org` (internal network or VPN) and
 | Public status page, `/api/public/*`, feeds, subscriptions | ✓ | ✓ | – | ✓ |
 | Management UI (`/admin`), `/api/admin/*`, `/api/auth/*` (login, OIDC) | – | ✓ | – | ✓ |
 | Ingest endpoints `/api/ingest/*` (webhooks of monitoring systems) | – | ✓ | – | ✓ |
-| `/api/health` (reports `role` and `worker`) | ✓ | ✓ | ✓ | ✓ |
+| `/api/health` | ✓ | ✓ | ✓ | ✓ |
 | Background tasks (pollers, scheduler, mail delivery, cleanup) | never | `WORKER_ENABLED=true` | ✓ | ✓ (default) |
 | Runs migrations on start | never (waits) | ✓ | ✓ | ✓ |
 | Creates the initial admin (`ADMIN_EMAIL`) | – | ✓ | – | ✓ |

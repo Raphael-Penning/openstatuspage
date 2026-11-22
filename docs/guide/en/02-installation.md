@@ -599,7 +599,7 @@ every start.
 
 ## Checking the installation
 
-- `curl -fsS http://127.0.0.1:3000/api/health` returns `{"status":"ok",...}` when
+- `curl -fsS http://127.0.0.1:3000/api/health` returns `{"status":"ok"}` when
   the app and the database work. The Docker image uses the same endpoint for
   its built-in health check (`docker ps` shows `healthy`), the Kubernetes
   example for its readiness and liveness probes.
