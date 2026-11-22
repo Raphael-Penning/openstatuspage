@@ -123,6 +123,15 @@ describe('http hardening', () => {
     expect(api.headers['cross-origin-opener-policy']).toBeUndefined();
   });
 
+  it('denies framing of pages with a personal link token', async () => {
+    for (const url of ['/subscription/manage?id=x&token=y', '/subscription/confirm?id=x&token=y', '/Subscription/Manage', '/%73ubscription/manage']) {
+      const res = await app.inject({ url });
+      expect(res.headers['x-frame-options'], url).toBe('DENY');
+      expect(res.headers['content-security-policy'], url).toContain("frame-ancestors 'none'");
+      expect(res.headers['referrer-policy'], url).toBe('no-referrer');
+    }
+  });
+
   it('denies framing of case-variant and percent-encoded admin paths', async () => {
     // The SPA fallback serves these, and the client router would match /admin.
     for (const url of ['/ADMIN/x', '/Admin', '/%61dmin/x', '/%41DMIN/x?a=1', '//admin/x']) {
@@ -132,7 +141,7 @@ describe('http hardening', () => {
       expect(res.headers['content-security-policy'], url).toContain("frame-ancestors 'none'");
     }
     // Public client routes stay embeddable.
-    for (const url of ['/services/admin', '/%73ervices/foo']) {
+    for (const url of ['/services/admin', '/%73ervices/foo', '/subscribe']) {
       expect((await app.inject({ url })).headers['x-frame-options'], url).toBeUndefined();
     }
   });

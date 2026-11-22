@@ -157,8 +157,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
     // Subscription pages have a token in their URL: it never leaves as a referrer.
     reply.header('Referrer-Policy', isPersonalPath(path) ? 'no-referrer' : 'strict-origin-when-cross-origin');
     const admin = path === '/admin' || path.startsWith('/admin/');
-    // Private pages are not embeddable either: whoever holds a link could otherwise show it on any site.
-    const framed = !(admin || isApiPath(path) || isPrivatePagePath(path));
+    // Pages with a personal link (private pages, subscription confirm and manage) are not embeddable
+    // either: whoever holds a link could otherwise show it on any site.
+    const framed = !(admin || isApiPath(path) || isPersonalPath(path));
     if (!framed) reply.header('X-Frame-Options', 'DENY');
     // Pages get the full policy (lib/security-headers.ts), every other response only the framing rule.
     const html = String(reply.getHeader('content-type') ?? '').startsWith('text/html');
