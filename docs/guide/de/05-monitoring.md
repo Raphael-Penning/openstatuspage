@@ -50,7 +50,9 @@ Umgebung, statt die Prüfung abzuschalten.
 
 1. **Monitoring → Quellen → Neue Quelle** (Administratoren): Typ wählen.
    - Für Pull trägst du Basis-URL und Zugangsdaten ein und prüfst mit
-     **Verbindung testen**. **Jetzt abfragen** importiert sofort.
+     **Verbindung testen**. **Jetzt abfragen** importiert sofort. Benutzername
+     und Passwort gehören in ihre eigenen Felder; URLs mit
+     `benutzer:passwort@` werden abgelehnt.
    - Für Push kopierst du **Ingest-URL** und **Ingest-Token**. Das Token wird
      nur einmal angezeigt; du kannst es später erneuern.
 2. Richte die Monitoring-Seite ein, wie in der Adapter-Dokumentation

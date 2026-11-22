@@ -40,6 +40,25 @@ import {
 // browser report a violation). Must run before the first schema is created.
 if ('window' in globalThis) z.config({ jitless: true });
 
+/** The WHATWG URL of Node.js and browsers (this package compiles without DOM or Node types). */
+interface WhatwgUrl {
+  readonly username: string;
+  readonly password: string;
+  readonly hostname: string;
+  readonly hash: string;
+  readonly searchParams: { keys(): Iterable<string>; getAll(name: string): string[] };
+}
+const Url = (globalThis as unknown as { URL: new (input: string) => WhatwgUrl }).URL;
+
+/** Parses an absolute URL; null when it is none. */
+function parseUrl(value: string): WhatwgUrl | null {
+  try {
+    return new Url(value);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
@@ -68,8 +87,18 @@ export const zSlug = z
 export const zId = z.string().min(1).max(64);
 const zOptionalText = (max: number) => z.string().max(max).nullish();
 
-/** Absolute http(s) URL. Rejects javascript:, data: and other schemes. */
-export const zHttpUrl = z.url({ protocol: /^https?$/, error: 'must be an http(s) URL' }).max(500);
+/**
+ * Absolute http(s) URL. Rejects javascript:, data: and other schemes, and a
+ * user name or password in the URL (credentials have their own fields; they
+ * would otherwise end up in error messages and logs).
+ */
+export const zHttpUrl = z
+  .url({ protocol: /^https?$/, error: 'must be an http(s) URL' })
+  .max(500)
+  .refine((v) => {
+    const u = parseUrl(v);
+    return u !== null && u.username === '' && u.password === '';
+  }, 'must not contain a user name or password');
 /**
  * Path on this site for links (`/about`): a single leading slash, no `//` or
  * backslash (browsers read both as another host), no whitespace or control

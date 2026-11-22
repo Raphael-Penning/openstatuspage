@@ -48,7 +48,8 @@ verification.
 
 1. **Monitoring → Sources → New source** (administrators): choose the type.
    - For pull, enter the base URL and the credentials, then use **Test
-     connection**. **Poll now** imports immediately.
+     connection**. **Poll now** imports immediately. Put user name and
+     password into their own fields; URLs with `user:password@` are rejected.
    - For push, copy the **ingest URL** and the **token**. The token is shown
      only once; it can be rotated later.
 2. Configure the monitoring side as described in the adapter documentation
