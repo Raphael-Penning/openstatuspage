@@ -297,7 +297,9 @@ curl -fsS https://status.example.com/api/ingest/<source-id> \
 | `full` | `true` = the payload is the complete set; checks missing from it are removed (sources of type `webhook` only) |
 
 Up to 5000 checks per request (5 MiB body). Sending full metadata once and only
-`id` + `state` afterwards is fine.
+`id` + `state` afterwards is fine. A source holds at most `MAX_CHECKS_PER_SOURCE`
+checks (default 20000); a push that would add checks beyond it is rejected with
+`409` and stores nothing.
 
 **Full sync (`"full": true`).** Removing a check also removes its links to
 services, and the links do not come back when the check is pushed again. To

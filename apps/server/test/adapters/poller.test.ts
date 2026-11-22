@@ -82,6 +82,17 @@ describe('pollAndStore', () => {
     expect(outcome.message).toBe('Uptime Kuma: request to https://kuma.example.com/metrics failed: connection refused (ECONNREFUSED)');
   });
 
+  it('stores nothing and records the error when a poll exceeds MAX_CHECKS_PER_SOURCE', async () => {
+    await t.close();
+    t = await createTestApp({ MAX_CHECKS_PER_SOURCE: '100' });
+    const { id } = await t.insertSource({ type: 'uptimekuma', config: kumaConfig });
+    const many = Array.from({ length: 101 }, (_, i) => `monitor_status{monitor_name="m${i}",monitor_type="http"} 1`).join('\n');
+    const outcome = await pollAndStore(t.ctx, id, { fetchFactory: () => mockFetch(() => new Response(many)).fetch });
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining('at most 100') });
+    expect(await checkStates(id)).toEqual({});
+    expect((await sourceRow(id)).last_error).toContain('MAX_CHECKS_PER_SOURCE');
+  });
+
   it('does not wipe existing checks when the system suddenly returns none', async () => {
     const { id } = await t.insertSource({
       type: 'icinga2',

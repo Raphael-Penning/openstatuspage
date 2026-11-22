@@ -65,8 +65,8 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-export async function createTestApp(): Promise<TestApp> {
-  const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'sqlite::memory:' });
+export async function createTestApp(env: Record<string, string> = {}): Promise<TestApp> {
+  const config = loadConfig({ NODE_ENV: 'test', DATABASE_URL: 'sqlite::memory:', ...env });
   const db = await createDb(config);
   await migrateToLatest(db);
   const app = await buildApp({ config, db, serveWeb: false });

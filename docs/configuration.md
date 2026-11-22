@@ -152,6 +152,14 @@ only needs `SUBSCRIPTION_TOKEN_KEY` (and logs a warning when it gets
 SQLite is a single-file database for one instance: with SQLite only `APP_ROLE=all`
 is supported.
 
+## Monitoring
+
+Limits for monitoring sources (see [adapters/README.md](adapters/README.md)).
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MAX_CHECKS_PER_SOURCE` | `20000` | Most checks (100 to 1000000) one monitoring source may have. A push or poll that would give a source more checks is rejected (push: `409`; poll: recorded as a failed poll) and stores nothing; updates of existing checks are always accepted. |
+
 ## Check bundles
 
 | Variable | Default | Description |

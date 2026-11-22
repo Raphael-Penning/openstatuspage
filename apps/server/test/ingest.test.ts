@@ -94,4 +94,22 @@ describe('IngestService', () => {
     await ingest.ingest('src', [{ externalId: 'a', state: 'ok', checkedAt: new Date().toISOString() }], { full: false });
     expect((await stored()).state).toBe('ok');
   });
+
+  it('rejects pushes that would give a source more checks than allowed', async () => {
+    const limited = new IngestService(db, new StatusEngine(db), undefined, { maxChecksPerSource: 3 });
+    const push = (ids: string[], full = false) =>
+      limited.ingest('src', ids.map((externalId) => ({ externalId, state: 'ok' as const })), { full });
+    await push(['a', 'b']);
+    await expect(push(['c', 'd'])).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('at most 3') });
+    const count = async () => (await db.selectFrom('monitor_checks').select('external_id').execute()).length;
+    // Nothing of the rejected push was stored.
+    expect(await count()).toBe(2);
+    await push(['c']);
+    // Updates of existing checks are always accepted.
+    await push(['a', 'b', 'c']);
+    // A full sync is judged by its own size: it replaces the set.
+    await expect(push(['w', 'x', 'y', 'z'], true)).rejects.toMatchObject({ statusCode: 409 });
+    await push(['x', 'y', 'z'], true);
+    expect(await count()).toBe(3);
+  });
 });

@@ -6,7 +6,7 @@
 import type { MonitorSourceTestResult } from '@openstatuspage/shared';
 import type { AppContext } from '../context.js';
 import type { MonitorSource } from '../db/types.js';
-import { notFound } from '../lib/errors.js';
+import { HttpError, notFound } from '../lib/errors.js';
 import type { IngestResult } from '../services/ingest.js';
 import { createAdapterFetch, describeTransportError, type AdapterFetchOptions, type FetchFn } from './http.js';
 import { withLease } from '../lib/task-leases.js';
@@ -223,7 +223,15 @@ async function doPollAndStore(ctx: AppContext, sourceId: string, options: Runner
   }
 
   // recordPoll re-evaluates the source's bundles with the new poll outcome.
-  const result = await ctx.ingest.ingest(sourceId, checks, { full: true, deferBundleRecompute: true });
+  let result: IngestResult;
+  try {
+    result = await ctx.ingest.ingest(sourceId, checks, { full: true, deferBundleRecompute: true });
+  } catch (err) {
+    // Rejected by a limit (e.g. MAX_CHECKS_PER_SOURCE): nothing was stored.
+    if (!(err instanceof HttpError)) throw err;
+    await ctx.ingest.recordPoll(sourceId, false, err.message);
+    return { ok: false, message: err.message, checkCount: checks.length };
+  }
   await ctx.ingest.recordPoll(sourceId, true);
   return {
     ok: true,

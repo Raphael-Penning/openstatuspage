@@ -259,3 +259,6 @@ Das CSV-Format und die Details je System findest du in der
 - Ingest-Endpunkte sind auf 120 Anfragen pro Minute und Quelle begrenzt.
   Fasse viele Ergebnisse in einer Anfrage zusammen (bis zu 5000 Checks,
   5 MiB).
+- Eine Quelle hat höchstens 20000 Checks (`MAX_CHECKS_PER_SOURCE`). Ein Push
+  oder eine Abfrage, die mehr anlegen würde, wird abgelehnt und speichert
+  nichts.

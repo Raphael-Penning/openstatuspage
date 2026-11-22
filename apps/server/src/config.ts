@@ -127,6 +127,11 @@ const EnvSchema = z.object({
    * use 3 poll intervals (at least 5 minutes) instead.
    */
   BUNDLE_PUSH_STALE_SECONDS: z.coerce.number().int().min(60).max(7 * 24 * 3600).default(3600),
+  /**
+   * Most checks one monitoring source may have. Pushes and polls that would exceed
+   * it are rejected and store nothing.
+   */
+  MAX_CHECKS_PER_SOURCE: z.coerce.number().int().min(100).max(1_000_000).default(20_000),
 
   /**
    * How notification mails are delivered: `smtp`, `log` (written to the server log,

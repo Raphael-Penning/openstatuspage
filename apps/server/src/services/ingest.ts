@@ -19,18 +19,33 @@ export interface IngestResult {
   stateChanges: number;
 }
 
+/** Default for MAX_CHECKS_PER_SOURCE. */
+export const DEFAULT_MAX_CHECKS_PER_SOURCE = 20_000;
+
+export interface IngestOptions {
+  /** Upper bound for the number of checks of one source (MAX_CHECKS_PER_SOURCE). */
+  maxChecksPerSource?: number;
+}
+
 export class IngestService {
+  private readonly maxChecksPerSource: number;
+
   constructor(
     private readonly db: DB,
     private readonly engine: StatusEngine,
     /** Re-evaluates check bundles whose members belong to the ingested source. */
     private readonly bundles?: BundleService,
-  ) {}
+    options: IngestOptions = {},
+  ) {
+    this.maxChecksPerSource = options.maxChecksPerSource ?? DEFAULT_MAX_CHECKS_PER_SOURCE;
+  }
 
   /**
    * Upserts check results of one source.
    * A result older than the stored result of its check (by `checkedAt`) is
    * ignored, so delayed or replayed results cannot overwrite newer state.
+   * A call that would leave the source with more than `maxChecksPerSource`
+   * checks is rejected with 409 and nothing is stored.
    * With `full = true`, checks that are missing from `checks` are deleted
    * (their service links disappear with them).
    * With `guardLinkedChecks`, a full sync that would delete more than half of
@@ -73,6 +88,15 @@ export class IngestService {
         .where('source_id', '=', sourceId)
         .execute();
       const existingByExternal = new Map(existing.map((c) => [c.external_id, c]));
+
+      const added = [...byExternalId.keys()].filter((id) => !existingByExternal.has(id)).length;
+      const total = options.full ? byExternalId.size : existing.length + added;
+      if (added > 0 && total > this.maxChecksPerSource) {
+        throw conflict(
+          `This would give the source ${total} checks; at most ${this.maxChecksPerSource} are allowed (MAX_CHECKS_PER_SOURCE). ` +
+            'Nothing was stored. Remove checks that are no longer needed or split the source.',
+        );
+      }
 
       if (options.full && options.guardLinkedChecks) {
         await this.assertKeepsLinkedChecks(trx, sourceId, byExternalId);

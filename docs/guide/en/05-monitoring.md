@@ -241,3 +241,5 @@ For the CSV format and the details per system, see the
   no checks, look for renamed hosts or monitors.
 - Ingest endpoints are rate limited to 120 requests per minute per source.
   Batch many results into one request (up to 5000 checks, 5 MiB).
+- A source holds at most 20000 checks (`MAX_CHECKS_PER_SOURCE`). A push or poll
+  that would add more is rejected and stores nothing.
