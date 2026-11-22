@@ -6,6 +6,31 @@ breaking changes.
 
 ## [Unreleased]
 
+### Upgrading from 0.2.x
+
+Breaking changes from the security fixes; details under *Changed*.
+
+- `create-user` no longer accepts the password as an argument: it comes from a
+  hidden prompt, the first line of stdin or `OSP_USER_PASSWORD`. Change scripts
+  that pass it on the command line.
+- SSO auto-creates and links accounts by e-mail only when the identity
+  provider sends `email_verified`. Entra ID does not by default: configure it
+  to emit the claim (see [OIDC](docs/oidc.md#microsoft-entra-id)); users
+  already linked by their subject are not affected.
+- PostgreSQL: admin, worker and public instances refuse to start while the
+  public role can `CREATE` in the table schema (also through `PUBLIC`). First
+  `GRANT CREATE ON SCHEMA public TO <app role>` (the table owner), then rerun
+  `deploy/postgres/harden.sql`.
+- `/api/health` answers only `{"status":"ok"}`, without `role` and `worker`.
+- New monitoring limits: `POLL_MAX_RESPONSE_MB` defaults to 8 MiB (was
+  50 MiB), `POLL_MAX_VALUES` to 500000 and `MAX_CHECKS_PER_SOURCE` to 20000.
+  Very large setups must raise them (the poll limits together with the heap
+  cap).
+- Private pages: page views and API requests share one
+  `PRIVATE_PAGE_REQUESTS_PER_MINUTE` budget per client.
+- In production the published example values of `SECRET_KEY` and
+  `SUBSCRIPTION_TOKEN_KEY` are refused at startup.
+
 ### Added
 
 - **Helm chart** in `deploy/helm/openstatuspage`, published with every release
