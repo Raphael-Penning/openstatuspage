@@ -25,7 +25,7 @@ du Abonnements ohne Versandart, zeigt die Einstellungsseite eine Warnung.
 
 | Variable | Standard | Beschreibung |
 | --- | --- | --- |
-| `MAIL_TRANSPORT` | `smtp`, wenn `SMTP_HOST` gesetzt ist, sonst `none` | `smtp` versendet per SMTP. `log` schreibt jede E-Mail ins Server-Log, statt sie zu versenden (nur für Entwicklung und Tests: Das Log enthält dann die Links aus Bestätigungs- und Verwaltungs-E-Mails). `none` schaltet E-Mail ab, auch wenn `SMTP_HOST` gesetzt ist. |
+| `MAIL_TRANSPORT` | `smtp`, wenn `SMTP_HOST` gesetzt ist, sonst `none` | `smtp` versendet per SMTP. `log` schreibt jede E-Mail ins Server-Log, statt sie zu versenden (nur für Entwicklung und Tests: Das Log enthält dann die Links aus Bestätigungs- und Verwaltungs-E-Mails; mit `NODE_ENV=production`, dem Standard des Container-Images, stehen dort statt der Tokens `[redacted]`). `none` schaltet E-Mail ab, auch wenn `SMTP_HOST` gesetzt ist. |
 | `SMTP_HOST` | – | Hostname des SMTP-Servers oder Relays. Pflicht für `smtp`. |
 | `SMTP_PORT` | `587` | Port des SMTP-Servers. |
 | `SMTP_SECURE` | `false` | `true` für implizites TLS (meist Port 465). Bei `false` wird die Verbindung per STARTTLS verschlüsselt, sofern der Server es anbietet. |
@@ -126,7 +126,8 @@ Details, die Abonnenten und deinen Mailserver schützen:
   sich nach der Bestätigung auf der Verwaltungsseite ändern); eine bestätigte
   Adresse bekommt stattdessen eine E-Mail mit dem Link zur Verwaltung. Solche
   E-Mails gehen höchstens alle 10 Minuten an dieselbe Adresse.
-- Das Formular ist auf 5 Anfragen pro Minute und Client-IP begrenzt, die
+- Das Abonnieren ist auf 5 Anfragen pro Minute und Client-IP begrenzt (das
+  Formular mit und ohne JavaScript zusammen), die
   Links zum Bestätigen, Verwalten und Abmelden auf 30 pro Minute. Hinter einem
   Reverse Proxy braucht das ein korrektes `TRUST_PROXY` (siehe
   [Reverse Proxy](03-reverse-proxy.md#trust_proxy)).
@@ -140,6 +141,12 @@ Details, die Abonnenten und deinen Mailserver schützen:
 - Zum Bestätigen braucht es einen Klick auf **Abonnement bestätigen**. Das
   bloße Öffnen des Links (etwa durch den Link-Scanner eines Mail-Anbieters)
   bestätigt nichts.
+- Der Bestätigungslink führt nur einmal zur Verwaltungsseite. Nutzt du ihn
+  nach der Bestätigung noch einmal, zeigt er „Dieses Abonnement ist bereits
+  bestätigt“ und erklärt, wie du es verwaltest: über den Link in einer
+  beliebigen Benachrichtigung oder indem du mit derselben Adresse erneut
+  abonnierst, dann kommt ein Verwaltungslink per E-Mail. Eine alte
+  Bestätigungs-E-Mail bleibt so kein Schlüssel zum Abonnement.
 - Anmelden, Bestätigen, Einstellungen ändern und Abmelden funktionieren auch
   ohne JavaScript als normale Formulare.
 - Jede Benachrichtigung enthält einen Link zur Verwaltung und einen Link zum

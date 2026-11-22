@@ -307,7 +307,10 @@
       "manage": "Manage preferences",
       "intro": "Confirm that you want to receive email notifications from this status page.",
       "button": "Confirm subscription",
-      "needsScript": "This link only works with JavaScript. Use the link of a newer email, or subscribe again to get a new one."
+      "needsScript": "This link only works with JavaScript. Use the link of a newer email, or subscribe again to get a new one.",
+      "already": "This subscription is already confirmed",
+      "alreadyHint": "To change your preferences or unsubscribe, use the link in any notification email. You can also subscribe again with the same address: we will then email you a link to manage your subscription.",
+      "alreadySubscribe": "Get a manage link"
     },
     "manage": {
       "title": "Your email notifications",

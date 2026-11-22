@@ -88,6 +88,11 @@ describe('a migrating role without CREATE on the database', () => {
       // Later additions to osp_public come with the schema (0009: the private page functions).
       const page = await sql`select * from osp_public.private_page(${'a'.repeat(32)})`.execute(pub);
       expect(page.rows).toEqual([]);
+      // 0012: their search_path is pinned to pg_catalog too.
+      const unpinned = await sql<{ name: string }>`select p.proname as name from pg_proc p
+        where p.pronamespace = 'osp_public'::regnamespace
+          and not coalesce(p.proconfig @> array['search_path=pg_catalog, pg_temp'], false)`.execute(db);
+      expect(unpinned.rows).toEqual([]);
     } finally {
       await pub.destroy();
     }

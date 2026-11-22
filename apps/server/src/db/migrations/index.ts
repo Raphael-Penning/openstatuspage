@@ -10,6 +10,7 @@ import * as m0008 from './0008_task_leases.js';
 import * as m0009 from './0009_private_pages.js';
 import * as m0010 from './0010_poll_markers.js';
 import * as m0011 from './0011_full_sync_guard.js';
+import * as m0012 from './0012_definer_search_path.js';
 
 /**
  * Migrations are registered statically so they survive bundling.
@@ -27,4 +28,5 @@ export const migrations: Record<string, Migration> = {
   '0009_private_pages': m0009,
   '0010_poll_markers': m0010,
   '0011_full_sync_guard': m0011,
+  '0012_definer_search_path': m0012,
 };

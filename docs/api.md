@@ -319,7 +319,8 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
   sends it). Bearer-token requests are exempt.
 - Every mutating admin call writes an audit log entry. Mutations through API tokens
   are audited with `userId = null` and `details.apiToken = <token name>`.
-- Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP,
+- Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP (the API and the
+  HTML form `POST /subscribe` together),
   subscription token endpoints 30/min per IP, ingest 120/min per source.
 
 ```sh
@@ -979,7 +980,7 @@ A subscription is a `subscriptions` resource (`PublicSubscription`): attributes
 | Method | Path | Body / auth | Response |
 | --- | --- | --- | --- |
 | POST | `/api/public/subscriptions` | `subscriptions` (`SubscribeInput`, relationship `services`) | `202` with `meta.accepted` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated; also for a filled-in honeypot). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public services. |
-| POST | `/api/public/subscriptions/:id/confirm` | `subscriptions` with the attribute `token` (`SubscriptionConfirmInput`, token from the confirmation link) | the subscription; only this response also has the attribute `manageToken`; idempotent |
+| POST | `/api/public/subscriptions/:id/confirm` | `subscriptions` with the attribute `token` (`SubscriptionConfirmInput`, token from the confirmation link) | the subscription; idempotent. Only the response of the request that confirms it also has the attribute `manageToken`; confirming an already confirmed subscription answers without it (an old confirmation link is no manage link) |
 | GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token` | the subscription |
 | PATCH | `/api/public/subscriptions/:id` | header as above, `subscriptions` (`SubscriptionPreferencesInput`, partial) | the subscription |
 | DELETE | `/api/public/subscriptions/:id` | header as above | `204`, deletes the subscriber completely |
@@ -1028,7 +1029,7 @@ same subscription flow and rate limits, and answer with Post/Redirect/Get:
 | Method | Path | Fields | Success | Problems |
 | --- | --- | --- | --- | --- |
 | POST | `/subscribe` | `email`, `locale`, `scope` (`all` or `selected`), `service` (repeated), `group` (repeated: every public service of the group), `website` (honeypot) | `303` to `/subscribe?sent=1` | invalid input: `422` with the page and its errors; subscriptions off: `303` to `/subscribe` |
-| POST | `/subscription/confirm` | `id`, `token` (confirm token) | `303` to the manage page with the manage token and `confirmed=1` | wrong link: `303` to `/subscription/confirm?error=invalid` |
+| POST | `/subscription/confirm` | `id`, `token` (confirm token) | `303` to the manage page with the manage token and `confirmed=1`; when it was confirmed before, `303` to `/subscription/confirm?already=1` (no manage token) | wrong link: `303` to `/subscription/confirm?error=invalid` |
 | POST | `/subscription/manage` | `id`, `token` (manage token), `locale`, `scope`, `service`, `group` | `303` to the manage page with `saved=1` | invalid input: `422` with the page; wrong link: `303` to `/subscription/manage?error=invalid` |
 | POST | `/subscription/unsubscribe` | `id`, `token` (manage token) | `303` to `/subscription/manage?unsubscribed=1` | wrong link: `303` to `/subscription/manage?error=invalid` |
 | POST | `/preferences/theme` | `theme` (`system`, `light`, `dark`), `return` (local path) | `303` to `return`, sets the `osp-theme` cookie | – |

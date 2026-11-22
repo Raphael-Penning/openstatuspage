@@ -16,10 +16,11 @@ import type { PublicSubscription, SubscribeInput, SubscriptionLocale, Subscripti
 import { sql } from 'kysely';
 import type { Config } from '../config.js';
 import type { AppContext } from '../context.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, notFound, type HttpError } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import {
   confirmSubscription,
+  type ConfirmResult,
   deleteSubscriber,
   findByToken,
   normalizeEmail,
@@ -56,13 +57,36 @@ function fromRow(row: SubscriptionRow): PublicSubscription {
   };
 }
 
-/** Input errors raised by the functions (SQLSTATE 22023) become a 400 with their message. */
+/**
+ * Messages the osp_public functions raise for invalid input (SQLSTATE 22023, migrations
+ * 0007 and 0012). Only these reach the client; PostgreSQL's own errors with that code
+ * (which may quote values or internals) become a generic 400.
+ */
+const INPUT_ERRORS = new Set([
+  'Invalid id',
+  'Invalid email',
+  'Invalid locale',
+  'Invalid allServices',
+  'Select at least one service',
+  'Too many services',
+  'Unknown service',
+  'Invalid token salt',
+  'Invalid token hash',
+  'Invalid token key',
+]);
+
+/** The 400 for an input error of the database functions (SQLSTATE 22023); null for any other error. */
+export function databaseInputError(err: unknown): HttpError | null {
+  if ((err as { code?: unknown } | null)?.code !== '22023') return null;
+  const message = (err as { message?: unknown }).message;
+  return badRequest(typeof message === 'string' && INPUT_ERRORS.has(message) ? message : 'Invalid input');
+}
+
 async function call<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (err) {
-    if ((err as { code?: string }).code === '22023') throw badRequest((err as Error).message);
-    throw err;
+    throw databaseInputError(err) ?? err;
   }
 }
 
@@ -82,21 +106,23 @@ export async function startSubscription(ctx: AppContext, input: SubscribeInput):
   );
 }
 
-/** Confirms a subscription (idempotent) and returns it together with the manage token; 404 for a wrong token. */
-export async function confirm(
-  ctx: AppContext,
-  id: string,
-  token: string,
-): Promise<{ subscription: PublicSubscription; manageToken: string }> {
+/**
+ * Confirms a subscription (idempotent) and returns it; the manage token only for the
+ * request that confirmed it (null afterwards). 404 for a wrong token.
+ */
+export async function confirm(ctx: AppContext, id: string, token: string): Promise<ConfirmResult> {
   if (!usesDatabaseFunctions(ctx.config)) return confirmSubscription(ctx, id, token);
   const { rows } = await call(() =>
-    sql<SubscriptionRow & { token_salt: string }>`select * from osp_public.subscription_confirm(${id}, ${token})`.execute(ctx.db),
+    sql<SubscriptionRow & { token_salt: string | null }>`select * from osp_public.subscription_confirm(${id}, ${token})`.execute(
+      ctx.db,
+    ),
   );
   const row = rows[0];
   if (!row) throw notFound('Subscription');
+  // The function returns the salt only to the request that confirmed the subscription.
   return {
     subscription: fromRow(row),
-    manageToken: subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', row.id, row.token_salt),
+    manageToken: row.token_salt ? subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', row.id, row.token_salt) : null,
   };
 }
 

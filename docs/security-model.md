@@ -109,8 +109,10 @@ from `/api/`, `/admin` and the personal subscription links.
   The recipient is always the subscriber's stored address.
 - **Use a subscription without its token.** The functions compare the SHA-256 of
   the given token with the stored hash (migration `0006`). The database never
-  sees the token key and never hands out a salt except to the holder of a valid
-  confirm token (who could derive the manage token anyway).
+  sees the token key and hands out a salt (from which the public instance
+  derives the manage token) only to the request that confirms a subscription
+  with its valid confirm token; confirming again returns none, so an old
+  confirmation mail is no lasting management credential.
 
 ## How it is enforced
 
@@ -130,7 +132,10 @@ stop a leak on its own; together they are defense in depth:
    worker instances call it on every start (and `pnpm db:migrate` does), so the
    grants follow every migration. It refuses a role that is the connecting role,
    a superuser, has `BYPASSRLS` or is a member of any role (predefined roles such
-   as `pg_read_all_data` would bypass the column privileges). Functions the
+   as `pg_read_all_data` would bypass the column privileges), and a role that may
+   create objects in the table schema or in `osp_public`, also through a grant to
+   `PUBLIC` (migration `0012`): the instance then does not start until the
+   privilege is revoked (`harden.sql` does it for the schema `public`). Functions the
    migrating role creates are not executable by `PUBLIC` by default
    (`ALTER DEFAULT PRIVILEGES`), so a function added later is only callable by
    the roles it is granted to.
@@ -150,8 +155,12 @@ stop a leak on its own; together they are defense in depth:
    check that every table (except Kysely's own) has these policies, so a table
    added by a later migration without them fails CI.
 4. **Functions.** The only writes are `SECURITY DEFINER` functions owned by the
-   table owner, with `search_path` pinned to the table schema and `pg_temp`
-   (so objects the caller creates cannot hijack them). They validate every input
+   table owner, with `search_path` pinned to `pg_catalog, pg_temp` (migration
+   `0012`; the helpers they call too). Their bodies name every table and helper
+   with its schema, so only built-ins are looked up on the path, always in
+   `pg_catalog`: a function someone created elsewhere, for example an exact-type
+   overload of a polymorphic built-in such as `cardinality(text[])`, is never
+   called with the owner's rights. They validate every input
    themselves (address format and length, locale, ids, only existing public
    services, hash formats), check tokens, throttle mails like the application
    (one confirmation or manage mail per address per 10 minutes), never reveal
@@ -163,7 +172,9 @@ stop a leak on its own; together they are defense in depth:
 the public role, to bound what a compromised public instance can make the
 database do, and runs `deploy/postgres/harden.sql`: it revokes from `PUBLIC`
 the advisory lock functions (granted back to the app role), the functions that
-create large objects and `TEMPORARY` on the database. Session advisory locks
+create large objects, `TEMPORARY` on the database and `CREATE` on the schema
+`public` (the default for `PUBLIC` before PostgreSQL 15, and on clusters
+upgraded from such a version). Session advisory locks
 outlive `statement_timeout`; without this a compromised public instance could
 hold the application's lock keys and stall status recomputes, bundle evaluation
 and history imports on every instance. These privileges exist per database and
@@ -204,9 +215,10 @@ way on every version.
 3. Public instance: `APP_ROLE=public` and
    `DATABASE_URL=postgres://osp_public:...@db/openstatuspage`. It waits for the
    schema, then checks its login: if it is **not** a registered public role (e.g.
-   it was given the owner's credentials by mistake) it refuses to start with
-   *"Refusing to start: the database login of this public instance is not a
-   registered public role"*. `ALLOW_UNRESTRICTED_PUBLIC_DB=true` turns this into
+   it was given the owner's credentials by mistake), or if it may create objects
+   in the table schema or in `osp_public`, it refuses to start with *"Refusing to
+   start: the database login of this public instance is not a registered public
+   role …"*. `ALLOW_UNRESTRICTED_PUBLIC_DB=true` turns this into
    a warning, for setups that knowingly run without the database boundary.
 
 All instances need the same `SUBSCRIPTION_TOKEN_KEY`: the public instance

@@ -18,7 +18,8 @@ const BASE = '/api/public/subscriptions';
 
 export interface ConfirmResult {
   subscription: PublicSubscription;
-  manageToken: string;
+  /** Only when this request confirmed the subscription; absent when it was confirmed before. */
+  manageToken?: string;
 }
 
 const TYPE = 'subscriptions';
@@ -52,8 +53,9 @@ export function useConfirmSubscription(id: string, token: string, enabled = true
     enabled,
     queryKey: ['subscription-confirm', id, token],
     queryFn: async () => {
-      // The confirmed subscription carries the manage token as the `manageToken` attribute.
-      const { manageToken, ...subscription } = await api.post<PublicSubscription & { manageToken: string }>(
+      // The subscription carries the manage token as the `manageToken` attribute, but only for
+      // the request that confirmed it (a link confirmed before is no manage link).
+      const { manageToken, ...subscription } = await api.post<PublicSubscription & { manageToken?: string }>(
         `${path(id)}/confirm`,
         { token },
         { type: TYPE },

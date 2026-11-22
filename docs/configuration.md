@@ -42,7 +42,7 @@ keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large his
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` (use `sqlite::memory:` for throw-away instances) or `postgres://user:password@host:5432/database`. Migrations run automatically on start (except with `APP_ROLE=public`). |
-| `ALLOW_UNRESTRICTED_PUBLIC_DB` | `false` | PostgreSQL, `APP_ROLE=public` only: a public instance refuses to start when its database login is not a registered public role (`DB_PUBLIC_ROLE`), because the database would not restrict it. `true` starts anyway and only logs a warning. |
+| `ALLOW_UNRESTRICTED_PUBLIC_DB` | `false` | PostgreSQL, `APP_ROLE=public` only: a public instance refuses to start when its database login is not a registered public role (`DB_PUBLIC_ROLE`) or may create objects in the table schema or in `osp_public`, because the database would not restrict it. `true` starts anyway and only logs a warning. |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL only: the restricted login role of `APP_ROLE=public` instances (lower case letters, digits, `_`). Instances that migrate grant it read access to the public views and the subscription functions of schema `osp_public` on every start, once the role exists (create it with [`deploy/postgres/roles.sql`](../deploy/postgres/roles.sql)). See [security-model.md](security-model.md). |
 
 ## Initial administrator
@@ -180,7 +180,7 @@ for setup examples, deliverability and troubleshooting.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, else `none` | `smtp` sends via SMTP, `log` writes emails to the server log instead of sending them (development only, the log then contains confirmation links), `none` disables email. |
+| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, else `none` | `smtp` sends via SMTP, `log` writes emails to the server log instead of sending them (development only: the log then contains confirmation and manage links; with `NODE_ENV=production` their tokens are logged as `[redacted]`), `none` disables email. |
 | `SMTP_HOST` | – | SMTP server, e.g. `smtp.example.com`. Required for `smtp`. |
 | `SMTP_PORT` | `587` | SMTP port. |
 | `SMTP_SECURE` | `false` | `true` = implicit TLS (usually port 465). With `false` the connection is upgraded with STARTTLS when the server offers it. |
@@ -326,7 +326,8 @@ management UI (`/admin`) never loads the tracker.
   most 1 minute (`429` with `Retry-After`). A success or 15 minutes without failure
   resets the count.
 - `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`: 30 requests per minute per client IP.
-- `POST /api/public/subscriptions`: 5 requests per minute per client IP; the other
+- `POST /api/public/subscriptions` and the form `POST /subscribe`: 5 requests per minute
+  per client IP together; the other
   subscription endpoints 30 requests per minute per client IP.
 - Analytics proxy: `GET /pulse/p.js` 60 and `POST /pulse/api/send` 120 requests per
   minute per client IP (see [Analytics](#analytics)).

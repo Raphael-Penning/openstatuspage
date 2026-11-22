@@ -57,7 +57,9 @@ export interface SubscriptionTokens {
 /**
  * Stand-ins for the real tokens in queued mails. The outbox only ever stores these;
  * NotificationService substitutes the derived tokens right before sending. They only
- * contain URL-safe characters, so they survive URL building and HTML escaping.
+ * contain URL-safe characters, so they survive URL building and HTML escaping. They
+ * match TOKEN_PLACEHOLDER_PATTERN of the templates, which remove them from every
+ * text but the link URLs.
  */
 export const TOKEN_PLACEHOLDERS: Readonly<SubscriptionTokens> = {
   confirm: '__OSP_CONFIRM_TOKEN__',
@@ -126,7 +128,11 @@ export async function syncSubscriptionTokenHashes(db: DB, secret: string, batch 
   }
 }
 
-/** Replaces the token placeholders in a mail body or header value with real tokens. */
+/**
+ * Replaces the token placeholders in a mail body or header value with real tokens.
+ * The rendered templates hold placeholders only in their link URLs (editor texts
+ * are stripped of them, see stripTokenPlaceholders).
+ */
 export function fillTokens(text: string, tokens: SubscriptionTokens): string {
   return text
     .replaceAll(TOKEN_PLACEHOLDERS.confirm, tokens.confirm)
@@ -248,14 +254,24 @@ export async function toPublicSubscription(db: DB, sub: Subscriber): Promise<Pub
   };
 }
 
-function throttled(sub: Subscriber, now: Date): boolean {
-  return (
-    sub.confirmation_sent_at !== null &&
-    now.getTime() - new Date(sub.confirmation_sent_at).getTime() < CONFIRMATION_THROTTLE_MS
-  );
+/**
+ * Claims the account mail of a subscriber: sets confirmation_sent_at unless a mail
+ * went out within CONFIRMATION_THROTTLE_MS. One conditional UPDATE, so of several
+ * concurrent requests only one claims it. True when this call did.
+ */
+async function claimAccountMail(db: DB, subscriberId: string, now: Date): Promise<boolean> {
+  const cutoff = new Date(now.getTime() - CONFIRMATION_THROTTLE_MS).toISOString();
+  const result = await db
+    .updateTable('subscribers')
+    .set({ confirmation_sent_at: now.toISOString() })
+    .where('id', '=', subscriberId)
+    .where((eb) => eb.or([eb('confirmation_sent_at', 'is', null), eb('confirmation_sent_at', '<=', cutoff)]))
+    .executeTakeFirst();
+  return Number(result.numUpdatedRows ?? 0) > 0;
 }
 
-async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm' | 'manage', now: Date): Promise<void> {
+/** Queues a confirmation or manage mail; the caller has claimed it (claimAccountMail). */
+async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm' | 'manage'): Promise<void> {
   const settings = await getSettings(ctx.db);
   const site = { siteName: settings.siteName, baseUrl: ctx.config.PUBLIC_BASE_URL, accentColor: settings.accentColor };
   // Placeholders only: the real token is filled in right before sending.
@@ -264,11 +280,6 @@ async function queueAccountMail(ctx: AppContext, sub: Subscriber, kind: 'confirm
     kind === 'confirm'
       ? confirmationMail(site, sub.locale, links.confirmUrl)
       : manageMail(site, sub.locale, links.manageUrl);
-  await ctx.db
-    .updateTable('subscribers')
-    .set({ confirmation_sent_at: now.toISOString() })
-    .where('id', '=', sub.id)
-    .execute();
   await ctx.notifications.enqueue([{ subscriberId: sub.id, recipient: sub.email, kind, ...mail }]);
 }
 
@@ -313,15 +324,15 @@ export async function subscribe(ctx: AppContext, input: SubscribeInput, now = ne
       if (await db.selectFrom('subscribers').select('id').where('email', '=', email).executeTakeFirst()) return;
       throw err;
     }
-    await queueAccountMail(ctx, sub, 'confirm', now);
+    if (await claimAccountMail(db, sub.id, now)) await queueAccountMail(ctx, sub, 'confirm');
     return;
   }
 
   // Existing address: never change preferences without the manage token. A pending
   // one gets the confirmation again (its owner can adjust the choice after confirming),
   // a confirmed one the manage link.
-  if (!throttled(existing, now)) {
-    await queueAccountMail(ctx, existing, existing.confirmed_at === null ? 'confirm' : 'manage', now);
+  if (await claimAccountMail(db, existing.id, now)) {
+    await queueAccountMail(ctx, existing, existing.confirmed_at === null ? 'confirm' : 'manage');
   }
 }
 
@@ -344,26 +355,40 @@ export async function findByToken(
   return sub;
 }
 
-/** Confirms a subscription (idempotent) and returns it together with the manage token. */
-export async function confirmSubscription(
-  ctx: AppContext,
-  id: string,
-  token: string,
-  now = new Date(),
-): Promise<{ subscription: PublicSubscription; manageToken: string }> {
+/**
+ * Result of a confirmation. `manageToken` only for the request that confirmed the
+ * subscription; null when it was confirmed before, so an old confirmation mail is
+ * no lasting management credential (the manage link comes with every mail, and
+ * subscribing again sends one).
+ */
+export interface ConfirmResult {
+  subscription: PublicSubscription;
+  manageToken: string | null;
+}
+
+/** Confirms a subscription (idempotent); the manage token only on the first confirmation. */
+export async function confirmSubscription(ctx: AppContext, id: string, token: string, now = new Date()): Promise<ConfirmResult> {
   let sub = await findByToken(ctx, id, 'confirm', token);
-  if (sub.confirmed_at === null) {
-    const nowIso = now.toISOString();
-    await ctx.db
-      .updateTable('subscribers')
-      .set({ confirmed_at: nowIso, updated_at: nowIso })
-      .where('id', '=', sub.id)
-      .execute();
+  const nowIso = now.toISOString();
+  // Conditional: of concurrent requests only one confirms (and gets the manage token).
+  const result = await ctx.db
+    .updateTable('subscribers')
+    .set({ confirmed_at: nowIso, updated_at: nowIso })
+    .where('id', '=', sub.id)
+    .where('confirmed_at', 'is', null)
+    .executeTakeFirst();
+  const confirmedNow = Number(result.numUpdatedRows ?? 0) > 0;
+  if (confirmedNow) {
     sub = { ...sub, confirmed_at: nowIso, updated_at: nowIso };
+  } else if (sub.confirmed_at === null) {
+    // Confirmed (or removed) by a concurrent request in between.
+    const current = await ctx.db.selectFrom('subscribers').selectAll().where('id', '=', sub.id).executeTakeFirst();
+    if (!current) throw notFound('Subscription');
+    sub = current;
   }
   return {
     subscription: await toPublicSubscription(ctx.db, sub),
-    manageToken: subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', sub.id, sub.token_salt),
+    manageToken: confirmedNow ? subscriptionToken(ctx.config.SUBSCRIPTION_TOKEN_KEY, 'manage', sub.id, sub.token_salt) : null,
   };
 }
 

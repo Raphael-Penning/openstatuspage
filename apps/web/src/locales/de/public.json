@@ -307,7 +307,10 @@
       "manage": "Einstellungen verwalten",
       "intro": "Bestätige, dass du E-Mail-Benachrichtigungen dieser Statusseite erhalten möchtest.",
       "button": "Abonnement bestätigen",
-      "needsScript": "Dieser Link funktioniert nur mit JavaScript. Nutze den Link einer neueren E-Mail oder abonniere erneut, um einen neuen zu erhalten."
+      "needsScript": "Dieser Link funktioniert nur mit JavaScript. Nutze den Link einer neueren E-Mail oder abonniere erneut, um einen neuen zu erhalten.",
+      "already": "Dieses Abonnement ist bereits bestätigt",
+      "alreadyHint": "Um deine Einstellungen zu ändern oder dich abzumelden, nutze den Link in einer beliebigen Benachrichtigungs-E-Mail. Du kannst auch erneut mit derselben Adresse abonnieren: Wir schicken dir dann einen Link zum Verwalten deines Abonnements.",
+      "alreadySubscribe": "Verwaltungslink anfordern"
     },
     "manage": {
       "title": "Deine E-Mail-Benachrichtigungen",
