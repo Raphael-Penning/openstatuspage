@@ -25,6 +25,198 @@ breaking changes.
   every render with a pinned kubeconform. See
   [installation](docs/guide/en/02-installation.md#kubernetes-with-helm).
 
+### Changed
+
+Behaviour changes from the security fixes below. Check them before you upgrade.
+
+- **`create-user` no longer takes the password as an argument**, so it does not
+  end up in the process list or shell history. Usage is
+  `create-user <email> [admin|editor] [name] [--unlink-oidc]`; the password
+  comes from a hidden prompt on a terminal (use `docker exec -it` or
+  `kubectl exec -it`), the first line of stdin or the new environment variable
+  `OSP_USER_PASSWORD`. The old form fails with an explanation, so scripts that
+  used it must be changed. On an account linked to an SSO identity the command
+  refuses to set a password or role unless `--unlink-oidc` is given, which also
+  removes the link.
+- **SSO creates and links accounts only for a verified e-mail address**
+  (`email_verified` claim). Identity providers that never send the claim (for
+  example Entra ID by default) can no longer auto-create or link users by
+  e-mail; users already linked by their subject are not affected.
+- **Password changes end sessions and revoke API tokens.** Any password change
+  through `PATCH /api/admin/users/:id` (also an admin's own, and removing a
+  password) revokes the API tokens that user created and signs them out
+  everywhere. Changing your own password in the user menu ends all your
+  sessions and sets a fresh session cookie in the same answer; your API tokens
+  stay.
+- **Failed logins are throttled per account** in addition to the per-IP limit:
+  after 3 failures each further one blocks that account's login for 1, 2, 4 …
+  seconds, at most 60 seconds (`429` with `Retry-After`). A success or 15
+  minutes without a failure resets it. The counters are kept in memory per
+  instance and treat unknown addresses the same way.
+- **`/api/health` answers `{"status":"ok"}` only**, without `role` and
+  `worker`. Probes only need the status code.
+- **Startup checks**: in production the published example values of
+  `SECRET_KEY` and `SUBSCRIPTION_TOKEN_KEY` are refused. A warning is logged
+  when `TRUST_PROXY` is a hop count (the app port must then only be reachable
+  through the proxy) and, in production, when `BASE_URL` is `http://` for a
+  host other than localhost.
+- **PostgreSQL: a public role that may create objects is refused.** When
+  `DB_PUBLIC_ROLE` can `CREATE` in the table schema or in `osp_public`, also
+  through a grant to `PUBLIC` (the default before PostgreSQL 15 and on
+  clusters upgraded from such a version), granting the role fails and admin,
+  worker and public instances do not start. Rerun
+  `deploy/postgres/harden.sql` (it now revokes `CREATE` on schema `public` from
+  `PUBLIC`, which also affects other applications in the same database) or run
+  `REVOKE CREATE ON SCHEMA <schema> FROM PUBLIC` before you upgrade.
+  `ALLOW_UNRESTRICTED_PUBLIC_DB=true` still turns the public instance's
+  refusal into a warning.
+- **Stricter URL validation.** `http(s)` URLs in settings and monitoring
+  sources may no longer contain a user name or password, logo and favicon
+  paths follow the rules of other site paths, and Icinga DB database URLs need
+  a host name and accept only `sslmode` (PostgreSQL) or `ssl` (MySQL/MariaDB)
+  as query parameters, so TLS client certificates or CAs from file paths are no
+  longer possible. Stored values that break these rules must be edited before
+  the record can be saved again.
+- **Monitoring limits** (new environment variables, see
+  [configuration](docs/configuration.md#monitoring)):
+  `POLL_MAX_RESPONSE_MB` now defaults to 8 MiB (was 50 MiB) and the new
+  `POLL_MAX_VALUES` (default 500000) caps the values of a poll answer before it
+  is parsed; very large Icinga 2 or openITCockpit setups must raise both
+  together with the heap cap. The new `MAX_CHECKS_PER_SOURCE` (default 20000)
+  caps the checks of one source; a push over it gets `409`, a poll over it
+  fails. History imports keep their 50 MiB limit.
+- **Monitoring and ingest behaviour**: turning TLS verification off on a
+  source requires entering its secret again. Ingest results older than the
+  stored result of a check are ignored, and result times more than 5 minutes
+  ahead of the server clock are replaced by the server time. Full syncs may
+  remove at most half of a source's linked checks within 24 hours, not only
+  per request. A source whose last scheduled poll never finished (for example
+  because the process crashed) is polled again only after a back-off of one
+  interval, doubling up to 6 hours; **Poll now** and saving the source bypass
+  it. Over-long Uptime Kuma webhook fields are rejected with `400`.
+- **History imports** stop at 500000 state changes per Icinga DB or
+  openITCockpit import and 50000 rows per Icinga DB query (a longer range is
+  split automatically). An Uptime Kuma import waits at most 5 minutes for each
+  answer and skips that monitor with a warning.
+- **Subscriptions**: confirming a subscription a second time no longer returns
+  the manage token (the API omits `manageToken`; the page and the no-JS form
+  say the subscription is already confirmed and offer to request a manage
+  link). `POST /api/public/subscriptions` and the form `POST /subscribe` share
+  one limit of 5 requests per minute per client IP. With
+  `MAIL_TRANSPORT=log` and `NODE_ENV=production` the tokens in logged mails
+  are replaced by `[redacted]`.
+- **Private pages**: page views and API requests at `/p/` share one budget of
+  `PRIVATE_PAGE_REQUESTS_PER_MINUTE` per client (IPv6 counted per /64).
+- **Public pages**: when the render queue is full and no stale copy exists,
+  public pages get the static client-rendered page instead of a `503`
+  (personal pages still get the `503`). Request targets that no browser sends
+  (a backslash or `%5C` in the path, absolute-form targets) and other
+  spellings of `/api` paths get a plain `404` instead of a redirect. A
+  malformed URL gets a JSON:API error with the code `bad_url` (`414
+  uri_too_long` for an over-long path parameter) and the usual security
+  headers.
+- **No-JS forms** from browsers without `Sec-Fetch-Site` are accepted only
+  with an `Origin` equal to `PUBLIC_BASE_URL`.
+- **Logs** show private-page paths in the router's normalized spelling with
+  the token redacted.
+
+### Security
+
+Fixes from an internal security review. Apart from the notes under *Changed*
+they need no action.
+
+- Monitoring polls can no longer exhaust the heap: pull adapters bound every
+  response by size and by value count before parsing, sized against the
+  image's 96 MB heap cap, and a source whose poll crashed the process is not
+  polled again at once, so one bad answer cannot crash-loop the server.
+- Ingest caps result times at the server clock plus 5 minutes, and bundle
+  members whose stored result lies further in the future count as stale, so a
+  producer cannot keep a bundle vote alive past silence or token rotation.
+- Ingest ignores results older than the stored result, so a delayed or
+  replayed push cannot move a check's state backwards.
+- Ingest authenticates the source and token before it reads the request body;
+  unauthenticated requests never get the larger ingest body limit.
+- One monitoring source holds at most `MAX_CHECKS_PER_SOURCE` checks.
+- The full-sync guard counts removed linked checks over 24 hours, so repeated
+  full pushes cannot remove them step by step.
+- Uptime Kuma webhook fields have length bounds like the generic webhook.
+- Keeping a stored monitoring secret while turning TLS verification off is
+  refused; the secret must be entered again.
+- Transport errors of monitoring sources no longer carry URL credentials into
+  `last_error` or the log.
+- The Uptime Kuma importer drops Socket.IO events nobody waits for, bounds the
+  ones it keeps and times out each acknowledgement after 5 minutes.
+- Icinga DB and openITCockpit imports bound the rows and state changes they
+  keep in memory.
+- History CSV uploads stop tokenising as soon as the row limit is exceeded and
+  are parsed only once.
+- The import cleanup removes staged rows of finished, failed and cancelled
+  jobs.
+- Logo and favicon paths are validated like other site paths.
+- `http(s)` URLs with a user name or password are rejected.
+- Icinga DB database URLs accept only the TLS parameter and need a host name,
+  so a URL cannot make the server read local files or connect to a socket.
+- OIDC auto-create requires a verified e-mail claim, so nobody can claim
+  someone else's address through an identity provider that does not verify it.
+- `create-user` refuses accounts linked to an SSO identity unless told to
+  unlink them, and never takes the password from the command line.
+- Failed logins are throttled per account, so forged `X-Forwarded-For`
+  headers or many client addresses do not multiply password guesses.
+- The authentication hook decides on the matched route instead of the raw URL,
+  so percent-encoded spellings of `/api/admin` and `/api/auth` get the same
+  authentication and CSRF checks.
+- An admin password reset revokes the user's API tokens and sessions; a user's
+  own password change rotates the session token.
+- A new login (password or SSO) deletes the session it replaces.
+- The last-admin guard and the API token owner check run atomically, also on
+  PostgreSQL, so concurrent demotions or deletions cannot leave no
+  administrator and a demoted user cannot create an admin token.
+- Encrypted secrets require a full 16-byte GCM authentication tag.
+- Production refuses the published example secrets and warns about an `http`
+  `BASE_URL` (non-`Secure` cookies) and a `TRUST_PROXY` hop count.
+- `/api/health` no longer discloses the instance role.
+- Paths with a backslash are classified the way browsers read them, so private
+  and subscription pages keep their no-store, no-referrer, no-framing and
+  token-redaction rules in every spelling; such raw paths get a plain `404`.
+- The canonical redirect only ever points to a path on the same site, and
+  other spellings of `/api` paths are no longer redirected and cached.
+- Private-page tokens are redacted from logs in every spelling of the path,
+  and `token` query parameters also when their name is percent-encoded.
+- Subscription confirm and manage pages may not be framed.
+- `PRIVATE_PAGE_REQUESTS_PER_MINUTE` is one budget per client (IPv6 per /64)
+  across private page views and all private-page API routes and methods.
+- The render cache keeps only successful renders and evicts the least recently
+  used page, and a full render queue no longer answers public pages with `503`,
+  so requests for unknown URLs cannot push real pages out of the cache.
+- Fastify's own error for malformed URLs carries the security headers and no
+  longer echoes the URL.
+- The cross-site check of the no-JS forms compares the `Origin` only with
+  `PUBLIC_BASE_URL`, never with a value derived from request headers.
+- Analytics referrers on personal pages are reduced to the site root whatever
+  their origin.
+- JSON:API filters reject inherited object property names as unknown filters.
+- PostgreSQL: all `osp_public` and helper functions run with `search_path`
+  pinned to `pg_catalog, pg_temp` (migration `0012_definer_search_path`), and
+  a public role that may create objects in the table schema or in
+  `osp_public` is refused, so a compromised public instance cannot plant
+  functions that run with the table owner's rights. `osp_private_page_id` is
+  now `VOLATILE`.
+- `deploy/postgres/harden.sql` revokes `CREATE` on schema `public` from
+  `PUBLIC`.
+- The one-mail-per-10-minutes subscription throttle is claimed with a single
+  conditional update, so concurrent subscribe requests send one mail.
+- Only the request that confirms a subscription receives the manage token, so
+  an old confirmation mail is not a lasting management credential.
+- The subscribe API and form share one rate-limit budget per client.
+- Mail logging in production redacts link tokens.
+- Mail subjects drop Unicode line separators.
+- A mail the transport already accepted is never retried because the
+  bookkeeping afterwards failed.
+- Token placeholders in editor-written mail text are removed, so only the
+  template's own links carry a subscriber's tokens.
+- Subscription errors from PostgreSQL pass on only the functions' own input
+  errors; any other database message becomes "Invalid input".
+
 ## [0.2.0] - 2026-11-20
 
 ### Upgrading from 0.1.x
