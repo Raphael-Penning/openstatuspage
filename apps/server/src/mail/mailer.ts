@@ -4,7 +4,8 @@
  * - smtp: delivers via nodemailer. STARTTLS is used when the server offers it,
  *   SMTP_SECURE=true switches to implicit TLS (port 465). nodemailer is loaded
  *   with the first mail, so instances that never send do not keep it in memory.
- * - log:  writes every mail to the server log instead of sending it (development).
+ * - log:  writes every mail to the server log instead of sending it (development;
+ *         with NODE_ENV=production the link tokens are redacted).
  * - none: no transport; sending fails. Subscriptions are not offered.
  *
  * With APP_ROLE=public the configured kind is kept (subscriptions are offered when
@@ -50,18 +51,33 @@ export class NoneMailer implements Mailer {
   close(): void {}
 }
 
-/** Writes mails to the server log (development only: the log then contains confirmation links). */
+/** `token=<value>` in a link (query or fragment). */
+const LINK_TOKEN = /([?&#;]token=)[^&#\s>"']+/gi;
+
+/** Replaces the token values of the links in a text (confirm, manage and unsubscribe links). */
+export function redactLinkTokens(text: string): string {
+  return text.replace(LINK_TOKEN, '$1[redacted]');
+}
+
+/**
+ * Writes mails to the server log (development: the log then contains confirmation and
+ * manage links). With `redactTokens` (NODE_ENV=production) the token values of the
+ * links are replaced, so the log holds no subscription credentials.
+ */
 export class LogMailer implements Mailer {
   readonly transport = 'log' as const;
   constructor(
     readonly from: string,
     private readonly log: FastifyBaseLogger,
+    private readonly options: { redactTokens?: boolean } = {},
   ) {}
 
   async send(message: MailMessage): Promise<void> {
+    const clean = this.options.redactTokens ? redactLinkTokens : (text: string) => text;
+    const headers = Object.fromEntries(Object.entries(message.headers ?? {}).map(([name, value]) => [name, clean(value)]));
     this.log.info(
-      { mail: { from: this.from, to: message.to, subject: message.subject, headers: message.headers ?? {} } },
-      `mail (MAIL_TRANSPORT=log)\n${message.text}`,
+      { mail: { from: this.from, to: message.to, subject: message.subject, headers } },
+      `mail (MAIL_TRANSPORT=log)\n${clean(message.text)}`,
     );
   }
   close(): void {}
@@ -175,7 +191,7 @@ export function createMailer(config: Config, log: FastifyBaseLogger): Mailer {
         rejectUnauthorized: config.SMTP_TLS_REJECT_UNAUTHORIZED,
       });
     case 'log':
-      return new LogMailer(config.SMTP_FROM!, log);
+      return new LogMailer(config.SMTP_FROM!, log, { redactTokens: config.NODE_ENV === 'production' });
     default:
       return new NoneMailer();
   }

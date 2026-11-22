@@ -20,7 +20,7 @@ wichtigsten Variablen:
 | --- | --- | --- |
 | `BASE_URL` | `http://localhost:3000` | Öffentliche URL ohne abschließenden Schrägstrich. Siehe [Reverse Proxy](03-reverse-proxy.md#base_url). |
 | `PUBLIC_BASE_URL` | `BASE_URL` | Getrennter Betrieb: die öffentliche URL auf Admin- und Worker-Instanzen, für alle Links in E-Mails und Feeds. Auch die Daten für Suchmaschinen (kanonische Links, Sitemaps, `robots.txt`, `llms.txt`) verwenden sie. |
-| `SECRET_KEY` | – | Im Produktivbetrieb Pflicht, mindestens 32 Zeichen. Siehe [Betrieb](09-operations.md#secret_key). |
+| `SECRET_KEY` | – | Im Produktivbetrieb Pflicht, mindestens 32 Zeichen und kein Beispielwert aus der Dokumentation. Siehe [Betrieb](09-operations.md#secret_key). |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<Pfad>` oder `postgres://benutzer:passwort@host:5432/datenbank`. |
 | `TRUST_PROXY` | `false` | Anzahl der Reverse Proxys vor der Anwendung oder deren Adressen. Siehe [Reverse Proxy](03-reverse-proxy.md#trust_proxy). |
 | `HOST` / `PORT` | `0.0.0.0` / `3000` | Schnittstelle und Port, auf denen der Server lauscht. |
@@ -33,6 +33,7 @@ wichtigsten Variablen:
 | `APP_ROLE` | `all` | `all`, oder mit PostgreSQL `public`, `admin` bzw. `worker`, wenn du Statusseite und Verwaltung als getrennte Instanzen betreibst. Siehe [Getrennter Betrieb](../../configuration.md#split-deployment). |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL-Login der `public`-Instanz. Sie darf nur öffentliche Daten lesen und Abonnements über geprüfte Funktionen verwalten. Lege die Rolle mit `deploy/postgres/roles.sql` an; siehe [Sicherheitsmodell](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` bei `APP_ROLE=admin`) | Hintergrundaufgaben; mit PostgreSQL dürfen mehrere Instanzen sie ausführen (Abstimmung über die Datenbank). |
+| `POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`, `MAX_CHECKS_PER_SOURCE` | `8`, `500000`, `20000` | Grenzen pro Antwort einer Abfrage und pro Monitoring-Quelle, passend zur Speichergrenze des Images. Siehe [Monitoring anbinden](05-monitoring.md#tipps). |
 | `UMAMI_URL` | – | Dein Umami-Server für Statistiken über Seitenaufrufe, siehe [Statistik mit Umami](#statistik-mit-umami). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | E-Mail-Versand, siehe [E-Mail-Abonnements](07-email-subscriptions.md#mailserver). |
 

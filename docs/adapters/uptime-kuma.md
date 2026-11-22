@@ -146,3 +146,8 @@ monitor. The API key cannot be used for this; a **login** is required. See
   no new 2FA code is needed). For such monitors choose a range that starts
   later (the response always reaches up to now), or lower the retention in
   Uptime Kuma. Large imports take a while.
+- **Time limit**: Uptime Kuma must answer each request (login,
+  `getMonitorBeats`) within 5 minutes. A monitor whose heartbeats do not
+  arrive in time is skipped with the same warning; a login that times out
+  fails the import. Events the importer does not ask for (for example live
+  heartbeats) are ignored instead of being kept in memory.

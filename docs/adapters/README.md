@@ -27,7 +27,19 @@ in the public API (not even their number).
   connection never turns your status page red or green on its own;
 - an empty result while checks exist is treated as an error as well (usually a
   broken filter or missing permissions), so service links are not lost;
-- responses larger than 50 MiB (after decompression) are rejected as an error.
+- responses larger than `POLL_MAX_RESPONSE_MB` (default 8 MiB, after
+  decompression) or with more than `POLL_MAX_VALUES` values (default 500000:
+  JSON objects, arrays and elements, or Prometheus lines and labels, counted
+  before parsing) are rejected as an error. Both are sized against the heap cap
+  of the image; for very large sources raise them together with
+  `--max-old-space-size` (see [configuration](../configuration.md#monitoring)).
+- a poll that never finished because the server stopped during it (e.g. out of
+  memory) is noticed on the next start: automatic polls of that source wait one
+  poll interval (at least a minute), doubled for every further unfinished poll in
+  a row, up to 6 hours, and the source shows the reason as its error. "Poll now"
+  and saving the source retry right away. A normal shutdown (SIGTERM, e.g. a
+  redeploy) cancels running polls and waits up to 10 seconds for them to end, so
+  it does not count as an unfinished poll and records no error.
 
 **Push** – the monitoring system calls OpenStatusPage on every state change:
 
@@ -62,7 +74,8 @@ page does not expose monitoring credentials.
   separate Uptime Kuma instance for public checks if needed).
 - Keep TLS verification enabled. Disable it only for self-signed certificates in
   trusted networks; prefer adding your internal CA to the system trust store
-  (`NODE_EXTRA_CA_CERTS=/path/to/ca.pem`).
+  (`NODE_EXTRA_CA_CERTS=/path/to/ca.pem`). Turning verification off requires
+  entering the password or API key again, like changing the URL or user name.
 - Monitoring credentials are stored encrypted with a key derived from
   `SECRET_KEY` and are never returned by the API (masked as `••••••••`).
 - Ingest tokens are stored as SHA-256 hashes; the token is shown once on
@@ -213,6 +226,10 @@ Rules:
 - The configuration is not versioned: links, mappings and bundle votes of
   today are applied to the past.
 - Only hard states count (like the live adapters).
+- **Memory limits.** An Icinga DB or openITCockpit import keeps at most
+  500 000 state changes (all checks together) and fails with more; import a
+  shorter range or fewer checks. Uptime Kuma is limited per monitor by the
+  size of one response (see [uptime-kuma.md](uptime-kuma.md#history-import)).
 
 The current state of every check that existed before the upgrade is known since
 its last state change; that period counts as recorded history.
@@ -292,11 +309,13 @@ curl -fsS https://status.example.com/api/ingest/<source-id> \
 | `checks[].host` | Host name (internal only; omitted keeps the stored host) |
 | `checks[].state` | `ok`, `warning`, `critical`, `unknown` or `0`–`3` (Nagios convention) |
 | `checks[].output` | Check output (internal only, max 5000 characters; omitted keeps the stored output unless the state changed) |
-| `checks[].timestamp` | ISO-8601 time of the check (default: now) |
+| `checks[].timestamp` | ISO-8601 time of the check (default: now). A time more than 5 minutes ahead of the server clock is replaced by the server time; a result older than the stored result of the check is ignored |
 | `full` | `true` = the payload is the complete set; checks missing from it are removed (sources of type `webhook` only) |
 
 Up to 5000 checks per request (5 MiB body). Sending full metadata once and only
-`id` + `state` afterwards is fine.
+`id` + `state` afterwards is fine. A source holds at most `MAX_CHECKS_PER_SOURCE`
+checks (default 20000); a push that would add checks beyond it is rejected with
+`409` and stores nothing.
 
 **Full sync (`"full": true`).** Removing a check also removes its links to
 services, and the links do not come back when the check is pushed again. To
@@ -309,4 +328,7 @@ protect that configuration:
   nothing is stored (the push counterpart of the poller's "empty result"
   guard). Include the missing checks, unlink them (or take them out of the
   bundle) in the admin UI first, or push without `full`. Checks that are
-  neither linked nor bundle members are removed without this limit.
+  neither linked nor bundle members are removed without this limit. The half
+  is counted over 24 hours: linked checks removed by earlier full pushes in
+  that window count as well (against the linked checks at the window's start),
+  so repeated full pushes cannot remove the links step by step.

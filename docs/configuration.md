@@ -17,7 +17,7 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `NODE_ENV` | `production` | `development`, `production` or `test`. `pnpm dev` uses `development`. Outside development/test `SECRET_KEY` is mandatory and logs are JSON. |
 | `HOST` | `0.0.0.0` | Interface the HTTP server binds to. |
 | `PORT` | `3000` | HTTP port. |
-| `BASE_URL` | `http://localhost:3000` | URL of this instance, without trailing slash: the public URL of the status page, or the admin domain of an `admin` instance. Used for OIDC redirect URIs and ingest URLs, and for feed and email links unless `PUBLIC_BASE_URL` is set. When it starts with `https://` cookies are marked `Secure`. |
+| `BASE_URL` | `http://localhost:3000` | URL of this instance, without trailing slash: the public URL of the status page, or the admin domain of an `admin` instance. Used for OIDC redirect URIs and ingest URLs, and for feed and email links unless `PUBLIC_BASE_URL` is set. When it starts with `https://` cookies are marked `Secure`; in production an `http://` URL for a host other than `localhost` logs a warning on start. |
 | `PUBLIC_BASE_URL` | `BASE_URL` | Public URL of the status page, used for every link in feeds and emails (incident and maintenance pages, confirm, manage and one-click unsubscribe links). Set it on `admin` and `worker` instances of a [split deployment](#split-deployment), so mails sent from the admin domain still link to the public page. The server-rendered public pages use it for their canonical and language URLs, link previews and JSON-LD, and `robots.txt`, the sitemaps and `llms.txt` for every URL they list. |
 | `TRUST_PROXY` | `false` | Behind a reverse proxy (nginx, Traefik, Caddy, ...) client IPs (rate limiting, session metadata) and the protocol are taken from `X-Forwarded-*` headers. Set the number of proxies in front of the app (`1` for a single proxy; `true` means `1`) or a comma separated list of trusted proxy addresses/CIDRs (e.g. `10.0.0.0/8,127.0.0.1`). Entries further left in `X-Forwarded-For` are set by the client and are never trusted. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
@@ -32,7 +32,7 @@ keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large his
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
+| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** In production the published example values (the development fallback and the value in `deploy/kubernetes/secret.example.yaml`) are refused, here and for `SUBSCRIPTION_TOKEN_KEY`. Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
 | `SUBSCRIPTION_TOKEN_KEY` | `SECRET_KEY` | At least 32 characters. Key of the email subscription links (confirm, manage, unsubscribe). A split deployment sets its own value, the same on every instance, and gives the `public` instance only this key instead of `SECRET_KEY`. Changing it invalidates links in emails already sent; the admin and worker instances refresh the stored token hashes on their next start. |
 | `SESSION_TTL_HOURS` | `168` (7 days) | Session lifetime. The expiry slides: active sessions are extended, idle ones expire after this many hours. Range 1–2160. |
 | `SESSION_MAX_AGE_HOURS` | `720` (30 days) | Absolute session lifetime, counted from the login. Active sessions are never extended past it, so everybody has to log in again (and SSO users pass the IdP checks again) at least this often. Range 1–8760, at least `SESSION_TTL_HOURS`; when unset and `SESSION_TTL_HOURS` is longer, that value is used. |
@@ -42,7 +42,7 @@ keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large his
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` (use `sqlite::memory:` for throw-away instances) or `postgres://user:password@host:5432/database`. Migrations run automatically on start (except with `APP_ROLE=public`). |
-| `ALLOW_UNRESTRICTED_PUBLIC_DB` | `false` | PostgreSQL, `APP_ROLE=public` only: a public instance refuses to start when its database login is not a registered public role (`DB_PUBLIC_ROLE`), because the database would not restrict it. `true` starts anyway and only logs a warning. |
+| `ALLOW_UNRESTRICTED_PUBLIC_DB` | `false` | PostgreSQL, `APP_ROLE=public` only: a public instance refuses to start when its database login is not a registered public role (`DB_PUBLIC_ROLE`) or may create objects in the table schema or in `osp_public`, because the database would not restrict it. `true` starts anyway and only logs a warning. |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL only: the restricted login role of `APP_ROLE=public` instances (lower case letters, digits, `_`). Instances that migrate grant it read access to the public views and the subscription functions of schema `osp_public` on every start, once the role exists (create it with [`deploy/postgres/roles.sql`](../deploy/postgres/roles.sql)). See [security-model.md](security-model.md). |
 
 ## Initial administrator
@@ -55,7 +55,10 @@ Only used when the database contains no user at all.
 | `ADMIN_PASSWORD` | – | Password of the first admin (at least 10 characters). Remove it from the environment after the first start. |
 
 Alternatively create users with
-`pnpm --filter @openstatuspage/server create-user <email> <password> [admin|editor] [name]`.
+`pnpm --filter @openstatuspage/server create-user <email> [admin|editor] [name] [--unlink-oidc]`.
+The command asks for the password on a terminal; otherwise it reads the first line
+of stdin or the environment variable `OSP_USER_PASSWORD`. It never takes the password
+as an argument.
 
 ## Authentication
 
@@ -101,7 +104,7 @@ instances, e.g. `status.admin.example.org` (internal network or VPN) and
 | Public status page, `/api/public/*`, feeds, subscriptions | ✓ | ✓ | – | ✓ |
 | Management UI (`/admin`), `/api/admin/*`, `/api/auth/*` (login, OIDC) | – | ✓ | – | ✓ |
 | Ingest endpoints `/api/ingest/*` (webhooks of monitoring systems) | – | ✓ | – | ✓ |
-| `/api/health` (reports `role` and `worker`) | ✓ | ✓ | ✓ | ✓ |
+| `/api/health` | ✓ | ✓ | ✓ | ✓ |
 | Background tasks (pollers, scheduler, mail delivery, cleanup) | never | `WORKER_ENABLED=true` | ✓ | ✓ (default) |
 | Runs migrations on start | never (waits) | ✓ | ✓ | ✓ |
 | Creates the initial admin (`ADMIN_EMAIL`) | – | ✓ | – | ✓ |
@@ -152,6 +155,16 @@ only needs `SUBSCRIPTION_TOKEN_KEY` (and logs a warning when it gets
 SQLite is a single-file database for one instance: with SQLite only `APP_ROLE=all`
 is supported.
 
+## Monitoring
+
+Limits for monitoring sources (see [adapters/README.md](adapters/README.md)).
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `POLL_MAX_RESPONSE_MB` | `8` | Largest response body (MiB after decompression, 1 to 512) a pull adapter (Icinga 2, Uptime Kuma, openITCockpit) reads per request; larger answers fail the poll. Sized against the image's heap cap (`NODE_OPTIONS=--max-old-space-size=96`, see [architecture.md](architecture.md#memory)): raise both together, e.g. `POLL_MAX_RESPONSE_MB=32` with `--max-old-space-size=256`. History imports keep their own 50 MiB limit. |
+| `POLL_MAX_VALUES` | `500000` | Most values one pull response may hold, counted before parsing (JSON objects, arrays and elements; Prometheus lines and labels). Parsing costs heap per value, many times the byte count for small values; answers with more values fail the poll. Raise it together with the heap cap. |
+| `MAX_CHECKS_PER_SOURCE` | `20000` | Most checks (100 to 1000000) one monitoring source may have. A push or poll that would give a source more checks is rejected (push: `409`; poll: recorded as a failed poll) and stores nothing; updates of existing checks are always accepted. |
+
 ## Check bundles
 
 | Variable | Default | Description |
@@ -167,7 +180,7 @@ for setup examples, deliverability and troubleshooting.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, else `none` | `smtp` sends via SMTP, `log` writes emails to the server log instead of sending them (development only, the log then contains confirmation links), `none` disables email. |
+| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, else `none` | `smtp` sends via SMTP, `log` writes emails to the server log instead of sending them (development only: the log then contains confirmation and manage links; with `NODE_ENV=production` their tokens are logged as `[redacted]`), `none` disables email. |
 | `SMTP_HOST` | – | SMTP server, e.g. `smtp.example.com`. Required for `smtp`. |
 | `SMTP_PORT` | `587` | SMTP port. |
 | `SMTP_SECURE` | `false` | `true` = implicit TLS (usually port 465). With `false` the connection is upgraded with STARTTLS when the server offers it. |
@@ -258,7 +271,8 @@ What reaches Umami:
 - Only events for the configured website ID. Events of the personal subscription
   pages (`/subscription/...`) are dropped. The page URL and the referrer lose
   their `#fragment` and their `token` query parameters, together with the `id`
-  next to a token (a referrer on a subscription page becomes the site root).
+  next to a token (a referrer on a personal page, `/p/...` or
+  `/subscription/...` of any host, becomes the root of that host).
   Rendered subscription pages carry no tracker at all.
 - The event with the payload fields of Umami's tracker only (`website`,
   `hostname`, `url`, `referrer`, `title`, `language`, `screen`, `name`, `data`
@@ -307,15 +321,23 @@ management UI (`/admin`) never loads the tracker.
 
 ## Rate limits
 
-- `POST /api/auth/login`: 10 requests per minute per client IP.
+- `POST /api/auth/login`: 10 requests per minute per client IP. In addition, failed
+  logins are counted per account (e-mail address), whatever the client IP: after 3
+  failures each further one blocks that account's login for 1, 2, 4, ... seconds, at
+  most 1 minute (`429` with `Retry-After`). Each attempt counts before its password
+  is checked, so attempts sent at the same moment do not get past the limit. A
+  success or 15 minutes without failure resets the count.
 - `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`: 30 requests per minute per client IP.
-- `POST /api/public/subscriptions`: 5 requests per minute per client IP; the other
+- `POST /api/public/subscriptions` and the form `POST /subscribe`: 5 requests per minute
+  per client IP together; the other
   subscription endpoints 30 requests per minute per client IP.
 - Analytics proxy: `GET /pulse/p.js` 60 and `POST /pulse/api/send` 120 requests per
   minute per client IP (see [Analytics](#analytics)).
 
 Behind a reverse proxy set `TRUST_PROXY` (hop count or proxy addresses), otherwise all
-clients share the proxy's IP.
+clients share the proxy's IP. With a hop count the server logs a warning on start: it
+trusts the nearest hop whatever its address, so the app port must only be reachable
+through the proxy.
 
 The counters live in the memory of each instance. With *n* instances behind a load
 balancer a client can make up to *n* times as many requests. For exact limits route

@@ -11,7 +11,7 @@
 pnpm install
 cp .env.example .env            # optional, loaded automatically; defaults work for development
 pnpm db:seed                    # optional: fictional demo data
-pnpm --filter @openstatuspage/server create-user admin@example.com 'a-long-password' admin
+pnpm --filter @openstatuspage/server create-user admin@example.com admin   # asks for the password
 pnpm dev                        # API on :3000, web on :5173 (proxies /api)
 ```
 

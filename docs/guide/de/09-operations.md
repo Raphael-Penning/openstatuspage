@@ -252,9 +252,10 @@ MALLOC_ARENA_MAX=2 UV_THREADPOOL_SIZE=2 node --max-opt=2 apps/server/dist/index.
 Bei Überlast (eine Seite wird gerade gerendert, höchstens vier warten)
 beantwortet eine öffentliche Instanz eine Seite mit der zuletzt gerenderten
 Fassung, auch mit einer abgelaufenen bis zu 10 Minuten alten (Header
-`X-Cache: STALE`). Gibt es keine, antwortet sie mit `503`, `Retry-After: 5`
-und einer kurzen Seite „vorübergehend ausgelastet“; persönliche
-Abo-Links bekommen immer die 503. Siehst du oft `503` oder die Warnung
+`X-Cache: STALE`). Gibt es keine, schickt sie die Seite so, wie sie vor dem
+Rendern ist, und der Browser rendert sie mit JavaScript. Persönliche Links
+(Abos, private Seiten) bekommen das nie: Sie erhalten `503`, `Retry-After: 5`
+und eine kurze Seite „vorübergehend ausgelastet“. Siehst du oft die Warnung
 „Too many pages waiting“ im Log, starte eine weitere öffentliche Instanz.
 
 Erhöhe `--max-old-space-size` (z. B. auf `256`) auf der Instanz, die einen

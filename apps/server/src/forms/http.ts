@@ -46,22 +46,22 @@ function header(req: FastifyRequest, name: string): string | undefined {
 /**
  * Whether a request comes from another site. Browsers send Sec-Fetch-Site (all
  * current ones) or at least Origin on a form post; only this site's own pages
- * (same origin, or the origin of PUBLIC_BASE_URL behind a proxy) pass. A request
- * without either header does not come from a browser page and cannot be forged
- * through one.
+ * pass: same-origin, or the origin of PUBLIC_BASE_URL. The origin is never
+ * taken from the request (Host, X-Forwarded-Host/Proto), which a client or a
+ * proxy chooses. A request without either header does not come from a browser
+ * page and cannot be forged through one.
  */
 export function isCrossSite(req: FastifyRequest, publicBaseUrl: string): boolean {
   const site = header(req, 'sec-fetch-site');
   if (site) return site !== 'same-origin';
   const origin = header(req, 'origin');
   if (origin === undefined) return false;
-  const allowed = new Set([`${req.protocol}://${req.host}`]);
   try {
-    allowed.add(new URL(publicBaseUrl).origin);
+    return origin !== new URL(publicBaseUrl).origin;
   } catch {
-    // no usable base URL: the request's own origin only
+    // no usable base URL: no origin to compare with
+    return true;
   }
-  return !allowed.has(origin);
 }
 
 /** 403 page for a rejected cross-site form post. */

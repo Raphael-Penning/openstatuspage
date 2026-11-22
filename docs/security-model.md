@@ -109,8 +109,10 @@ from `/api/`, `/admin` and the personal subscription links.
   The recipient is always the subscriber's stored address.
 - **Use a subscription without its token.** The functions compare the SHA-256 of
   the given token with the stored hash (migration `0006`). The database never
-  sees the token key and never hands out a salt except to the holder of a valid
-  confirm token (who could derive the manage token anyway).
+  sees the token key and hands out a salt (from which the public instance
+  derives the manage token) only to the request that confirms a subscription
+  with its valid confirm token; confirming again returns none, so an old
+  confirmation mail is no lasting management credential.
 
 ## How it is enforced
 
@@ -130,7 +132,10 @@ stop a leak on its own; together they are defense in depth:
    worker instances call it on every start (and `pnpm db:migrate` does), so the
    grants follow every migration. It refuses a role that is the connecting role,
    a superuser, has `BYPASSRLS` or is a member of any role (predefined roles such
-   as `pg_read_all_data` would bypass the column privileges). Functions the
+   as `pg_read_all_data` would bypass the column privileges), and a role that may
+   create objects in the table schema or in `osp_public`, also through a grant to
+   `PUBLIC` (migration `0012`): the instance then does not start until the
+   privilege is revoked (`harden.sql` does it for the schema `public`). Functions the
    migrating role creates are not executable by `PUBLIC` by default
    (`ALTER DEFAULT PRIVILEGES`), so a function added later is only callable by
    the roles it is granted to.
@@ -150,8 +155,12 @@ stop a leak on its own; together they are defense in depth:
    check that every table (except Kysely's own) has these policies, so a table
    added by a later migration without them fails CI.
 4. **Functions.** The only writes are `SECURITY DEFINER` functions owned by the
-   table owner, with `search_path` pinned to the table schema and `pg_temp`
-   (so objects the caller creates cannot hijack them). They validate every input
+   table owner, with `search_path` pinned to `pg_catalog, pg_temp` (migration
+   `0012`; the helpers they call too). Their bodies name every table and helper
+   with its schema, so only built-ins are looked up on the path, always in
+   `pg_catalog`: a function someone created elsewhere, for example an exact-type
+   overload of a polymorphic built-in such as `cardinality(text[])`, is never
+   called with the owner's rights. They validate every input
    themselves (address format and length, locale, ids, only existing public
    services, hash formats), check tokens, throttle mails like the application
    (one confirmation or manage mail per address per 10 minutes), never reveal
@@ -163,7 +172,11 @@ stop a leak on its own; together they are defense in depth:
 the public role, to bound what a compromised public instance can make the
 database do, and runs `deploy/postgres/harden.sql`: it revokes from `PUBLIC`
 the advisory lock functions (granted back to the app role), the functions that
-create large objects and `TEMPORARY` on the database. Session advisory locks
+create large objects, `TEMPORARY` on the database and `CREATE` on the schema
+`public` (the default for `PUBLIC` before PostgreSQL 15, and on clusters
+upgraded from such a version; a migrating role that is not the schema owner
+needs its own `CREATE` grant there, which `roles.sql` gives and `harden.sql`
+warns about when it is missing). Session advisory locks
 outlive `statement_timeout`; without this a compromised public instance could
 hold the application's lock keys and stall status recomputes, bundle evaluation
 and history imports on every instance. These privileges exist per database and
@@ -204,9 +217,10 @@ way on every version.
 3. Public instance: `APP_ROLE=public` and
    `DATABASE_URL=postgres://osp_public:...@db/openstatuspage`. It waits for the
    schema, then checks its login: if it is **not** a registered public role (e.g.
-   it was given the owner's credentials by mistake) it refuses to start with
-   *"Refusing to start: the database login of this public instance is not a
-   registered public role"*. `ALLOW_UNRESTRICTED_PUBLIC_DB=true` turns this into
+   it was given the owner's credentials by mistake), or if it may create objects
+   in the table schema or in `osp_public`, it refuses to start with *"Refusing to
+   start: the database login of this public instance is not a registered public
+   role …"*. `ALLOW_UNRESTRICTED_PUBLIC_DB=true` turns this into
    a warning, for setups that knowingly run without the database boundary.
 
 All instances need the same `SUBSCRIPTION_TOKEN_KEY`: the public instance
@@ -227,15 +241,17 @@ the public pages): `POST /subscribe`, `/subscription/confirm`,
 `application/x-www-form-urlencoded` bodies, next to the JSON:API (which they
 leave unchanged). They call the same subscription flow, so a public instance on
 PostgreSQL uses the `osp_public` functions above, and they have the same rate
-limits per client IP (5 subscribe requests, 30 confirm, manage and unsubscribe
-requests per minute; the forms and the API count separately).
+limits per client IP (5 subscribe requests per minute, shared by the form and
+the API, so switching between them gains nothing; 30 confirm, manage and
+unsubscribe requests per minute).
 
 - **Cross-site requests.** The forms carry no cookie (the public role sets
   none), but another site could still make a visitor's browser post one, for
   example to subscribe an address. Browsers say where a request comes from:
   a form handler accepts it only with `Sec-Fetch-Site: same-origin`, or, from
-  browsers without that header, with an `Origin` of the request's own origin or
-  of `PUBLIC_BASE_URL`; anything else gets `403`. A request without either header
+  browsers without that header, with an `Origin` of `PUBLIC_BASE_URL` (never an
+  origin built from the request's `Host` or forwarded headers); anything else
+  gets `403`. A request without either header
   does not come from a browser page and cannot be forged through one. The same
   check guards the theme form (`POST /preferences/theme`); the language links
   and form (`/preferences/language`) set no cookie for requests from other sites.
@@ -274,8 +290,9 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
 - `Cross-Origin-Opener-Policy: same-origin` and a `Permissions-Policy` that turns
   off camera, microphone, geolocation, payment and USB.
 - Framing: public pages may be embedded by other sites; the management UI, the
-  API and private pages (`/p/<token>`) add `frame-ancestors 'none'` and
-  `X-Frame-Options: DENY`.
+  API and the pages with a personal link (private pages at `/p/<token>`,
+  subscription confirm and manage pages at `/subscription/...`) add
+  `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
 
 HSTS is left to the reverse proxy that terminates TLS.
 
@@ -343,6 +360,17 @@ account) or obtains an API token.
   ID. An admin account therefore cannot make the public instance request
   internal hosts (no SSRF through the settings). Admin-chosen URLs (logo,
   links) are only ever loaded by visitors' browsers.
+- **Guessing and keeping access is harder**: failed logins are throttled per
+  account as well as per client IP, so rotating source addresses or forged
+  `X-Forwarded-For` headers do not multiply the attempts. An attempt is counted
+  before its password is checked, so a burst of concurrent attempts is held to
+  the same limit, and failures for unknown e-mail addresses cannot push an
+  existing account out of the bounded counter. SSO creates or links
+  an account only for an e-mail address the identity provider marks as
+  verified. An admin resetting a user's password revokes that user's API tokens
+  and sessions, a user changing their own password ends all their sessions
+  and gets a fresh session cookie, and a new login replaces the session cookie it was sent with, so a
+  stolen password or session does not outlive the reset.
 - Keep the admin host off the internet (VPN, IP allow list), use OIDC with
   group mapping, and review the audit log.
 

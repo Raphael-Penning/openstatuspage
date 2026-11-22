@@ -18,7 +18,7 @@ The complete reference with every option lives in
 | --- | --- | --- |
 | `BASE_URL` | `http://localhost:3000` | Public URL without trailing slash. See [Reverse proxy](03-reverse-proxy.md#base_url). |
 | `PUBLIC_BASE_URL` | `BASE_URL` | Split deployment: the public URL on admin and worker instances, used for all links in emails and feeds. Search engine data (canonical links, sitemaps, `robots.txt`, `llms.txt`) uses it as well. |
-| `SECRET_KEY` | – | Required in production, at least 32 characters. See [Operations](09-operations.md#secret_key). |
+| `SECRET_KEY` | – | Required in production, at least 32 characters and not an example value from the documentation. See [Operations](09-operations.md#secret_key). |
 | `DATABASE_URL` | `sqlite:./data/openstatuspage.db` | `sqlite:<path>` or `postgres://user:password@host:5432/database`. |
 | `TRUST_PROXY` | `false` | Number of reverse proxies in front of the app, or their addresses. See [Reverse proxy](03-reverse-proxy.md#trust_proxy). |
 | `HOST` / `PORT` | `0.0.0.0` / `3000` | Interface and port the server listens on. |
@@ -32,6 +32,7 @@ The complete reference with every option lives in
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL login of the `public` instance. It can only read public data and manage subscriptions through checked functions. Create it with `deploy/postgres/roles.sql`; see [Security model](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; on PostgreSQL several instances may run them (coordinated through the database). |
 | `MAIL_TRANSPORT`, `SMTP_*` | – | Email delivery, see [Email subscriptions](07-email-subscriptions.md#mail-server). |
+| `POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`, `MAX_CHECKS_PER_SOURCE` | `8`, `500000`, `20000` | Limits per poll answer and per monitoring source, sized for the image's memory cap. See [Monitoring integration](05-monitoring.md#tips). |
 | `UMAMI_URL` | – | Your Umami server for page view statistics, see [Statistics with Umami](#statistics-with-umami). |
 
 Rules that apply to all variables:

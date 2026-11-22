@@ -268,6 +268,46 @@ describe('private page', () => {
     expect((await get(`/p/${page.token}`)).statusCode).toBe(404);
   });
 
+  it('answers paths with a backslash with a plain, uncached 404 that renders nothing', async () => {
+    // The renderer's URL parser reads "\\" as "/": such a path must never reach it.
+    const paths = [`/p\\${page.token}`, `/P%5c${page.token}`, `/p%5C${page.token}/services/${ids.hiddenSlug}`, `/\\p/${page.token}`, `/services\\x`];
+    for (const path of paths) {
+      const res = await getAsIs(path);
+      expect(res.statusCode, path).toBe(404);
+      expect(res.body, path).not.toContain('Partner backend');
+      expect(res.body, path).not.toContain('ACME status');
+      expect(res.headers['cache-control'], path).toBe('no-store');
+      expect(res.headers.etag, path).toBeUndefined();
+    }
+    for (const path of paths.slice(0, 4)) {
+      const res = await getAsIs(path);
+      expect(res.headers['referrer-policy'], path).toBe('no-referrer');
+      expect(res.headers['x-robots-tag'], path).toBe('noindex, nofollow');
+    }
+    // Nothing of them ends up in the render cache: the real page still renders per request.
+    await admin.patch(`/api/admin/private-pages/${page.id}`, { enabled: false });
+    expect((await getAsIs(`/p\\${page.token}`)).statusCode).toBe(404);
+    expect((await get(`/p/${page.token}`)).statusCode).toBe(404);
+  });
+
+  it('counts page views and requests of the private page API against one budget per client', async () => {
+    const token = newPrivatePageToken();
+    // Page views until the budget is used up (a slow runner gets a few more than 60).
+    for (let i = 1; i < 120 && (await get(`/p/${token}`)).statusCode !== 429; i++) expect(i).toBeLessThan(100);
+    const res = await t.app.inject({ method: 'GET', url: '/api/public/private-page', headers: { 'x-private-page-token': token } });
+    expect(res.statusCode).toBe(429);
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('counts an IPv6 client by its /64 network', async () => {
+    const token = newPrivatePageToken();
+    const from = (remoteAddress: string) => t.app.inject({ method: 'GET', url: `/p/${token}`, remoteAddress });
+    // A fresh address of the same /64 for every view, until the budget is used up.
+    for (let i = 1; i < 120 && (await from(`2001:db8:1:2::${i.toString(16)}`)).statusCode !== 429; i++) expect(i).toBeLessThan(100);
+    expect((await from('2001:db8:1:2:ffff::1')).statusCode).toBe(429);
+    expect((await from('2001:db8:1:3::1')).statusCode).toBe(404);
+  });
+
   it('counts every spelling of a private path against the same limit', async () => {
     const token = newPrivatePageToken();
     // The bucket refills one view per second, so a slow runner may get a few more

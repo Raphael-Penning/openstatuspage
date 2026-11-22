@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HISTORY_CSV_MAX_ROWS } from '@openstatuspage/shared';
 import { CsvImportError, parseCsvRecords, parseHistoryCsv } from '../../src/importers/csv.js';
 
 const t = (iso: string) => Date.parse(iso);
@@ -64,6 +65,17 @@ describe('parseHistoryCsv', () => {
     expect(errorsOf('check,start,state\n')[0]!.message).toContain('"end"');
     expect(errorsOf('')[0]!.message).toBe('the file is empty');
     expect(errorsOf('check,start,end,state\n')[0]!.message).toBe('no data rows');
+  });
+
+  it('stops reading once there are more rows than allowed', () => {
+    const row = 'web01!http,2026-01-01T00:00:00Z,2026-01-01T01:00:00Z,ok\n';
+    // The unterminated quote at the end is never reached.
+    const text = `check,start,end,state\n${row.repeat(HISTORY_CSV_MAX_ROWS + 1)}"never closed`;
+    expect(errorsOf(text)).toEqual([
+      expect.objectContaining({ line: 1, code: 'too_many_rows', params: { max: HISTORY_CSV_MAX_ROWS } }),
+    ]);
+    expect(() => parseCsvRecords('a\nb\nc\n', ',', 1)).toThrow(/more than 1 data rows/);
+    expect(parseCsvRecords('a\nb\n', ',', 1)).toHaveLength(2);
   });
 
   it('reports invalid rows with line numbers', () => {

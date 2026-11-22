@@ -775,8 +775,8 @@ describe('subscription functions', () => {
         token_salt: salt,
       },
     ]);
-    // Idempotent.
-    expect(await confirm(confirmToken)).toHaveLength(1);
+    // Idempotent, but the salt (the manage token) only comes with the request that confirmed.
+    expect(await confirm(confirmToken)).toEqual([expect.objectContaining({ id, confirmed: true, token_salt: null })]);
     const { confirmed_at } = (await ownerRows<{ confirmed_at: string }>(`select confirmed_at from subscribers where id = '${id}'`))[0]!;
     expect(confirmed_at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
   });
@@ -850,7 +850,7 @@ describe('a public instance', () => {
 
   it('serves the public API from the views', async () => {
     const health = await publicApp.inject('/api/health');
-    expect(health.json()).toMatchObject({ status: 'ok', role: 'public' });
+    expect(health.json()).toEqual({ status: 'ok' });
     const res = await publicApp.inject('/api/public/services');
     expect(res.statusCode).toBe(200);
     const names = (res.json() as { data: { attributes: { name: string } }[] }).data.map((s) => s.attributes.name);
@@ -1023,6 +1023,16 @@ describe('a public instance', () => {
     const manageToken = (confirmed.json() as { data: { attributes: { manageToken: string; confirmed: boolean } } }).data.attributes
       .manageToken;
     expect(manageToken).toBe(subscriptionToken(TOKEN_KEY, 'manage', subId!, (await ownerRows<{ token_salt: string }>(`select token_salt from subscribers where id = '${subId}'`))[0]!.token_salt));
+    // Confirming again answers without the manage token.
+    const reconfirmed = await publicApp.inject({
+      method: 'POST',
+      url: `/api/public/subscriptions/${subId}/confirm`,
+      headers,
+      payload: JSON.stringify(toRequestDocument('subscriptions', { token })),
+    });
+    expect(reconfirmed.statusCode).toBe(200);
+    expect(reconfirmed.json().data.attributes).toMatchObject({ confirmed: true });
+    expect(reconfirmed.json().data.attributes).not.toHaveProperty('manageToken');
 
     const manageHeaders = { 'x-subscription-token': manageToken };
     const got = await publicApp.inject({ url: `/api/public/subscriptions/${subId}`, headers: manageHeaders });

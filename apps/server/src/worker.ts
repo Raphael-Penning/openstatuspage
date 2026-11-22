@@ -36,6 +36,8 @@ export interface ScheduleOptions {
 export class Worker {
   private readonly tasks = new Map<string, Task>();
   private readonly detached = new Set<Promise<void>>();
+  /** Periodic task runs in progress (drain() waits for them on shutdown). */
+  private readonly active = new Set<Promise<void>>();
   private readonly abort = new AbortController();
   private started = false;
 
@@ -120,6 +122,26 @@ export class Worker {
     this.detached.add(job);
   }
 
+  /**
+   * After stop(): waits until the periodic tasks that were running have ended,
+   * at most timeoutMs. They see the aborted signal, so a poll interrupted by a
+   * shutdown can clear its in-progress marker before the database goes away.
+   * Resolves true when every task ended in time.
+   */
+  async drain(timeoutMs: number): Promise<boolean> {
+    if (this.active.size === 0) return true;
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+      timer.unref();
+    });
+    try {
+      return await Promise.race([Promise.allSettled([...this.active]).then(() => true), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** Resolves once no one-off job is running (shutdown, tests). */
   async idle(): Promise<void> {
     while (this.detached.size > 0) await Promise.all([...this.detached]);
@@ -134,6 +156,16 @@ export class Worker {
   private async exec(task: Task, scheduled: boolean): Promise<void> {
     if (task.running || this.abort.signal.aborted) return;
     task.running = true;
+    const run = this.execRunning(task, scheduled);
+    this.active.add(run);
+    try {
+      await run;
+    } finally {
+      this.active.delete(run);
+    }
+  }
+
+  private async execRunning(task: Task, scheduled: boolean): Promise<void> {
     const changedAt = scheduled ? task.changedAt : undefined;
     task.changedAt = undefined;
     try {

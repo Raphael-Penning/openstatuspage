@@ -105,6 +105,29 @@ describe('Worker with a coordinator', () => {
   });
 });
 
+describe('Worker.drain', () => {
+  it('waits for running tasks after stop, at most the given time', async () => {
+    const worker = new Worker(log);
+    let ended = false;
+    worker.schedule('quick', 60_000, async (signal) => {
+      if (!signal.aborted) await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()));
+      ended = true;
+    });
+    const quick = worker.runNow('quick');
+    worker.stop();
+    expect(await worker.drain(1000)).toBe(true);
+    expect(ended).toBe(true);
+    await quick;
+
+    const other = new Worker(log);
+    other.schedule('stuck', 60_000, () => new Promise<void>(() => undefined));
+    void other.runNow('stuck');
+    other.stop();
+    expect(await other.drain(20)).toBe(false);
+    expect(await new Worker(log).drain(20)).toBe(true);
+  });
+});
+
 describe('SQLite (single instance)', () => {
   let t: TestApp | undefined;
   afterEach(async () => {

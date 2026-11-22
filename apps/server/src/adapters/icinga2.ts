@@ -68,7 +68,12 @@ async function queryObjects(
     url += `?${attrs.map((a) => `attrs=${encodeURIComponent(a)}`).join('&')}`;
     init = { method: 'GET', headers };
   }
-  const body = await requestJson<{ results?: unknown }>(ctx.fetch, url, { ...init, signal: ctx.signal, system: SYSTEM });
+  const body = await requestJson<{ results?: unknown }>(ctx.fetch, url, {
+    ...init,
+    signal: ctx.signal,
+    system: SYSTEM,
+    limits: ctx.limits,
+  });
   if (!isRecord(body) || !Array.isArray(body.results)) {
     throw new AdapterError(`${SYSTEM} returned an unexpected response for objects/${kind} (no "results" array)`);
   }

@@ -1,26 +1,44 @@
 /**
  * Creates or updates a local user. Updating an existing user sets a new
- * password and role and signs the user out everywhere.
- * Usage: create-user <email> <password> [admin|editor] [name]
+ * password and role, signs the user out everywhere and revokes their API tokens.
+ * Usage: create-user <email> [admin|editor] [name] [--unlink-oidc]
+ * The password comes from OSP_USER_PASSWORD, a prompt or stdin (create-user-input.ts).
  */
-import { USER_ROLES, type UserRole } from '@openstatuspage/shared';
 import { loadConfig } from '../config.js';
 import { createDb, migrateToLatest } from '../db/index.js';
 import { createOrResetLocalUser } from '../services/users.js';
+import { parseCreateUserArgs, readPassword } from './create-user-input.js';
 
-const [email, password, roleArg = 'admin', name = 'Administrator'] = process.argv.slice(2);
-if (!email || !password || password.length < 10 || !USER_ROLES.includes(roleArg as UserRole)) {
-  console.error('Usage: create-user <email> <password (min. 10 chars)> [admin|editor] [name]');
+const parsed = parseCreateUserArgs(process.argv.slice(2));
+if (!parsed.ok) {
+  console.error(parsed.error);
+  process.exit(1);
+}
+const { email, role, name, unlinkOidc } = parsed.args;
+const password = await readPassword({ env: process.env, input: process.stdin, output: process.stderr }).catch(
+  (err: unknown) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err) }),
+);
+if (!password.ok) {
+  console.error(password.error);
   process.exit(1);
 }
 
 const db = await createDb(loadConfig(process.env, { allowMissingSecret: true }));
 await migrateToLatest(db);
-const normalized = email.trim().toLowerCase();
-const result = await createOrResetLocalUser(db, { email: normalized, password, role: roleArg as UserRole, name });
+const result = await createOrResetLocalUser(db, { email, password: password.password, role, name }, { unlinkOidc });
 await db.destroy();
 if (!result.ok) {
-  console.error(`${normalized} is the last admin and cannot be demoted. Nothing was changed.`);
+  console.error(
+    result.error === 'oidc_linked'
+      ? `${email} is linked to a single sign-on identity. Nothing was changed. Check that this account ` +
+          'belongs to the owner of the address, then run the command again with --unlink-oidc: it sets the ' +
+          'password and role and removes the SSO link (the next SSO login links again by verified e-mail).'
+      : `${email} is the last admin and cannot be demoted. Nothing was changed.`,
+  );
   process.exit(1);
 }
-console.log(result.created ? `Created ${roleArg} ${normalized}.` : `Updated user ${normalized}; existing sessions were ended.`);
+console.log(
+  result.created
+    ? `Created ${role} ${email}.`
+    : `Updated user ${email}; existing sessions were ended and their API tokens revoked.`,
+);

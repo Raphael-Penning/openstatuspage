@@ -6,10 +6,17 @@
 import type { MonitorSourceTestResult } from '@openstatuspage/shared';
 import type { AppContext } from '../context.js';
 import type { MonitorSource } from '../db/types.js';
-import { notFound } from '../lib/errors.js';
+import { HttpError, notFound } from '../lib/errors.js';
 import type { IngestResult } from '../services/ingest.js';
-import { createAdapterFetch, describeTransportError, type AdapterFetchOptions, type FetchFn } from './http.js';
+import {
+  createAdapterFetch,
+  describeTransportError,
+  type AdapterFetchOptions,
+  type FetchFn,
+  type ResponseLimits,
+} from './http.js';
 import { withLease } from '../lib/task-leases.js';
+import { nowIso } from '../lib/time.js';
 import { getAdapter } from './index.js';
 import type { NormalizedCheck } from './types.js';
 
@@ -31,6 +38,11 @@ export interface RunnerOptions {
   timeoutMs?: number;
   /** The caller already holds the lease `poll:<sourceId>` (the scheduled poll task). */
   leaseHeld?: boolean;
+  /**
+   * A scheduled (automatic) poll: skipped while the source backs off after polls
+   * that never finished. Manual polls ("Poll now") always run.
+   */
+  scheduled?: boolean;
 }
 
 export interface PollOutcome {
@@ -78,10 +90,12 @@ export async function fetchSourceChecks(
   const signals = [AbortSignal.timeout(options.timeoutMs ?? POLL_TIMEOUT_MS)];
   if (options.signal) signals.push(options.signal);
   const signal = AbortSignal.any(signals);
+  const limits = pollLimits(ctx);
   try {
     const checks = await adapter.poll.poll(config, {
       signal,
-      fetch: fetchFactory({ verifyTls: config.verifyTls !== false }),
+      fetch: fetchFactory({ verifyTls: config.verifyTls !== false, maxResponseBytes: limits.maxBytes }),
+      limits,
     });
     if (signal.aborted) throw signal.reason;
     return checks;
@@ -93,9 +107,38 @@ export async function fetchSourceChecks(
   }
 }
 
-/** Removes secret config values (and their Basic-auth encodings) from a message. */
+/** Response limits of polls (POLL_MAX_RESPONSE_MB, POLL_MAX_VALUES). */
+export function pollLimits(ctx: Pick<AppContext, 'config'>): Required<ResponseLimits> {
+  return {
+    maxBytes: Math.floor(ctx.config.POLL_MAX_RESPONSE_MB * 1024 * 1024),
+    maxValues: ctx.config.POLL_MAX_VALUES,
+  };
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/** Removes secret config values, userinfo of the base URL and Basic-auth encodings from a message. */
 export function redactSecrets(message: string, config: Record<string, unknown>, secretKeys: readonly string[]): string {
   const secrets = new Set<string>();
+  // Userinfo in the base URL is a credential, too.
+  if (typeof config.baseUrl === 'string') {
+    try {
+      const { username, password } = new URL(config.baseUrl);
+      for (const value of [password, username]) {
+        if (value.length < 4) continue;
+        secrets.add(value);
+        secrets.add(safeDecode(value));
+      }
+    } catch {
+      // not a URL: nothing to add
+    }
+  }
   for (const key of secretKeys) {
     const value = config[key];
     if (typeof value !== 'string' || value.length < 4) continue;
@@ -140,6 +183,21 @@ export async function testSource(
   }
 }
 
+/** First wait after a poll that never finished: one poll interval, at least this long. */
+export const ABORTED_POLL_MIN_BACKOFF_MS = 60_000;
+/** Longest wait between automatic polls of a source whose polls keep not finishing. */
+export const ABORTED_POLL_MAX_BACKOFF_MS = 6 * 60 * 60_000;
+
+/**
+ * How long automatic polls wait after a poll that never finished (the process
+ * stopped during it, e.g. out of memory): one poll interval, doubled for every
+ * earlier poll in a row that did not finish either, capped at 6 hours.
+ */
+export function abortedPollBackoffMs(pollIntervalSeconds: number, earlierAborts: number): number {
+  const base = Math.max(pollIntervalSeconds * 1000, ABORTED_POLL_MIN_BACKOFF_MS);
+  return Math.min(base * 2 ** Math.min(earlierAborts, 30), ABORTED_POLL_MAX_BACKOFF_MS);
+}
+
 /** Per context (app instance): source id -> running poll. */
 const inFlightByCtx = new WeakMap<AppContext, Map<string, Promise<PollOutcome>>>();
 
@@ -171,14 +229,61 @@ export function pollAndStore(ctx: AppContext, sourceId: string, options: RunnerO
   return promise;
 }
 
+/**
+ * Crash-safe polling: `poll_started_at` marks a running poll and is cleared when
+ * it ends. A marker found at the start of a poll was left by a process that
+ * stopped during that poll, possibly because of the answer itself (e.g. out of
+ * memory). Automatic polls of such a source back off (abortedPollBackoffMs), so a
+ * restarted process does not poll it again right away and die again.
+ */
 async function doPollAndStore(ctx: AppContext, sourceId: string, options: RunnerOptions): Promise<PollOutcome> {
   const source = await ctx.db.selectFrom('monitor_sources').selectAll().where('id', '=', sourceId).executeTakeFirst();
   if (!source) return { ok: false, message: 'Monitoring source not found' };
 
+  let aborts = 0;
+  if (source.poll_started_at !== null) {
+    const startedAt = Date.parse(source.poll_started_at);
+    const resumeAt = startedAt + abortedPollBackoffMs(source.poll_interval_seconds, source.poll_aborts);
+    if (options.scheduled && Number.isFinite(startedAt) && Date.now() < resumeAt) {
+      const message =
+        'The previous poll of this source did not finish (the server stopped during it, possibly because of the answer). ' +
+        `Automatic polls resume at ${new Date(resumeAt).toISOString()}; use "Poll now" to retry earlier.`;
+      ctx.log.warn({ sourceId, resumeAt: new Date(resumeAt).toISOString() }, 'monitoring source poll skipped after an unfinished poll');
+      await ctx.ingest.recordPoll(sourceId, false, message);
+      return { ok: false, message };
+    }
+    aborts = source.poll_aborts + 1;
+  }
+  await setPollMarker(ctx, sourceId, nowIso(), aborts);
+  try {
+    const outcome = await pollSource(ctx, source, options);
+    await setPollMarker(ctx, sourceId, null, 0);
+    return outcome;
+  } catch (err) {
+    // Finished, if with an error: the process is still running.
+    await setPollMarker(ctx, sourceId, null, 0);
+    throw err;
+  }
+}
+
+async function setPollMarker(ctx: AppContext, sourceId: string, startedAt: string | null, aborts: number): Promise<void> {
+  await ctx.db
+    .updateTable('monitor_sources')
+    .set({ poll_started_at: startedAt, poll_aborts: aborts })
+    .where('id', '=', sourceId)
+    .execute();
+}
+
+async function pollSource(ctx: AppContext, source: MonitorSource, options: RunnerOptions): Promise<PollOutcome> {
+  const sourceId = source.id;
   let checks: NormalizedCheck[];
   try {
     checks = await fetchSourceChecks(ctx, source, options);
   } catch (err) {
+    if (options.signal?.aborted) {
+      // Stopped by a shutdown, not by the source: no failed poll to record.
+      return { ok: false, message: 'The poll was cancelled because the server is shutting down.' };
+    }
     const message = errorMessage(err);
     ctx.log.warn({ sourceId, error: message }, 'monitoring source poll failed');
     await ctx.ingest.recordPoll(sourceId, false, message);
@@ -202,7 +307,15 @@ async function doPollAndStore(ctx: AppContext, sourceId: string, options: Runner
   }
 
   // recordPoll re-evaluates the source's bundles with the new poll outcome.
-  const result = await ctx.ingest.ingest(sourceId, checks, { full: true, deferBundleRecompute: true });
+  let result: IngestResult;
+  try {
+    result = await ctx.ingest.ingest(sourceId, checks, { full: true, deferBundleRecompute: true });
+  } catch (err) {
+    // Rejected by a limit (e.g. MAX_CHECKS_PER_SOURCE): nothing was stored.
+    if (!(err instanceof HttpError)) throw err;
+    await ctx.ingest.recordPoll(sourceId, false, err.message);
+    return { ok: false, message: err.message, checkCount: checks.length };
+  }
   await ctx.ingest.recordPoll(sourceId, true);
   return {
     ok: true,

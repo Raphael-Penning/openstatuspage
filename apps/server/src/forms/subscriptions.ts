@@ -6,7 +6,8 @@
  * restricted PostgreSQL public role).
  *
  *   POST /subscribe                  email, locale, scope, service…, group…, website → 303 /subscribe?sent=1
- *   POST /subscription/confirm       id, token                                       → 303 manage page (?confirmed=1)
+ *   POST /subscription/confirm       id, token                                       → 303 manage page (?confirmed=1),
+ *                                                                                      or /subscription/confirm?already=1
  *   POST /subscription/manage        id, token, locale, scope, service…, group…      → 303 manage page (?saved=1)
  *   POST /subscription/unsubscribe   id, token                                       → 303 /subscription/manage?unsubscribed=1
  *
@@ -33,7 +34,7 @@ import type { AppContext } from '../context.js';
 import type { DB } from '../db/index.js';
 import { HttpError } from '../lib/errors.js';
 import { unique } from '../lib/http.js';
-import { subscribeAfterAnswer } from '../routes/subscriptions.js';
+import { subscribeAfterAnswer, subscribeRateLimit } from '../routes/subscriptions.js';
 import type { FormPage } from '../ssr/pages.js';
 import { confirm, getManaged, unsubscribe, updateManaged } from '../services/subscription-flow.js';
 import { assertPublicServices, subscriptionsAvailable } from '../services/subscriptions.js';
@@ -42,8 +43,10 @@ import { field, fieldList, formFields, isCrossSite, rejectCrossSite, seeOther, w
 /** Renders a page answering a form (SsrPages.sendForm); false when it cannot be rendered. */
 export type FormPageRenderer = (req: FastifyRequest, reply: FastifyReply, page: FormPage) => Promise<boolean>;
 
-/** The same limits as the JSON:API routes. preHandler: the rate-limited answer still shows what was entered. */
-const SUBSCRIBE_LIMIT = { rateLimit: { max: 5, timeWindow: '1 minute', hook: 'preHandler' as const } };
+/**
+ * The same limits as the JSON:API routes; subscribing shares one counter with the
+ * API (subscribeRateLimit). preHandler: the rate-limited answer still shows what was entered.
+ */
 const MANAGE_LIMIT = { rateLimit: { max: 30, timeWindow: '1 minute', hook: 'preHandler' as const } };
 
 const MANAGE_PAGE = '/subscription/manage';
@@ -134,7 +137,7 @@ export function registerSubscriptionForms(scope: FastifyInstance, renderPage: Fo
     return answerWithPage(req, reply, { url, form: { values: echo(fields), error: 'rate_limited' }, status: 429 }, 'rate_limited');
   });
 
-  scope.post(FORM_PATHS.subscribe, { config: SUBSCRIBE_LIMIT }, async (req, reply) => {
+  scope.post(FORM_PATHS.subscribe, { preHandler: subscribeRateLimit(scope) }, async (req, reply) => {
     if (isCrossSite(req, ctx.config.PUBLIC_BASE_URL)) return rejectCrossSite(reply);
     // The page itself says that subscriptions are not offered.
     if (!(await subscriptionsAvailable(ctx))) return seeOther(reply, SUBSCRIBE_PAGE);
@@ -169,6 +172,8 @@ export function registerSubscriptionForms(scope: FastifyInstance, renderPage: Fo
     if (!link) return seeOther(reply, withQuery(CONFIRM_PAGE, { error: 'invalid' }));
     try {
       const { subscription, manageToken } = await confirm(ctx, link.id, link.token);
+      // Confirmed before: the confirm link no longer opens the manage page.
+      if (!manageToken) return seeOther(reply, withQuery(CONFIRM_PAGE, { already: '1' }));
       return seeOther(reply, managePage({ id: subscription.id, token: manageToken }, { confirmed: '1' }));
     } catch (err) {
       if (isStatus(err, 404)) return seeOther(reply, withQuery(CONFIRM_PAGE, { error: 'invalid' }));

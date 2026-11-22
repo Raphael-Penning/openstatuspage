@@ -46,9 +46,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // Sessions and API tokens are only resolved where the admin API exists.
   await registerAuth(app, { enabled: features.adminApi });
 
+  // Anonymous: only the status, no deployment details (the role is logged on start).
   app.get('/api/health', async () => {
     await app.ctx.db.selectFrom('settings').select('key').limit(1).execute();
-    return { status: 'ok', role: config.APP_ROLE, worker: config.WORKER_ENABLED };
+    return { status: 'ok' };
   });
 
   if (features.publicApi) {

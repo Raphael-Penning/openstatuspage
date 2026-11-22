@@ -796,7 +796,7 @@
     "ownRoleHelp": "You cannot change your own role.",
     "passwordHelp": "At least 10 characters.",
     "passwordOptionalHelp": "At least 10 characters. Leave empty for single sign-on only accounts.",
-    "newPasswordHelp": "Leave empty to keep the current password. Setting a new one signs the user out everywhere.",
+    "newPasswordHelp": "Leave empty to keep the current password. Setting a new one signs the user out everywhere and revokes their API tokens.",
     "removePassword": "Remove password",
     "removePasswordHelp": "The user can then only sign in with single sign-on.",
     "oidcLinkedHelp": "This account is linked to a single sign-on identity.",

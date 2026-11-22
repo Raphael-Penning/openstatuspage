@@ -116,6 +116,30 @@ describe('incident notifications', () => {
     }
   });
 
+  it('puts tokens only into the links, never into what an editor wrote', async () => {
+    const id = await addSubscriber('all@example.com');
+    await admin.patch(`/api/admin/services/${api}`, { name: `API ${TOKEN_PLACEHOLDERS.confirm}` });
+    const created = await admin.post('/api/admin/incidents', {
+      title: `Outage ${TOKEN_PLACEHOLDERS.manage}`,
+      message: `See https://evil.example/?t=${TOKEN_PLACEHOLDERS.manage} or __OSP___OSP_MANAGE_TOKEN__MANAGE_TOKEN__ now`,
+      serviceIds: [api],
+    });
+    expect(created.statusCode).toBe(201);
+    const [mail] = await deliver();
+    const { token_salt } = await t.db.selectFrom('subscribers').select('token_salt').where('id', '=', id).executeTakeFirstOrThrow();
+    const manage = subscriptionToken(t.config.SECRET_KEY, 'manage', id, token_salt);
+    const confirm = subscriptionToken(t.config.SECRET_KEY, 'confirm', id, token_salt);
+    expect(mail!.subject).toBe('[Example Status] Incident: Outage');
+    expect(mail!.text).toContain('See https://evil.example/?t= or  now');
+    for (const part of [mail!.subject, mail!.text, mail!.html]) {
+      expect(part).not.toContain('evil.example/?t=' + manage);
+      expect(part).not.toContain(confirm);
+      expect(part).not.toContain('__OSP_');
+    }
+    // The manage and unsubscribe links still carry it.
+    expect(mail!.text).toContain(`/subscription/manage?id=${id}&token=${manage}`);
+  });
+
   it('selects recipients by affected public services', async () => {
     await seedSubscribers();
     const created = await admin.post('/api/admin/incidents', {
@@ -552,6 +576,34 @@ describe('outbox delivery', () => {
       // Claimed when its turn came (after the first row's 30 s), not at the batch start.
       next_attempt_at: iso(start + 30_000 + 10 * 60_000),
     });
+  });
+
+  it('never sends a mail again because of a database error after the transport accepted it', async () => {
+    await addSubscriber('a@example.com');
+    await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
+    const { notifications } = t.app.ctx;
+    // The first write after the send fails (e.g. a dropped connection).
+    const updateTable = t.db.updateTable.bind(t.db);
+    let failures = 1;
+    const spy = vi.spyOn(t.db, 'updateTable').mockImplementation(((table: 'email_outbox') => {
+      if (table === 'email_outbox' && mailer.sent.length > 0 && failures > 0) {
+        failures--;
+        throw new Error('connection terminated');
+      }
+      return updateTable(table);
+    }) as never);
+    try {
+      expect(await notifications.deliverDue()).toEqual({ sent: 1, retried: 0, failed: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(mailer.sent).toHaveLength(1);
+    expect(await t.db.selectFrom('email_outbox').select(['status', 'attempts', 'last_error']).execute()).toEqual([
+      { status: 'sent', attempts: 1, last_error: null },
+    ]);
+    // Nothing is due again, also after the longest backoff.
+    expect(await notifications.deliverDue(new Date(Date.now() + 2 * HOUR))).toEqual({ sent: 0, retried: 0, failed: 0 });
+    expect(mailer.sent).toHaveLength(1);
   });
 
   it('masks email addresses in SMTP errors before storing and logging them', async () => {

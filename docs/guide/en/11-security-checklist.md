@@ -99,8 +99,9 @@ Go through this list before going live and after larger changes.
 - [ ] SPF, DKIM and DMARC are set up for the sender domain.
 - [ ] The privacy policy describes email subscriptions (purpose, storage,
       unsubscribing) and is linked in the footer.
-- [ ] `MAIL_TRANSPORT=log` is not used in production: the server log would
-      contain the confirmation and manage links.
+- [ ] `MAIL_TRANSPORT=log` is not used in production: no email is sent. (With
+      `NODE_ENV=production` the tokens of the logged links are redacted; in
+      other modes the log contains working confirmation and manage links.)
 
 ## Operations
 

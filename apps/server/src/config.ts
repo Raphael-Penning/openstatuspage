@@ -127,6 +127,21 @@ const EnvSchema = z.object({
    * use 3 poll intervals (at least 5 minutes) instead.
    */
   BUNDLE_PUSH_STALE_SECONDS: z.coerce.number().int().min(60).max(7 * 24 * 3600).default(3600),
+  /**
+   * Most checks one monitoring source may have. Pushes and polls that would exceed
+   * it are rejected and store nothing.
+   */
+  MAX_CHECKS_PER_SOURCE: z.coerce.number().int().min(100).max(1_000_000).default(20_000),
+  /**
+   * Pull adapters: most MiB of one (decompressed) response body. Sized against the
+   * image's heap cap (NODE_OPTIONS --max-old-space-size=96); raise both together.
+   */
+  POLL_MAX_RESPONSE_MB: z.coerce.number().min(1).max(512).default(8),
+  /**
+   * Pull adapters: most values one response body may hold (JSON objects, arrays and
+   * elements; lines of text), checked before parsing. Raise together with the heap cap.
+   */
+  POLL_MAX_VALUES: z.coerce.number().int().min(1000).max(100_000_000).default(500_000),
 
   /**
    * How notification mails are delivered: `smtp`, `log` (written to the server log,
@@ -180,6 +195,11 @@ export type Config = Omit<
 };
 
 const DEV_SECRET = 'insecure-development-secret-change-me-please';
+/**
+ * Published example values (the development fallback, deploy/kubernetes/secret.example.yaml).
+ * Anyone can read them, so production refuses them as SECRET_KEY or SUBSCRIPTION_TOKEN_KEY.
+ */
+const PLACEHOLDER_SECRETS = new Set([DEV_SECRET, 'change-me-to-a-long-random-value']);
 const DEFAULT_SESSION_MAX_AGE_HOURS = 24 * 30;
 
 export interface LoadConfigOptions {
@@ -220,6 +240,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     throw new Error(`Invalid configuration:\n${details}`);
   }
   const c = parsed.data;
+
+  if (c.NODE_ENV === 'production' && !options.allowMissingSecret) {
+    const placeholders = (['SECRET_KEY', 'SUBSCRIPTION_TOKEN_KEY'] as const).filter((name) => {
+      const value = c[name];
+      return value !== undefined && PLACEHOLDER_SECRETS.has(value.trim().toLowerCase());
+    });
+    if (placeholders.length > 0) {
+      throw new Error(
+        `Invalid configuration:\n${placeholders
+          .map((name) => `  ${name}: is a published example value; set a random one (e.g. \`openssl rand -base64 48\`)`)
+          .join('\n')}`,
+      );
+    }
+  }
 
   let secret = c.SECRET_KEY;
   if (!secret && c.APP_ROLE === 'public' && c.SUBSCRIPTION_TOKEN_KEY) {
@@ -303,4 +337,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadCo
     SESSION_MAX_AGE_HOURS: sessionMaxAgeHours,
     UMAMI_URL: c.UMAMI_URL?.replace(/\/+$/, ''),
   };
+}
+
+/**
+ * Settings that are valid but probably not what the operator wants. Logged on
+ * start (src/index.ts).
+ */
+export function configWarnings(config: Pick<Config, 'TRUST_PROXY' | 'APP_ROLE' | 'NODE_ENV' | 'BASE_URL'>): string[] {
+  const warnings: string[] = [];
+  const base = new URL(config.BASE_URL);
+  if (
+    config.NODE_ENV === 'production' &&
+    (config.APP_ROLE === 'all' || config.APP_ROLE === 'admin') &&
+    base.protocol === 'http:' &&
+    !['localhost', '127.0.0.1', '[::1]'].includes(base.hostname)
+  ) {
+    warnings.push(
+      `BASE_URL ${base.origin} is http: the session cookie is sent without the Secure flag, so a browser also ` +
+        'sends it over plain HTTP. Behind a TLS proxy set BASE_URL to the https:// address.',
+    );
+  }
+  if (typeof config.TRUST_PROXY === 'number' && config.APP_ROLE !== 'worker') {
+    warnings.push(
+      `TRUST_PROXY=${config.TRUST_PROXY} trusts the nearest ${config.TRUST_PROXY === 1 ? 'hop' : 'hops'} whatever ` +
+        'the address: a client that reaches the app port directly (not through the proxy) can choose its IP with ' +
+        'X-Forwarded-For and evade the per-client rate limits. Make the port reachable only through the proxy, or ' +
+        'set TRUST_PROXY to the addresses of the proxies.',
+    );
+  }
+  return warnings;
 }

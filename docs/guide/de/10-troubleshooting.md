@@ -46,6 +46,29 @@ Die Meldung nennt jede ungültige Variable, z. B. `BASE_URL: Invalid URL` oder
 Im Produktivbetrieb (dem Standard für `NODE_ENV`) ist der Schlüssel Pflicht.
 Erzeuge einen mit `openssl rand -base64 48`.
 
+**„SECRET_KEY: is a published example value“.**
+Der Schlüssel (oder `SUBSCRIPTION_TOKEN_KEY`) ist noch der Wert aus der
+Dokumentation oder einer Beispieldatei. Erzeuge einen eigenen mit
+`openssl rand -base64 48`. Bei einer bestehenden Installation sind die
+gespeicherten Monitoring-Zugangsdaten danach nicht mehr lesbar; gib sie
+anschließend neu ein.
+
+**PostgreSQL: „The public database role ... may create objects in the
+schema ...“.**
+Die öffentliche Rolle darf im Tabellenschema Objekte anlegen, meist weil
+PostgreSQL vor Version 15 (oder ein davon aktualisierter Cluster) allen erlaubt,
+im Schema `public` Objekte anzulegen. Die Instanz startet erst, wenn das
+entzogen ist: Führe `deploy/postgres/harden.sql` erneut als Superuser in dieser Datenbank aus, wie im
+[Sicherheitsmodell](../../security-model.md) beschrieben, oder führe als
+Superuser `REVOKE CREATE ON SCHEMA public FROM PUBLIC` aus (liegen die Tabellen in einem anderen Schema, entziehe es dort ebenfalls).
+Ist die Rolle, die die Migrationen ausführt, nicht Eigentümerin des Schemas und
+hat sie ihre Tabellen nur über diese Voreinstellung angelegt (PostgreSQL 14 oder
+älter ohne `roles.sql`), verliert sie das Recht ebenfalls und das nächste Update
+scheitert mit „permission denied“: Führe vorher
+`GRANT CREATE ON SCHEMA public TO <App-Rolle>` aus (`roles.sql` macht das schon).
+`harden.sql` warnt vor jeder Rolle, der Tabellen im Schema gehören und die dort
+keine Objekte mehr anlegen darf.
+
 **`docker compose` meldet „set SECRET_KEY in .env“ oder „set
 POSTGRES_PASSWORD in .env“.**
 Die Variable fehlt in `.env` oder ist leer. Bei einer neuen Installation
@@ -93,7 +116,8 @@ wurde ein Benutzer angelegt. Nutze den Befehl `create-user`, siehe
 
 **Ich habe das Administrator-Passwort vergessen.**
 Führe `create-user` mit derselben E-Mail-Adresse aus: Der Befehl setzt für den
-bestehenden Benutzer ein neues Passwort und die Rolle und meldet ihn überall ab.
+bestehenden Benutzer ein neues Passwort und die Rolle, meldet ihn überall ab
+und widerruft die API-Tokens, die er angelegt hat.
 
 **Direkt nach der Anmeldung bin ich wieder abgemeldet.**
 `BASE_URL` beginnt mit `https://`, die Seite ist aber über `http://`

@@ -35,6 +35,27 @@ describe('monitoring credentials', () => {
     const ok = await admin.patch(url, { ...icinga, config: { ...icinga.config, baseUrl: 'https://mon2.example.com' } });
     expect(ok.statusCode).toBe(200);
   });
+
+  it('must be entered again to turn TLS verification off', async () => {
+    const kuma = {
+      name: 'Kuma',
+      sourceType: 'uptimekuma',
+      config: { baseUrl: 'https://kuma.example.com', apiKey: 'kuma-api-key-secret' },
+    };
+    const source = data<{ id: string }>(await admin.post('/api/admin/monitor-sources', kuma));
+    const url = `/api/admin/monitor-sources/${source.id}`;
+
+    const insecure = await admin.patch(url, { ...kuma, config: { ...kuma.config, apiKey: SECRET_MASK, verifyTls: false } });
+    expect(insecure.statusCode).toBe(400);
+    expect(insecure.json().errors[0].source.pointer).toBe('/data/attributes/config/apiKey');
+
+    // Unchanged (still verified) keeps the stored key; re-entering it allows turning verification off.
+    expect((await admin.patch(url, { ...kuma, config: { ...kuma.config, apiKey: SECRET_MASK } })).statusCode).toBe(200);
+    expect((await admin.patch(url, { ...kuma, config: { ...kuma.config, verifyTls: false } })).statusCode).toBe(200);
+    // Once off, the mask keeps the key; turning verification back on needs no re-entry either.
+    expect((await admin.patch(url, { ...kuma, config: { ...kuma.config, apiKey: SECRET_MASK, verifyTls: false } })).statusCode).toBe(200);
+    expect((await admin.patch(url, { ...kuma, config: { ...kuma.config, apiKey: SECRET_MASK, verifyTls: true } })).statusCode).toBe(200);
+  });
 });
 
 describe('api tokens', () => {

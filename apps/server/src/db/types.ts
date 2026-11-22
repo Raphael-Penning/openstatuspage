@@ -173,6 +173,14 @@ export interface MonitorSourcesTable {
   last_poll_at: string | null;
   last_poll_ok: Bool | null;
   last_error: string | null;
+  /** Start of the running poll; left behind when the process stopped during a poll (0010). */
+  poll_started_at: string | null;
+  /** Polls in a row that never finished; scheduled polls back off by it (0010). */
+  poll_aborts: Generated<number>;
+  /** Start of the 24-hour window of the cumulative full-sync guard (0011). */
+  full_sync_window_at: string | null;
+  /** Linked checks removed by full pushes within that window (0011). */
+  full_sync_removed_links: Generated<number>;
   created_at: string;
   updated_at: string;
 }

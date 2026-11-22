@@ -24,7 +24,7 @@ subscriptions without a transport, the settings page shows a warning.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, otherwise `none` | `smtp` sends via SMTP. `log` writes every email to the server log instead of sending it (for development and tests only: the log then contains the links of confirmation and manage emails). `none` disables email, even when `SMTP_HOST` is set. |
+| `MAIL_TRANSPORT` | `smtp` when `SMTP_HOST` is set, otherwise `none` | `smtp` sends via SMTP. `log` writes every email to the server log instead of sending it (for development and tests only: the log then contains the links of confirmation and manage emails; with `NODE_ENV=production`, the default of the container image, their tokens are replaced by `[redacted]`). `none` disables email, even when `SMTP_HOST` is set. |
 | `SMTP_HOST` | – | Host name of the SMTP server or relay. Required for `smtp`. |
 | `SMTP_PORT` | `587` | Port of the SMTP server. |
 | `SMTP_SECURE` | `false` | `true` for implicit TLS (usually port 465). With `false` the connection is upgraded with STARTTLS when the server offers it. |
@@ -119,7 +119,8 @@ Details that protect subscribers and your mail server:
   the manage page after confirming); a confirmed address gets a "manage your
   subscription" email with the manage link instead. Such emails go out at
   most once per 10 minutes per address.
-- The form is limited to 5 requests per minute per client IP, the confirm,
+- Subscribing is limited to 5 requests per minute per client IP (the form
+  with and without JavaScript together), the confirm,
   manage and unsubscribe links to 30 per minute. Behind a reverse proxy this
   needs a correct `TRUST_PROXY` (see
   [Reverse proxy](03-reverse-proxy.md#trust_proxy)).
@@ -131,6 +132,11 @@ Details that protect subscribers and your mail server:
   query string out of it.
 - Confirming takes one click on **Confirm subscription**. Opening the link
   alone (for example by a link scanner of a mail provider) confirms nothing.
+- The confirmation link leads to the manage page only once. Used again
+  after the subscription is confirmed, it shows "This subscription is already
+  confirmed" with how to manage it: the link in any notification email, or
+  subscribing again with the same address, which sends a manage link. An old
+  confirmation email therefore does not stay a key to the subscription.
 - Subscribing, confirming, changing preferences and unsubscribing work
   without JavaScript as plain forms.
 - Every notification email contains a manage link and an unsubscribe link.

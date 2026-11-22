@@ -6,6 +6,8 @@
  * form handler confirms and redirects to the manage page; with JavaScript the
  * page confirms through the JSON:API and shows the result in place. Older
  * links carry the token in the URL fragment, which only the browser sees.
+ * A subscription that was confirmed before gets no manage link from here
+ * (?already=1 without JavaScript): the page says how to manage it instead.
  */
 import { FORM_PATHS, type PublicSubscription } from '@openstatuspage/shared';
 import { Loader2, MailCheck, MailQuestion, SlidersHorizontal } from 'lucide-react';
@@ -36,6 +38,8 @@ export function SubscriptionConfirmPage() {
       <NoReferrer />
       {params.get('error') === 'invalid' ? (
         <InvalidLinkState />
+      ) : params.get('already') === '1' ? (
+        <AlreadyConfirmed />
       ) : link ? (
         <Confirm key={`${link.id}:${link.token}`} id={link.id} token={link.token} />
       ) : waitForFragment ? (
@@ -78,7 +82,9 @@ function Confirm({ id, token }: { id: string; token: string }) {
       if (isNotFound(confirm.error)) return <InvalidLinkState />;
       return <ErrorState className="mx-auto max-w-xl" onRetry={() => void confirm.refetch()} />;
     }
-    return <Confirmed subscription={confirm.data.subscription} manageToken={confirm.data.manageToken} />;
+    const { subscription, manageToken } = confirm.data;
+    if (!manageToken) return <AlreadyConfirmed />;
+    return <Confirmed subscription={subscription} manageToken={manageToken} />;
   }
 
   return (
@@ -127,6 +133,29 @@ function Confirmed({ subscription, manageToken }: { subscription: PublicSubscrip
         <ScopeSentence subscription={subscription} />
       </p>
       <p className="text-sm">{t('subscription.confirm.hint')}</p>
+    </ResultState>
+  );
+}
+
+/** A link that was used before: it confirms nothing new and is no manage link. */
+function AlreadyConfirmed() {
+  const { t } = useTranslation('public');
+  return (
+    <ResultState
+      icon={<MailCheck aria-hidden className="size-10 text-status-operational-text" />}
+      title={t('subscription.confirm.already')}
+      actions={
+        <>
+          <Link to="/subscribe" className={primaryButton}>
+            {t('subscription.confirm.alreadySubscribe')}
+          </Link>
+          <Link to="/" className={secondaryButton}>
+            {t('subscription.backHome')}
+          </Link>
+        </>
+      }
+    >
+      <p>{t('subscription.confirm.alreadyHint')}</p>
     </ResultState>
   );
 }

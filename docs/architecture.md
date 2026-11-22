@@ -128,7 +128,8 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
 - `notification-cleanup` (hourly): deletes unconfirmed subscriptions after 7 days and
   sent/failed mails after 30 days
 - `history-import-cleanup` (every 5 min): fails import jobs without progress for
-  15 minutes (e.g. after a restart) and discards previews older than 24 hours
+  15 minutes (e.g. after a restart), discards previews older than 24 hours and
+  drops staged rows (`history_import_intervals`) of finished jobs
 - `poller-sync` (every 30 s, on every instance): re-reads the monitoring sources
   and updates this instance's poll tasks
 - `task-lease-cleanup` (hourly, PostgreSQL only): removes leases unused for 7 days
@@ -297,17 +298,22 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   with a weak `ETag`, `Vary: Accept-Language, Cookie, Accept-Encoding` and
   `Cache-Control: public, max-age=10, stale-while-revalidate=60` (`private,
   no-store` for the personal subscription links). If-None-Match answers 304.
+  Only pages rendered with status 200 are kept (a 404 for an unknown URL is
+  rendered per request), and the least recently used page is dropped first, so
+  a flood of distinct URLs cannot push the pages visitors use out of the cache.
 - **Overload.** An expired page stays in the same bounded cache for a stale
-  window of 10 minutes (the 16-page and 1 MiB limits still apply, oldest
-  first). Within the 5 s a page is fresh it is sent as before; after that a
+  window of 10 minutes (the 16-page and 1 MiB limits still apply, least
+  recently used first). Within the 5 s a page is fresh it is sent as before; after that a
   request renders it again when a render slot or waiting place is free. When
   the queue is full (or the render fails), the last rendered version answers
   with `X-Cache: STALE`, its own `ETag` (If-None-Match still answers 304) and
   `Cache-Control: public, max-age=5`. Without such a version a full queue
-  answers `503` with `Retry-After: 5`, `Cache-Control: no-store`,
-  `X-Robots-Tag: noindex` and a small static page in the request's language
-  (`ssr/busy.ts`: `?lang=`, cookie, Accept-Language, else English; no scripts).
-  Personal pages are never kept, so they get the 503 under overload.
+  sends the plain client-rendered entry page (`Cache-Control: no-cache`), which
+  costs no render. Personal pages are never kept and never get the entry page
+  instead of their render, so under overload they get `503` with
+  `Retry-After: 5`, `Cache-Control: no-store`, `X-Robots-Tag: noindex` and a
+  small static page in the request's language (`ssr/busy.ts`: `?lang=`, cookie,
+  Accept-Language, else English; no scripts).
 - **Compression.** Each render is gzip-compressed once and kept with the page;
   clients that accept gzip get that copy. Static files are compressed at build
   time (Brotli and gzip, `apps/web/tools/precompress.ts`) and sent as they are;
@@ -398,7 +404,7 @@ maintenance of those services (public ones only) with their own pages
 (`/p/<token>/incidents/<id>`, `/p/<token>/maintenance/<id>`).
 
 ```
-/p/<token>/…  ─▶ app.ts: rate limit (60/min per client, 429 page of ssr/busy.ts) ─▶ ssr/pages.ts (personal path: no cache, never stale)
+/p/<token>/…  ─▶ app.ts: rate limit (60/min per client, shared with the API: lib/private-page-limit.ts; 429 page of ssr/busy.ts) ─▶ ssr/pages.ts (personal path: no cache, never stale)
   └─ routes.tsx  /p/:token ─▶ PrivatePageProvider (token, link base /p/<token>) ─▶ PublicLayout
        └─ privateQueries.*(token, get) ─▶ ssr/source.ts ─▶ PrivatePageDocuments ─▶ PrivatePages
             └─ PrivatePageStore: tables (SQLite, admin/worker/all) | osp_public.private_page*() (public role)
@@ -454,7 +460,9 @@ agents. Everything is built from the page settings and public data only.
     10 kB to an overview of seven services),
   - `canonical`: the path without query, lower case and without a trailing
     slash (the server answers other spellings of a path with a `301` to this
-    one); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
+    one, always a path on this site; a request target no browser sends, with
+    dot segments, a backslash or in absolute form, gets a plain uncached `404`,
+    and so do other spellings of `/api`); `?lang=xx` is kept, because every language version is a page of its own. The `hreflang` alternates list
     `?lang=xx` for every language and the plain path (language from cookie,
     `Accept-Language` or the page default) as `x-default`. A service's
     canonical path is its slug.
@@ -519,8 +527,8 @@ read after 15 s without requests.
 
 Public: four runs; the range is their spread. One page renders at a time and at
 most four wait; beyond that a request got the client-rendered page when this
-was measured (now the last rendered version from the cache or the small 503
-page, neither renders anything; the cache limits are unchanged). With two
+was measured (now the last rendered version from the cache if there is one,
+which renders nothing either; the cache limits are unchanged). With two
 renders and 32 waiting (the setting before) the same burst took the public
 instance to 110 MB (kernel peak 111 MB), with one render and 8 waiting to 98–99
 MB (kernel peak 100 MB).
@@ -605,7 +613,8 @@ What keeps it small:
   (about 500 kB, ASCII only, `renderToString` without the streaming renderer,
   only the `common` and `public` translations) is imported on the first page
   request, one page renders at a time (at most 4 wait, the rest get the
-  last rendered version or a 503 busy page).
+  last rendered version or the client-rendered entry page; personal pages a
+  503 busy page).
 - **Bounded caches.** The only response cache holds rendered public pages for
   5 s, and expired ones for another 10 minutes to answer under overload (at
   most 16 pages and 1 MiB together, as UTF-8 bytes); there is no query cache. The rate limiter
@@ -640,7 +649,12 @@ What keeps it small:
   (about 40 MB every 30 s inside the container's memory limit).
 
 Raise the cap for a large history import on an admin instance, e.g.
-`NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=256`. Without the
+`NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=256`. Pull adapters
+read at most `POLL_MAX_RESPONSE_MB` (default 8) per response with at most
+`POLL_MAX_VALUES` (default 500000) values, checked before parsing: at the
+default cap that leaves room for a poll next to a running server (about 27 MB
+heap after GC). Raise both together with the cap for very large monitoring
+systems ([configuration.md](configuration.md#monitoring)). Without the
 image, set the same variables and start with `node --max-opt=2` yourself to get
 the numbers above; without them every role needs about 10–20 MB more.
 

@@ -52,4 +52,64 @@ describe('IngestService', () => {
     await ingest.ingest('src', [{ externalId: 'web01!http', state: 'warning' }], { full: false });
     expect((await stored()).name).toBe('web01!http');
   });
+
+  it('caps result times in the future at the server clock', async () => {
+    const before = Date.now();
+    await ingest.ingest(
+      'src',
+      [
+        { externalId: 'future', state: 'ok', checkedAt: '2099-01-01T00:00:00.000Z' },
+        { externalId: 'skew', state: 'ok', checkedAt: new Date(before + 60_000).toISOString() },
+        { externalId: 'past', state: 'ok', checkedAt: '2026-01-01T00:00:00.000Z' },
+      ],
+      { full: false },
+    );
+    const rows = await db.selectFrom('monitor_checks').select(['external_id', 'last_check_at']).execute();
+    const at = Object.fromEntries(rows.map((r) => [r.external_id, r.last_check_at!]));
+    expect(Date.parse(at.future!)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(at.future!)).toBeLessThanOrEqual(Date.now());
+    // Small clock skew is kept as reported.
+    expect(at.skew).toBe(new Date(before + 60_000).toISOString());
+    expect(at.past).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('ignores results older than the stored result', async () => {
+    const at = (min: number) => new Date(Date.parse('2026-01-01T12:00:00.000Z') + min * 60_000).toISOString();
+    await ingest.ingest('src', [{ externalId: 'a', state: 'critical', output: 'down', checkedAt: at(10) }], { full: false });
+    // A delayed (or replayed) older result does not overwrite the newer one.
+    await ingest.ingest('src', [{ externalId: 'a', state: 'ok', output: 'up', checkedAt: at(5) }], { full: false });
+    const row = () => db.selectFrom('monitor_checks').select(['state', 'output', 'last_check_at']).executeTakeFirstOrThrow();
+    expect(await row()).toEqual({ state: 'critical', output: 'down', last_check_at: at(10) });
+    // The same time and newer times are applied; results without a time are taken as now.
+    await ingest.ingest('src', [{ externalId: 'a', state: 'warning', checkedAt: at(10) }], { full: false });
+    expect((await row()).state).toBe('warning');
+    await ingest.ingest('src', [{ externalId: 'a', state: 'ok' }], { full: false });
+    expect((await row()).state).toBe('ok');
+  });
+
+  it('does not let a stored time from the future block newer results', async () => {
+    await ingest.ingest('src', [{ externalId: 'a', state: 'critical' }], { full: false });
+    // Written before result times were capped.
+    await db.updateTable('monitor_checks').set({ last_check_at: '2099-01-01T00:00:00.000Z' }).execute();
+    await ingest.ingest('src', [{ externalId: 'a', state: 'ok', checkedAt: new Date().toISOString() }], { full: false });
+    expect((await stored()).state).toBe('ok');
+  });
+
+  it('rejects pushes that would give a source more checks than allowed', async () => {
+    const limited = new IngestService(db, new StatusEngine(db), undefined, { maxChecksPerSource: 3 });
+    const push = (ids: string[], full = false) =>
+      limited.ingest('src', ids.map((externalId) => ({ externalId, state: 'ok' as const })), { full });
+    await push(['a', 'b']);
+    await expect(push(['c', 'd'])).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('at most 3') });
+    const count = async () => (await db.selectFrom('monitor_checks').select('external_id').execute()).length;
+    // Nothing of the rejected push was stored.
+    expect(await count()).toBe(2);
+    await push(['c']);
+    // Updates of existing checks are always accepted.
+    await push(['a', 'b', 'c']);
+    // A full sync is judged by its own size: it replaces the set.
+    await expect(push(['w', 'x', 'y', 'z'], true)).rejects.toMatchObject({ statusCode: 409 });
+    await push(['x', 'y', 'z'], true);
+    expect(await count()).toBe(3);
+  });
 });

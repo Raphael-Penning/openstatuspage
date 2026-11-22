@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   AdapterError,
   basicAuth,
+  countJsonValues,
+  countTextValues,
   createAdapterFetch,
   describeTransportError,
   describeUrl,
@@ -47,6 +49,11 @@ beforeAll(async () => {
         res.writeHead(200, { 'content-type': 'application/json', 'x-multi': ['a', 'b'] });
         res.end(JSON.stringify({ method: req.method, auth: req.headers.authorization ?? null, body }));
       });
+      return;
+    }
+    if (req.url === '/two-mib') {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end(Buffer.alloc(2 * 1024 * 1024, 'a'));
       return;
     }
     if (req.url === '/slow') {
@@ -153,6 +160,19 @@ describe('requestJson errors', () => {
     expect(err.message).toBe('Mon returned HTTP 500 for https://mon.example.com/x');
   });
 
+  it('never passes URL credentials or query strings of transport errors on', async () => {
+    // undici quotes the complete URL in this message.
+    const err = (await requestJson(fetch, 'https://svc:url-pass-123@mon.example.com/x?apikey=key-456', { system: 'Mon' }).catch(
+      (e: Error) => e,
+    )) as Error;
+    expect(err).toBeInstanceOf(AdapterError);
+    expect(err.message).toContain('https://mon.example.com/x');
+    expect(err.message).not.toMatch(/url-pass-123|key-456|svc:/);
+    expect(describeTransportError(new Error('failed for http://u:p@h.example.com:8080/a?b=c#d and ftp://x@y.example.com'))).toBe(
+      'failed for http://h.example.com:8080/a and ftp://y.example.com/',
+    );
+  });
+
   it('describes TLS and DNS failures', () => {
     expect(describeTransportError(Object.assign(new TypeError('fetch failed'), { cause: { code: 'DEPTH_ZERO_SELF_SIGNED_CERT' } }))).toMatch(
       /TLS certificate verification failed .* disable TLS verification/,
@@ -227,7 +247,46 @@ describe('response size limits', () => {
   });
 });
 
+describe('value limits', () => {
+  it('over-counts the values JSON.parse would create', () => {
+    expect(countJsonValues('{}')).toBe(1);
+    expect(countJsonValues('[{},{},[1,2]]')).toBe(7);
+    expect(countJsonValues('{"a":"x,y"}')).toBe(2);
+    expect(countJsonValues('[1,2,3,4,5]', 2)).toBe(3);
+    expect(countTextValues('a 1')).toBe(2);
+    expect(countTextValues('a{b="1",c="2"} 1\nd 2')).toBe(6);
+  });
+
+  it('rejects bodies over the limits before parsing them', async () => {
+    const { fetch } = mockFetch(() => new Response(JSON.stringify(Array.from({ length: 20 }, () => ({})))));
+    const limits = { maxBytes: 1024, maxValues: 10 };
+    await expect(requestJson(fetch, 'https://mon.example.com/x?k=1', { system: 'Mon', limits })).rejects.toThrow(
+      'Mon: the response of https://mon.example.com/x has more than 10 JSON values.',
+    );
+    await expect(requestJson(fetch, 'https://mon.example.com/x', { system: 'Mon', limits: { maxBytes: 1024 } })).resolves.toHaveLength(20);
+    await expect(requestText(fetch, 'https://mon.example.com/x', { system: 'Mon', limits: { maxBytes: 16 } })).rejects.toThrow(
+      'exceeds 0 MiB. Check the base URL or raise POLL_MAX_RESPONSE_MB.',
+    );
+    const lines = mockFetch(() => new Response('a 1\n'.repeat(10))).fetch;
+    await expect(requestText(lines, 'https://mon.example.com/m', { system: 'Mon', limits: { maxBytes: 1024, maxValues: 10 } })).rejects.toThrow(
+      'too many lines or labels',
+    );
+  });
+
+  it('applies the byte limit on the transport without TLS verification', async () => {
+    const f = createAdapterFetch({ verifyTls: false, maxResponseBytes: 1024 * 1024 });
+    await expect(requestText(f, `${BASE}/two-mib`, { system: 'Test' })).rejects.toThrow('Response body too large');
+    const unlimited = createAdapterFetch({ verifyTls: false });
+    await expect(requestText(unlimited, `${BASE}/two-mib`, { system: 'Test' })).resolves.toHaveLength(2 * 1024 * 1024);
+  });
+});
+
 describe('redactSecrets', () => {
+  it('removes the userinfo of the base URL', () => {
+    const config = { baseUrl: 'https://svc-user:p%40ss-word@mon.example.com', apiKey: 'k' };
+    expect(redactSecrets('svc-user p%40ss-word p@ss-word', config, ['apiKey'])).toBe('*** *** ***');
+  });
+
   it('removes secrets and their basic-auth encodings', () => {
     const config = { username: 'svc', password: 'hunter2-pass', apiKey: 'k' };
     const b64 = Buffer.from('svc:hunter2-pass').toString('base64');

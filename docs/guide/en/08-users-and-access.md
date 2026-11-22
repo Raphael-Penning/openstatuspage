@@ -27,7 +27,8 @@ small.
 - Create users with name, email, role and a password (at least 10
   characters). For accounts that only use single sign-on, leave the password
   empty.
-- Changing a user's password signs that user out everywhere.
+- Changing a user's password signs that user out everywhere and revokes the
+  API tokens they created.
 - You cannot delete yourself, change your own role or remove the last
   administrator.
 
@@ -38,12 +39,13 @@ Sessions expire after `SESSION_TTL_HOURS` (default 168 hours = 7 days) without
 activity; active sessions are extended automatically, but never beyond
 `SESSION_MAX_AGE_HOURS` (default 720 hours = 30 days) after the login. Then
 everybody has to log in again. The login is rate limited to 10 attempts per
-minute per client IP.
+minute per client IP; in addition, repeated failed logins for one account make
+its login wait (at most one minute), whatever the IP.
 
 Locked out? Use the `create-user` command to set a new password, see
 [Installation](02-installation.md#the-first-administrator). It also signs the
-user out everywhere, so it is the way to reset a compromised account from the
-server.
+user out everywhere and revokes the API tokens they created, so it is the way
+to reset a compromised account from the server.
 
 ## Single sign-on (OIDC)
 
@@ -75,9 +77,10 @@ that matches a user may log in as editor. The groups are read from the claim
 
 By default only users that already exist in OpenStatusPage may log in (matched
 by a verified email address on the first login). `OIDC_AUTO_CREATE_USERS=true`
-creates users on their first login; enable it only together with the group
-variables, otherwise every account of the identity provider becomes an
-editor.
+creates users on their first login, but only when the identity provider marks
+their email address as verified (`email_verified`); enable it only together
+with the group variables, otherwise every account of the identity provider
+becomes an editor.
 
 After SSO works and an SSO user is administrator, you can disable password
 logins with `LOCAL_LOGIN_ENABLED=false`.

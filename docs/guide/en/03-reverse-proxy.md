@@ -222,7 +222,8 @@ customer portal:
         style="width: 100%; height: 600px; border: 0"></iframe>
 ```
 
-The management UI (`/admin`) and the API (`/api/...`) send
+The management UI (`/admin`), the API (`/api/...`), private pages (`/p/...`)
+and the subscription confirm and manage pages (`/subscription/...`) send
 `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`
 and cannot be framed. If you do not want the public page to be embedded
 either, let your proxy add a second header `Content-Security-Policy:

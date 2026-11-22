@@ -7,6 +7,7 @@ import type { DB } from '../db/index.js';
 import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso, toIso } from '../lib/time.js';
+import { MAX_CLOCK_SKEW_MS } from './bundle-rules.js';
 import type { BundleService } from './bundles.js';
 import { recordCheckState } from './check-history.js';
 import type { StatusEngine } from './status-engine.js';
@@ -18,22 +19,44 @@ export interface IngestResult {
   stateChanges: number;
 }
 
+/** Window of the cumulative full-sync guard (see assertKeepsLinkedChecks). */
+export const FULL_SYNC_GUARD_WINDOW_MS = 24 * 60 * 60_000;
+
+/** Default for MAX_CHECKS_PER_SOURCE. */
+export const DEFAULT_MAX_CHECKS_PER_SOURCE = 20_000;
+
+export interface IngestOptions {
+  /** Upper bound for the number of checks of one source (MAX_CHECKS_PER_SOURCE). */
+  maxChecksPerSource?: number;
+}
+
 export class IngestService {
+  private readonly maxChecksPerSource: number;
+
   constructor(
     private readonly db: DB,
     private readonly engine: StatusEngine,
     /** Re-evaluates check bundles whose members belong to the ingested source. */
     private readonly bundles?: BundleService,
-  ) {}
+    options: IngestOptions = {},
+  ) {
+    this.maxChecksPerSource = options.maxChecksPerSource ?? DEFAULT_MAX_CHECKS_PER_SOURCE;
+  }
 
   /**
    * Upserts check results of one source.
+   * A result older than the stored result of its check (by `checkedAt`) is
+   * ignored, so delayed or replayed results cannot overwrite newer state.
+   * A call that would leave the source with more than `maxChecksPerSource`
+   * checks is rejected with 409 and nothing is stored.
    * With `full = true`, checks that are missing from `checks` are deleted
    * (their service links disappear with them).
    * With `guardLinkedChecks`, a full sync that would delete more than half of
    * the checks linked to services or used as bundle members is rejected with
    * 409 and nothing is stored: service links and bundle memberships are
    * configured by administrators and do not come back when a check reappears.
+   * The half is counted over 24 hours, so repeated full syncs cannot remove the
+   * links step by step either.
    * With `deferBundleRecompute` (poll path), the source's bundles are not
    * re-evaluated here because `recordPoll` follows and does it with the new
    * poll outcome; bundles that lost a removed member are still re-evaluated.
@@ -66,18 +89,29 @@ export class IngestService {
       }
       const existing = await trx
         .selectFrom('monitor_checks')
-        .select(['id', 'external_id', 'state'])
+        .select(['id', 'external_id', 'state', 'last_check_at'])
         .where('source_id', '=', sourceId)
         .execute();
       const existingByExternal = new Map(existing.map((c) => [c.external_id, c]));
 
+      const added = [...byExternalId.keys()].filter((id) => !existingByExternal.has(id)).length;
+      const total = options.full ? byExternalId.size : existing.length + added;
+      if (added > 0 && total > this.maxChecksPerSource) {
+        throw conflict(
+          `This would give the source ${total} checks; at most ${this.maxChecksPerSource} are allowed (MAX_CHECKS_PER_SOURCE). ` +
+            'Nothing was stored. Remove checks that are no longer needed or split the source.',
+        );
+      }
+
       if (options.full && options.guardLinkedChecks) {
-        await this.assertKeepsLinkedChecks(trx, sourceId, byExternalId);
+        await this.assertKeepsLinkedChecks(trx, sourceId, byExternalId, now);
       }
 
       for (const check of byExternalId.values()) {
-        const checkedAt = check.checkedAt ? safeIso(check.checkedAt) ?? now : now;
+        const checkedAt = resultTime(check.checkedAt, now);
         const prev = existingByExternal.get(check.externalId);
+        // Out of order (a delayed or replayed result): the stored result is newer, keep it.
+        if (prev && isOlder(checkedAt, prev.last_check_at, now)) continue;
         if (!prev) {
           const id = newId();
           await trx
@@ -180,9 +214,10 @@ export class IngestService {
    * forged full payload must not wipe most of the service mappings at once.
    */
   private async assertKeepsLinkedChecks(
-    db: Pick<DB, 'selectFrom'>,
+    db: Pick<DB, 'selectFrom' | 'updateTable'>,
     sourceId: string,
     incoming: Map<string, NormalizedCheck>,
+    now: string,
   ): Promise<void> {
     // Checks linked to services or used as bundle members (each counted once).
     const linked = await db
@@ -204,12 +239,31 @@ export class IngestService {
       )
       .execute();
     const removed = linked.filter((l) => !incoming.has(l.external_id)).length;
-    if (removed > 0 && removed * 2 > linked.length) {
+    if (removed === 0) return;
+
+    // Cumulative over a window: links removed by earlier full syncs in the window
+    // count as well, against the number of linked checks at the window's start.
+    const source = await db
+      .selectFrom('monitor_sources')
+      .select(['full_sync_window_at', 'full_sync_removed_links'])
+      .where('id', '=', sourceId)
+      .executeTakeFirst();
+    const windowAt = source?.full_sync_window_at ? Date.parse(source.full_sync_window_at) : NaN;
+    const inWindow = Number.isFinite(windowAt) && Date.parse(now) - windowAt < FULL_SYNC_GUARD_WINDOW_MS;
+    const earlier = inWindow ? (source?.full_sync_removed_links ?? 0) : 0;
+    const base = linked.length + earlier;
+    if ((removed + earlier) * 2 > base) {
       throw conflict(
-        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services or bundles. ` +
-          'Include these checks, unlink them in the admin UI first, or push without "full".',
+        `Full sync rejected: it would remove ${removed} of ${linked.length} checks that are linked to services or bundles` +
+          (earlier > 0 ? ` (${earlier} more were removed by full pushes in the last 24 hours)` : '') +
+          '. Include these checks, unlink them in the admin UI first, or push without "full".',
       );
     }
+    await db
+      .updateTable('monitor_sources')
+      .set(inWindow ? { full_sync_removed_links: earlier + removed } : { full_sync_window_at: now, full_sync_removed_links: removed })
+      .where('id', '=', sourceId)
+      .execute();
   }
 
   /** Records the outcome of a poll on the source row. */
@@ -227,6 +281,29 @@ export class IngestService {
 function truncate(value: string | null | undefined, max = 4000): string | null {
   if (value == null) return null;
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+/**
+ * Time of a result: the producer's time, but never later than the server clock
+ * plus MAX_CLOCK_SKEW_MS (a later time is replaced by the server time), so a
+ * result cannot stay fresh in bundle votes longer than the stale window.
+ */
+function resultTime(value: string | null | undefined, now: string): string {
+  const at = value ? safeIso(value) : null;
+  if (!at || Date.parse(at) > Date.parse(now) + MAX_CLOCK_SKEW_MS) return now;
+  return at;
+}
+
+/**
+ * Whether a result time lies before the stored one. A stored time beyond the
+ * clock skew (written before ingest capped result times) does not count, so it
+ * cannot block newer results.
+ */
+function isOlder(checkedAt: string, stored: string | null, now: string): boolean {
+  if (!stored) return false;
+  const storedAt = Date.parse(stored);
+  if (!Number.isFinite(storedAt) || storedAt > Date.parse(now) + MAX_CLOCK_SKEW_MS) return false;
+  return Date.parse(checkedAt) < storedAt;
 }
 
 function safeIso(value: string): string | null {

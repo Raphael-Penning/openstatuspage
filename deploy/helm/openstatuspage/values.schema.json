@@ -33,6 +33,10 @@
       "type": ["string", "integer"],
       "pattern": "^[0-9]*$"
     },
+    "numberString": {
+      "type": ["string", "number"],
+      "pattern": "^([0-9]+(\\.[0-9]+)?)?$"
+    },
     "percentOrEmpty": {
       "description": "Integer percentage, or empty (off).",
       "oneOf": [
@@ -169,6 +173,9 @@
         "OIDC_EDITOR_GROUP": { "type": "string" },
         "OIDC_AUTO_CREATE_USERS": { "$ref": "#/definitions/boolString" },
         "BUNDLE_PUSH_STALE_SECONDS": { "$ref": "#/definitions/intString" },
+        "MAX_CHECKS_PER_SOURCE": { "$ref": "#/definitions/intString" },
+        "POLL_MAX_RESPONSE_MB": { "$ref": "#/definitions/numberString" },
+        "POLL_MAX_VALUES": { "$ref": "#/definitions/intString" },
         "MAIL_TRANSPORT": { "enum": ["", null, "smtp", "log", "none"] },
         "SMTP_HOST": { "type": "string" },
         "SMTP_PORT": { "$ref": "#/definitions/intString" },

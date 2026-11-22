@@ -43,6 +43,27 @@ The message lists every invalid variable, e.g. `BASE_URL: Invalid URL` or
 In production (the default `NODE_ENV`) the key is mandatory. Generate one with
 `openssl rand -base64 48`.
 
+**"SECRET_KEY: is a published example value".**
+The key (or `SUBSCRIPTION_TOKEN_KEY`) is still the value from the
+documentation or an example file. Generate your own with
+`openssl rand -base64 48`. On an existing installation this makes stored
+monitoring credentials unreadable, so re-enter them afterwards.
+
+**PostgreSQL: "The public database role ... may create objects in the
+schema ...".**
+The public role may create objects in the table schema, usually because
+PostgreSQL before version 15 (or a cluster upgraded from one) lets everybody
+create objects in schema `public`. The instance does not start until that is
+revoked: run `deploy/postgres/harden.sql` again as a superuser in that database, as described in the
+[security model](../../security-model.md), or run
+`REVOKE CREATE ON SCHEMA public FROM PUBLIC` as a superuser (if the tables live in another schema, revoke it there as well).
+If the role that runs the migrations is not the owner of the schema and has
+created its tables only through that default (PostgreSQL 14 or older without
+`roles.sql`), it loses the right as well and the next update fails with
+"permission denied": first run `GRANT CREATE ON SCHEMA public TO <app role>`
+(`roles.sql` already does). `harden.sql` warns about every role that owns tables
+in the schema and can no longer create objects there.
+
 **`docker compose` says "set SECRET_KEY in .env" or "set POSTGRES_PASSWORD
 in .env".**
 The variable is missing or empty in `.env`. On a new installation append both
@@ -87,7 +108,8 @@ user created. Use the `create-user` command, see
 
 **I forgot the administrator password.**
 Run `create-user` with the same email address: it sets a new password and
-role for the existing user and signs them out everywhere.
+role for the existing user, signs them out everywhere and revokes the API
+tokens they created.
 
 **I am logged out right after logging in, or the login does not stick.**
 `BASE_URL` starts with `https://` but the page is opened via `http://`: the

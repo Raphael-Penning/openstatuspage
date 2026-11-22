@@ -95,8 +95,9 @@ export async function prepareDatabase(
   });
   if (postgres && !(await connectionRestricted(db))) {
     const message =
-      'the database login of this public instance is not a registered public role (DB_PUBLIC_ROLE), so the ' +
-      'database does not restrict it (see docs/security-model.md)';
+      'the database login of this public instance is not a registered public role (DB_PUBLIC_ROLE), or it may ' +
+      'create objects in the table schema or in osp_public, so the database does not restrict it ' +
+      '(see docs/security-model.md and deploy/postgres/harden.sql)';
     if (!config.ALLOW_UNRESTRICTED_PUBLIC_DB) {
       throw new Error(
         `Refusing to start: ${message}. Connect with the public role, or set ALLOW_UNRESTRICTED_PUBLIC_DB=true ` +

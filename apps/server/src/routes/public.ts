@@ -8,10 +8,12 @@
  *
  * The feeds are not JSON:API (stable formats for feed readers).
  */
-import { normalizePrivatePageToken, PRIVATE_PAGE_REQUESTS_PER_MINUTE, PRIVATE_PAGE_TOKEN_HEADER } from '@openstatuspage/shared';
+import { normalizePrivatePageToken, PRIVATE_PAGE_TOKEN_HEADER } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { HttpError } from '../lib/errors.js';
 import { parse } from '../lib/http.js';
+import { takePrivatePageRequest } from '../lib/private-page-limit.js';
 import { useJsonApi, withInclude } from '../plugins/jsonapi.js';
 import { PrivatePageDocuments } from '../services/private-page-documents.js';
 import { createPrivatePages } from '../services/private-pages.js';
@@ -22,9 +24,6 @@ const IdOrSlugParams = z.object({ idOrSlug: z.string().min(1).max(100) });
 const IdParams = z.object({ id: z.string().min(1).max(64) });
 /** The day is validated by the document builder (400 malformed, 404 outside the uptime range). */
 const ServiceDayParams = IdOrSlugParams.extend({ date: z.string().min(1).max(32) });
-
-/** Requests per minute and client to private pages (API and HTML), against guessing tokens. */
-const PRIVATE_PAGE_RATE_LIMIT = { max: PRIVATE_PAGE_REQUESTS_PER_MINUTE, timeWindow: '1 minute' };
 
 /** The token of the X-Private-Page-Token header, in lower case ('' when missing: answered like a wrong one). */
 function privatePageToken(req: FastifyRequest): string {
@@ -75,20 +74,27 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       reply.header('X-Robots-Tag', 'noindex, nofollow');
       return payload;
     });
-    const limited = { rateLimit: PRIVATE_PAGE_RATE_LIMIT };
-    const withIncludeLimited = { config: { ...limited, jsonapi: { include: true } } };
-    scope.get('/api/public/private-page', { config: limited }, (req) => privateDocs.page(req, privatePageToken(req)));
-    scope.get('/api/public/private-page/services/:idOrSlug', withIncludeLimited, (req) =>
+    // Against guessing tokens: every route (GET and HEAD) and the HTML pages at /p/ share one
+    // budget per client (lib/private-page-limit.ts).
+    scope.addHook('onRequest', async (req, reply) => {
+      const retryAfter = takePrivatePageRequest(app.ctx, req.ip);
+      if (retryAfter > 0) {
+        reply.header('Retry-After', String(retryAfter));
+        throw new HttpError(429, 'rate_limited', `Rate limit exceeded, retry in ${retryAfter} seconds`);
+      }
+    });
+    scope.get('/api/public/private-page', (req) => privateDocs.page(req, privatePageToken(req)));
+    scope.get('/api/public/private-page/services/:idOrSlug', withInclude, (req) =>
       privateDocs.service(req, privatePageToken(req), parse(IdOrSlugParams, req.params).idOrSlug),
     );
-    scope.get('/api/public/private-page/services/:idOrSlug/days/:date', withIncludeLimited, (req) => {
+    scope.get('/api/public/private-page/services/:idOrSlug/days/:date', withInclude, (req) => {
       const params = parse(ServiceDayParams, req.params);
       return privateDocs.day(req, privatePageToken(req), params.idOrSlug, params.date);
     });
-    scope.get('/api/public/private-page/incidents/:id', withIncludeLimited, (req) =>
+    scope.get('/api/public/private-page/incidents/:id', withInclude, (req) =>
       privateDocs.incident(req, privatePageToken(req), parse(IdParams, req.params).id),
     );
-    scope.get('/api/public/private-page/maintenances/:id', withIncludeLimited, (req) =>
+    scope.get('/api/public/private-page/maintenances/:id', withInclude, (req) =>
       privateDocs.maintenance(req, privatePageToken(req), parse(IdParams, req.params).id),
     );
   });

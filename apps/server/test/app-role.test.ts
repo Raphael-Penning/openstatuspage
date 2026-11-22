@@ -152,17 +152,12 @@ describe('APP_ROLE requests', () => {
     for (const t of apps) await t.close();
   });
 
-  it('reports the role in the health check', async () => {
-    for (const [role, worker] of [
-      ['all', true],
-      ['public', false],
-      ['admin', false],
-      ['worker', true],
-    ] as const) {
+  it('answers the health check in every role without deployment details', async () => {
+    for (const role of ['all', 'public', 'admin', 'worker'] as const) {
       const t = await make(role);
       const res = await t.app.inject('/api/health');
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ status: 'ok', role, worker });
+      expect(res.json()).toEqual({ status: 'ok' });
     }
   });
 

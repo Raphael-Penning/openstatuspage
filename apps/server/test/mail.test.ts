@@ -8,6 +8,8 @@ import {
   formatWindow,
   incidentMail,
   maintenanceMail,
+  stripTokenPlaceholders,
+  TOKEN_PLACEHOLDER_PATTERN,
 } from '../src/mail/templates.js';
 import {
   fillTokens,
@@ -55,11 +57,23 @@ describe('mail templates', () => {
     expect(mail.subject).toBe('[Example <Status>] Incident: <script>alert("x")</script>');
   });
 
+  it('matches the token placeholders of queued mails with the pattern it strips from texts', () => {
+    for (const placeholder of Object.values(TOKEN_PLACEHOLDERS)) {
+      expect(placeholder.match(TOKEN_PLACEHOLDER_PATTERN)).toEqual([placeholder]);
+    }
+    expect(stripTokenPlaceholders('a __OSP___OSP_CONFIRM_TOKEN__MANAGE_TOKEN__ b')).toBe('a  b');
+  });
+
   it('keeps subjects on one line and only links http(s) URLs', () => {
     const mail = confirmationMail({ ...site, siteName: 'Example\r\nBcc: x@example.com' }, 'en', 'javascript:alert(1)');
     expect(mail.subject).not.toMatch(/[\r\n]/);
     expect(mail.html).not.toContain('javascript:');
     expect(mail.html).toContain('href="#"');
+    // Unicode line breaks too.
+    for (const separator of ['\u2028', '\u2029', '\u0085']) {
+      const other = confirmationMail({ ...site, siteName: `Example${separator}Bcc: x@example.com` }, 'en', 'https://example.com');
+      expect(other.subject).toBe('[Example Bcc: x@example.com] Confirm your subscription');
+    }
   });
 
   it('renders maintenance windows in UTC and default texts for empty messages', () => {
@@ -203,6 +217,28 @@ describe('createMailer', () => {
     await logMailer.send({ to: 'a@example.com', subject: 'Hello', text: 'Body text', html: '<p>Body</p>' });
     expect(logged).toHaveLength(1);
     expect(JSON.stringify(logged[0])).toContain('Body text');
+  });
+
+  it('redacts the link tokens of logged mails in production', async () => {
+    const message = {
+      to: 'a@example.com',
+      subject: 'Confirm',
+      text: 'Confirm: https://status.example.com/subscription/confirm?id=sub-1&token=SECRETconfirm_-1\n' +
+        'Old: https://status.example.com/subscription/confirm?id=sub-1#token=SECRETfragment',
+      html: '<p>Confirm</p>',
+      headers: { 'List-Unsubscribe': '<https://status.example.com/api/public/subscriptions/sub-1/unsubscribe?token=SECREToneclick>' },
+    };
+    const env = { ...base, MAIL_TRANSPORT: 'log', SMTP_FROM: 'status@example.com' };
+    logged.length = 0;
+    await createMailer(loadConfig({ ...env, NODE_ENV: 'production' }), log).send(message);
+    const entry = JSON.stringify(logged[0]);
+    expect(entry).not.toContain('SECRET');
+    expect(entry).toContain('/subscription/confirm?id=sub-1&token=[redacted]');
+    expect(entry).toContain('unsubscribe?token=[redacted]');
+    // Development keeps the links usable.
+    logged.length = 0;
+    await createMailer(loadConfig({ ...env, NODE_ENV: 'development' }), log).send(message);
+    expect(JSON.stringify(logged[0])).toContain('token=SECRETconfirm_-1');
   });
 
   it('never sends from a public instance, but keeps the configured kind', async () => {

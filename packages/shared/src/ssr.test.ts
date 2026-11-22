@@ -73,6 +73,14 @@ describe('normalizePath / isPersonalPath', () => {
     expect(normalizePath('/bad%E0%A4%A')).toBe('/bad%e0%a4%a');
   });
 
+  it('treats a backslash as a path separator like the WHATWG URL parser', () => {
+    expect(normalizePath('/p\\abc')).toBe('/p/abc');
+    expect(normalizePath('/P%5Cabc')).toBe('/p/abc');
+    expect(normalizePath('/\\p\\\\abc\\services')).toBe('/p/abc/services');
+    expect(normalizePath('/x\\..\\p\\abc')).toBe('/p/abc');
+    for (const url of ['/p\\abc', '/p%5cabc', '/subscription\\manage', '\\p/abc']) expect(isPersonalPath(url), url).toBe(true);
+  });
+
   it('resolves dot segments like the router, also percent-encoded ones', () => {
     expect(normalizePath('/./p/abc')).toBe('/p/abc');
     expect(normalizePath('/a/../p/abc?x=1')).toBe('/p/abc');
@@ -85,7 +93,7 @@ describe('normalizePath / isPersonalPath', () => {
   });
 
   it('finds dot segments in any spelling', () => {
-    for (const url of ['/./p/abc', '/a/../p', '/%2e/p', '/%2E%2E/p', '/x/..%2fp', '/p/.', '/..']) {
+    for (const url of ['/./p/abc', '/a/../p', '/%2e/p', '/%2E%2E/p', '/x/..%2fp', '/p/.', '/..', '/x\\..\\p', '/x%5c..%5cp']) {
       expect(hasDotSegments(url), url).toBe(true);
     }
     for (const url of ['/', '/p/abc', '/services/a..b', '/history?return=/../p', '/.well-known/x', '/a.b/c']) {

@@ -163,7 +163,9 @@ Tokens are never written to the outbox. Subscriber emails are queued with
 placeholders instead of the confirm and manage tokens; the delivery task derives
 the real tokens from `SECRET_KEY`, the subscriber id and its salt right before
 sending and fills them into the body (text and HTML) and the `List-Unsubscribe`
-header. After an email was sent, its bodies and headers are blanked in the outbox;
+header. Placeholders only ever stand in the links the templates build: one that
+an editor writes into a title or message (or a service or site name) is removed
+when the email is rendered, so it can never turn into a token. After an email was sent, its bodies and headers are blanked in the outbox;
 recipient, subject, kind and status stay for the status view. Failed emails keep
 their placeholder bodies so that **Retry failed** can send them again.
 
@@ -208,7 +210,8 @@ of an existing address (they only change through the manage link): pending
 subscribers get the confirmation email again, confirmed subscribers an email with
 their manage link instead; at most
 one confirmation or manage email is sent per address every 10 minutes, and the
-subscribe endpoint is limited to 5 requests per minute per client IP. Behind a
+subscribe endpoint and the subscribe form are limited to 5 requests per minute per
+client IP together. Behind a
 reverse proxy set `TRUST_PROXY` so the limit applies per visitor.
 
 The form also contains a hidden honeypot field (`website`) that people never fill

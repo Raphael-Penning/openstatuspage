@@ -2,6 +2,7 @@ import type { LightMyRequestResponse } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryMailer, type MailMessage } from '../src/mail/mailer.js';
 import {
+  subscribe as startSubscription,
   subscriberTokens,
   subscriptionToken,
   syncSubscriptionTokenHashes,
@@ -10,6 +11,8 @@ import {
   TOKEN_PLACEHOLDERS,
 } from '../src/services/subscriptions.js';
 import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
+import { mapError } from '../src/lib/jsonapi-errors.js';
+import { databaseInputError } from '../src/services/subscription-flow.js';
 import { adminClient, BASE_URL, createTestApp, data, doc, errors, type Client, type TestApp } from './helpers.js';
 
 const JSONAPI_HEADERS = { 'content-type': JSONAPI_MEDIA_TYPE };
@@ -143,10 +146,13 @@ describe('subscribe and confirm', () => {
       manageToken: subscriptionToken(t.config.SECRET_KEY, 'manage', row.id, row.token_salt),
     });
 
-    // Idempotent.
+    // Idempotent, but the manage token only comes with the request that confirmed:
+    // an old confirmation mail is no lasting management credential.
     const again = await confirm(id, token);
     expect(again.statusCode).toBe(200);
-    expect(data<Subscription>(again).manageToken).toBe(body.manageToken);
+    expect(data<Subscription>(again)).toMatchObject({ id, confirmed: true });
+    expect(again.body).not.toContain(body.manageToken!);
+    expect(data(again)).not.toHaveProperty('manageToken');
   });
 
   it('answers unknown ids and wrong tokens identically', async () => {
@@ -203,6 +209,17 @@ describe('subscribe and confirm', () => {
     expect((await deliver()).length).toBe(0);
     const services = await t.db.selectFrom('subscriber_services').select('service_id').execute();
     expect(services.map((s) => s.service_id)).toEqual([publicService]);
+  });
+
+  it('sends one mail for concurrent requests for the same existing address', async () => {
+    await subscribe({ email: 'jane@example.com' });
+    expect((await deliver()).length).toBe(1);
+    const old = new Date(Date.now() - 11 * 60_000).toISOString();
+    await t.db.updateTable('subscribers').set({ confirmation_sent_at: old }).execute();
+    // The throttle is claimed atomically: only one of them queues the mail again.
+    const input = { email: 'jane@example.com', locale: 'en' as const, allServices: true, serviceIds: [] };
+    await Promise.all([1, 2, 3].map(() => startSubscription(t.app.ctx, input)));
+    expect((await deliver()).length).toBe(1);
   });
 
   it('answers before the subscribe work runs, and logs its failures', async () => {
@@ -431,5 +448,23 @@ describe('token hashes', () => {
       expect(r.token_key).toBe(tokenKeyFingerprint(rotated));
       expect(r.confirm_token_hash).toBe(tokenHash(subscriptionToken(rotated, 'confirm', r.id, r.token_salt)));
     }
+  });
+});
+
+describe('input errors of the database functions (PostgreSQL public role)', () => {
+  const pgError = (message: string, code = '22023') => Object.assign(new Error(message), { code });
+
+  it('pass on only the messages the functions raise themselves', () => {
+    expect(mapError(databaseInputError(pgError('Unknown service'))).errors[0]).toMatchObject({
+      status: '400',
+      code: 'bad_request',
+      detail: 'Unknown service',
+    });
+    // PostgreSQL's own errors with this code can quote values and internals.
+    const internal = databaseInputError(pgError('invalid value for parameter "search_path": "osp_public, public"'));
+    expect(mapError(internal).errors[0]).toMatchObject({ status: '400', detail: 'Invalid input' });
+    expect(JSON.stringify(mapError(internal))).not.toContain('search_path');
+    expect(databaseInputError(pgError('Subscriptions are disabled', '55000'))).toBeNull();
+    expect(databaseInputError(new Error('boom'))).toBeNull();
   });
 });

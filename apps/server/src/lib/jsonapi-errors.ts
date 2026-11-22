@@ -117,6 +117,9 @@ const FASTIFY_ERRORS: Record<string, { status: number; code: string; detail: str
   FST_ERR_CTP_INVALID_MEDIA_TYPE: { status: 415, code: 'unsupported_media_type', detail: 'Unsupported Content-Type' },
   FST_ERR_CTP_EMPTY_TYPE: { status: 415, code: 'unsupported_media_type', detail: 'The Content-Type header is empty' },
   FST_ERR_CTP_INVALID_TYPE: { status: 415, code: 'unsupported_media_type', detail: 'Unsupported Content-Type' },
+  // Answered before routing; the detail never repeats the URL (it may hold a personal link token).
+  FST_ERR_BAD_URL: { status: 400, code: 'bad_url', detail: 'The request URL is malformed' },
+  FST_ERR_MAX_PARAM_LENGTH: { status: 414, code: 'uri_too_long', detail: 'A path parameter of the request URL is too long' },
 };
 
 /**

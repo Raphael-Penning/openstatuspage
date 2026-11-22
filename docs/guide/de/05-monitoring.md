@@ -44,13 +44,17 @@ kompromittierte Statusseite kommt dann nicht an dein Monitoring heran.
 Lege für Pull einen eigenen **Nur-Lese-Benutzer** an, der auf die Objekte
 beschränkt ist, die die Statusseite speisen. Lass die TLS-Prüfung an; für
 eine interne CA setzt du `NODE_EXTRA_CA_CERTS=/pfad/zur/ca.pem` in der
-Umgebung, statt die Prüfung abzuschalten.
+Umgebung, statt die Prüfung abzuschalten. Willst du die Prüfung für eine Quelle
+abschalten, gibst du ihr Passwort oder ihren API-Schlüssel erneut ein (wie beim
+Ändern der URL oder des Benutzernamens).
 
 ## Eine Quelle anbinden
 
 1. **Monitoring → Quellen → Neue Quelle** (Administratoren): Typ wählen.
    - Für Pull trägst du Basis-URL und Zugangsdaten ein und prüfst mit
-     **Verbindung testen**. **Jetzt abfragen** importiert sofort.
+     **Verbindung testen**. **Jetzt abfragen** importiert sofort. Benutzername
+     und Passwort gehören in ihre eigenen Felder; URLs mit
+     `benutzer:passwort@` werden abgelehnt.
    - Für Push kopierst du **Ingest-URL** und **Ingest-Token**. Das Token wird
      nur einmal angezeigt; du kannst es später erneuern.
 2. Richte die Monitoring-Seite ein, wie in der Adapter-Dokumentation
@@ -93,7 +97,9 @@ bekommen ihre Liste per Abfrage, dort antwortet der Server mit `400`. Als
 Schutz wird ein vollständiger Push, der mehr als die Hälfte der mit Services
 verknüpften oder in Check-Bündeln verwendeten Checks entfernen würde, mit `409`
 abgelehnt und ändert nichts. Ist das Entfernen gewollt, lös die Verknüpfungen
-vorher (bzw. nimm die Checks aus dem Bündel).
+vorher (bzw. nimm die Checks aus dem Bündel). Die Hälfte gilt über 24 Stunden:
+Checks, die frühere vollständige Pushes in dieser Zeit entfernt haben, zählen
+mit.
 
 ## Services aus Checks zusammensetzen
 
@@ -236,7 +242,9 @@ Darauf kannst du dich verlassen:
   ändert ihn, und zwar nur für die Zeiten in ihren Zeilen.
 - **Uptime Kuma:** Ein Monitor mit sehr vielen Heartbeats (mehr als etwa
   200 000 vom Beginn des Zeitraums bis heute) wird übersprungen und in der
-  Vorschau genannt. Wähl für ihn einen späteren Beginn.
+  Vorschau genannt. Wähl für ihn einen späteren Beginn. Das gilt auch für
+  einen Monitor, dessen Heartbeats Uptime Kuma nicht innerhalb von 5 Minuten
+  schickt.
 - Jeder Import landet im Audit-Log.
 
 Das CSV-Format und die Details je System findest du in der
@@ -257,3 +265,15 @@ Das CSV-Format und die Details je System findest du in der
 - Ingest-Endpunkte sind auf 120 Anfragen pro Minute und Quelle begrenzt.
   Fasse viele Ergebnisse in einer Anfrage zusammen (bis zu 5000 Checks,
   5 MiB).
+- Eine Quelle hat höchstens 20000 Checks (`MAX_CHECKS_PER_SOURCE`). Ein Push
+  oder eine Abfrage, die mehr anlegen würde, wird abgelehnt und speichert
+  nichts.
+- Eine Antwort beim Abfragen darf bis zu 8 MiB mit bis zu 500000 Werten haben
+  (`POLL_MAX_RESPONSE_MB`, `POLL_MAX_VALUES`); eine größere Antwort lässt die
+  Abfrage fehlschlagen. Bei sehr großen Monitoring-Systemen erhöhst du beide
+  zusammen mit der Heap-Grenze (`NODE_OPTIONS`), siehe Konfigurationsreferenz.
+- Stoppt der Server während einer Abfrage, fragt er diese Quelle nach dem
+  Neustart nicht sofort wieder ab: Automatische Abfragen warten mindestens ein
+  Intervall, bei Wiederholung länger (bis zu 6 Stunden), und die Quelle zeigt
+  den Grund an. **Jetzt abfragen** oder Speichern der Quelle versucht es sofort
+  erneut.

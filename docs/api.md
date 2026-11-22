@@ -160,7 +160,8 @@ with an error document, on every route (also on the
   `not_acceptable`, `invalid_document`, `type_mismatch`, `id_mismatch`,
   `invalid_parameter`, `unsupported_include`, `unsupported_sort`,
   `client_id_unsupported`, `unknown_relationship`, `invalid_json`, `empty_body`,
-  `payload_too_large`, `invalid_credentials`,
+  `payload_too_large`, `bad_url` (a malformed escape in the path), `uri_too_long`,
+  `invalid_credentials`,
   `invalid_password`, `secret_required`, ... Errors without a field (e.g. a line of
   an imported CSV file) keep their details in `meta`.
 
@@ -318,7 +319,8 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
   sends it). Bearer-token requests are exempt.
 - Every mutating admin call writes an audit log entry. Mutations through API tokens
   are audited with `userId = null` and `details.apiToken = <token name>`.
-- Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP,
+- Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP (the API and the
+  HTML form `POST /subscribe` together),
   subscription token endpoints 30/min per IP, ingest 120/min per source.
 
 ```sh
@@ -336,7 +338,7 @@ error documents like everywhere else.
 
 | Method | Path | Response |
 | --- | --- | --- |
-| GET | `/api/health` | `{ "status": "ok", "role": "all", "worker": true }` (`application/json`) for liveness/readiness probes; `role` is the instance's `APP_ROLE`, `worker` whether it runs the background tasks. Exists in every role. |
+| GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes, once the database answers. Exists in every role; the role itself is only logged on start. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 | GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
@@ -359,7 +361,7 @@ GET /api/health
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"status": "ok", "role": "all", "worker": true}
+{"status": "ok"}
 ```
 
 </details>
@@ -920,10 +922,11 @@ token in the URL or query is never read.
   window that is not on the page and a day outside the uptime range are the same
   `404 not_found`, so the answer never tells which it was.
 - Answers carry `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`.
-  60 requests per minute and client (`429` beyond, like the HTML pages at `/p/`,
-  which answer with a small page in the visitor's language). The client is
-  `req.ip`: behind a reverse proxy set `TRUST_PROXY`, or every visitor shares one
-  budget.
+  60 requests per minute and client in total: every route and method of this API
+  and the HTML pages at `/p/` take from the same budget (`429` with `Retry-After`
+  beyond; the HTML pages answer with a small page in the visitor's language).
+  The client is `req.ip`, an IPv6 address counted by its `/64` network: behind a
+  reverse proxy set `TRUST_PROXY`, or every visitor shares one budget.
 - Feeds and email subscriptions of a private page do not exist.
 
 ```http
@@ -977,7 +980,7 @@ A subscription is a `subscriptions` resource (`PublicSubscription`): attributes
 | Method | Path | Body / auth | Response |
 | --- | --- | --- | --- |
 | POST | `/api/public/subscriptions` | `subscriptions` (`SubscribeInput`, relationship `services`) | `202` with `meta.accepted` for every valid input (new, pending or confirmed address, so addresses cannot be enumerated; also for a filled-in honeypot). `404` when subscriptions are not available, `400` on invalid input or unknown/non-public services. |
-| POST | `/api/public/subscriptions/:id/confirm` | `subscriptions` with the attribute `token` (`SubscriptionConfirmInput`, token from the confirmation link) | the subscription; only this response also has the attribute `manageToken`; idempotent |
+| POST | `/api/public/subscriptions/:id/confirm` | `subscriptions` with the attribute `token` (`SubscriptionConfirmInput`, token from the confirmation link) | the subscription; idempotent. Only the response of the request that confirms it also has the attribute `manageToken`; confirming an already confirmed subscription answers without it (an old confirmation link is no manage link) |
 | GET | `/api/public/subscriptions/:id` | header `X-Subscription-Token` | the subscription |
 | PATCH | `/api/public/subscriptions/:id` | header as above, `subscriptions` (`SubscriptionPreferencesInput`, partial) | the subscription |
 | DELETE | `/api/public/subscriptions/:id` | header as above | `204`, deletes the subscriber completely |
@@ -1026,7 +1029,7 @@ same subscription flow and rate limits, and answer with Post/Redirect/Get:
 | Method | Path | Fields | Success | Problems |
 | --- | --- | --- | --- | --- |
 | POST | `/subscribe` | `email`, `locale`, `scope` (`all` or `selected`), `service` (repeated), `group` (repeated: every public service of the group), `website` (honeypot) | `303` to `/subscribe?sent=1` | invalid input: `422` with the page and its errors; subscriptions off: `303` to `/subscribe` |
-| POST | `/subscription/confirm` | `id`, `token` (confirm token) | `303` to the manage page with the manage token and `confirmed=1` | wrong link: `303` to `/subscription/confirm?error=invalid` |
+| POST | `/subscription/confirm` | `id`, `token` (confirm token) | `303` to the manage page with the manage token and `confirmed=1`; when it was confirmed before, `303` to `/subscription/confirm?already=1` (no manage token) | wrong link: `303` to `/subscription/confirm?error=invalid` |
 | POST | `/subscription/manage` | `id`, `token` (manage token), `locale`, `scope`, `service`, `group` | `303` to the manage page with `saved=1` | invalid input: `422` with the page; wrong link: `303` to `/subscription/manage?error=invalid` |
 | POST | `/subscription/unsubscribe` | `id`, `token` (manage token) | `303` to `/subscription/manage?unsubscribed=1` | wrong link: `303` to `/subscription/manage?error=invalid` |
 | POST | `/preferences/theme` | `theme` (`system`, `light`, `dark`), `return` (local path) | `303` to `return`, sets the `osp-theme` cookie | – |
@@ -1177,7 +1180,7 @@ included). The OIDC routes are browser redirects (see
 | POST | `/api/auth/login` | `sessions` (`LoginInput`); another type is `409` | `200` with the session document `sessions/current` (an action, not a create: no `201`/`Location`, since the session is a singleton reached at `/api/auth/session`); sets the cookie `osp_session` (httpOnly, sameSite=lax, secure when `BASE_URL` is https). Wrong credentials: `401` `invalid_credentials`. |
 | POST | `/api/auth/logout` | – | `204`, clears the cookie and deletes the session |
 | GET | `/api/auth/session` | – | the session document or `401` |
-| POST | `/api/auth/password` | `passwords` (`ChangePasswordInput`) | `204`; a wrong current password is `400` `invalid_password` |
+| POST | `/api/auth/password` | `passwords` (`ChangePasswordInput`) | `204` with a new session cookie: every session of the user ends, including the current one; a wrong current password is `400` `invalid_password` |
 
 Sessions: random 32-byte token in the cookie, its SHA-256 stored in `sessions.id`.
 Expired sessions are deleted lazily and by a periodic cleanup task.
@@ -3162,8 +3165,8 @@ Content-Type: application/vnd.api+json
 - `PATCH` on sources: left-out attributes keep their values; the `config` is kept
   when left out and replaced as a whole otherwise. Secrets equal to `SECRET_MASK`
   keep the stored value only while `sourceType`, `baseUrl` and `username`
-  (`historyUsername` for `historyPassword`) are unchanged, otherwise `400`
-  `secret_required`; `icingaDbUrl` is kept regardless.
+  (`historyUsername` for `historyPassword`) are unchanged and `verifyTls` is not
+  turned off, otherwise `400` `secret_required`; `icingaDbUrl` is kept regardless.
 - History import ([adapters/README.md](adapters/README.md#history-import)):
   `HistoryImportCreateInput` = `{ from, to, onlyLinkedChecks = true, credentials?, csv? }`
   with `to` capped at now and a range of at most 731 days. `credentials`
@@ -3873,7 +3876,8 @@ Content-Type: application/vnd.api+json
 | DELETE | `/api/admin/api-tokens/:id` | – | 204 | admin |
 
 - `PATCH /api/admin/users/:id` with `password: null` removes the local password (not
-  allowed for yourself). Changing a password signs that user out everywhere.
+  allowed for yourself). Changing or removing a password signs that user out everywhere
+  and revokes the API tokens they created.
 - API tokens are prefixed with `osp_`. They are revoked when their creator is
   deleted; admin tokens are revoked when their creator loses the admin role.
 - Logins are audited as `auth.login`.
@@ -4264,7 +4268,9 @@ Content-Type: application/vnd.api+json
 `/api/ingest`. Monitoring systems push check results. Authentication:
 `Authorization: Bearer <ingest token>` of the source (or the `?token=` query
 parameter for systems that cannot set headers; its value is redacted in the request
-log).
+log). Source, token and rate limit are checked before the body is read, so a request
+without a valid token is answered `404`/`401` without parsing its body; only
+authenticated requests may send bodies of up to 5 MiB.
 
 Request bodies are the native payloads below (`application/json`; JSON sent as
 `text/plain` is accepted, too), not JSON:API documents. Responses are JSON:API: a
@@ -4281,9 +4287,14 @@ errors are error documents whose `source.pointer` points into the body as sent
 
 `full: true` (remove checks missing from the payload) is accepted only for sources
 of type `webhook` (`400` otherwise); a full push that would remove more than half of
-the checks linked to services or used as bundle members is rejected with `409` and
+the checks linked to services or used as bundle members (counted over 24 hours,
+including those removed by earlier full pushes) is rejected with `409` and
 stores nothing (see [adapters/README.md](adapters/README.md)). Rate limited per
 source (default 120 requests/min).
+
+Result times are capped at the server clock plus 5 minutes. A result whose time is
+older than the stored result of the same check (a delayed or replayed push) is
+ignored and not counted in `updated`.
 
 Examples:
 
