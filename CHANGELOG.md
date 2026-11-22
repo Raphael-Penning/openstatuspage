@@ -6,6 +6,39 @@ breaking changes.
 
 ## [Unreleased]
 
+### Upgrading
+
+- From 0.2.x or 0.3.0 on PostgreSQL: no manual step. The `GRANT CREATE ON
+  SCHEMA public TO <app role>` and the `harden.sql` rerun that 0.3.0 asked for
+  before the upgrade are no longer needed; a database where 0.3.0 refused to
+  start because of them starts with this version as it is.
+
+### Changed
+
+- **PostgreSQL: `CREATE` for the public role is taken away automatically
+  instead of blocking the start.** Migration `0013_schema_create_hardening`
+  and every grant on start (`osp_grant_public_role`) revoke `CREATE` on the
+  table schema and on `osp_public` from `PUBLIC` and from the public role
+  (`DB_PUBLIC_ROLE`), as far as the migrating role may. Before revoking from
+  `PUBLIC` it makes sure the migrating role keeps its own `CREATE` there
+  (granting it to itself where it may) and leaves `PUBLIC` alone when it
+  cannot. Databases without a registered public role (`APP_ROLE=all` only)
+  are not changed. What the migrating role may not change (for example the
+  schema `public` belongs to a superuser on PostgreSQL 14 and the app role is
+  none) no longer stops admin, worker or public instances: the instances that
+  migrate log a warning on every start with the exact command for the schema
+  owner or a superuser (`pnpm db:migrate` prints it too), the public instance
+  logs that its login may still create objects. A public instance refuses to
+  start only when its login is not a registered public role, as before 0.3.0;
+  `ALLOW_UNRESTRICTED_PUBLIC_DB` only concerns that case now.
+
+### Security
+
+- The `CREATE` check of 0.3.0 is defence in depth: the `search_path` pinning of
+  migration `0012` keeps objects in the table schema out of the functions of
+  the public role whether or not it may create them, which the PostgreSQL tests
+  now also check for a public role that keeps `CREATE` through `PUBLIC`.
+
 ## [0.3.0] - 2026-11-22
 
 ### Upgrading from 0.2.x
