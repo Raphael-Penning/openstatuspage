@@ -292,7 +292,7 @@ curl -fsS https://status.example.com/api/ingest/<source-id> \
 | `checks[].host` | Host name (internal only; omitted keeps the stored host) |
 | `checks[].state` | `ok`, `warning`, `critical`, `unknown` or `0`–`3` (Nagios convention) |
 | `checks[].output` | Check output (internal only, max 5000 characters; omitted keeps the stored output unless the state changed) |
-| `checks[].timestamp` | ISO-8601 time of the check (default: now). A time more than 5 minutes ahead of the server clock is replaced by the server time |
+| `checks[].timestamp` | ISO-8601 time of the check (default: now). A time more than 5 minutes ahead of the server clock is replaced by the server time; a result older than the stored result of the check is ignored |
 | `full` | `true` = the payload is the complete set; checks missing from it are removed (sources of type `webhook` only) |
 
 Up to 5000 checks per request (5 MiB body). Sending full metadata once and only

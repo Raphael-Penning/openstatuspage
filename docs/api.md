@@ -4285,6 +4285,10 @@ the checks linked to services or used as bundle members is rejected with `409` a
 stores nothing (see [adapters/README.md](adapters/README.md)). Rate limited per
 source (default 120 requests/min).
 
+Result times are capped at the server clock plus 5 minutes. A result whose time is
+older than the stored result of the same check (a delayed or replayed push) is
+ignored and not counted in `updated`.
+
 Examples:
 
 <details>

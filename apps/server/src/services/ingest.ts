@@ -29,6 +29,8 @@ export class IngestService {
 
   /**
    * Upserts check results of one source.
+   * A result older than the stored result of its check (by `checkedAt`) is
+   * ignored, so delayed or replayed results cannot overwrite newer state.
    * With `full = true`, checks that are missing from `checks` are deleted
    * (their service links disappear with them).
    * With `guardLinkedChecks`, a full sync that would delete more than half of
@@ -67,7 +69,7 @@ export class IngestService {
       }
       const existing = await trx
         .selectFrom('monitor_checks')
-        .select(['id', 'external_id', 'state'])
+        .select(['id', 'external_id', 'state', 'last_check_at'])
         .where('source_id', '=', sourceId)
         .execute();
       const existingByExternal = new Map(existing.map((c) => [c.external_id, c]));
@@ -79,6 +81,8 @@ export class IngestService {
       for (const check of byExternalId.values()) {
         const checkedAt = resultTime(check.checkedAt, now);
         const prev = existingByExternal.get(check.externalId);
+        // Out of order (a delayed or replayed result): the stored result is newer, keep it.
+        if (prev && isOlder(checkedAt, prev.last_check_at, now)) continue;
         if (!prev) {
           const id = newId();
           await trx
@@ -239,6 +243,18 @@ function resultTime(value: string | null | undefined, now: string): string {
   const at = value ? safeIso(value) : null;
   if (!at || Date.parse(at) > Date.parse(now) + MAX_CLOCK_SKEW_MS) return now;
   return at;
+}
+
+/**
+ * Whether a result time lies before the stored one. A stored time beyond the
+ * clock skew (written before ingest capped result times) does not count, so it
+ * cannot block newer results.
+ */
+function isOlder(checkedAt: string, stored: string | null, now: string): boolean {
+  if (!stored) return false;
+  const storedAt = Date.parse(stored);
+  if (!Number.isFinite(storedAt) || storedAt > Date.parse(now) + MAX_CLOCK_SKEW_MS) return false;
+  return Date.parse(checkedAt) < storedAt;
 }
 
 function safeIso(value: string): string | null {

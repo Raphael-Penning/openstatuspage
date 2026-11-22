@@ -72,4 +72,26 @@ describe('IngestService', () => {
     expect(at.skew).toBe(new Date(before + 60_000).toISOString());
     expect(at.past).toBe('2026-01-01T00:00:00.000Z');
   });
+
+  it('ignores results older than the stored result', async () => {
+    const at = (min: number) => new Date(Date.parse('2026-01-01T12:00:00.000Z') + min * 60_000).toISOString();
+    await ingest.ingest('src', [{ externalId: 'a', state: 'critical', output: 'down', checkedAt: at(10) }], { full: false });
+    // A delayed (or replayed) older result does not overwrite the newer one.
+    await ingest.ingest('src', [{ externalId: 'a', state: 'ok', output: 'up', checkedAt: at(5) }], { full: false });
+    const row = () => db.selectFrom('monitor_checks').select(['state', 'output', 'last_check_at']).executeTakeFirstOrThrow();
+    expect(await row()).toEqual({ state: 'critical', output: 'down', last_check_at: at(10) });
+    // The same time and newer times are applied; results without a time are taken as now.
+    await ingest.ingest('src', [{ externalId: 'a', state: 'warning', checkedAt: at(10) }], { full: false });
+    expect((await row()).state).toBe('warning');
+    await ingest.ingest('src', [{ externalId: 'a', state: 'ok' }], { full: false });
+    expect((await row()).state).toBe('ok');
+  });
+
+  it('does not let a stored time from the future block newer results', async () => {
+    await ingest.ingest('src', [{ externalId: 'a', state: 'critical' }], { full: false });
+    // Written before result times were capped.
+    await db.updateTable('monitor_checks').set({ last_check_at: '2099-01-01T00:00:00.000Z' }).execute();
+    await ingest.ingest('src', [{ externalId: 'a', state: 'ok', checkedAt: new Date().toISOString() }], { full: false });
+    expect((await stored()).state).toBe('ok');
+  });
 });
