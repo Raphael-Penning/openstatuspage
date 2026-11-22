@@ -6,6 +6,8 @@ breaking changes.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-22
+
 ### Upgrading
 
 - From 0.2.x or 0.3.0 on PostgreSQL: no manual step to start. The `GRANT
