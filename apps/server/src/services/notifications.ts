@@ -14,12 +14,14 @@
  * kind and status stay for the status view.
  *
  * Delivery: a worker task sends due rows in batches and retries failures with
- * backoff (1 min, 5 min, 15 min, 1 h); after MAX_ATTEMPTS a row is marked failed
+ * backoff (1 min, 5 min, 15 min, 1 h); only a failed send is retried, never a
+ * database error after the transport accepted the mail. After MAX_ATTEMPTS a row is marked failed
  * (and keeps its placeholder bodies, so an admin can retry it). Email addresses
  * in SMTP errors are masked before they are logged or stored. Sent and failed
  * rows are purged after OUTBOX_RETENTION_MS. Mails of a deleted subscriber are
  * dropped (foreign key cascade, and at delivery time).
  */
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { NotificationStatus } from '@openstatuspage/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
@@ -63,6 +65,9 @@ export const RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
 export const OUTBOX_RETENTION_MS = 30 * 86400_000;
 /** A row being sent is hidden from other runs for this long (crash safety). */
 const CLAIM_MS = 10 * 60_000;
+/** Tries to mark a sent row as sent (database errors after the transport accepted it). */
+const MARK_SENT_ATTEMPTS = 3;
+const MARK_SENT_RETRY_MS = 200;
 const HOUR_MS = 3600_000;
 /** Rows per INSERT statement (stays far below SQLite's variable limit). */
 const INSERT_CHUNK = 100;
@@ -426,25 +431,6 @@ export class NotificationService {
         html: mail.html,
         headers: mail.headers ? (JSON.parse(mail.headers) as Record<string, string>) : undefined,
       });
-      const sentAt = this.clock().toISOString();
-      // Bodies and headers are not needed any more; subject, kind and status stay for the status view.
-      await this.db
-        .updateTable('email_outbox')
-        .set({
-          status: 'sent',
-          // Rows queued without content get the subject they were sent with.
-          subject: mail.subject,
-          attempts,
-          sent_at: sentAt,
-          last_attempt_at: sentAt,
-          last_error: null,
-          text_body: '',
-          html_body: '',
-          headers: null,
-        })
-        .where('id', '=', row.id)
-        .execute();
-      result.sent++;
     } catch (err) {
       const at = this.clock();
       // SMTP errors often quote the recipient: mask addresses before logging and storing.
@@ -466,6 +452,47 @@ export class NotificationService {
       this.log.warn({ outboxId: row.id, kind: row.kind, attempts, failed, error: message }, 'email delivery failed');
       if (failed) result.failed++;
       else result.retried++;
+      return;
+    }
+    // Accepted by the transport: the mail is sent. A database error from here on must not
+    // count as a delivery failure, whose retry would send it again.
+    result.sent++;
+    await this.markSent(row, mail.subject, attempts);
+  }
+
+  /**
+   * Marks a row sent and blanks its bodies and headers (subject, kind and status stay
+   * for the status view). Tries a few times; if the database stays unavailable the
+   * error is logged and the row keeps its claim (CLAIM_MS) before it is due again.
+   */
+  private async markSent(row: OutboxRow, subject: string, attempts: number): Promise<void> {
+    const sentAt = this.clock().toISOString();
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.db
+          .updateTable('email_outbox')
+          .set({
+            status: 'sent',
+            // Rows queued without content get the subject they were sent with.
+            subject,
+            attempts,
+            sent_at: sentAt,
+            last_attempt_at: sentAt,
+            last_error: null,
+            text_body: '',
+            html_body: '',
+            headers: null,
+          })
+          .where('id', '=', row.id)
+          .execute();
+        return;
+      } catch (err) {
+        if (attempt >= MARK_SENT_ATTEMPTS) {
+          this.log.error({ err, outboxId: row.id, kind: row.kind }, 'email sent, but its outbox row could not be marked sent');
+          return;
+        }
+        await sleep(MARK_SENT_RETRY_MS * attempt);
+      }
     }
   }
 

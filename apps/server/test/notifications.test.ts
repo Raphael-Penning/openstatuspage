@@ -554,6 +554,34 @@ describe('outbox delivery', () => {
     });
   });
 
+  it('never sends a mail again because of a database error after the transport accepted it', async () => {
+    await addSubscriber('a@example.com');
+    await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
+    const { notifications } = t.app.ctx;
+    // The first write after the send fails (e.g. a dropped connection).
+    const updateTable = t.db.updateTable.bind(t.db);
+    let failures = 1;
+    const spy = vi.spyOn(t.db, 'updateTable').mockImplementation(((table: 'email_outbox') => {
+      if (table === 'email_outbox' && mailer.sent.length > 0 && failures > 0) {
+        failures--;
+        throw new Error('connection terminated');
+      }
+      return updateTable(table);
+    }) as never);
+    try {
+      expect(await notifications.deliverDue()).toEqual({ sent: 1, retried: 0, failed: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(mailer.sent).toHaveLength(1);
+    expect(await t.db.selectFrom('email_outbox').select(['status', 'attempts', 'last_error']).execute()).toEqual([
+      { status: 'sent', attempts: 1, last_error: null },
+    ]);
+    // Nothing is due again, also after the longest backoff.
+    expect(await notifications.deliverDue(new Date(Date.now() + 2 * HOUR))).toEqual({ sent: 0, retried: 0, failed: 0 });
+    expect(mailer.sent).toHaveLength(1);
+  });
+
   it('masks email addresses in SMTP errors before storing and logging them', async () => {
     await addSubscriber('jane.doe@example.com');
     await admin.post('/api/admin/incidents', { title: 'Outage', message: 'x' });
