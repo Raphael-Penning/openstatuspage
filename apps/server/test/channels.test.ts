@@ -153,6 +153,30 @@ describe('admin webhooks', () => {
   });
 });
 
+describe('maintenance reminders without mail', () => {
+  it('wait until a mail transport or a channel recipient exists', async () => {
+    const plain = await createTestApp();
+    try {
+      const plainAdmin = await adminClient(plain);
+      const start = new Date(Date.now() + 72 * 3600_000);
+      const res = await plainAdmin.post('/api/admin/maintenances', {
+        title: 'Upgrade',
+        scheduledStart: start.toISOString(),
+        scheduledEnd: new Date(start.getTime() + 2 * 3600_000).toISOString(),
+      });
+      const id = data<{ id: string }>(res).id;
+      const now = new Date(start.getTime() - 12 * 3600_000);
+      const { notifications } = plain.app.ctx;
+      expect(await notifications.sendDueReminders(now)).toBe(0);
+      expect(data<{ reminderSentAt: string | null }>(await plainAdmin.get(`/api/admin/maintenances/${id}`)).reminderSentAt).toBeNull();
+      await plainAdmin.post('/api/admin/webhooks', { name: 'Ops', kind: 'discord', url: 'https://discord.com/api/webhooks/1/ops' });
+      expect(await notifications.sendDueReminders(now)).toBe(1);
+    } finally {
+      await plain.close();
+    }
+  });
+});
+
 describe('SMS provider and on-call recipients', () => {
   async function configureSms(extra: Record<string, unknown> = {}) {
     const preset = (await admin.get('/api/admin/sms-presets')).json().data.find((p: { id: string }) => p.id === 'twilio').attributes;

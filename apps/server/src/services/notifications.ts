@@ -351,7 +351,7 @@ export class NotificationService {
    * windows created inside the reminder period are not reminded (the announcement is recent).
    */
   async sendDueReminders(now = new Date()): Promise<number> {
-    // Reminders also go to the webhook and SMS channels: they do not depend on email being set up.
+    // Reminders also go to the webhook and SMS channels: they do not depend on email alone.
     const reminderHours = (await getSettings(this.db)).maintenanceReminderHours;
     if (reminderHours <= 0) return 0;
     const periodMs = reminderHours * HOUR_MS;
@@ -367,6 +367,10 @@ export class NotificationService {
       .where('scheduled_start', '>', nowIso)
       .where('scheduled_start', '<=', horizon)
       .execute();
+    if (due.length === 0) return 0;
+    // Without a mail transport and without channel recipients the reminders wait (unclaimed), so
+    // setting either up before the window still sends them.
+    if (!mailerConfigured(this.mailer) && !(await this.channels?.hasRecipients())) return 0;
     let reminded = 0;
     for (const m of due) {
       const periodStart = new Date(new Date(m.scheduled_start).getTime() - periodMs).toISOString();

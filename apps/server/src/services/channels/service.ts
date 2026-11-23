@@ -324,6 +324,20 @@ export class ChannelService {
     return rows.length;
   }
 
+  /**
+   * Whether any channel recipient could get a status event: an enabled admin
+   * webhook, an enabled on-call number (with the SMS provider on) or a confirmed
+   * subscriber. Maintenance reminders are claimed only when someone gets them.
+   */
+  async hasRecipients(): Promise<boolean> {
+    const webhook = await this.db.selectFrom('notification_webhooks').select('id').where('enabled', '=', 1).limit(1).executeTakeFirst();
+    if (webhook) return true;
+    const subscriber = await this.db.selectFrom('channel_subscribers').select('id').where('confirmed_at', 'is not', null).limit(1).executeTakeFirst();
+    if (subscriber) return true;
+    if (!(await getSmsProvider(this.db)).enabled) return false;
+    return !!(await this.db.selectFrom('sms_recipients').select('id').where('enabled', '=', 1).limit(1).executeTakeFirst());
+  }
+
   private async site(): Promise<Site> {
     const settings = await getSettings(this.db);
     return { siteName: settings.siteName, locale: settings.defaultLocale };

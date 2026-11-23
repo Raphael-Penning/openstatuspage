@@ -27,7 +27,9 @@ server and how to operate and troubleshoot delivery.
   reminders).
   Each window is reminded once. A maintenance created less than the reminder period
   before its start is not reminded (the announcement was just sent). When the
-  start is moved later, a new reminder is sent before the new start.
+  start is moved later, a new reminder is sent before the new start. While
+  neither a mail transport nor a webhook or SMS recipient exists, due reminders
+  wait and are sent once one is set up (still before the start).
 - Emails are sent in the subscriber's language (English or German), as plain text
   plus a simple HTML version. Times are shown in UTC. Both parts carry the same
   content; the HTML part is built for WCAG 2.2 AA (language, headings, relative
