@@ -194,6 +194,16 @@ async function click(el: Element | null | undefined) {
   await settle(20);
 }
 
+/** Types `value` into an input the way React notices it. */
+async function type(el: Element | null, value: string) {
+  expect(el).toBeTruthy();
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(el, value);
+    el!.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
 const byText = (selector: string, text: string) =>
   [...document.querySelectorAll(selector)].find((el) => el.textContent?.trim() === text || el.getAttribute('aria-label') === text);
 
@@ -245,12 +255,7 @@ describe.each(['en', 'de'] as const)('SSO (%s)', (lang) => {
       // New provider: empty form, a mapping row added, and a failed discovery test.
       await click(byText('button', i18n.t('admin:sso.new')));
       await click(byText('button', i18n.t('admin:sso.addMapping')));
-      const issuer = document.querySelector<HTMLInputElement>('dialog[open] input[type="url"]')!;
-      await act(async () => {
-        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-        setter.call(issuer, 'https://login.example.com');
-        issuer.dispatchEvent(new Event('input', { bubbles: true }));
-      });
+      await type(document.querySelector('dialog[open] input[type="url"]'), 'https://login.example.com');
       await click(byText('dialog[open] button', i18n.t('admin:sso.test')));
       expect(document.querySelector('dialog[open] [role="status"]')?.textContent).toContain(i18n.t('admin:sso.testFailed'));
       expect(await axeViolations()).toEqual([]);
@@ -263,6 +268,14 @@ describe.each(['en', 'de'] as const)('SSO (%s)', (lang) => {
       // Existing provider: mappings, stored secret, redirect URI and the auto-create warning.
       await click(byText('button', i18n.t('admin:sso.editLabel', { name: 'Example IdP' })));
       expect(document.querySelectorAll('dialog[open] select')).toHaveLength(4);
+      expect(await axeViolations()).toEqual([]);
+      // A new issuer: the links are about to go, and the stored secret has to be replaced.
+      await type(document.querySelector('dialog[open] input[type="url"]'), 'https://other.example.com');
+      expect(document.querySelector('dialog[open]')?.textContent).toContain(i18n.t('admin:sso.issuerChangeWarning', { count: 2 }));
+      await click(document.querySelector('dialog[open] button[type="submit"]'));
+      const secret = document.querySelector<HTMLInputElement>('dialog[open] input[type="password"]')!;
+      expect(secret.getAttribute('aria-invalid')).toBe('true');
+      expect(document.querySelector('dialog[open]')?.textContent).toContain(i18n.t('admin:sso.issuerChangeSecret'));
       expect(await axeViolations()).toEqual([]);
       await click(byText('dialog[open] button', i18n.t('common:actions.cancel')));
 

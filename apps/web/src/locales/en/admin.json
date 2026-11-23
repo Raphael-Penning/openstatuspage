@@ -943,6 +943,9 @@
       "pkce": "Always on (S256)."
     },
     "autoCreateWarning": "Every account this identity provider can authenticate may create an account here. Restrict it with allowed domains, a role mapping or “No access” as the default role, and never use it with public or multi-tenant issuers.",
+    "issuerChangeWarning_one": "A new issuer URL is another identity provider: saving removes the link of {{count}} user account to this provider. The account stays.",
+    "issuerChangeWarning_other": "A new issuer URL is another identity provider: saving removes the links of {{count}} user accounts to this provider. The accounts stay.",
+    "issuerChangeSecret": "A new issuer URL needs a new client secret. Enter it, or remove the stored secret for a public client.",
     "mappingValue": "Value {{n}}",
     "mappingRole": "Grants {{n}}",
     "addMapping": "Add mapping",

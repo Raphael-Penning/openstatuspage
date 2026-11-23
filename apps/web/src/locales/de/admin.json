@@ -943,6 +943,9 @@
       "pkce": "Immer aktiv (S256)."
     },
     "autoCreateWarning": "Jedes Konto, das dieser Identity Provider anmelden kann, darf hier ein Konto anlegen. Schränke das mit erlaubten Domains, einer Rollenzuordnung oder „Kein Zugriff“ als Standardrolle ein und nutze es nie mit öffentlichen oder mandantenübergreifenden Issuern.",
+    "issuerChangeWarning_one": "Eine neue Issuer-URL ist ein anderer Identity Provider: Beim Speichern wird die Verknüpfung von {{count}} Benutzerkonto mit diesem Anbieter entfernt. Das Konto bleibt.",
+    "issuerChangeWarning_other": "Eine neue Issuer-URL ist ein anderer Identity Provider: Beim Speichern werden die Verknüpfungen von {{count}} Benutzerkonten mit diesem Anbieter entfernt. Die Konten bleiben.",
+    "issuerChangeSecret": "Eine neue Issuer-URL braucht ein neues Client-Secret. Gib es ein oder entferne das gespeicherte Secret für einen öffentlichen Client.",
     "mappingValue": "Wert {{n}}",
     "mappingRole": "Gewährt {{n}}",
     "addMapping": "Zuordnung hinzufügen",

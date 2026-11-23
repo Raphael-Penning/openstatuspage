@@ -299,6 +299,7 @@ function ProviderDialog({ existing, onClose }: { existing: AdminOidcProvider | n
     roleSync: existing?.roleSync ?? 'login',
   }));
   const v = form.values;
+  const issuerChanged = existing !== null && v.issuerUrl.trim() !== existing.issuerUrl;
   const save = useAdminMutation(
     (body: Record<string, unknown>) =>
       existing
@@ -330,6 +331,11 @@ function ProviderDialog({ existing, onClose }: { existing: AdminOidcProvider | n
     };
     const body = form.validate(OidcProviderInput, payload);
     if (!body) return;
+    // The stored secret never goes to another issuer: a new issuer needs a new secret.
+    if (issuerChanged && existing?.hasClientSecret && !v.removeSecret && !v.clientSecret) {
+      form.setErrors({ clientSecret: { key: 'sso.issuerChangeSecret' } });
+      return;
+    }
     // The secret is write-only: sent only when typed (set) or removed (null).
     const { clientSecret: _ignored, ...rest } = body;
     const secret = v.removeSecret ? { clientSecret: null } : v.clientSecret ? { clientSecret: v.clientSecret } : {};
@@ -391,6 +397,12 @@ function ProviderDialog({ existing, onClose }: { existing: AdminOidcProvider | n
             help={t('sso.help.issuerUrl')}
             required
           />
+          {issuerChanged && existing.linkedUsers > 0 && (
+            <p className="flex items-start gap-2 rounded-lg bg-status-degraded/10 px-3 py-2 text-sm text-status-degraded-text">
+              <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+              {t('sso.issuerChangeWarning', { count: existing.linkedUsers })}
+            </p>
+          )}
           <TextField
             label={t('sso.fields.clientId')}
             autoComplete="off"
