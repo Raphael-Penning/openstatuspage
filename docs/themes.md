@@ -245,7 +245,9 @@ themes:
 
 The chart creates a ConfigMap, mounts it read-only at `/themes` and sets
 `THEMES_DIR` in the instances that serve pages (not the worker). A change of
-`themes.files` restarts the pods. See the
+`themes.files` restarts the pods. `themes.enabled` without `themes.files` or
+`themes.existingConfigMap` fails the rendering of the chart. File names must be
+`<id>.json` or `<id>.css`. See the
 [chart README](../deploy/helm/openstatuspage/README.md#themes).
 
 ### Without containers
