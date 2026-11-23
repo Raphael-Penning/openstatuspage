@@ -24,7 +24,8 @@
     "privatePages": "Private pages",
     "auditLog": "Audit log",
     "subscribers": "Subscribers",
-    "corrections": "Corrections"
+    "corrections": "Corrections",
+    "pages": "Pages"
   },
   "userMenu": {
     "label": "Account and preferences",
@@ -748,12 +749,12 @@
     "removeLink": "Remove link {{name}}",
     "emailSubscriptionsHelp": "Visitors can subscribe to incidents and maintenance by email (double opt-in). Only offered when a mail transport is configured.",
     "maintenanceReminderHoursHelp": "Reminds subscribers this many hours before scheduled maintenance; 0 turns reminders off (0–168).",
-    "legalHelp": "Links to your legal pages on your website, shown in the footer. A link without URL is hidden.",
+    "legalHelp": "Links to your legal pages on your website, shown in the footer. A link without URL is hidden. A page published under Pages replaces its link here.",
     "legalLabelHelp": "Optional. Empty: \"{{label}}\" in the visitor's language.",
     "copyrightHelp": "Plain text; {year} becomes the current year. Empty: \"© <year> <site name>\".",
     "brandUrlHelp": "Optional. Turns the copyright notice into a link to your website.",
     "showPoweredByHelp": "Shows the attribution line in the footer.",
-    "infoLinkHelp": "Optional extra entry in the navigation, e.g. \"What does the status mean?\". An http(s) URL or a path on this site starting with a single / (like /about).",
+    "infoLinkHelp": "Optional extra entry in the navigation, e.g. \"What does the status mean?\". An http(s) URL or a path on this site starting with a single / (like /about). Once the about page is published under Pages, the entry leads there.",
     "infoLinkLabelHelp": "Optional. Empty: \"{{label}}\" in the visitor's language.",
     "utmHelp": "Adds these parameters to the links you configured that lead to other websites (footer, info link, service websites). Links on this site, mailto: links and links that already carry utm_ parameters stay unchanged.",
     "analyticsHelp": "Loads the Umami tracker on the public pages through this server (/pulse/), never from the Umami server itself. It only runs when the instance that serves the public pages has UMAMI_URL set. Visitors can turn it off in the footer; subscription links are never tracked.",
@@ -767,7 +768,10 @@
       "privacy": "Privacy policy",
       "accessibility": "Accessibility statement",
       "info": "About this page"
-    }
+    },
+    "imageUrlHelp": "An https URL, or upload an image (PNG, JPEG, WebP or ICO, at most 1 MB).",
+    "uploadLogo": "Upload logo",
+    "uploadFavicon": "Upload favicon"
   },
   "users": {
     "title": "Users",
@@ -901,7 +905,9 @@
       "private_page": "Private page",
       "subscriber": "Subscriber",
       "notifications": "Email notifications",
-      "correction": "Correction"
+      "correction": "Correction",
+      "page": "Page",
+      "upload": "Image"
     },
     "actions": {
       "auth_login": "Signed in",
@@ -1167,5 +1173,79 @@
       "expired": "The preview expired without being imported.",
       "apply_failed": "Writing the history failed: {{message}}"
     }
+  },
+  "version": "Version {{version}}",
+  "sitePages": {
+    "title": "Pages",
+    "description": "About page, legal notice, privacy policy, accessibility statement and your own pages, written in Markdown per language.",
+    "new": "New page",
+    "system": "Standard pages",
+    "systemHelp": "Each standard page is either an internal page written here (published) or, while it is not published, the external link from the settings.",
+    "custom": "Own pages",
+    "empty": "No own pages yet.",
+    "mode": "Shown as",
+    "internal": "Internal page",
+    "external": "External link (settings)",
+    "status": "Status",
+    "published": "Published",
+    "draft": "Draft",
+    "placement": "Shown in",
+    "inNav": "Navigation",
+    "inFooter": "Footer",
+    "editLabel": "Edit {{name}}",
+    "deleteLabel": "Delete {{name}}",
+    "deleteTitle": "Delete page",
+    "deleteConfirm": "Delete the page \"{{name}}\"? Its address stops working.",
+    "deleted": "Page deleted.",
+    "saved": "Page saved.",
+    "created": "Page created.",
+    "editTitle": "Edit {{name}}",
+    "pathInfo": "Address on the status page:",
+    "internalHelp": {
+      "about": "Shows this page at /about and links it as the info entry of the navigation instead of the info link from the settings.",
+      "legal-notice": "Shows this page at /legal-notice and links it in the footer instead of the legal notice URL from the settings.",
+      "privacy": "Shows this page at /privacy and links it in the footer instead of the privacy policy URL from the settings.",
+      "accessibility": "Shows this page at /accessibility and links it in the footer instead of the accessibility statement URL from the settings."
+    },
+    "fields": {
+      "title": "Title",
+      "path": "Address",
+      "slug": "Slug",
+      "sortOrder": "Order",
+      "published": "Published",
+      "showInNav": "Show in the navigation",
+      "showInFooter": "Show in the footer",
+      "internal": "Use the internal page",
+      "titleIn": "Title ({{language}})",
+      "descriptionIn": "Description for search engines ({{language}})",
+      "bodyIn": "Text in Markdown ({{language}})"
+    },
+    "slugHelp": "Lower case letters, digits and dashes. The page is at {{path}}.",
+    "sortOrderHelp": "Smaller numbers come first.",
+    "publishedHelp": "Only published pages are shown, linked and listed in the sitemap.",
+    "language": "Language of the text",
+    "view": "View",
+    "edit": "Edit",
+    "preview": "Preview",
+    "descriptionHelp": "At most 300 characters. Empty: the start of the text.",
+    "bodyHelp": "Markdown: headings, lists, links, tables and images. HTML is not shown. A language without text shows the other one.",
+    "markdownHelp": "Markdown help"
+  },
+  "uploads": {
+    "title": "Images",
+    "upload": "Upload image",
+    "insert": "Upload and insert image",
+    "help": "PNG, JPEG, WebP or ICO, at most 1 MB (no SVG). Use them as logo or favicon in the settings or in the text of a page.",
+    "empty": "No images uploaded yet.",
+    "facts": "{{width}} × {{height}} px, {{size}} KB",
+    "deleteLabel": "Delete {{name}}",
+    "deleteTitle": "Delete image",
+    "deleteConfirm": "Delete the image \"{{name}}\"? While the logo, the favicon or a page uses it, it is not deleted. Other texts that show it will show nothing there.",
+    "deleted": "Image deleted.",
+    "uploaded": "Image uploaded.",
+    "tooLarge": "The image is larger than 1 MB.",
+    "url": "Address",
+    "markdown": "Markdown",
+    "altPlaceholder": "Description of the image"
   }
 }

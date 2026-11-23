@@ -12,7 +12,8 @@ options to every command or set `COMPOSE_FILE` in `.env`.
 ### What to back up
 
 1. **The database**: PostgreSQL database or SQLite file. It contains
-   everything: services, incidents, history, users, settings, subscribers.
+   everything: services, incidents, history, users, settings, subscribers, and
+   the uploaded images (logo, favicon, images of the pages).
 2. **`SECRET_KEY`** (and the rest of your `.env`). Without the same
    key, a restored database cannot decrypt the stored monitoring credentials.
    Keep it separate from the database backup, e.g. in your password manager.
@@ -104,7 +105,8 @@ Every upgrade follows the same steps:
 2. Make a backup (see above).
 3. Switch to the new version (see below).
 4. Database migrations run **automatically** on start. Watch the log for
-   errors and check `/api/health`.
+   errors and check `/api/health`. The running version is shown at the bottom of
+   the management UI's sidebar (*Version …*), so you can confirm the upgrade there.
 
 ### Docker Compose
 

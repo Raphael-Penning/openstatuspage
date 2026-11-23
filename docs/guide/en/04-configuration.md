@@ -66,7 +66,7 @@ variables into the secret `openstatuspage` or the `env:` list of
 | --- | --- | --- |
 | Branding | Site name | Shown in the header, the browser title, feeds and email subjects. |
 | Branding | Description | Short text below the site name. |
-| Branding | Logo URL, Favicon URL | `https://` URLs or paths. |
+| Branding | Logo URL, Favicon URL | `https://` URLs or paths, or *Upload logo* / *Upload favicon* to store an image on this instance (PNG, JPEG, WebP or ICO, at most 1 MB, no SVG). |
 | Branding | Accent color | Color of buttons and highlights (hex, e.g. `#7c6cf2`); adjusted automatically for contrast, see [below](#accent-color-and-accessibility). |
 | Display | Default language | Used when the visitor's browser language is not available (English or German). |
 | Display | Default theme | System, light or dark; visitors can switch. |
@@ -76,13 +76,14 @@ variables into the secret `openstatuspage` or the `env:` list of
 | Display | Uptime days | Days shown in the uptime bars (7–180, default 90). |
 | Display | Recent incident days | How long resolved incidents stay on the overview (1–90, default 7). |
 | Footer links | – | Up to 10 further links in the page footer. |
+| Content pages | Administration → Pages | About page, legal notice, privacy policy, accessibility statement and your own pages in Markdown, per language. A published standard page replaces its link above; see [Content pages and images](12-public-page.md#content-pages-and-images). |
 | Email subscriptions | Offer email subscriptions | Offers subscriptions on the public page (needs a configured mail server). Default: off. |
 | Email subscriptions | Maintenance reminder (hours) | Hours before a scheduled maintenance to remind subscribers (0–168, 0 = off, default 24). |
-| Legal links | Imprint, privacy policy, accessibility statement | `https://` links to these pages on your website, each with an optional label; shown in the footer under "Legal", hidden without URL. |
+| Legal links | Imprint, privacy policy, accessibility statement | `https://` links to these pages on your website, each with an optional label; shown in the footer under "Legal", hidden without URL. Not used for a standard page that is published under Pages. |
 | Copyright and attribution | Copyright notice | Plain text such as `© {year} Example Ltd.`; `{year}` becomes the current year. Empty: `© <year> <site name>`. |
 | Copyright and attribution | Brand link URL | Optional; turns the notice into a link to your website. |
 | Copyright and attribution | Show "Powered by OpenStatusPage" | Shows the attribution line. Default: on. |
-| Info link | Label, URL or path | Optional extra entry in the navigation, e.g. "What does the status mean?". An `https://` URL or a path on this site such as `/about`. |
+| Info link | Label, URL or path | Optional extra entry in the navigation, e.g. "What does the status mean?". An `https://` URL or a path on this site such as `/about`. Not used once the about page is published under Pages (the label stays). |
 | Link tracking (UTM) | Append UTM parameters, utm_source, utm_medium, utm_campaign | Adds the parameters to the links above that lead to other websites, see [below](#utm-parameters). Default: off. |
 
 The email settings and the **Email delivery** panel below them are explained

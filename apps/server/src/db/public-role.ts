@@ -8,6 +8,7 @@ import { createPublicSchema } from './migrations/0007_public_role.js';
 import { createPrivatePageFunctions } from './migrations/0009_private_pages.js';
 import { hardenPublicSchema } from './migrations/0012_definer_search_path.js';
 import { relaxPublicSchema } from './migrations/0013_schema_create_hardening.js';
+import { createContentViews } from './migrations/0014_site_pages_uploads.js';
 
 /** Schema with the views and functions of the public role; its search_path. */
 export const PUBLIC_SCHEMA = 'osp_public';
@@ -38,6 +39,7 @@ export async function ensurePublicSchema(db: DB): Promise<PublicSchemaState> {
     await createPrivatePageFunctions(trx);
     await hardenPublicSchema(trx);
     await relaxPublicSchema(trx);
+    await createContentViews(trx);
     return 'created';
   });
 }

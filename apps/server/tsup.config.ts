@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'tsup';
+
+/** Version of the server package, built in as process.env.OSP_VERSION (src/lib/version.ts). */
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 /**
  * Dependencies stay external only when they cannot be bundled: native modules
@@ -13,6 +17,7 @@ export default defineConfig({
   platform: 'node',
   target: 'node22',
   clean: true,
+  env: { OSP_VERSION: version },
   sourcemap: true,
   // Everything else is bundled and minified: V8 keeps the source text of every
   // loaded module in memory, so a smaller, tree-shaken bundle saves several MB

@@ -156,4 +156,20 @@ export const api = {
   post: <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>('POST', path, body, undefined, options),
   patch: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('PATCH', path, body, undefined, options),
   delete: <T = void>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, undefined, options),
+  /** POST of raw bytes as application/octet-stream (image uploads); the answer is a JSON:API document. */
+  upload: async <T>(path: string, body: Blob, query?: Query): Promise<T> => {
+    const res = await fetch(buildUrl(path, query), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { accept: JSONAPI_MEDIA_TYPE, 'x-requested-with': 'openstatuspage', 'content-type': 'application/octet-stream' },
+      body,
+    });
+    const text = await res.text();
+    const data = text ? (JSON.parse(text) as unknown) : null;
+    if (!res.ok) {
+      const { body: errorBody, errors } = toApiErrorBody(res.status, data);
+      throw new ApiError(res.status, errorBody, errors);
+    }
+    return result<T>(data);
+  },
 };

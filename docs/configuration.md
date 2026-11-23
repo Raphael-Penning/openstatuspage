@@ -349,6 +349,8 @@ management UI (`/admin`) never loads the tracker.
   subscription endpoints 30 requests per minute per client IP.
 - Analytics proxy: `GET /pulse/p.js` 60 and `POST /pulse/api/send` 120 requests per
   minute per client IP (see [Analytics](#analytics)).
+- `POST /api/admin/uploads` (image uploads): 30 requests per minute per client IP.
+- `GET /uploads/<file>` (uploaded images on the public pages): 600 requests per minute per client IP.
 
 Behind a reverse proxy set `TRUST_PROXY` (hop count or proxy addresses), otherwise all
 clients share the proxy's IP. With a hop count the server logs a warning on start: it

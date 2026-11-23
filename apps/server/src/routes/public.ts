@@ -22,6 +22,7 @@ import { registerFeedRoutes } from './feeds.js';
 
 const IdOrSlugParams = z.object({ idOrSlug: z.string().min(1).max(100) });
 const IdParams = z.object({ id: z.string().min(1).max(64) });
+const SlugParams = z.object({ slug: z.string().min(1).max(64) });
 /** The day is validated by the document builder (400 malformed, 404 outside the uptime range). */
 const ServiceDayParams = IdOrSlugParams.extend({ date: z.string().min(1).max(32) });
 
@@ -62,6 +63,7 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     scope.get('/api/public/incidents/:id', withInclude, (req) => docs.incident(req, parse(IdParams, req.params).id));
     scope.get('/api/public/maintenances/:id', withInclude, (req) => docs.maintenance(req, parse(IdParams, req.params).id));
     scope.get('/api/public/history', withInclude, (req) => docs.history(req));
+    scope.get('/api/public/pages/:slug', (req) => docs.page(req, parse(SlugParams, req.params).slug));
   });
 
   // Private pages (/p/<token>): the token comes in the X-Private-Page-Token header, never in

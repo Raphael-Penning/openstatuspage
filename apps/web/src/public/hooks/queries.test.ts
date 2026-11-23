@@ -21,7 +21,7 @@ describe('public API round trip', () => {
   it('summary and settings', async () => {
     const summary = await api.get<PublicSummary>('/api/public/summary');
     expect(summary).toMatchObject(fx.summary);
-    expect(await api.get<PublicPageSettings>('/api/public/settings')).toEqual({ ...fx.settings, id: 'site' });
+    expect(await api.get<PublicPageSettings>('/api/public/settings')).toEqual({ ...fx.siteSettings, id: 'site' });
   });
 
   it('services, service detail and locations', async () => {

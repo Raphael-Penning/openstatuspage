@@ -36,6 +36,9 @@ const PAGES: [name: string, path: string][] = [
   ['services filtered', '/services?q=api&status=operational'],
   ['unknown incident', '/incidents/missing'],
   ['not found', '/does-not-exist'],
+  ['content page (accessibility statement)', '/accessibility'],
+  ['custom content page', '/pages/faq'],
+  ['unpublished content page', '/legal-notice'],
   ['private page', `/p/${PRIVATE_TOKEN}`],
   ['private service', `/p/${PRIVATE_TOKEN}/services/backend`],
   ['private service day', `/p/${PRIVATE_TOKEN}/services/api/days/${API_YESTERDAY}`],
@@ -119,6 +122,40 @@ describe.each(VARIANTS)('footer and info link ($lang, $theme)', ({ lang, theme }
     expect(info?.target).toBe('');
     expect(await axeViolations()).toEqual([]);
   });
+});
+
+describe.each(VARIANTS)('content pages ($lang, $theme)', ({ lang, theme }) => {
+  it('render the Markdown safely with one h1, sized images and the language of the text', async () => {
+    page = await renderPublic({ path: '/accessibility', lang, theme });
+    const main = page.container.querySelector('main')!;
+    expect([...main.querySelectorAll('h1')].map((h) => h.textContent)).toEqual([
+      lang === 'de' ? 'Erklärung zur Barrierefreiheit' : 'Accessibility statement',
+    ]);
+    // Markdown headings are one level down, raw HTML is not rendered.
+    expect([...main.querySelectorAll('h2, h3')].map((h) => `${h.tagName}:${h.textContent}`)).toEqual(['H2:Our commitment', 'H3:Known limitations']);
+    expect(main.querySelector('script')).toBeNull();
+    expect(main.textContent).not.toContain('alert(1)');
+    const img = main.querySelector('img')!;
+    expect([img.getAttribute('width'), img.getAttribute('height'), img.getAttribute('loading'), img.alt]).toEqual(['640', '320', 'lazy', 'Diagram of the status page']);
+    const external = main.querySelector<HTMLAnchorElement>('a[href^="https://www.w3.org"]')!;
+    expect([external.target, external.rel]).toEqual(['_blank', 'noopener noreferrer']);
+    expect(main.querySelector('[role="region"] table')).not.toBeNull();
+    // No German text: the English one, marked as English.
+    expect(main.querySelector('.page-prose')?.parentElement?.getAttribute('lang') ?? null).toBe(lang === 'de' ? 'en' : null);
+    expect(await axeViolations()).toEqual([]);
+  }, AXE_TIMEOUT_MS);
+
+  it('link custom pages from the navigation and the footer, and internal legal pages without a new tab', async () => {
+    page = await renderPublic({ path: '/pages/faq', lang, theme });
+    const title = lang === 'de' ? 'Häufige Fragen' : 'FAQ';
+    expect(page.container.querySelector('main h1')?.textContent).toBe(title);
+    const navLink = page.container.querySelector<HTMLAnchorElement>('header ~ nav a[href="/pages/faq"]');
+    expect(navLink?.getAttribute('aria-current')).toBe('page');
+    expect(page.container.querySelector('footer a[href="/pages/faq"]')?.textContent).toBe(title);
+    const legal = page.container.querySelector<HTMLAnchorElement>('footer a[href="/accessibility"]');
+    expect(legal?.target).toBe('');
+    expect(await axeViolations()).toEqual([]);
+  }, AXE_TIMEOUT_MS);
 });
 
 describe.each(VARIANTS)('statistics choice ($lang, $theme)', ({ lang, theme }) => {

@@ -43,6 +43,41 @@ breaking changes.
   sender domain, read from the public keys in the new `MAIL_DKIM_DIR`.
 - Caddy and nginx templates in `deploy/proxy/` for one instance and the split
   deployment.
+- **Content pages.** *Administration → Pages* edits the about page (`/about`),
+  the legal notice (`/legal-notice`), the privacy policy (`/privacy`), the
+  accessibility statement (`/accessibility`) and any number of custom pages
+  (`/pages/<slug>`) in Markdown per language (English, German) with a preview.
+  A standard page is either the internal page (published) or, until it is
+  published, the external link of the settings as before; nothing changes on
+  upgrade. Pages are rendered on the server without raw HTML, have their own
+  title, description and language alternates, appear in the navigation and
+  footer, the sitemap and `llms.txt`, and are read by the PostgreSQL public role
+  through the view `osp_public.site_pages` (published pages only).
+- **Image uploads.** The logo, the favicon and images for pages can be uploaded
+  (PNG, JPEG, WebP or ICO, at most 1 MiB, checked by magic bytes; SVG is
+  refused). They are stored in the database, served at
+  `/uploads/<sha256>.<ext>` with immutable caching, `nosniff` and a CSP that
+  allows nothing, and rendered with their width and height. The public role
+  reads them through the view `osp_public.uploads`. URLs for logo and favicon
+  keep working.
+- **App version in the management UI**, from `GET /api/admin/instance`
+  (signed-in users only).
+- **Structured data**: maintenance windows as `Event` (online, on the status
+  page, `EventScheduled` or `EventCancelled`), service pages as `Service`,
+  content pages as `AboutPage` / `WebPage`; incident articles get the logo as
+  image and the affected services as `about`. Every JSON-LD object is checked
+  against schema.org and Google's required fields in the tests.
+- **Public API**: `GET /api/public/pages/{slug}` returns the published content pages;
+  the settings document gains `pages` (navigation and footer links) and `logoSize`.
+- Migration `0014_site_pages_uploads`.
+- An uploaded image that the logo, the favicon or a content page still uses is
+  not deleted (`409` naming the references); `PATCH /api/admin/pages/:id`
+  merges `title`, `description` and `body` per language.
+
+### Changed
+
+- **Maintenance windows** are marked up as `Event` in the structured data (they were
+  `Article`). Incident pages stay `Article`.
 
 ## [0.3.1] - 2026-11-22
 

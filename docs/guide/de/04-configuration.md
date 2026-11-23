@@ -69,7 +69,7 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 | --- | --- | --- |
 | Branding | Seitenname | Erscheint im Kopf der Seite, im Browser-Titel, in Feeds und im Betreff von E-Mails. |
 | Branding | Beschreibung | Kurzer Text unter dem Seitennamen. |
-| Branding | Logo-URL, Favicon-URL | `https://`-URLs oder Pfade. |
+| Branding | Logo-URL, Favicon-URL | `https://`-URLs oder Pfade, oder *Logo hochladen* / *Favicon hochladen*, um ein Bild auf dieser Instanz zu speichern (PNG, JPEG, WebP oder ICO, höchstens 1 MB, kein SVG). |
 | Branding | Akzentfarbe | Farbe von Buttons und Hervorhebungen (Hex, z. B. `#7c6cf2`); wird für ausreichenden Kontrast automatisch angepasst, siehe [unten](#akzentfarbe-und-barrierefreiheit). |
 | Anzeige | Standardsprache | Gilt, wenn die Browsersprache des Besuchers nicht verfügbar ist (Englisch oder Deutsch). |
 | Anzeige | Standarddarstellung | System, hell oder dunkel; Besucher können umschalten. |
@@ -79,13 +79,14 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 | Anzeige | Tage der Verfügbarkeit | Tage in den Verfügbarkeitsbalken (7–180, Standard 90). |
 | Anzeige | Tage für kürzliche Vorfälle | Wie lange behobene Vorfälle in der Übersicht bleiben (1–90, Standard 7). |
 | Footer-Links | – | Bis zu 10 weitere Links im Footer. |
+| Inhaltsseiten | Administration → Seiten | Über diese Seite, Impressum, Datenschutz, Erklärung zur Barrierefreiheit und eigene Seiten, in Markdown je Sprache. Eine veröffentlichte Standardseite ersetzt ihren Link oben; siehe [Inhaltsseiten und Bilder](12-public-page.md#inhaltsseiten-und-bilder). |
 | E-Mail-Abonnements | E-Mail-Abonnements anbieten | Bietet Abonnements auf der öffentlichen Seite an (setzt einen konfigurierten Mailserver voraus). Standard: aus. |
 | E-Mail-Abonnements | Wartungserinnerung (Stunden) | Stunden vor einer geplanten Wartung, zu denen Abonnenten erinnert werden (0–168, 0 = aus, Standard 24). |
-| Rechtliche Links | Impressum, Datenschutz, Erklärung zur Barrierefreiheit | `https://`-Links zu diesen Seiten auf deiner Website, jeweils mit optionaler Bezeichnung; erscheinen im Footer unter „Rechtliches“, ohne URL ausgeblendet. |
+| Rechtliche Links | Impressum, Datenschutz, Erklärung zur Barrierefreiheit | `https://`-Links zu diesen Seiten auf deiner Website, jeweils mit optionaler Bezeichnung; erscheinen im Footer unter „Rechtliches“, ohne URL ausgeblendet. Gilt nicht für eine Standardseite, die unter Seiten veröffentlicht ist. |
 | Copyright und Hinweis | Copyright-Hinweis | Reiner Text wie `© {year} Beispiel GmbH`; `{year}` wird zum aktuellen Jahr. Leer: `© <Jahr> <Seitenname>`. |
 | Copyright und Hinweis | URL des Marken-Links | Optional; macht den Hinweis zu einem Link auf deine Website. |
 | Copyright und Hinweis | „Betrieben mit OpenStatusPage“ anzeigen | Zeigt den Hinweis auf die Software. Standard: an. |
-| Info-Link | Bezeichnung, URL oder Pfad | Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine `https://`-URL oder ein Pfad auf dieser Seite wie `/about`. |
+| Info-Link | Bezeichnung, URL oder Pfad | Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine `https://`-URL oder ein Pfad auf dieser Seite wie `/about`. Gilt nicht, sobald die Seite „Über diese Seite“ unter Seiten veröffentlicht ist (die Bezeichnung bleibt). |
 | Link-Tracking (UTM) | UTM-Parameter anhängen, utm_source, utm_medium, utm_campaign | Hängt die Parameter an die Links oben an, die zu anderen Websites führen, siehe [unten](#utm-parameter). Standard: aus. |
 
 Die E-Mail-Einstellungen und den Kasten **E-Mail-Versand** darunter erklärt

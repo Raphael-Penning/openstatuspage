@@ -22,6 +22,14 @@ export function MaintenancePage() {
     title: data?.title ?? t('maintenance.title'),
     description: data ? data.description || data.updates[0]?.message || t('seo.maintenance', { site, title: data.title }) : undefined,
     article: data ? { datePublished: data.createdAt, dateModified: data.updatedAt } : undefined,
+    // A maintenance window is a scheduled event (held online, on this page).
+    event: data
+      ? {
+          startDate: data.actualStart ?? data.scheduledStart,
+          endDate: data.actualEnd ?? data.scheduledEnd,
+          status: data.status,
+        }
+      : undefined,
     breadcrumbs: data
       ? [{ name: t('nav.history'), path: '/history' }, { name: data.title, path: `/maintenance/${encodeURIComponent(data.id)}` }]
       : undefined,

@@ -18,6 +18,7 @@ import {
   upcomingMaintenanceIds,
 } from './public-documents.js';
 import { getSettings } from './settings.js';
+import { publicPagePaths } from './site-pages.js';
 
 /**
  * URLs per sitemap file. The protocol allows 50,000; a smaller file keeps the
@@ -68,16 +69,22 @@ export class SiteIndex {
     return (settings ?? (await this.settings())).emailSubscriptionsEnabled && mailerConfigured(this.mailer);
   }
 
-  /** Navigation pages of the public page (the ones the settings switch on). */
+  /** Navigation pages of the public page (the ones the settings switch on) and the published content pages. */
   async pages(): Promise<SitemapUrl[]> {
-    const settings = await this.settings();
+    const [settings, content] = await Promise.all([this.settings(), this.contentPages()]);
     return [
       { path: '/' },
       { path: '/services' },
       { path: '/history' },
       ...(settings.showLocations ? [{ path: '/locations' }] : []),
       ...((await this.emailSubscriptions(settings)) ? [{ path: '/subscribe' }] : []),
+      ...content.map((p) => ({ path: p.path, lastmod: iso(p.updatedAt) })),
     ];
+  }
+
+  /** Published content pages (about, legal pages, custom pages) for the sitemap and llms.txt. */
+  contentPages(): ReturnType<typeof publicPagePaths> {
+    return publicPagePaths(this.db);
   }
 
   /** Number of URLs of a sub-sitemap. */
