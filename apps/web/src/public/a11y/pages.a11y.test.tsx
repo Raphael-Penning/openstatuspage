@@ -128,6 +128,12 @@ describe.each(VARIANTS)('footer and info link ($lang, $theme)', ({ lang, theme }
     const info = page.container.querySelector<HTMLAnchorElement>('nav a[href="/about"]');
     expect(info?.textContent).toBe('What does the status mean?');
     expect(info?.target).toBe('');
+    // The API description: visible "API", a name that says what it is, no new tab.
+    const api = footer.querySelector<HTMLAnchorElement>('a[href="/api/openapi.json"]');
+    expect(api?.firstChild?.textContent).toBe('API');
+    expect(api?.textContent).toBe(lang === 'de' ? 'API (maschinenlesbare OpenAPI-Beschreibung im JSON-Format)' : 'API (machine-readable OpenAPI description in JSON)');
+    expect(api?.type).toBe('application/json');
+    expect(api?.target).toBe('');
     expect(await axeViolations()).toEqual([]);
   });
 });
