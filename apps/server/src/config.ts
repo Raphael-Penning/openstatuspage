@@ -117,6 +117,12 @@ const EnvSchema = z.object({
   /** Directory with the built web client. Defaults to ../web/dist relative to the server. */
   WEB_DIST_DIR: z.string().optional(),
   /**
+   * Folder with theme files (`<id>.json`, optional `<id>.css`; docs/themes.md), read
+   * on start. Default: `themes` next to the SQLite database, `./themes` with PostgreSQL.
+   * A missing folder is no error.
+   */
+  THEMES_DIR: z.string().max(4096).optional(),
+  /**
    * Run the background tasks (pollers, scheduler, mail delivery, cleanup). Defaults to
    * true for APP_ROLE=all and worker, false for admin; never allowed for public.
    */
