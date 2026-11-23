@@ -20,7 +20,7 @@ function usedKeys(): { literal: Set<string>; prefixes: Set<string> } {
   const literal = new Set<string>();
   const prefixes = new Set<string>();
   for (const [file, code] of Object.entries(sources)) {
-    if (file.endsWith('.test.ts')) continue;
+    if (/\.test\.tsx?$/.test(file)) continue;
     for (const m of code.matchAll(/\bt\(\s*'([^']+)'/g)) literal.add(m[1]!);
     for (const m of code.matchAll(/\bt\(\s*`([^`$]+)\$\{/g)) prefixes.add(m[1]!);
     for (const m of code.matchAll(/key: '(validation\.[a-zA-Z.]+)'/g)) literal.add(m[1]!);
