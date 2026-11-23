@@ -65,6 +65,8 @@ export function redactUrlTokens(url: string): string {
  * renderer could read as one (`/p/<token>/...`, `/P//<token>`, `/%70/<token>`,
  * `/p%2F<token>`, `/p\<token>`, `/x/../p/<token>`). Such a path is logged as the
  * client router sees it: "/P/abc/services/Web" → "/p/[REDACTED]/services/web".
+ * The manage token of a short channel subscription link (`/s/<id>/<token>`, any
+ * further segments too) is replaced the same way: "/s/id/abc" → "/s/id/[REDACTED]".
  */
 export function redactPrivatePagePath(url: string): string {
   const end = url.search(/[?#]/);
@@ -72,8 +74,9 @@ export function redactPrivatePagePath(url: string): string {
   // Escapes decoded one run at a time, so a malformed one elsewhere keeps no token in clear.
   const normalized = normalizePath(path.replace(/(?:%[0-9a-f]{2})+/gi, safeDecode));
   const parts = normalized.split('/');
-  if (parts[1] !== 'p' || !parts[2]) return url;
-  parts[2] = '[REDACTED]';
+  if (parts[1] === 's' && parts[3]) parts[3] = '[REDACTED]';
+  else if (parts[1] === 'p' && parts[2]) parts[2] = '[REDACTED]';
+  else return url;
   return parts.join('/') + (end === -1 ? '' : url.slice(end));
 }
 

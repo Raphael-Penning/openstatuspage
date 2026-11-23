@@ -318,6 +318,12 @@ describe('log redaction', () => {
     expect(redactPrivatePagePath('/./p/abc?lang=de')).toBe('/p/[REDACTED]?lang=de');
     expect(redactPrivatePagePath('/a/../P/abc/services/web')).toBe('/p/[REDACTED]/services/web');
     expect(redactPrivatePagePath('/%2e/p/abc')).toBe('/p/[REDACTED]');
+    // The manage token of the short channel subscription link.
+    expect(redactPrivatePagePath('/s/abcdefghijkl/abcdefghijklmnopqrstuv')).toBe('/s/abcdefghijkl/[REDACTED]');
+    expect(redactPrivatePagePath('/s/a/b/c?x=1')).toBe('/s/a/[REDACTED]/c?x=1');
+    expect(redactPrivatePagePath('/S//a/%62')).toBe('/s/a/[REDACTED]');
+    expect(redactPrivatePagePath('/s/onlyid')).toBe('/s/onlyid');
+    expect(redactPrivatePagePath('/subscribe/sms')).toBe('/subscribe/sms');
     expect(serializeRequest({ method: 'GET', url: '/p/abcdefghijklmnopqrstuvwxyz234567/services/x?token=1' }).url).toBe(
       '/p/[REDACTED]/services/x?token=[REDACTED]',
     );
