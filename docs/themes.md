@@ -5,6 +5,29 @@ mode, corner radius, font stacks and spacing, plus optional extra CSS. Themes
 are chosen in the management UI under **Administration → Appearance**. The
 management UI itself keeps its own look (only the accent follows the theme).
 
+## Quickstart
+
+1. Copy [contrib/themes/starter.json](../contrib/themes/starter.json) (and
+   optionally `starter.css`), or open **Administration → Appearance** and click
+   **Customize a copy** on a theme you like.
+2. Change the `id` and `name`. The `id` (lower-case letters, digits, hyphens)
+   cannot be changed later.
+3. Set the colours of `light` and `dark`. Keep the same tokens in both.
+4. Check the contrast in the editor (WCAG 2.2 AA: 4.5:1 for text, 3:1 for
+   controls and status colours) and fix every failing pair.
+5. Look at the result: **Preview** in the list, and **Preview the public page**
+   (`/?theme=<id>`, visible to signed-in admins only).
+6. Install it: **Import theme** in the admin, or put `<id>.json` (and
+   `<id>.css`) into the themes folder and restart.
+7. Click **Activate**, and download the theme as JSON to keep a copy.
+
+The step-by-step guide, with troubleshooting, is
+[Creating a theme](guide/en/15-creating-a-theme.md) (German:
+[Ein Theme erstellen](guide/de/15-creating-a-theme.md)). The starter template is
+described in [contrib/themes](../contrib/themes/README.md).
+
+Contents:
+
 - [Where themes come from](#where-themes-come-from)
 - [Theme file format](#theme-file-format)
 - [Token reference](#token-reference)
