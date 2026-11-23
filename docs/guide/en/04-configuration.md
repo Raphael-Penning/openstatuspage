@@ -139,6 +139,9 @@ the dark theme.
   type and shows the preview.
 - The download button saves any theme as JSON, for example to put it into the
   themes folder of another installation.
+- To make your own theme, follow [Creating a theme](15-creating-a-theme.md): it
+  starts from the starter template and covers the contrast check and the
+  installation.
 
 Extra CSS is filtered: no `@import`, no images or fonts from other websites
 (only uploads of this instance or relative paths of this site), nothing that looks like HTML or a script. The

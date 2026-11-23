@@ -145,6 +145,9 @@ in heller und dunkler Darstellung.
   Farbauswahl, prüft den Kontrast beim Tippen und zeigt die Vorschau.
 - Mit dem Download-Knopf speicherst du jedes Theme als JSON, etwa für den
   Themes-Ordner einer anderen Installation.
+- Ein eigenes Theme erstellst du Schritt für Schritt mit dem Kapitel
+  [Ein Theme erstellen](15-creating-a-theme.md): Es beginnt mit der Vorlage und
+  erklärt die Kontrastprüfung und die Installation.
 
 Zusätzliches CSS wird gefiltert: kein `@import`, keine Bilder oder Schriften von
 anderen Websites (nur Uploads dieser Instanz oder relative Pfade dieser Seite), nichts, was nach HTML oder einem
