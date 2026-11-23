@@ -28,6 +28,8 @@
   "footer": {
     "label": "Footer",
     "statusApi": "Status API",
+    "apiDescription": "API",
+    "apiDescriptionHint": "machine-readable OpenAPI description in JSON",
     "support": "Support",
     "copyright": "© {{year}} {{name}}",
     "poweredBy": "Powered by OpenStatusPage",

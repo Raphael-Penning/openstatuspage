@@ -101,7 +101,9 @@ database role that can only read public data, see the
   (see the [changelog](CHANGELOG.md)).
 - [OpenAPI 3.1 description](docs/openapi.json) of the same API, also served by
   every instance at `/api/openapi.json`; signed-in users browse and try it in
-  the management UI under **API** (`/admin/api`).
+  the management UI under **API** (`/admin/api`). The public page links the
+  public part in its footer as **API**; the setting *Publish the API
+  description* turns the link and the public file off (`404`).
 
 ```sh
 curl -g -H "Authorization: Bearer $OSP_TOKEN" \

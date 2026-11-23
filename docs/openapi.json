@@ -127,10 +127,11 @@
           "Meta"
         ],
         "summary": "This API description (OpenAPI 3.1)",
-        "description": "Anonymous requests and instances with `APP_ROLE=public` get the public part (public read API, private pages, subscriptions, feeds and images). A signed-in user or an API token on an `admin` or `all` instance gets the whole API. Revalidate with `If-None-Match`.",
+        "description": "Anonymous requests and instances with `APP_ROLE=public` get the public part (public read API, private pages, subscriptions, feeds and images). A signed-in user or an API token on an `admin` or `all` instance gets the whole API. When the page does not publish its API description (setting `publicApiDescription` off), every request that would get the public part is answered with `404`; signed-in users and API tokens still get the whole API. Revalidate with `If-None-Match`.",
         "responses": {
           "200": {"description":"The OpenAPI document, with an `ETag`.","headers":{"ETag":{"description":"Validator for `If-None-Match`.","schema":{"type":"string"}}},"content":{"application/json":{"schema":{"type":"object","required":["openapi","info","paths"]}}}},
-          "304": {"description":"Not modified (`If-None-Match` matched the `ETag`)."}
+          "304": {"description":"Not modified (`If-None-Match` matched the `ETag`)."},
+          "404": {"$ref":"#/components/responses/NotFound"}
         },
         "security": [
           {},
@@ -5327,6 +5328,7 @@
           "copyrightText": {"default":"","type":"string","maxLength":200,"pattern":"^[^\\u0000-\\u001f\\u007f]*$"},
           "brandUrl": {"anyOf":[{"type":"string","maxLength":500,"format":"uri"},{"type":"null"}]},
           "showPoweredBy": {"default":true,"type":"boolean"},
+          "publicApiDescription": {"default":true,"type":"boolean"},
           "infoLinkUrl": {"anyOf":[{"type":"string","maxLength":500},{"type":"null"}]},
           "infoLinkLabel": {"default":"","type":"string","maxLength":60,"pattern":"^[^\\u0000-\\u001f\\u007f]*$"},
           "utmEnabled": {"default":false,"type":"boolean"},

@@ -87,6 +87,7 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 | Copyright und Hinweis | Copyright-Hinweis | Reiner Text wie `© {year} Beispiel GmbH`; `{year}` wird zum aktuellen Jahr. Leer: `© <Jahr> <Seitenname>`. |
 | Copyright und Hinweis | URL des Marken-Links | Optional; macht den Hinweis zu einem Link auf deine Website. |
 | Copyright und Hinweis | „Betrieben mit OpenStatusPage“ anzeigen | Zeigt den Hinweis auf die Software. Standard: an. |
+| Copyright und Hinweis | API-Beschreibung veröffentlichen | Zeigt in der Fußzeile und in `llms.txt` einen Link „API“ zur maschinenlesbaren OpenAPI-Beschreibung (`/api/openapi.json`, der öffentliche Teil der API). Aus: Der Link ist verborgen und Besucher bekommen dort `404`; angemeldete Nutzer sehen die ganze API weiterhin unter **API**. Standard: an. |
 | Info-Link | Bezeichnung, URL oder Pfad | Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine `https://`-URL oder ein Pfad auf dieser Seite wie `/about`. Gilt nicht, sobald die Seite „Über diese Seite“ unter Seiten veröffentlicht ist (die Bezeichnung bleibt). |
 | Link-Tracking (UTM) | UTM-Parameter anhängen, utm_source, utm_medium, utm_campaign | Hängt die Parameter an die Links oben an, die zu anderen Websites führen, siehe [unten](#utm-parameter). Standard: aus. |
 

@@ -84,6 +84,7 @@ variables into the secret `openstatuspage` or the `env:` list of
 | Copyright and attribution | Copyright notice | Plain text such as `© {year} Example Ltd.`; `{year}` becomes the current year. Empty: `© <year> <site name>`. |
 | Copyright and attribution | Brand link URL | Optional; turns the notice into a link to your website. |
 | Copyright and attribution | Show "Powered by OpenStatusPage" | Shows the attribution line. Default: on. |
+| Copyright and attribution | Publish the API description | Shows an "API" link to the machine-readable OpenAPI description (`/api/openapi.json`, the public part of the API) in the footer and in `llms.txt`. Off: the link is hidden and visitors get `404` there; signed-in users still see the whole API under **API**. Default: on. |
 | Info link | Label, URL or path | Optional extra entry in the navigation, e.g. "What does the status mean?". An `https://` URL or a path on this site such as `/about`. Not used once the about page is published under Pages (the label stays). |
 | Link tracking (UTM) | Append UTM parameters, utm_source, utm_medium, utm_campaign | Adds the parameters to the links above that lead to other websites, see [below](#utm-parameters). Default: off. |
 

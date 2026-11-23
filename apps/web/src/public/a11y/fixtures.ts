@@ -70,6 +70,7 @@ export const settings: PublicPageSettings = {
   copyrightText: '© {year} Example GmbH',
   brandUrl: 'https://example.com/',
   showPoweredBy: true,
+  publicApiDescription: true,
   infoLinkUrl: '/about',
   infoLinkLabel: 'What does the status mean?',
   utmEnabled: true,

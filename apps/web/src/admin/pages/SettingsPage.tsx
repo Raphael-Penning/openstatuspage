@@ -45,6 +45,7 @@ interface Values {
   copyrightText: string;
   brandUrl: string;
   showPoweredBy: boolean;
+  publicApiDescription: boolean;
   infoLinkUrl: string;
   infoLinkLabel: string;
   utmEnabled: boolean;
@@ -93,6 +94,7 @@ const toValues = (s: PublicPageSettings): Values => ({
   copyrightText: s.copyrightText,
   brandUrl: s.brandUrl ?? '',
   showPoweredBy: s.showPoweredBy,
+  publicApiDescription: s.publicApiDescription,
   infoLinkUrl: s.infoLinkUrl ?? '',
   infoLinkLabel: s.infoLinkLabel,
   utmEnabled: s.utmEnabled,
@@ -166,6 +168,7 @@ function SettingsForm({ settings }: { settings: AdminPageSettings }) {
       copyrightText: v.copyrightText.trim(),
       brandUrl: empty(v.brandUrl),
       showPoweredBy: v.showPoweredBy,
+      publicApiDescription: v.publicApiDescription,
       infoLinkUrl: empty(v.infoLinkUrl),
       infoLinkLabel: v.infoLinkLabel.trim(),
       utmEnabled: v.utmEnabled,
@@ -474,6 +477,12 @@ function SettingsForm({ settings }: { settings: AdminPageSettings }) {
             help={t('settings.showPoweredByHelp')}
             checked={v.showPoweredBy}
             onChecked={(x) => form.set('showPoweredBy', x)}
+          />
+          <CheckboxField
+            label={t('settings.fields.publicApiDescription')}
+            help={t('settings.publicApiDescriptionHelp')}
+            checked={v.publicApiDescription}
+            onChecked={(x) => form.set('publicApiDescription', x)}
           />
         </div>
       </Card>

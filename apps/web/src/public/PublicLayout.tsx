@@ -129,6 +129,8 @@ function Shell({ settings }: { settings: PublicSiteSettings | undefined }) {
       {/* React 19 hoists these into <head>. */}
       {!isPrivate && <link rel="alternate" type="application/rss+xml" title={t('feeds.rss')} href="/feed.rss" />}
       {!isPrivate && <link rel="alternate" type="application/atom+xml" title={t('feeds.atom')} href="/feed.atom" />}
+      {/* The machine-readable API description (RFC 8631 service-desc), when the page publishes it. */}
+      {!isPrivate && settings?.publicApiDescription && <link rel="service-desc" type="application/openapi+json" href="/api/openapi.json" />}
 
       <a
         href="#main"
@@ -372,6 +374,15 @@ function Footer({ settings }: { settings: PublicSiteSettings | undefined }) {
                         {t('feeds.atom')}
                       </a>
                     </li>
+                    {settings?.publicApiDescription && (
+                      <li>
+                        {/* Visible "API"; the name says what it is (it starts with the visible text). */}
+                        <a href="/api/openapi.json" type="application/json" className={linkClass}>
+                          {t('footer.apiDescription')}
+                          <span className="sr-only">{` (${t('footer.apiDescriptionHint')})`}</span>
+                        </a>
+                      </li>
+                    )}
                   </>
                 )}
                 {settings?.supportUrl && (
