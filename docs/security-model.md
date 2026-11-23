@@ -422,6 +422,37 @@ an internal network only, keep their credentials (database, `SECRET_KEY`,
 monitoring credentials, SMTP) out of the public host, and patch them like any
 internal service.
 
+### Bundled mail server
+
+The Compose files and the install script can run a send-only Postfix (see the
+[installation without containers](guide/en/13-installation-without-containers.md#mail-server)
+and the Compose files). It accepts mail only from the app, never from the internet:
+
+- **Compose**: no published port. The `mail` network is `internal`, so it has no
+  route outside; the server relays only for senders of `MAIL_DOMAIN` and from its
+  `mynetworks` subnet. There is no STARTTLS and no login on that internal hop. The
+  mail container gets none of the app's secrets (no `env_file`). The public
+  instance of the split deployment is not on the network.
+- **Install script**: Postfix listens on `127.0.0.1` only and relays for loopback
+  clients only.
+- **DKIM**: the private key stays with Postfix (volume `dkim` in Compose,
+  `/etc/opendkim/keys` on a host). Only the public key is copied to the directory
+  the app reads (`MAIL_DKIM_DIR`, read-only). The app parses those files strictly,
+  limits their size and count, and never sees a private key.
+- **Without a smarthost** Postfix delivers mail directly, so the host's address
+  and its PTR record become visible to recipients' servers.
+
+### Installation without containers
+
+Each role runs as its own systemd unit with `ProtectSystem=strict`,
+`NoNewPrivileges`, an empty capability bounding set, a system call filter and
+its own memory limit (see [installation without containers](guide/en/13-installation-without-containers.md)).
+In split mode the public instance runs as the separate user `openstatuspage-public`
+and reads only `public.env`, which has no `SECRET_KEY`, admin password, SMTP
+credentials or owner database login. Settings files are `0640` and owned by root
+with the service group; the database passwords of `--with-postgres` are kept in a
+root-only file.
+
 ## Verification
 
 `apps/server/test-pg/public-role.test.ts` connects **as** the public role and
