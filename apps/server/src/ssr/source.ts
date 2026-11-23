@@ -92,6 +92,7 @@ export function publicDocumentSource(docs: PublicDocuments, extras: SourceExtras
     ['/api/public/services/', 100, (req, id) => docs.service(req, id)],
     ['/api/public/incidents/', 64, (req, id) => docs.incident(req, id)],
     ['/api/public/maintenances/', 64, (req, id) => docs.maintenance(req, id)],
+    ['/api/public/pages/', 64, (req, slug) => docs.page(req, slug)],
   ];
 
   /** `/api/public/services/<idOrSlug>/days/<date>`, matched before the service itself. */

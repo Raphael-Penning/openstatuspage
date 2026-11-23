@@ -8,7 +8,7 @@ import { useServicePaths } from '../hooks/links';
 import { useFormat } from '../hooks/preferences';
 import { isNotFound, useIncident } from '../hooks/queries';
 import { NotFoundState } from './NotFoundState';
-import { usePageHead, useSiteName } from '../head';
+import { absoluteUrl, useBaseUrl, usePageHead, useSiteName } from '../head';
 
 export function IncidentPage() {
   const { id = '' } = useParams();
@@ -18,11 +18,18 @@ export function IncidentPage() {
   const site = useSiteName();
   // Below the link base: on a private page the service links stay on it.
   const paths = useServicePaths();
+  const baseUrl = useBaseUrl();
   usePageHead({
     title: data?.title ?? t('incident.title'),
     // The latest update says best what the incident is about.
     description: data ? data.updates[0]?.message || t('seo.incident', { site, title: data.title }) : undefined,
-    article: data ? { datePublished: data.startedAt, dateModified: data.updatedAt } : undefined,
+    article: data
+      ? {
+          datePublished: data.startedAt,
+          dateModified: data.updatedAt,
+          about: data.affectedServices.map((s) => ({ name: s.name, url: absoluteUrl(paths.service({ id: s.id }), baseUrl) })),
+        }
+      : undefined,
     breadcrumbs: data ? [{ name: t('nav.history'), path: '/history' }, { name: data.title, path: `/incidents/${encodeURIComponent(data.id)}` }] : undefined,
   });
 

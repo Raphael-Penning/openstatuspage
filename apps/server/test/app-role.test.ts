@@ -99,7 +99,7 @@ async function routesOf(role: string, env: Record<string, string> = {}): Promise
 }
 
 const isPublicRoute = (r: string) =>
-  /^\w+ (\/api\/public(\/|$)|\/s\/:id\/:token$|\/feed\.|\/api\/health$|\/robots\.txt$|\/sitemap|\/llms)/.test(r);
+  /^\w+ (\/api\/public(\/|$)|\/s\/:id\/:token$|\/feed\.|\/api\/health$|\/robots\.txt$|\/sitemap|\/llms|\/uploads\/)/.test(r);
 
 /** Files for crawlers that describe the status page: not on a management instance (robots.txt only). */
 const STATUS_PAGE_ONLY = /^GET \/(sitemap|llms)/;

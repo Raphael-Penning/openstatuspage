@@ -438,5 +438,11 @@
       "code": "Dieser Code ist falsch oder abgelaufen. Prüfe ihn oder melde dich erneut an, um einen neuen zu erhalten.",
       "codeFormat": "Gib die 6 Ziffern des Codes ein."
     }
+  },
+  "page": {
+    "loading": "Seite",
+    "notFound": "Diese Seite gibt es nicht oder sie ist nicht veröffentlicht.",
+    "updated": "Zuletzt aktualisiert:",
+    "table": "Tabelle (scrollbar)"
   }
 }

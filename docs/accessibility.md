@@ -153,6 +153,13 @@ plain text view.
   UI language; text written in another language is not marked as such
   (WCAG 3.1.2). Write updates in the language most of your visitors use, and
   keep titles short and descriptive.
+- **Content pages** (about page, legal pages, custom pages) have one `h1`, the
+  page title; Markdown headings start at `h2`, so the outline stays intact. Text
+  shown in the other language (a page without text in the visitor's language)
+  is marked with its `lang` (WCAG 3.1.2). Images need a description in the
+  Markdown (`![description](/uploads/...)`); uploaded images carry their width
+  and height, so nothing shifts while they load. Wide tables scroll inside a
+  labelled, focusable region. Checked by axe in both themes and languages.
 - **Logos** are shown with an empty `alt` because the site name is always shown
   next to them. A logo that contains important text other than the site name is
   not described.

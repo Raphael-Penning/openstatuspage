@@ -24,6 +24,7 @@ const NON_JSONAPI = [
   'GET /sitemap-services-:page.xml',
   'GET /llms.txt',
   'GET /llms-full.txt',
+  'GET /uploads/:file',
 ];
 
 /** Non-JSON:API routes whose successful answer is plain JSON. */

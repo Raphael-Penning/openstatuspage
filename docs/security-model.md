@@ -53,6 +53,8 @@ tests) and history imports. The public instance never connects to either.
 | Read public incidents and maintenance with their updates, affected public services and public locations | views |
 | Read the status history of public services and the history corrections that affect them (status and time range only) | views |
 | Read the page settings (`settings` row `page`: site name, colors, which features are shown) | view |
+| Read the **published** content pages (about page, legal notice, privacy policy, accessibility statement, custom pages): slug, titles, descriptions and Markdown texts, placement | view `osp_public.site_pages` (migration `0014`) |
+| Read the uploaded images (logo, favicon, images of the content pages): hash, type, size in pixels and bytes | view `osp_public.uploads` (migration `0014`) |
 | Read the applied schema version (`kysely_migration`) | view |
 | Subscribe an address (double opt-in) | `osp_public.subscribe(...)` |
 | Confirm, read, change and delete one subscription, **only with its token** | `osp_public.subscription_confirm/get/update/delete(...)` |
@@ -85,6 +87,14 @@ from `/api/`, `/admin` and the personal subscription links.
   `sms_recipients`, `sms_recipient_services`, `channel_subscribers`,
   `channel_subscriber_services`, `channel_outbox` and the role registry
   `osp_public_roles`, nor on the settings rows `channels` and `sms_provider`.
+- **Read unpublished pages or who wrote what.** The tables `site_pages` and
+  `uploads` (migration `0014`) have the row level security of the private
+  tables and no privilege for the public role. It reads them only through two
+  views in `osp_public` that run with the owner's rights (`security_barrier`,
+  like the views that blank columns): `site_pages` with the published pages
+  only and without `created_by`, `uploads` without `created_by` and the original
+  file name. Every upload is public by design: it is served at
+  `/uploads/<sha256>.<ext>` without login.
 - **List private pages or their services.** It cannot read the private page
   tables, their token hashes or which hidden service is on which page. The
   `osp_public.private_page*` functions (migration `0009`, `SECURITY DEFINER`,
@@ -338,7 +348,7 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   does not govern, and they are escaped so they cannot end their element. Inline
   styles stay allowed (style attributes of the rendered markup, the accent color
   in the head). Images may come from any HTTPS origin because the logo and
-  favicon of the settings are URLs. zod runs without compiled parsers in the
+  favicon of the settings may be URLs. zod runs without compiled parsers in the
   browser, so no `unsafe-eval` is needed. The optional Umami tracker is served
   from the page's own origin (`/pulse/p.js`) and sends to it (`/pulse/api/send`),
   so analytics needs no exception either.
@@ -348,6 +358,24 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   API and the pages with a personal link (private pages at `/p/<token>`,
   subscription confirm and manage pages at `/subscription/...`) add
   `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+
+Uploaded images (`/uploads/<sha256>.<ext>`, `apps/server/src/routes/uploads.ts`)
+are accepted only as PNG, JPEG, WebP or ICO, recognized by their magic bytes
+(never by the file name or the declared type), at most 1 MiB; SVG is refused
+because it can carry scripts, event handlers, foreign objects and external
+references. They are served with the type detected on upload,
+`X-Content-Type-Options: nosniff`, `Content-Disposition: inline; filename="<file>"`, `Cache-Control:
+public, max-age=31536000, immutable` (the name is the SHA-256 of the bytes) and
+`Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'none';
+script-src 'none'; frame-ancestors 'none'; sandbox`, so a file opened directly
+runs and loads nothing. The upload endpoint takes the bytes only as
+`application/octet-stream` (no form post can send that type cross-site) and
+needs an admin session with the CSRF header or an admin API token.
+
+The Markdown of the content pages is rendered without raw HTML (react-markdown
+without `rehype-raw`, `skipHtml`); link URLs pass react-markdown's default URL
+filter (no `javascript:` or `data:`), outbound links get `rel="noopener
+noreferrer"`, and images are limited to uploads of the instance and https URLs.
 
 HSTS is left to the reverse proxy that terminates TLS.
 

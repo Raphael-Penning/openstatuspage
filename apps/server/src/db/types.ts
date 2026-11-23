@@ -446,6 +446,42 @@ export interface PrivatePageServicesTable {
   sort_order: number;
 }
 
+/** Content pages (0014_site_pages_uploads): the four system pages and custom pages. */
+export interface SitePagesTable {
+  id: string;
+  system_key: string | null;
+  slug: string;
+  title_en: string;
+  title_de: string;
+  description_en: string;
+  description_de: string;
+  body_en: string;
+  body_de: string;
+  published: Bool;
+  show_in_footer: Bool;
+  show_in_nav: Bool;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Uploaded images (0014_site_pages_uploads), served at /uploads/<hash>.<extension>. */
+export interface UploadsTable {
+  id: string;
+  /** SHA-256 (hex) of the bytes. */
+  hash: string;
+  extension: string;
+  content_type: string;
+  byte_size: number;
+  width: number;
+  height: number;
+  data: Buffer;
+  filename: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 /** Admin webhooks (0015). URL, secret and header values are SecretBox ciphertexts. */
 export interface NotificationWebhooksTable {
   id: string;
@@ -574,6 +610,8 @@ export interface Database {
   task_leases: TaskLeasesTable;
   private_pages: PrivatePagesTable;
   private_page_services: PrivatePageServicesTable;
+  site_pages: SitePagesTable;
+  uploads: UploadsTable;
   notification_webhooks: NotificationWebhooksTable;
   notification_webhook_services: NotificationWebhookServicesTable;
   sms_recipients: SmsRecipientsTable;

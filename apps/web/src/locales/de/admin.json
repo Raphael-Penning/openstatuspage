@@ -25,7 +25,8 @@
     "auditLog": "Audit-Log",
     "subscribers": "Abonnenten",
     "corrections": "Korrekturen",
-    "notifications": "Webhooks & SMS"
+    "notifications": "Webhooks & SMS",
+    "pages": "Seiten"
   },
   "userMenu": {
     "label": "Konto und Einstellungen",
@@ -749,12 +750,12 @@
     "removeLink": "Link {{name}} entfernen",
     "emailSubscriptionsHelp": "Besucher können Vorfälle und Wartungen per E-Mail abonnieren (Double-Opt-in). Wird nur angeboten, wenn ein Mailversand konfiguriert ist.",
     "maintenanceReminderHoursHelp": "Erinnert Abonnenten so viele Stunden vor einer geplanten Wartung; 0 schaltet Erinnerungen ab (0–168).",
-    "legalHelp": "Links zu deinen rechtlichen Seiten auf deiner Website, angezeigt in der Fußzeile. Ein Link ohne URL wird ausgeblendet.",
+    "legalHelp": "Links zu deinen Rechtsseiten auf deiner Website, angezeigt in der Fußzeile. Ein Link ohne URL wird ausgeblendet. Eine unter Seiten veröffentlichte Seite ersetzt ihren Link hier.",
     "legalLabelHelp": "Optional. Leer: „{{label}}“ in der Sprache des Besuchers.",
     "copyrightHelp": "Reiner Text; {year} wird zum aktuellen Jahr. Leer: „© <Jahr> <Seitenname>“.",
     "brandUrlHelp": "Optional. Macht den Copyright-Hinweis zu einem Link auf deine Website.",
     "showPoweredByHelp": "Zeigt den Hinweis auf die Software in der Fußzeile.",
-    "infoLinkHelp": "Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine http(s)-URL oder ein Pfad auf dieser Seite mit einem einzelnen / am Anfang (wie /about).",
+    "infoLinkHelp": "Optionaler zusätzlicher Eintrag in der Navigation, z. B. „Was bedeutet der Status?“. Eine http(s)-URL oder ein Pfad auf dieser Seite, der mit einem einzelnen / beginnt (wie /about). Sobald die Seite „Über diese Seite“ unter Seiten veröffentlicht ist, führt der Eintrag dorthin.",
     "infoLinkLabelHelp": "Optional. Leer: „{{label}}“ in der Sprache des Besuchers.",
     "utmHelp": "Hängt diese Parameter an die von dir eingetragenen Links zu anderen Websites an (Fußzeile, Info-Link, Websites der Services). Links auf dieser Seite, mailto:-Links und Links, die schon utm_-Parameter haben, bleiben unverändert.",
     "analyticsHelp": "Lädt den Umami-Tracker auf den öffentlichen Seiten über diesen Server (/pulse/), nie direkt vom Umami-Server. Er läuft nur, wenn auf der Instanz, die die öffentlichen Seiten ausliefert, UMAMI_URL gesetzt ist. Besucher können ihn in der Fußzeile abschalten; Abo-Links werden nie erfasst.",
@@ -768,7 +769,10 @@
       "privacy": "Datenschutz",
       "accessibility": "Erklärung zur Barrierefreiheit",
       "info": "Über diese Seite"
-    }
+    },
+    "imageUrlHelp": "Eine https-URL, oder lade ein Bild hoch (PNG, JPEG, WebP oder ICO, höchstens 1 MB).",
+    "uploadLogo": "Logo hochladen",
+    "uploadFavicon": "Favicon hochladen"
   },
   "users": {
     "title": "Benutzer",
@@ -902,7 +906,9 @@
       "private_page": "Private Seite",
       "subscriber": "Abonnent",
       "notifications": "E-Mail-Benachrichtigungen",
-      "correction": "Korrektur"
+      "correction": "Korrektur",
+      "page": "Seite",
+      "upload": "Bild"
     },
     "actions": {
       "auth_login": "Angemeldet",
@@ -1305,5 +1311,79 @@
       "deleteConfirm": "Den Empfänger {{name}} löschen?",
       "phoneHelp": "Internationales Format, z. B. +49 151 2345678."
     }
+  },
+  "version": "Version {{version}}",
+  "sitePages": {
+    "title": "Seiten",
+    "description": "Über diese Seite, Impressum, Datenschutzerklärung, Erklärung zur Barrierefreiheit und eigene Seiten, in Markdown je Sprache.",
+    "new": "Neue Seite",
+    "system": "Standardseiten",
+    "systemHelp": "Jede Standardseite ist entweder eine hier geschriebene interne Seite (veröffentlicht) oder, solange sie nicht veröffentlicht ist, der externe Link aus den Einstellungen.",
+    "custom": "Eigene Seiten",
+    "empty": "Noch keine eigenen Seiten.",
+    "mode": "Angezeigt als",
+    "internal": "Interne Seite",
+    "external": "Externer Link (Einstellungen)",
+    "status": "Status",
+    "published": "Veröffentlicht",
+    "draft": "Entwurf",
+    "placement": "Angezeigt in",
+    "inNav": "Navigation",
+    "inFooter": "Fußzeile",
+    "editLabel": "{{name}} bearbeiten",
+    "deleteLabel": "{{name}} löschen",
+    "deleteTitle": "Seite löschen",
+    "deleteConfirm": "Die Seite „{{name}}“ löschen? Ihre Adresse funktioniert dann nicht mehr.",
+    "deleted": "Seite gelöscht.",
+    "saved": "Seite gespeichert.",
+    "created": "Seite angelegt.",
+    "editTitle": "{{name}} bearbeiten",
+    "pathInfo": "Adresse auf der Statusseite:",
+    "internalHelp": {
+      "about": "Zeigt diese Seite unter /about und verlinkt sie als Info-Eintrag der Navigation statt des Info-Links aus den Einstellungen.",
+      "legal-notice": "Zeigt diese Seite unter /legal-notice und verlinkt sie in der Fußzeile statt der Impressum-URL aus den Einstellungen.",
+      "privacy": "Zeigt diese Seite unter /privacy und verlinkt sie in der Fußzeile statt der Datenschutz-URL aus den Einstellungen.",
+      "accessibility": "Zeigt diese Seite unter /accessibility und verlinkt sie in der Fußzeile statt der URL der Erklärung zur Barrierefreiheit aus den Einstellungen."
+    },
+    "fields": {
+      "title": "Titel",
+      "path": "Adresse",
+      "slug": "Slug",
+      "sortOrder": "Reihenfolge",
+      "published": "Veröffentlicht",
+      "showInNav": "In der Navigation anzeigen",
+      "showInFooter": "In der Fußzeile anzeigen",
+      "internal": "Interne Seite verwenden",
+      "titleIn": "Titel ({{language}})",
+      "descriptionIn": "Beschreibung für Suchmaschinen ({{language}})",
+      "bodyIn": "Text in Markdown ({{language}})"
+    },
+    "slugHelp": "Kleinbuchstaben, Ziffern und Bindestriche. Die Seite liegt unter {{path}}.",
+    "sortOrderHelp": "Kleinere Zahlen kommen zuerst.",
+    "publishedHelp": "Nur veröffentlichte Seiten werden angezeigt, verlinkt und in der Sitemap aufgeführt.",
+    "language": "Sprache des Textes",
+    "view": "Ansicht",
+    "edit": "Bearbeiten",
+    "preview": "Vorschau",
+    "descriptionHelp": "Höchstens 300 Zeichen. Leer: der Anfang des Textes.",
+    "bodyHelp": "Markdown: Überschriften, Listen, Links, Tabellen und Bilder. HTML wird nicht angezeigt. Eine Sprache ohne Text zeigt die andere.",
+    "markdownHelp": "Markdown-Hilfe"
+  },
+  "uploads": {
+    "title": "Bilder",
+    "upload": "Bild hochladen",
+    "insert": "Bild hochladen und einfügen",
+    "help": "PNG, JPEG, WebP oder ICO, höchstens 1 MB (kein SVG). Verwende sie als Logo oder Favicon in den Einstellungen oder im Text einer Seite.",
+    "empty": "Noch keine Bilder hochgeladen.",
+    "facts": "{{width}} × {{height}} px, {{size}} KB",
+    "deleteLabel": "{{name}} löschen",
+    "deleteTitle": "Bild löschen",
+    "deleteConfirm": "Das Bild „{{name}}“ löschen? Solange Logo, Favicon oder eine Seite es nutzen, wird es nicht gelöscht. Andere Texte, die es zeigen, zeigen dort dann nichts.",
+    "deleted": "Bild gelöscht.",
+    "uploaded": "Bild hochgeladen.",
+    "tooLarge": "Das Bild ist größer als 1 MB.",
+    "url": "Adresse",
+    "markdown": "Markdown",
+    "altPlaceholder": "Beschreibung des Bildes"
   }
 }

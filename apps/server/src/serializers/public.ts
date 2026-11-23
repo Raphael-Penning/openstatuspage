@@ -14,6 +14,7 @@ import type {
   PublicService,
   PublicServiceDay,
   PublicServiceGroup,
+  PublicSitePage,
   RelationshipObject,
   ResourceObject,
 } from '@openstatuspage/shared';
@@ -34,6 +35,7 @@ export const PUBLIC_TYPES = {
   maintenanceUpdate: 'maintenance-updates',
   serviceDay: 'service-days',
   privatePage: 'private-pages',
+  page: 'pages',
 } as const;
 
 /** Singleton id of the site settings resource. */
@@ -41,6 +43,12 @@ export const SETTINGS_ID = 'site';
 
 export function settingsResource(settings: PublicPageSettings): ResourceObject {
   return resource(PUBLIC_TYPES.settings, SETTINGS_ID, settings, { links: { self: `${BASE}/settings` } });
+}
+
+/** A published content page (GET /api/public/pages/{slug}). */
+export function sitePageResource(page: PublicSitePage): ResourceObject {
+  const { id, ...attributes } = page;
+  return resource(PUBLIC_TYPES.page, id, attributes, { links: { self: `${BASE}/pages/${encodeURIComponent(page.slug)}` } });
 }
 
 export function serviceResource(service: PublicService, extra: Record<string, RelationshipObject> = {}): ResourceObject {

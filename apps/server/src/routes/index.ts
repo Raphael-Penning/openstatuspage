@@ -20,6 +20,7 @@ export const RATE_LIMIT_KEYS = 1000;
  *   /api/admin/*         management API (session cookie or API token)
  *   /api/ingest/*        push endpoints for monitoring systems (source token)
  *   /feed.rss, /feed.atom
+ *   /uploads/<sha256>.<ext>  uploaded images (uploads.ts)
  *   /robots.txt, /sitemap*.xml, /llms.txt, /llms-full.txt  (discovery.ts)
  *   /pulse/p.js, /pulse/api/send  Umami analytics proxy, only with UMAMI_URL (analytics.ts)
  *
@@ -53,13 +54,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   if (features.publicApi) {
-    const [{ registerPublicRoutes }, { registerSubscriptionRoutes }, { registerChannelSubscriptionRoutes }] = await Promise.all([
+    const [{ registerPublicRoutes }, { registerSubscriptionRoutes }, { registerUploadRoutes }, { registerChannelSubscriptionRoutes }] = await Promise.all([
       import('./public.js'),
       import('./subscriptions.js'),
+      import('./uploads.js'),
       import('./channel-subscriptions.js'),
     ]);
     await registerPublicRoutes(app);
     await registerSubscriptionRoutes(app);
+    await registerUploadRoutes(app);
     await registerChannelSubscriptionRoutes(app);
   }
 

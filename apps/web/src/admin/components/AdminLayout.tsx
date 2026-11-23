@@ -5,6 +5,7 @@ import { ChangePasswordInput } from '@openstatuspage/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import {
+  FileText,
   BellRing,
   Boxes,
   ChevronUp,
@@ -36,7 +37,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { api, ApiError } from '../../lib/api';
 import { LANGUAGES } from '../../lib/i18n';
 import { useTheme, type ThemePreference } from '../../lib/theme';
-import { useAdminMutation } from '../lib/queries';
+import { useAdminMutation, useInstance } from '../lib/queries';
 import { useForm } from '../lib/useForm';
 import { useBranding, useSession } from '../session';
 import { Dialog } from './Dialog';
@@ -83,6 +84,7 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
       title: t('nav.administration'),
       items: [
         { to: '/admin/settings', label: t('nav.settings'), icon: Settings, adminOnly: true },
+        { to: '/admin/pages', label: t('nav.pages'), icon: FileText, adminOnly: true },
         { to: '/admin/users', label: t('nav.users'), icon: Users, adminOnly: true },
         { to: '/admin/subscribers', label: t('nav.subscribers'), icon: Mail, adminOnly: true },
         { to: '/admin/notifications', label: t('nav.notifications'), icon: BellRing, adminOnly: true },
@@ -152,9 +154,18 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
       </nav>
+      <AppVersion />
       <UserMenu />
     </div>
   );
+}
+
+/** The version of this instance (from the management API; never shown to anonymous visitors). */
+function AppVersion() {
+  const { t } = useTranslation('admin');
+  const { data } = useInstance();
+  if (!data?.version) return null;
+  return <p className="px-4 pb-2 text-xs text-muted">{t('version', { version: data.version })}</p>;
 }
 
 function UserMenu() {

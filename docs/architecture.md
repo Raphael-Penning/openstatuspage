@@ -478,12 +478,29 @@ agents. Everything is built from the page settings and public data only.
     `og:locale` (`en_US`, `de_DE`) with the other languages as alternates, and
     the logo of the settings as image (no image tags without a logo);
     `theme-color` is the accent color.
-- **JSON-LD** (schema.org), only on indexable pages: `WebSite` and
-  `Organization` (name, URL, logo) on the overview, `BreadcrumbList` on every
-  other page, `Article` on incident and maintenance pages (headline,
-  `datePublished` = start of the incident / creation of the maintenance window,
-  `dateModified`, author and publisher = the organization). No `Event` markup:
-  an outage is not an event anybody attends. Escaped with `scriptJson`.
+- **JSON-LD** (schema.org), only on indexable pages (never on private pages,
+  day pages, variants or errors): `WebSite` and `Organization` (name, URL, logo)
+  on the overview, `BreadcrumbList` on every other page, `Article` on incident
+  pages (headline, `datePublished` = start of the incident, `dateModified`,
+  image = logo, author and publisher = the organization, `about` = the affected
+  services), `Event` on maintenance pages (start and end, `eventStatus`
+  `EventScheduled` or `EventCancelled`, online attendance with a
+  `VirtualLocation` = the status page, organizer = the organization), `Service`
+  on service pages (name, description, URL, provider; schema.org has no status
+  property for it, so the status is not marked up), `AboutPage` on the about
+  page and `WebPage` on the other content pages (with `isPartOf` the site and
+  the organization as publisher). Incidents are no `SpecialAnnouncement`: that
+  type is meant for public health and emergency announcements and Google no
+  longer shows it. `apps/web/src/public/jsonld-check.ts` checks every object
+  against the schema.org properties of its type and Google's required fields in
+  the tests. Escaped with `scriptJson`.
+- **Content pages** (`public/pages/ContentPage.tsx`): `/about`,
+  `/legal-notice`, `/privacy`, `/accessibility` and `/pages/<slug>`, Markdown per
+  language from `GET /api/public/pages/{slug}`, rendered by
+  `components/PageMarkdown.tsx` (react-markdown, no raw HTML). The route module
+  is loaded lazily, so only visitors of these pages load the Markdown renderer;
+  the server renders it like every other page and `hydrate.tsx` loads the module
+  before it hydrates.
 - **Discovery files** (`apps/server/src/routes/discovery.ts`, data from
   `services/site-index.ts`; registered before the web client, never rendered):
 

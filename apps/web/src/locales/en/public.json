@@ -438,5 +438,11 @@
       "code": "This code is wrong or has expired. Check it, or subscribe again to get a new one.",
       "codeFormat": "Enter the 6 digits of the code."
     }
+  },
+  "page": {
+    "loading": "Page",
+    "notFound": "This page does not exist or is not published.",
+    "updated": "Last updated:",
+    "table": "Table (scrollable)"
   }
 }

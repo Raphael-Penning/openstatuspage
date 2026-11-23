@@ -9,7 +9,7 @@
  * server runs it before rendering the page (see loaders.ts).
  */
 import type { RouteObject } from 'react-router';
-import { isPrivatePageToken, isUptimeDay, normalizePrivatePageToken } from '@openstatuspage/shared';
+import { isPrivatePageToken, isUptimeDay, normalizePrivatePageToken, SYSTEM_PAGE_KEYS } from '@openstatuspage/shared';
 import { privateQueries, publicQueries } from './hooks/queries';
 import { channelSubscriptionQuery } from './hooks/channel-subscriptions';
 import { subscriptionQuery } from './hooks/subscriptions';
@@ -139,6 +139,21 @@ export const publicRoutes: RouteObject[] = [
             await Promise.all([load(subscriptionQuery(id, token, get)), load(publicQueries.summary(get))]);
           },
         }),
+      },
+      // Content pages (about, legal pages, custom pages): loaded lazily with their Markdown
+      // renderer. The server renders them like every other page; the browser loads the
+      // route module before it hydrates (hydrate.tsx).
+      ...SYSTEM_PAGE_KEYS.map(
+        (key): RouteObject => ({
+          path: key,
+          lazy: async () => ({ Component: (await import('./pages/ContentPage')).systemPage(key) }),
+          handle: handle({ prefetch: ({ load, get }) => load(publicQueries.page(key, get)) }),
+        }),
+      ),
+      {
+        path: 'pages/:slug',
+        lazy: async () => ({ Component: (await import('./pages/ContentPage')).CustomContentPage }),
+        handle: handle({ prefetch: ({ params, load, get }) => load(publicQueries.page(params.slug ?? '', get)) }),
       },
       // Unknown public paths render inside the layout. /admin/* is matched by
       // the admin routes, which are more specific.

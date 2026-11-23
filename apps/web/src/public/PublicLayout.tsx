@@ -7,11 +7,13 @@ import {
   FORM_PATHS,
   formatCopyright,
   RETURN_QUERY,
+  localizedText,
   UMAMI_DISABLED_KEY,
-  type PublicPageSettings,
+  type PublicSitePageLink,
+  type SystemPageKey,
 } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
-import { Activity, Earth, Info, LayoutDashboard, LockKeyhole, RotateCcwClock, Server } from 'lucide-react';
+import { Activity, Earth, FileText, Info, LayoutDashboard, LockKeyhole, RotateCcwClock, Server } from 'lucide-react';
 import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router';
@@ -24,7 +26,7 @@ import { Skeleton } from './components/ui';
 import { useLinkBase } from './hooks/links';
 import { PreferencesProvider, usePreferences } from './hooks/preferences';
 import { usePrivatePageToken } from './hooks/private-page';
-import { usePublicSettings } from './hooks/queries';
+import { usePublicSettings, type PublicSiteSettings } from './hooks/queries';
 import { readableOnAll, solidAccent } from './utils/color';
 
 export function PublicLayout() {
@@ -62,7 +64,7 @@ function ThemeSync() {
 }
 
 /** Accent color, favicon, document language and the page default language. */
-function PageEffects({ settings }: { settings: PublicPageSettings | undefined }) {
+function PageEffects({ settings }: { settings: PublicSiteSettings | undefined }) {
   const { i18n } = useTranslation();
   const ssr = useSsr();
   const { resolved } = useTheme();
@@ -119,7 +121,7 @@ function PageEffects({ settings }: { settings: PublicPageSettings | undefined })
   return null;
 }
 
-function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
+function Shell({ settings }: { settings: PublicSiteSettings | undefined }) {
   const { t } = useTranslation('public');
   const mainRef = useRef<HTMLElement>(null);
   useFocusOnNavigation(mainRef);
@@ -142,10 +144,7 @@ function Shell({ settings }: { settings: PublicPageSettings | undefined }) {
       {isPrivate ? (
         <PrivateNotice />
       ) : (
-        <NavTabs
-          showLocations={settings?.showLocations !== false}
-          info={settings ? { url: settings.infoLinkUrl, label: settings.infoLinkLabel } : undefined}
-        />
+        <NavTabs showLocations={settings?.showLocations !== false} settings={settings} />
       )}
 
       <main ref={mainRef} id="main" tabIndex={-1} className="mx-auto w-full max-w-[1100px] flex-1 px-4 pt-8 pb-16 focus:outline-none sm:px-6">
@@ -174,7 +173,7 @@ function useFocusOnNavigation(mainRef: RefObject<HTMLElement | null>) {
   }, [pathname, mainRef]);
 }
 
-function Header({ settings }: { settings: PublicPageSettings | undefined }) {
+function Header({ settings }: { settings: PublicSiteSettings | undefined }) {
   const { t } = useTranslation('public');
   const { isError } = usePublicSettings();
   // The logo leads to the start of the private page when inside one.
@@ -184,7 +183,12 @@ function Header({ settings }: { settings: PublicPageSettings | undefined }) {
     <header className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center justify-between gap-3 px-4 pt-5 sm:px-6">
       <Link to={home} className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-focus">
         {settings?.logoUrl ? (
-          <img src={settings.logoUrl} alt="" className="h-8 w-auto max-w-32 object-contain" />
+          <img
+            src={settings.logoUrl}
+            alt=""
+            className="h-8 w-auto max-w-32 object-contain"
+            {...(settings.logoSize ? { width: settings.logoSize.width, height: settings.logoSize.height } : {})}
+          />
         ) : (
           <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-lg bg-[color:var(--osp-accent-solid,var(--accent))] text-[color:var(--osp-accent-solid-fg,var(--accent-fg))]">
             <Activity className="size-5" />
@@ -220,9 +224,28 @@ function PrivateNotice() {
   );
 }
 
-function NavTabs({ showLocations, info }: { showLocations: boolean; info?: { url?: string | null; label: string } }) {
-  const { t } = useTranslation('public');
+/** A published system page of the settings document, if any. */
+const systemPageLink = (settings: PublicSiteSettings | undefined, key: SystemPageKey) => settings?.pages?.find((p) => p.systemKey === key);
+
+/** Custom pages published for one place (footer or navigation), in their order. */
+const customPages = (settings: PublicSiteSettings | undefined, place: 'showInFooter' | 'showInNav'): PublicSitePageLink[] =>
+  (settings?.pages ?? []).filter((p) => p.systemKey === null && p[place]);
+
+const navLinkClass =
+  'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus';
+
+function NavTabs({ showLocations, settings }: { showLocations: boolean; settings: PublicSiteSettings | undefined }) {
+  const { t, i18n } = useTranslation('public');
   const { pathname } = useLocation();
+  // The about page, once published, is the info link (its label stays configurable);
+  // otherwise the configured info link (an external page or a path on this site).
+  const about = systemPageLink(settings, 'about');
+  const info = about
+    ? { url: about.path, label: settings?.infoLinkLabel || localizedText(about.title, i18n.language), internal: true }
+    : settings?.infoLinkUrl
+      ? { url: settings.infoLinkUrl, label: settings.infoLinkLabel || t('nav.info'), internal: false }
+      : null;
+  const pages = customPages(settings, 'showInNav');
   const items = [
     { to: '/', label: t('nav.overview'), Icon: LayoutDashboard, active: pathname === '/' },
     { to: '/services', label: t('nav.services'), Icon: Server, active: pathname.startsWith('/services') },
@@ -257,35 +280,60 @@ function NavTabs({ showLocations, info }: { showLocations: boolean; info?: { url
               </Link>
             </li>
           ))}
-          {/* The configured info link (an external page or a path on this site); hidden without URL. */}
-          {info?.url && (
-            <li className="shrink-0">
-              <OutboundLink
-                href={info.url}
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-muted hover:text-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+          {/* Custom pages shown in the navigation. */}
+          {pages.map((p) => (
+            <li key={p.path} className="shrink-0">
+              <Link
+                to={p.path}
+                aria-current={pathname === p.path ? 'page' : undefined}
+                className={clsx(navLinkClass, pathname === p.path ? 'bg-surface-2 text-fg shadow-sm' : 'text-muted hover:text-fg')}
               >
-                <Info aria-hidden className="size-4" />
-                {info.label || t('nav.info')}
-              </OutboundLink>
+                <FileText aria-hidden className="size-4" />
+                {localizedText(p.title, i18n.language)}
+              </Link>
             </li>
-          )}
+          ))}
+          {/* The about page or the configured info link; hidden without either. */}
+          {info &&
+            (info.internal ? (
+              <li className="shrink-0">
+                <Link
+                  to={info.url}
+                  aria-current={pathname === info.url ? 'page' : undefined}
+                  className={clsx(navLinkClass, pathname === info.url ? 'bg-surface-2 text-fg shadow-sm' : 'text-muted hover:text-fg')}
+                >
+                  <Info aria-hidden className="size-4" />
+                  {info.label}
+                </Link>
+              </li>
+            ) : (
+              <li className="shrink-0">
+                <OutboundLink href={info.url} className={clsx(navLinkClass, 'text-muted hover:text-fg')}>
+                  <Info aria-hidden className="size-4" />
+                  {info.label}
+                </OutboundLink>
+              </li>
+            ))}
         </ul>
       </div>
     </nav>
   );
 }
 
-/** Legal pages of the footer, in this order; hidden without URL. */
+/**
+ * Legal pages of the footer, in this order: the published internal page, else
+ * the external link of the settings; hidden without either.
+ */
 const LEGAL_LINKS = [
-  ['imprint', 'imprintUrl', 'imprintLabel'],
-  ['privacy', 'privacyUrl', 'privacyLabel'],
-  ['accessibility', 'accessibilityUrl', 'accessibilityLabel'],
+  ['imprint', 'legal-notice', 'imprintUrl', 'imprintLabel'],
+  ['privacy', 'privacy', 'privacyUrl', 'privacyLabel'],
+  ['accessibility', 'accessibility', 'accessibilityUrl', 'accessibilityLabel'],
 ] as const;
 
 const linkClass = 'rounded-sm underline-offset-2 hover:text-fg hover:underline';
 
-function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
-  const { t } = useTranslation('public');
+function Footer({ settings }: { settings: PublicSiteSettings | undefined }) {
+  const { t, i18n } = useTranslation('public');
   // The shared clock: the server's render time until hydration (no mismatch at New Year).
   const year = new Date(usePreferences().now).getUTCFullYear();
   const copyright = settings?.copyrightText
@@ -294,10 +342,12 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
   // Analytics never runs on private pages (entry-server.tsx), so there is nothing to choose there.
   const isPrivate = usePrivatePageToken() !== null;
   const analytics = !isPrivate && analyticsActive(settings);
-  const legal = LEGAL_LINKS.flatMap(([key, urlKey, labelKey]) => {
-    const url = settings?.[urlKey];
-    return url ? [{ key, url, label: settings[labelKey] || t(`footer.${key}`) }] : [];
+  const legal = LEGAL_LINKS.flatMap(([key, pageKey, urlKey, labelKey]) => {
+    const page = systemPageLink(settings, pageKey);
+    const url = page?.path ?? settings?.[urlKey];
+    return url ? [{ key, url, label: settings?.[labelKey] || t(`footer.${key}`), internal: Boolean(page) }] : [];
   });
+  const pages = isPrivate ? [] : customPages(settings, 'showInFooter');
   // The statistics choice comes right after the privacy policy (or where it would be).
   const analyticsAt = legal.filter((l) => l.key === 'imprint' || l.key === 'privacy').length;
   return (
@@ -334,6 +384,13 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
                     </OutboundLink>
                   </li>
                 )}
+                {pages.map((p) => (
+                  <li key={p.path}>
+                    <Link to={p.path} className={linkClass}>
+                      {localizedText(p.title, i18n.language)}
+                    </Link>
+                  </li>
+                ))}
                 {settings?.footerLinks.map((l) => (
                   <li key={`${l.label}-${l.url}`}>
                     <OutboundLink href={l.url} className={linkClass}>
@@ -344,12 +401,12 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
               </ul>
             </nav>
           )}
-          {/* Legal pages (external links) and, when analytics runs, the visitor's statistics choice. */}
+          {/* Legal pages (internal pages or external links) and, when analytics runs, the visitor's statistics choice. */}
           {(legal.length > 0 || analytics) && (
             <nav aria-label={t('footer.legal')}>
               <ul className="flex flex-wrap gap-x-5 gap-y-2 sm:justify-end">
                 {legal.slice(0, analyticsAt).map((l) => (
-                  <LegalLink key={l.key} url={l.url} label={l.label} />
+                  <LegalLink key={l.key} url={l.url} label={l.label} internal={l.internal} />
                 ))}
                 {analytics && (
                   <li>
@@ -357,7 +414,7 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
                   </li>
                 )}
                 {legal.slice(analyticsAt).map((l) => (
-                  <LegalLink key={l.key} url={l.url} label={l.label} />
+                  <LegalLink key={l.key} url={l.url} label={l.label} internal={l.internal} />
                 ))}
               </ul>
             </nav>
@@ -380,12 +437,18 @@ function Footer({ settings }: { settings: PublicPageSettings | undefined }) {
   );
 }
 
-function LegalLink({ url, label }: { url: string; label: string }) {
+function LegalLink({ url, label, internal }: { url: string; label: string; internal: boolean }) {
   return (
     <li>
-      <OutboundLink href={url} className={linkClass}>
-        {label}
-      </OutboundLink>
+      {internal ? (
+        <Link to={url} className={linkClass}>
+          {label}
+        </Link>
+      ) : (
+        <OutboundLink href={url} className={linkClass}>
+          {label}
+        </OutboundLink>
+      )}
     </li>
   );
 }

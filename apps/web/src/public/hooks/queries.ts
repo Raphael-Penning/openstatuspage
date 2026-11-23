@@ -30,6 +30,8 @@ import {
   type PublicService,
   type PublicServiceDay,
   type PublicServiceGroup,
+  type PublicSiteExtras,
+  type PublicSitePage,
   type PublicSummary,
   type ServiceStatus,
 } from '@openstatuspage/shared';
@@ -38,6 +40,9 @@ import { api, ApiError } from '../../lib/api';
 import { usePrivatePageToken } from './private-page';
 
 export const REFRESH_INTERVAL = 60_000;
+
+/** The public settings document: page settings, published content pages, size of an uploaded logo. */
+export type PublicSiteSettings = PublicPageSettings & PublicSiteExtras;
 
 export interface PublicServicesResponse {
   groups: PublicServiceGroup[];
@@ -125,7 +130,7 @@ export const publicQueries = {
   settings: (get: GetDocument = httpDocuments) =>
     queryOptions({
       queryKey: ['public', 'settings'],
-      queryFn: () => one<PublicPageSettings>(get, '/api/public/settings'),
+      queryFn: () => one<PublicSiteSettings>(get, '/api/public/settings'),
       ...common,
     }),
   summary: (get: GetDocument = httpDocuments) =>
@@ -163,6 +168,13 @@ export const publicQueries = {
     queryOptions({
       queryKey: ['public', 'maintenance', id],
       queryFn: () => one<PublicMaintenance>(get, `/api/public/maintenances/${encodeURIComponent(id)}`),
+      ...common,
+    }),
+  /** A published content page by its slug (about, legal-notice, privacy, accessibility or a custom page). */
+  page: (slug: string, get: GetDocument = httpDocuments) =>
+    queryOptions({
+      queryKey: ['public', 'page', slug],
+      queryFn: () => one<PublicSitePage>(get, `/api/public/pages/${encodeURIComponent(slug)}`),
       ...common,
     }),
   history: (query: Partial<HistoryQuery>, get: GetDocument = httpDocuments) =>
@@ -271,6 +283,11 @@ export function useIncident(id: string) {
 export function useMaintenance(id: string) {
   const token = usePrivatePageToken();
   return useQuery(token ? privateQueries.maintenance(token, id) : publicQueries.maintenance(id));
+}
+
+/** A published content page. */
+export function useSitePage(slug: string) {
+  return useQuery(publicQueries.page(slug));
 }
 
 export function useHistory(query: Partial<HistoryQuery>) {
