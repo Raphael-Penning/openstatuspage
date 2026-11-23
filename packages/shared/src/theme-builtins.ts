@@ -1,0 +1,182 @@
+/**
+ * The built-in themes (docs/themes.md). `default` has exactly the tokens of
+ * apps/web/src/styles.css (tokens.test.ts checks it); the others are variants.
+ * Every one passes WCAG 2.2 AA in light and dark (themes.test.ts).
+ */
+import { DEFAULT_THEME_ID, THEME_SCHEMA_VERSION, type ThemeFile } from './themes.js';
+
+const DEFAULT_LIGHT_STATUS = {
+  operational: '#15803d',
+  maintenance: '#2563eb',
+  degraded: '#a16207',
+  partialOutage: '#ea580c',
+  majorOutage: '#dc2626',
+};
+const DEFAULT_LIGHT_STATUS_TEXT = {
+  operational: '#166534',
+  maintenance: '#1d4ed8',
+  degraded: '#854d0e',
+  partialOutage: '#9a3412',
+  majorOutage: '#b91c1c',
+};
+const DEFAULT_DARK_STATUS = {
+  operational: '#4ade80',
+  maintenance: '#60a5fa',
+  degraded: '#facc15',
+  partialOutage: '#fb923c',
+  majorOutage: '#f87171',
+};
+
+export const BUILTIN_THEMES: readonly ThemeFile[] = [
+  {
+    id: DEFAULT_THEME_ID,
+    name: 'OpenStatusPage',
+    version: THEME_SCHEMA_VERSION,
+    author: 'OpenStatusPage',
+    description: 'The default look: neutral greys with a violet accent.',
+    light: {
+      background: '#f7f7f8',
+      surface: '#ffffff',
+      surfaceAlt: '#f1f1f3',
+      border: '#e4e4e7',
+      borderStrong: '#8a8a95',
+      text: '#18181b',
+      muted: '#6b6b76',
+      accent: '#7c6cf2',
+      status: { ...DEFAULT_LIGHT_STATUS, noData: '#8a8a95' },
+      statusText: DEFAULT_LIGHT_STATUS_TEXT,
+    },
+    dark: {
+      background: '#161618',
+      surface: '#1e1e21',
+      surfaceAlt: '#26262a',
+      border: '#2e2e33',
+      borderStrong: '#76767f',
+      text: '#f4f4f5',
+      muted: '#a1a1aa',
+      accent: '#7c6cf2',
+      status: { ...DEFAULT_DARK_STATUS, noData: '#76767f' },
+      statusText: DEFAULT_DARK_STATUS,
+    },
+    radius: '0.5rem',
+    density: 'comfortable',
+  },
+  {
+    id: 'slate',
+    name: 'Slate',
+    version: THEME_SCHEMA_VERSION,
+    author: 'OpenStatusPage',
+    description: 'Cool blue-grey surfaces with a blue accent and tighter corners.',
+    light: {
+      background: '#f8fafc',
+      surface: '#ffffff',
+      surfaceAlt: '#f1f5f9',
+      border: '#e2e8f0',
+      borderStrong: '#64748b',
+      text: '#0f172a',
+      muted: '#475569',
+      accent: '#2563eb',
+      status: { ...DEFAULT_LIGHT_STATUS, noData: '#64748b' },
+      statusText: DEFAULT_LIGHT_STATUS_TEXT,
+    },
+    dark: {
+      background: '#0b1120',
+      surface: '#111827',
+      surfaceAlt: '#1e293b',
+      border: '#243044',
+      borderStrong: '#64748b',
+      text: '#f1f5f9',
+      muted: '#94a3b8',
+      accent: '#60a5fa',
+      status: { ...DEFAULT_DARK_STATUS, noData: '#64748b' },
+    },
+    radius: '0.375rem',
+    fonts: { sans: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" },
+    density: 'comfortable',
+  },
+  {
+    id: 'forest',
+    name: 'Forest',
+    version: THEME_SCHEMA_VERSION,
+    author: 'OpenStatusPage',
+    description: 'Warm paper tones with a green accent, round corners and more room.',
+    light: {
+      background: '#f7f7f2',
+      surface: '#fffffb',
+      surfaceAlt: '#efefe7',
+      border: '#e3e3d8',
+      borderStrong: '#7a7a6c',
+      text: '#1c1d17',
+      muted: '#5d5e54',
+      accent: '#2f7d4f',
+      status: { ...DEFAULT_LIGHT_STATUS, noData: '#7a7a6c' },
+      statusText: DEFAULT_LIGHT_STATUS_TEXT,
+    },
+    dark: {
+      background: '#131512',
+      surface: '#1b1e1a',
+      surfaceAlt: '#242822',
+      border: '#2f342d',
+      borderStrong: '#737a6f',
+      text: '#eef0ea',
+      muted: '#a6ab9f',
+      accent: '#5fbf86',
+      status: { ...DEFAULT_DARK_STATUS, noData: '#737a6f' },
+    },
+    radius: '0.75rem',
+    density: 'spacious',
+  },
+  {
+    id: 'high-contrast',
+    name: 'High contrast',
+    version: THEME_SCHEMA_VERSION,
+    author: 'OpenStatusPage',
+    description: 'Black and white with strong borders and a bold focus ring (well beyond AA).',
+    light: {
+      background: '#ffffff',
+      surface: '#ffffff',
+      surfaceAlt: '#f0f0f0',
+      border: '#767676',
+      borderStrong: '#000000',
+      text: '#000000',
+      muted: '#3d3d3d',
+      accent: '#1d4ed8',
+      focus: '#000000',
+      status: {
+        operational: '#166534',
+        maintenance: '#1d4ed8',
+        degraded: '#854d0e',
+        partialOutage: '#9a3412',
+        majorOutage: '#b91c1c',
+        noData: '#595959',
+      },
+      statusText: DEFAULT_LIGHT_STATUS_TEXT,
+    },
+    dark: {
+      background: '#000000',
+      surface: '#0a0a0a',
+      surfaceAlt: '#1a1a1a',
+      border: '#8a8a8a',
+      borderStrong: '#ffffff',
+      text: '#ffffff',
+      muted: '#d4d4d4',
+      accent: '#93c5fd',
+      focus: '#ffff00',
+      status: {
+        operational: '#4ade80',
+        maintenance: '#93c5fd',
+        degraded: '#fde047',
+        partialOutage: '#fdba74',
+        majorOutage: '#fca5a5',
+        noData: '#a3a3a3',
+      },
+    },
+    radius: '0.25rem',
+    density: 'comfortable',
+  },
+];
+
+/** A built-in theme by id. */
+export function builtinTheme(id: string): ThemeFile | undefined {
+  return BUILTIN_THEMES.find((t) => t.id === id);
+}

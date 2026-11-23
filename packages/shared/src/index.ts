@@ -14,3 +14,4 @@ export * from './uploads.js';
 export * from './channels.js';
 export * from './css-color.js';
 export * from './themes.js';
+export * from './theme-builtins.js';
