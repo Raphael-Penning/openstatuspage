@@ -98,6 +98,9 @@ database role that can only read public data, see the
   with an example for every endpoint. Since 0.2.0 requests and responses use
   `application/vnd.api+json`; API clients written for 0.1.x need to be updated
   (see the [changelog](CHANGELOG.md)).
+- [OpenAPI 3.1 description](docs/openapi.json) of the same API, also served by
+  every instance at `/api/openapi.json`; signed-in users browse and try it in
+  the management UI under **API** (`/admin/api`).
 
 ```sh
 curl -g -H "Authorization: Bearer $OSP_TOKEN" \
