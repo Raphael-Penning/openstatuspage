@@ -14,7 +14,10 @@
  * is only activated, or changed while active, with `acceptContrastFailures:
  * true`; otherwise 409 `contrast_failures` with the failed checks in `meta`.
  * Extra CSS is checked with checkExtraCss and rejected as a whole (400).
- * Built-in and folder themes are read-only (409).
+ * Built-in and folder themes are read-only (409). When the active theme fails
+ * AA without a confirmation (a folder file or the accent setting changed after
+ * the activation), it carries `contrastUnconfirmed: true`; activating it again
+ * with `acceptContrastFailures: true` confirms it.
  */
 import {
   checkExtraCss,
@@ -52,8 +55,10 @@ export function themeResource(theme: AdminTheme) {
 /** The theme as the API answers it. */
 export function adminTheme(
   entry: ThemeEntry,
-  options: { activeId: string; accentOverride: string | null; withCss?: boolean },
+  options: { activeId: string; accentOverride: string | null; contrastAccepted?: boolean; withCss?: boolean },
 ): AdminTheme {
+  const active = entry.id === options.activeId;
+  const contrastFailures = themeContrastFailures(entry.theme, options.accentOverride);
   return {
     id: entry.id,
     name: entry.theme.name,
@@ -61,11 +66,12 @@ export function adminTheme(
     description: entry.theme.description ?? null,
     source: entry.source,
     readOnly: entry.source !== 'database',
-    active: entry.id === options.activeId,
+    active,
     definition: entry.theme,
     ...(options.withCss ? { css: entry.css } : {}),
     cssBytes: entry.css ? Buffer.byteLength(entry.css) : 0,
-    contrastFailures: themeContrastFailures(entry.theme, options.accentOverride),
+    contrastFailures,
+    contrastUnconfirmed: active && contrastFailures.length > 0 && !options.contrastAccepted,
     updatedAt: entry.updatedAt,
   };
 }
@@ -132,8 +138,8 @@ function registerRoutes(app: FastifyInstance): void {
   const idOf = (req: FastifyRequest) => parse(ThemeParams, req.params).id;
 
   const context = async () => {
-    const [{ themeId }, settings] = await Promise.all([themes.selection(), getSettings(db)]);
-    return { activeId: themeId, accentOverride: settings.accentColor ?? null };
+    const [{ themeId, contrastAccepted }, settings] = await Promise.all([themes.selection(), getSettings(db)]);
+    return { activeId: themeId, contrastAccepted, accentOverride: settings.accentColor ?? null };
   };
   const get = async (id: string): Promise<ThemeEntry> => {
     const entry = await themes.find(id);

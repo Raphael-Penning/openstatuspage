@@ -422,6 +422,11 @@ export interface AdminTheme {
   cssBytes: number;
   /** Failed WCAG 2.2 AA checks with the current accent setting; empty: the theme passes. */
   contrastFailures: ContrastCheck[];
+  /**
+   * The active theme fails AA but nobody confirmed it: its file or the accent
+   * setting changed after the activation. Confirm by activating it again.
+   */
+  contrastUnconfirmed: boolean;
   updatedAt: string | null;
 }
 

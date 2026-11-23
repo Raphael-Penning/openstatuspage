@@ -12,7 +12,7 @@ import { sql } from 'kysely';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, migrateToLatest } from '../src/db/index.js';
 import { loadConfig } from '../src/config.js';
-import { loadThemeFolder, themesDir } from '../src/services/themes.js';
+import { loadThemeFolder, ThemeService, themesDir } from '../src/services/themes.js';
 import { client, createTestApp, createUser, data, doc, errors, login, page, type Client, type TestApp } from './helpers.js';
 import { createWebDir, renderFromSource } from './web-fixture.js';
 
@@ -224,6 +224,42 @@ describe('theme management API', () => {
     expect((await admin.post('/api/admin/themes/forest/activate', doc('themes', {}))).statusCode).toBe(200);
     expect((await t.app.ctx.themes.selection()).themeId).toBe('forest');
     expect((await admin.post('/api/admin/themes/missing/activate', doc('themes', {}))).statusCode).toBe(404);
+  });
+
+  it('flags and logs an active folder theme whose file was changed to fail AA', async () => {
+    expect((await admin.post('/api/admin/themes/folder-theme/activate', doc('themes', {}))).statusCode).toBe(200);
+    // The file changes, then the server restarts (the folder is read once).
+    writeFileSync(join(dir, 'folder-theme.json'), JSON.stringify(failing('folder-theme')));
+    const logger = log();
+    const restarted = new ThemeService(t.db, dir, logger);
+    const active = await restarted.active();
+    expect(active.entry.id).toBe('folder-theme');
+    expect(active.contrastAccepted).toBe(false);
+    expect(active.unconfirmedContrastFailures).toBeGreaterThan(0);
+    const warnings = () => logger.warn.mock.calls.filter(([, msg]) => String(msg).includes('fails WCAG 2.2 AA'));
+    expect(warnings()).toHaveLength(1);
+    // The count only, never the CSS or the theme file.
+    expect(warnings()[0]![0]).toEqual({ theme: 'folder-theme', source: 'folder', contrastFailures: active.unconfirmedContrastFailures });
+    // Once per theme and tokens, not on every page render.
+    restarted.invalidate();
+    await restarted.active();
+    expect(warnings()).toHaveLength(1);
+  });
+
+  it('flags the active theme when the accent setting makes it fail AA until an admin confirms', async () => {
+    expect((await admin.patch('/api/admin/settings', { accentColor: '#ffff00' })).statusCode).toBe(200);
+    const flagged = (await themes()).find((x) => x.active)!;
+    expect(flagged.id).toBe('default');
+    expect(flagged.contrastFailures.length).toBeGreaterThan(0);
+    expect(flagged.contrastUnconfirmed).toBe(true);
+    expect((await themes()).filter((x) => x.contrastUnconfirmed)).toHaveLength(1);
+
+    // Activating it again with the confirmation records it.
+    const confirmed = await admin.post('/api/admin/themes/default/activate', doc('themes', { acceptContrastFailures: true }));
+    expect(confirmed.statusCode).toBe(200);
+    expect(data<AdminTheme>(confirmed).contrastUnconfirmed).toBe(false);
+    expect(await t.app.ctx.themes.selection()).toEqual({ themeId: 'default', contrastAccepted: true });
+    expect((await t.app.ctx.themes.active()).unconfirmedContrastFailures).toBe(0);
   });
 
   it('is for admins only', async () => {

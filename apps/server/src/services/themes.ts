@@ -31,6 +31,7 @@ import {
   THEME_CSS_MAX_BYTES,
   THEME_CSS_PREFIX,
   THEME_JSON_MAX_BYTES,
+  themeContrastFailures,
   ThemeFile,
   themeTokensCss,
   type PublicThemeInfo,
@@ -62,6 +63,8 @@ export interface ActiveTheme {
   /** Stylesheet URLs, tokens first. */
   stylesheets: string[];
   contrastAccepted: boolean;
+  /** Failed AA checks (with the accent override) that no admin confirmed. */
+  unconfirmedContrastFailures: number;
 }
 
 interface Stylesheet {
@@ -188,6 +191,7 @@ export class ThemeService {
   private activeHashes = new Set<string>();
   private cached: { at: number; value: Promise<ActiveTheme> } | null = null;
   private missingWarned: string | null = null;
+  private contrastWarned: string | null = null;
 
   constructor(
     private readonly db: DB,
@@ -283,12 +287,26 @@ export class ThemeService {
     const accentOverride = settings.accentColor ?? null;
     const { stylesheets, hashes } = this.register(entry, accentOverride, false);
     this.activeHashes = new Set(hashes);
+    const accepted = contrastAccepted && entry.id === themeId;
+    const failures = themeContrastFailures(entry.theme, accentOverride).length;
+    const unconfirmed = failures > 0 && !accepted ? failures : 0;
+    // A folder file or the accent setting changed after the activation:
+    // the admin never confirmed these failures. Warn once per theme and tokens.
+    const key = `${entry.id}:${hashes[0]}`;
+    if (unconfirmed > 0 && this.contrastWarned !== key) {
+      this.log.warn(
+        { theme: entry.id, source: entry.source, contrastFailures: unconfirmed },
+        'The active theme fails WCAG 2.2 AA and no admin confirmed it; confirm or change it in Settings > Appearance',
+      );
+    }
+    this.contrastWarned = unconfirmed > 0 ? key : null;
     return {
       entry,
       accentOverride,
       accent: accentOverride ?? cssColorToHex(entry.theme.light.accent) ?? '#7c6cf2',
       stylesheets,
-      contrastAccepted: contrastAccepted && entry.id === themeId,
+      contrastAccepted: accepted,
+      unconfirmedContrastFailures: unconfirmed,
     };
   }
 
