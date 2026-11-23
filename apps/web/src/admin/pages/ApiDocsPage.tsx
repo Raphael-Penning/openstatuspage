@@ -90,7 +90,7 @@ export default function ApiDocsPage() {
       title={t('apiDocs.title')}
       description={t('apiDocs.description')}
       actions={
-        <a href={OPENAPI_URL} className={buttonClass('secondary', 'sm')}>
+        <a href={OPENAPI_URL} download="openapi.json" className={buttonClass('secondary', 'sm')}>
           <FileJson aria-hidden className="size-4" />
           {t('apiDocs.download')}
         </a>
