@@ -300,7 +300,7 @@ export interface ExtraCssIssue {
 const MESSAGES: Record<ExtraCssIssueCode, string> = {
   too_large: `Extra CSS may be at most ${THEME_CSS_MAX_BYTES / 1024} KB`,
   control_character: 'Control characters are not allowed',
-  html: 'The characters < and > outside of selectors are not allowed (nothing that looks like HTML)',
+  html: 'The character < and the sequence --> are not allowed, also in comments (nothing that looks like HTML)',
   unterminated_comment: 'A comment is not closed',
   import: '@import is not allowed',
   url: 'url() may only point to /uploads/ or a relative path on this site',

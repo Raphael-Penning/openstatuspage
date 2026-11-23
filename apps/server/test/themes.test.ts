@@ -78,6 +78,16 @@ describe('themes folder', () => {
     expect(skipped).toHaveLength(6);
   });
 
+  it('accepts the example theme of contrib/themes (valid, passes AA)', async () => {
+    const { themeContrastFailures } = await import('@openstatuspage/shared');
+    const logger = log();
+    const themes = loadThemeFolder(new URL('../../../contrib/themes', import.meta.url).pathname, logger);
+    expect(logger.warn).not.toHaveBeenCalled();
+    const ocean = themes.get('ocean')!;
+    expect(ocean.css).toContain('var(--accent)');
+    expect(themeContrastFailures(ocean.theme)).toEqual([]);
+  });
+
   it('is optional', () => {
     const logger = log();
     expect(loadThemeFolder(join(dir, 'missing'), logger).size).toBe(0);
