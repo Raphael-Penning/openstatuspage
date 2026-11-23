@@ -46,7 +46,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   async function sessionInfo(userId: string): Promise<SessionInfo> {
     const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirst();
     if (!user) throw unauthorized();
-    return { user: await toAdminUserWithLinks(db, user), oidcEnabled: (await oidc.loginProviders()).length > 0 };
+    return { user: await toAdminUserWithLinks(db, user), oidcEnabled: await oidc.hasLoginProviders() };
   }
 
   /** Session document: `sessions/current` with the user in `included`. */

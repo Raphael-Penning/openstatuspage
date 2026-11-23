@@ -335,6 +335,23 @@ describe('production', () => {
   });
 });
 
+describe('session', () => {
+  it('reports SSO as enabled while an enabled provider exists', async () => {
+    t = await createTestApp();
+    try {
+      admin = await adminClient(t);
+      const enabled = async () => data<Any>(await admin.get('/api/auth/session')).oidcEnabled;
+      expect(await enabled()).toBe(false);
+      const provider = await createProvider({ enabled: false });
+      expect(await enabled()).toBe(false);
+      await admin.patch(`/api/admin/oidc-providers/${provider.id}`, { enabled: true });
+      expect(await enabled()).toBe(true);
+    } finally {
+      await t.close();
+    }
+  });
+});
+
 describe('login', () => {
   beforeEach(async () => {
     t = await createTestApp(ENV);

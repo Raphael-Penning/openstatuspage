@@ -179,6 +179,13 @@ export class OidcProviderRegistry {
     return out;
   }
 
+  /** Whether the login page shows at least one SSO button (one indexed lookup, no listing). */
+  async hasLoginProviders(): Promise<boolean> {
+    if (envProvider(this.deps.config)) return true;
+    const row = await this.deps.db.selectFrom('oidc_providers').select('id').where('enabled', '=', 1).limit(1).executeTakeFirst();
+    return row !== undefined;
+  }
+
   /** An enabled provider with its secret, or null (unknown, disabled or unreadable secret). */
   async get(id: string): Promise<OidcProvider | null> {
     if (id === ENV_OIDC_PROVIDER_ID) return envProvider(this.deps.config);
