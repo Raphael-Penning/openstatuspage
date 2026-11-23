@@ -227,8 +227,9 @@ bearbeiten, wohl aber herunterladen und anderswo installieren.
   [Themes in der Chart-README](../../../deploy/helm/openstatuspage/README.md#themes).
 - Ohne Container: Kopiere die Dateien nach `/etc/openstatuspage/themes` und
   mache sie für alle lesbar (`install -m 0644 mein-theme.json mein-theme.css
-  /etc/openstatuspage/themes/`). Starte danach `systemctl restart
-  openstatuspage` neu (bei einer geteilten Installation `openstatuspage-split.target`).
+  /etc/openstatuspage/themes/`). Führe danach `systemctl restart
+  openstatuspage` aus (bei einer geteilten Installation
+  `systemctl restart openstatuspage-split.target`).
 
 Der Ordner wird nur beim Start des Servers gelesen. Starte also nach jeder
 Änderung neu.
@@ -246,8 +247,8 @@ lesbar.
 
 ### 9. Teilen und aktualisieren
 
-- Mit dem Download-Knopf speicherst du ein Theme als JSON (und das zusätzliche
-  CSS als `.css`). So bringst du es auf eine andere Installation oder gibst es
+- Mit dem Download-Knopf speicherst du ein Theme als JSON. Hat das Theme
+  zusätzliches CSS, speichert der eigene Knopf **CSS** daneben die `.css`-Datei. So bringst du es auf eine andere Installation oder gibst es
   weiter.
 - Um ein hochgeladenes Theme zu ändern, öffne es mit dem Bearbeiten-Knopf, ändere
   es und speichere. Ist es das aktive Theme und besteht die neue Fassung die
@@ -265,7 +266,7 @@ lesbar.
 | **Das Theme kann nicht gespeichert werden:** mit einer ungültigen Farbe (die Liste nennt das Feld) | Verwende `#rrggbb`, `#rgb`, `rgb()`, `hsl()` oder `oklch()` ohne Transparenz. Farbnamen und `var()` sind nicht erlaubt. |
 | Die Liste nennt ein Feld, das du nicht erwartest | Entferne den Schlüssel oder prüfe die Schreibweise. Erlaubt sind nur die Schlüssel aus [Themes](../../themes.md#theme-file-format), auf jeder Ebene (`$schema` ist die einzige optionale Ausnahme). |
 | `contrast_failures` (409) oder **Trotzdem aktivieren** erscheint | Lies die fehlerhaften Paare im Editor und mach die Farben dunkler oder heller. Bestätige nur, wenn du das Ergebnis akzeptierst. |
-| `A theme with the id "…" exists already` (409) | Wähle eine andere ID. Eingebaute, Ordner- und hochgeladene Themes teilen sich einen ID-Raum. |
+| `A theme with the id "…" exists already` (409) | Wähle eine andere ID. Der Import lehnt jede ID ab, die schon in der Liste steht. Eine Ordner-Datei mit der ID eines hochgeladenen Themes verdeckt das hochgeladene Theme. |
 | Eine Ordner-Datei wird im Server-Log übersprungen (`Theme file skipped: …`) | Prüfe den Dateinamen (er muss der `id` entsprechen) und das JSON. Das Log nennt den Grund. |
 | Das zusätzliche CSS wird abgelehnt | Die Meldung nennt die Regel (etwa `@import is not allowed`) und zeigt einen kurzen Auszug. Entferne die Regel und speichere erneut. |
 | Ein Ordner-Theme erscheint nach einer Änderung nicht | Der Ordner wird nur beim Start gelesen: starte den Server neu. |

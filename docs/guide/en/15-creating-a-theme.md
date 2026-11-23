@@ -233,8 +233,8 @@ colors instead, because a low-contrast page is hard to read for many visitors.
 
 ### 9. Share and update the theme
 
-- Click the download button on a theme to save it as JSON (and the extra CSS
-  as `.css`). Use this to move a theme to another installation, or to share it.
+- Click the download button on a theme to save it as JSON. If the theme has
+  extra CSS, a separate **CSS** button next to it saves the `.css` file. Use this to move a theme to another installation, or to share it.
 - To change an uploaded theme, open it with the edit button, change it and save.
   If it is the active theme, saving a version that fails the contrast check asks
   for **Save anyway**.
@@ -247,10 +247,10 @@ colors instead, because a low-contrast page is hard to read for many visitors.
 
 | Message or symptom | What to do |
 | --- | --- |
-| **The theme cannot be saved:** with an invalid colour (the list names the field) | Use `#rrggbb`, `#rgb`, `rgb()`, `hsl()` or `oklch()` without transparency. Names and `var()` are not allowed. |
+| **The theme cannot be saved:** with an invalid color (the list names the field) | Use `#rrggbb`, `#rgb`, `rgb()`, `hsl()` or `oklch()` without transparency. Names and `var()` are not allowed. |
 | The list names a field you did not expect | Remove the key or check its spelling. Only the keys in [Themes](../../themes.md#theme-file-format) are allowed, at every level (`$schema` is the one optional extra). |
 | `contrast_failures` (409) or **Activate anyway** appears | Read the failing pairs in the editor and make the colors darker or lighter. Confirm only if you accept the result. |
-| `A theme with the id "…" exists already` (409) | Choose another ID. Built-in, folder and uploaded themes share one ID space. |
+| `A theme with the id "…" exists already` (409) | Choose another ID. Import refuses every ID that is already in the list. A folder file with the ID of an uploaded theme hides the uploaded one. |
 | A folder file is skipped in the server log (`Theme file skipped: …`) | Check the file name (it must equal the `id`) and the JSON. The log names the reason. |
 | The extra CSS is refused | The message names the rule (for example `@import is not allowed`) and shows a short excerpt. Remove the rule and save again. |
 | A folder theme does not show after a change | The folder is read only at start: restart the server. |
