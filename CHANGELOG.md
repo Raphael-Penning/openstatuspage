@@ -20,8 +20,9 @@ breaking changes.
   `compose.split.yaml` have a send-only `postfix` service (profile `mail`, on
   in a new `.env` with `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`) that signs
   with a DKIM key generated on first start, is never published and relays only
-  for the app on an internal network. `SMTP_*` still select any other server. Existing `.env` files are not changed: to turn
-  the bundled server on, add `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`.
+  for the app on an internal network. `SMTP_*` still select any other server.
+  Existing `.env` files are not changed: to turn the bundled server on, add
+  `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`.
 - **DNS records for the bundled mail server** in Settings → Email delivery and
   in `GET /api/admin/notifications/status` (`dns`): SPF, DKIM and DMARC for the
   sender domain, read from the public keys in the new `MAIL_DKIM_DIR`.
