@@ -6,6 +6,34 @@ breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Several SSO providers, managed in the management UI** (*Administration →
+  Single sign-on*, admins only). Each OpenID Connect provider has a name,
+  button order, enabled flag, issuer URL, client id, a write-only client
+  secret stored encrypted with `SECRET_KEY`, scopes (PKCE S256 always on),
+  auto creation of users (verified e-mail only), optional allowed e-mail
+  domains and a role mapping: a claim path (`groups`, `roles`,
+  `realm_access.roles`, ...) whose values grant admin, editor or no access,
+  a default role (editor or no access) and whether the role is updated on
+  every login or only at creation. A *Test configuration* button runs the
+  discovery and shows the endpoints. Changes are written to the audit log
+  (`oidc_provider.*`, never the secret). API: `/api/admin/oidc-providers`.
+- The login page shows one button per enabled provider. Every provider has its
+  own login and callback route (`/api/auth/oidc/<id>/login|callback`), and the
+  login state is bound to the provider: a login started at one provider cannot
+  be completed at another. `/api/auth/config` lists them in `oidcProviders`.
+- Users are linked by `sub` per provider and can be linked to several
+  providers. `create-user --unlink-oidc` removes every link.
+
+### Changed
+
+- The provider of the `OIDC_*` environment variables keeps its routes, redirect
+  URI and role rules and is listed read-only in the management UI (it is not
+  copied into the database). Migration `0016_oidc_providers` moves the existing
+  links (`users.oidc_subject`) to it.
+- The mobile top bar of the management UI is a `header` landmark.
+
 ## [0.3.1] - 2026-11-22
 
 ### Upgrading
