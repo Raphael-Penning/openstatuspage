@@ -66,7 +66,7 @@ function echo(fields: FormFields): SsrFormState['values'] {
   return values;
 }
 
-const issuesOf = (issues: readonly { path: readonly PropertyKey[]; code: string }[]): FormIssue[] =>
+export const issuesOf = (issues: readonly { path: readonly PropertyKey[]; code: string }[]): FormIssue[] =>
   issues.map((i) => ({ path: i.path.map((p) => (typeof p === 'number' ? p : String(p))), code: i.code }));
 
 /** Public services of the selected public groups (the group checkboxes). */
@@ -85,7 +85,7 @@ async function servicesOfGroups(db: DB, groupIds: string[]): Promise<string[]> {
 }
 
 /** The scope fields as the API input: all services, or the checked services and groups. */
-async function scopeOf(db: DB, fields: FormFields): Promise<{ allServices: boolean; serviceIds: string[] }> {
+export async function scopeOf(db: DB, fields: FormFields): Promise<{ allServices: boolean; serviceIds: string[] }> {
   const allServices = field(fields, 'scope') !== 'selected';
   if (allServices) return { allServices, serviceIds: [] };
   const serviceIds = unique([...fieldList(fields, 'service'), ...(await servicesOfGroups(db, fieldList(fields, 'group')))]);
@@ -100,7 +100,7 @@ function linkOf(fields: FormFields): { id: string; token: string } | null {
   return { id, token };
 }
 
-const isStatus = (err: unknown, status: number) => err instanceof HttpError && err.statusCode === status;
+export const isStatus = (err: unknown, status: number) => err instanceof HttpError && err.statusCode === status;
 
 /** Issue for service ids the server rejected (unknown or no longer public). */
 const UNKNOWN_SERVICES: FormIssue[] = [{ path: ['serviceIds'], code: 'invalid_value' }];

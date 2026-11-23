@@ -17,6 +17,7 @@ import { registerRoutes } from './routes/index.js';
 import { sendTooManyRequests } from './ssr/busy.js';
 import type { RenderModule, SsrPages } from './ssr/pages.js';
 import { staticCacheControl, webAssetPolicy } from './web-assets.js';
+import { channelOptions } from './services/channels/settings.js';
 
 export interface BuildAppOptions {
   config: Config;
@@ -200,8 +201,12 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         ssr = new SsrPages({
           webDir,
           baseUrl: config.PUBLIC_BASE_URL,
-          docs: new PublicDocuments(ctx.db, ctx.mailer, { analytics: Boolean(config.UMAMI_URL) }),
+          docs: new PublicDocuments(ctx.db, ctx.mailer, {
+            analytics: Boolean(config.UMAMI_URL),
+            channels: () => channelOptions(ctx.db, ctx.config),
+          }),
           subscription: (id, token) => forms.subscriptionDocument(app, id, token),
+          channelSubscription: (id, token) => forms.channelSubscriptionDocument(app, id, token),
           privatePages: new PrivatePageDocuments(createPrivatePages(ctx.db, config)),
           log: app.log,
           loadModule: ssrModule,

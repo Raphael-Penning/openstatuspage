@@ -155,6 +155,8 @@ export class ChannelService {
   clock: () => Date = () => new Date();
   /** Options of every outbound request (tests replace DNS and the address check). */
   requestOptions: SafeRequestOptions = {};
+  /** The outbound request (tests replace it). */
+  request: typeof safeRequest = safeRequest;
   /** Set by createContext: admin notices go out as mails. */
   notifications?: NotificationService;
   private readonly hostLimiter = new MinuteLimiter();
@@ -384,7 +386,7 @@ export class ChannelService {
   private async send(prepared: Extract<Prepared, { kind: 'webhook' | 'sms' }>): Promise<SendResult> {
     if (prepared.kind === 'webhook') {
       try {
-        const res = await safeRequest(
+        const res = await this.request(
           prepared.url,
           { method: 'POST', headers: prepared.headers, body: prepared.body },
           { ...this.requestOptions, allowHttp: prepared.allowHttp },
@@ -403,7 +405,7 @@ export class ChannelService {
     }
     const provider = await getSmsProvider(this.db);
     if (!provider.enabled) return { ok: false, statusCode: null, message: 'The SMS provider is disabled', retry: false };
-    const result = await sendSms(provider, readCredentials(this.secrets, provider), prepared.to, prepared.text, this.requestOptions);
+    const result = await sendSms(provider, readCredentials(this.secrets, provider), prepared.to, prepared.text, this.requestOptions, this.request);
     return { ok: result.ok, statusCode: result.status, message: result.message, retry: result.retry };
   }
 
@@ -634,7 +636,7 @@ export class ChannelService {
       ...site,
       shortUrl: null,
     });
-    const result = await sendSms(provider, readCredentials(this.secrets, provider), phone, text, this.requestOptions);
+    const result = await sendSms(provider, readCredentials(this.secrets, provider), phone, text, this.requestOptions, this.request);
     const sent: SendResult = { ok: result.ok, statusCode: result.status, message: result.message, retry: false };
     await this.logDirect(rowId, 'sms', 'test', null, sent);
     return sent;

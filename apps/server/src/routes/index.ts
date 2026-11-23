@@ -53,12 +53,14 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   if (features.publicApi) {
-    const [{ registerPublicRoutes }, { registerSubscriptionRoutes }] = await Promise.all([
+    const [{ registerPublicRoutes }, { registerSubscriptionRoutes }, { registerChannelSubscriptionRoutes }] = await Promise.all([
       import('./public.js'),
       import('./subscriptions.js'),
+      import('./channel-subscriptions.js'),
     ]);
     await registerPublicRoutes(app);
     await registerSubscriptionRoutes(app);
+    await registerChannelSubscriptionRoutes(app);
   }
 
   // robots.txt, sitemaps and llms.txt where the public pages are served.

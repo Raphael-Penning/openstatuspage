@@ -142,11 +142,12 @@ export async function sendSms(
   to: string,
   text: string,
   options: SafeRequestOptions = {},
+  request: typeof safeRequest = safeRequest,
 ): Promise<SmsResult> {
   if (!provider.url) return { ok: false, status: null, message: 'No SMS provider configured', retry: false };
   const req = buildSmsRequest(provider, creds, to, text);
   try {
-    const res = await safeRequest(req.url, { method: req.method, headers: req.headers, body: req.body }, options);
+    const res = await request(req.url, { method: req.method, headers: req.headers, body: req.body }, options);
     if (provider.successStatuses.includes(res.status)) return { ok: true, status: res.status, message: `HTTP ${res.status}`, retry: false };
     // Only the status and a short, masked detail: provider answers may quote the request.
     const detail = maskNumbers(res.body.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim()).slice(0, 160);

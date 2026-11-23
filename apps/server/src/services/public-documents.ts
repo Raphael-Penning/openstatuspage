@@ -9,8 +9,10 @@
  * (see public-catalog.ts, incidents.ts, maintenances.ts, serializers/public.ts).
  * Nothing about monitoring sources or checks is ever exposed here.
  */
-import { overallStatus, shiftUptimeDay, uptimeDayStart, zId, type DataDocument, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type ResourceObject } from '@openstatuspage/shared';
+import { overallStatus, shiftUptimeDay, uptimeDayStart, zId, type ChannelOptions, type DataDocument, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type ResourceObject } from '@openstatuspage/shared';
 import { z } from 'zod';
+
+const NO_CHANNELS: ChannelOptions = { webhookKinds: [], sms: false, smsCallingCodes: [] };
 import type { DB } from '../db/index.js';
 import { HttpError, notFound } from '../lib/errors.js';
 import { collection, document, Included, resource, selfLink, toMany, toOne, type DocumentRequest } from '../lib/jsonapi.js';
@@ -123,6 +125,8 @@ function monthRange(month: string): [string, string] {
 export interface PublicDocumentsOptions {
   /** The instance has an analytics upstream (UMAMI_URL). Without it `analyticsEnabled` is always false. */
   analytics?: boolean;
+  /** Webhook and SMS subscriptions offered (summary). Default: none. */
+  channels?: () => Promise<ChannelOptions>;
 }
 
 /** Builds the documents of the public read API (one instance per app). */
@@ -172,6 +176,7 @@ export class PublicDocuments {
       {
         overall: overallStatus(catalog.services.map((s) => s.status)),
         emailSubscriptions: settings.emailSubscriptionsEnabled && mailerConfigured(this.mailer),
+        channelSubscriptions: this.options.channels ? await this.options.channels() : NO_CHANNELS,
         generatedAt: nowIso,
       },
       {

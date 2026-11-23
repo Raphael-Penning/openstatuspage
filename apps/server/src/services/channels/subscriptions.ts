@@ -103,7 +103,8 @@ export function newChannelId(): string {
   return randomBytes(9).toString('base64url');
 }
 
-const fieldIssue = (path: string, message: string) => badRequest(message, [{ path: [path], code: 'invalid_value', message }]);
+/** A 400 for one field; `code` tells the pages which message to show (webhook_host, webhook_insecure, phone_format, phone_country, invalid_value). */
+const fieldIssue = (path: string, message: string, code = 'invalid_value') => badRequest(message, [{ path: [path], code, message }]);
 
 /** The normalized target of a subscribe request, checked against the options; 400/404 otherwise. */
 export interface CheckedTarget {
@@ -128,14 +129,15 @@ export function checkTarget(input: ChannelSubscribeInput, options: ChannelOption
           : checked.problem === 'insecure'
             ? 'The webhook URL must start with https://'
             : 'Enter a valid webhook URL',
+        checked.problem === 'host' ? 'webhook_host' : checked.problem === 'insecure' ? 'webhook_insecure' : 'invalid_value',
       );
     }
     return { channel: 'webhook', webhookKind: kind, target: checked.url, hint: webhookHint(checked.url) };
   }
   if (!options.sms) throw notFound('SMS subscriptions');
   const phone = normalizePhone(input.phone ?? '');
-  if (!phone) throw fieldIssue('phone', 'Enter the number in international format, e.g. +49 151 2345678');
-  if (!phoneAllowed(phone, options.smsCallingCodes)) throw fieldIssue('phone', 'Numbers of this country cannot subscribe');
+  if (!phone) throw fieldIssue('phone', 'Enter the number in international format, e.g. +49 151 2345678', 'phone_format');
+  if (!phoneAllowed(phone, options.smsCallingCodes)) throw fieldIssue('phone', 'Numbers of this country cannot subscribe', 'phone_country');
   return { channel: 'sms', webhookKind: null, target: phone, hint: maskPhone(phone) };
 }
 
@@ -351,7 +353,9 @@ async function call<T>(run: () => Promise<T>): Promise<T> {
     if ((err as { code?: unknown } | null)?.code === '55000') throw notFound('Subscriptions');
     const message = (err as { message?: unknown }).message;
     if ((err as { code?: unknown } | null)?.code === '22023' && (message === 'Invalid phone' || message === 'Country not allowed')) {
-      throw fieldIssue('phone', message === 'Invalid phone' ? 'Enter the number in international format' : 'Numbers of this country cannot subscribe');
+      throw message === 'Invalid phone'
+        ? fieldIssue('phone', 'Enter the number in international format', 'phone_format')
+        : fieldIssue('phone', 'Numbers of this country cannot subscribe', 'phone_country');
     }
     throw databaseInputError(err) ?? err;
   }
