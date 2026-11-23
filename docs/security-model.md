@@ -416,8 +416,13 @@ account) or obtains an API token.
   an account only for an e-mail address the identity provider marks as
   verified, and an SSO login only completes at the provider it started at
   (the login state names the provider, every provider has its own redirect
-  URI). Client secrets of SSO providers are stored encrypted with
-  `SECRET_KEY` and never returned by the API. An admin resetting a user's password revokes that user's API tokens
+  URI). A provider added in the management UI links an existing account by
+  e-mail only when it is configured to, so a weak IdP cannot take over
+  accounts (admins included) it was never linked to. Client secrets of SSO
+  providers are stored encrypted with `SECRET_KEY` and never returned by the
+  API, and a provider pointed at another issuer needs its secret again, so the
+  stored one cannot be redirected to a host an attacker controls; the links of
+  the old issuer are removed with it. An admin resetting a user's password revokes that user's API tokens
   and sessions, a user changing their own password ends all their sessions
   and gets a fresh session cookie, and a new login replaces the session cookie it was sent with, so a
   stolen password or session does not outlive the reset.
