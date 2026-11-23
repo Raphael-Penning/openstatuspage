@@ -132,7 +132,7 @@ export type Claims = Record<string, unknown>;
 /** Reads the value list from `claims`. Accepts arrays and space/comma separated strings. */
 export function extractGroups(claims: Claims, claimPath: string): string[] {
   let value: unknown = claims;
-  if (claimPath in claims) {
+  if (Object.hasOwn(claims, claimPath)) {
     value = claims[claimPath];
   } else {
     for (const part of claimPath.split('.')) {

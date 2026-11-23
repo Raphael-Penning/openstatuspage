@@ -49,6 +49,8 @@ describe('extractGroups', () => {
 
   it('only follows own properties of objects', () => {
     expect(extractGroups({}, 'constructor.name')).toEqual([]);
+    expect(extractGroups({}, 'constructor')).toEqual([]);
+    expect(extractGroups({}, 'toString')).toEqual([]);
     expect(extractGroups({ a: ['x'] }, 'a.length')).toEqual([]);
   });
 });
