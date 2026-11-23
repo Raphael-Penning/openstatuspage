@@ -23,13 +23,14 @@ management area.
 - **Monitoring adapters**: Icinga 2, Uptime Kuma, openITCockpit, generic webhook (pull and push)
 - **Service composition**: build public services from internal checks with configurable aggregation rules
 - **Check bundles**: let several monitoring nodes (e.g. Uptime Kuma instances in different places) vote with weights on the state of one target
-- **Management UI**: incidents, maintenance, services, groups, locations, monitoring sources, users, branding
+- **Management UI**: incidents, maintenance, services, groups, locations, monitoring sources, users, branding, content pages and images
 - **Auth**: local users (admin / editor) and optional OIDC single sign-on
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
 - **Works without JavaScript**: every public page is rendered on the server and works without scripts (filters, subscriptions, language and theme are links and forms); scripts only enhance it
 - **Search engines and AI agents**: unique titles, canonical and language links, JSON-LD, `robots.txt`, a sitemap index with page, incident and service sitemaps, and `llms.txt` (see the [public page guide](docs/guide/en/12-public-page.md))
+- **Content pages and images**: about, legal notice, privacy policy, accessibility statement and your own pages, written in Markdown per language (English, German) and rendered on the server; PNG, JPEG, WebP and ICO uploads for the logo, favicon and page images (see the [public page guide](docs/guide/en/12-public-page.md#content-pages-and-images))
 - **[JSON:API 1.1](docs/api.md) HTTP API and RSS/Atom feeds** (since 0.2.0; a breaking change for API clients of 0.1.x, see the [changelog](CHANGELOG.md))
 
 ## Quick start (Docker Compose)
