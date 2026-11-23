@@ -111,6 +111,11 @@ services:
       # monitoring credentials and signs the admin cookies).
       SUBSCRIPTION_TOKEN_KEY: ${SUBSCRIPTION_TOKEN_KEY:?set SUBSCRIPTION_TOKEN_KEY in .env}
       DATABASE_URL: postgres://osp_public:${POSTGRES_PUBLIC_PASSWORD:?set POSTGRES_PUBLIC_PASSWORD in .env}@db:5432/openstatuspage
+      # Themes folder (docs/themes.md), read on start; mount it below. A missing folder is fine.
+      THEMES_DIR: /themes
+    # The same themes folder as the admin instance (docs/themes.md).
+    # volumes:
+    #   - ./themes:/themes:ro
     depends_on:
       db:
         condition: service_healthy
@@ -132,9 +137,14 @@ services:
     env_file: .env
     volumes:
       - dkim-public:/mail-dkim:ro
+      # Optional themes folder: <id>.json and <id>.css files in ./themes next to
+      # this file (docs/themes.md). Uncomment here and at public, then restart.
+      # - ./themes:/themes:ro
     environment:
       <<: *mail-env
       APP_ROLE: admin
+      # Themes folder (docs/themes.md), read on start; mount it below. A missing folder is fine.
+      THEMES_DIR: /themes
       HOST: 0.0.0.0
       PORT: "3000"
       WORKER_ENABLED: "false"
