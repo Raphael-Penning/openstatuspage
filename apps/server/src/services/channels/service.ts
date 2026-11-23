@@ -12,10 +12,15 @@
  * Delivery: a worker task sends due rows in batches, through the SSRF guard
  * (lib/safe-http.ts), and retries failures with backoff (1 min, 5 min, 15 min,
  * 1 h; MAX_ATTEMPTS). 4xx answers other than 408/425/429 are not retried.
- * Rate limits (ChannelSettings): per destination host and minute, all subscriber
- * webhooks per minute, all SMS per minute; a row over a limit waits a minute
- * without losing an attempt. The limits are counted in memory by the instance
- * that holds the delivery task's lease (one at a time).
+ * Rate limits (ChannelSettings): per destination and minute (webhookHostPerMinute),
+ * all subscriber webhooks per minute, all subscriber SMS per minute; a row over a
+ * limit waits a minute without losing an attempt. The destination bucket is the
+ * webhook itself for admin webhooks and for subscriber webhooks on the official
+ * hosts (Discord, Slack and Teams limit per webhook), and the host for generic
+ * subscriber webhooks. Admin webhooks never share a bucket with visitors, and
+ * on-call SMS are never postponed (they still count toward the SMS per minute).
+ * The limits are counted in memory by the instance that holds the delivery
+ * task's lease (one at a time).
  *
  * Failures: an admin webhook is disabled after AUTO_DISABLE_FAILURES failed
  * requests in a row, and the admins get a notice (mail to every admin when a
@@ -135,12 +140,17 @@ class MinuteLimiter {
       this.hits.set(key, list);
       return false;
     }
+    this.record(key, now, list);
+    return true;
+  }
+  /** Counts a hit without checking the limit (traffic that is never postponed). */
+  record(key: string, now: number, list = (this.hits.get(key) ?? []).filter((t) => t > now - 60_000)): void {
+    const since = now - 60_000;
     list.push(now);
     this.hits.set(key, list);
     if (this.hits.size > 10_000) {
       for (const [k, v] of this.hits) if (v.every((t) => t <= since)) this.hits.delete(k);
     }
-    return true;
   }
 }
 
@@ -154,7 +164,8 @@ type Prepared =
       allowHttp: boolean;
       headers: Record<string, string>;
       body: string;
-      host: string;
+      /** Rate-limit bucket of the destination (see the module comment). */
+      limitKey: string;
       subscriber: boolean;
     }
   | { kind: 'sms'; to: string; text: string; subscriber: boolean };
@@ -191,7 +202,7 @@ export class ChannelService {
   request: typeof safeRequest = safeRequest;
   /** Set by createContext: admin notices go out as mails. */
   notifications?: NotificationService;
-  private readonly hostLimiter = new MinuteLimiter();
+  private readonly destinationLimiter = new MinuteLimiter();
   private readonly globalLimiter = new MinuteLimiter();
 
   constructor(
@@ -377,7 +388,7 @@ export class ChannelService {
     const message = this.message(row, ctx);
     if (!message) return { kind: 'drop' };
     const { headers, body } = this.webhookRequest(wh.kind, message, ctx, secret, this.decryptHeaders(wh));
-    return { kind: 'webhook', url, allowHttp: wh.allow_http === 1, headers, body, host: wh.host, subscriber: false };
+    return { kind: 'webhook', url, allowHttp: wh.allow_http === 1, headers, body, limitKey: `webhook:${wh.id}`, subscriber: false };
   }
 
   private async prepare(row: ChannelOutboxRow): Promise<Prepared> {
@@ -416,7 +427,9 @@ export class ChannelService {
       const kind = sub.webhook_kind ?? 'generic';
       const secret = kind === 'generic' ? channelSigningSecret(key, sub.id, sub.token_salt) : null;
       const { headers, body } = this.webhookRequest(kind, message, ctx, secret, []);
-      return { kind: 'webhook', url: target, allowHttp: false, headers, body, host: new URL(target).hostname, subscriber: true };
+      // Discord, Slack and Teams limit per webhook; a generic URL shares its host's bucket.
+      const limitKey = kind === 'generic' ? `host:${new URL(target).hostname.toLowerCase()}` : `subscriber:${sub.id}`;
+      return { kind: 'webhook', url: target, allowHttp: false, headers, body, limitKey, subscriber: true };
     }
     return { kind: 'drop' };
   }
@@ -500,7 +513,7 @@ export class ChannelService {
       if (prepared.subscriber && !this.globalLimiter.take('subscriber-webhooks', settings.subscriberWebhooksPerMinute, nowMs)) {
         return this.postpone(row, result);
       }
-      if (!this.hostLimiter.take(prepared.host.toLowerCase(), settings.webhookHostPerMinute, nowMs)) return this.postpone(row, result);
+      if (!this.destinationLimiter.take(prepared.limitKey, settings.webhookHostPerMinute, nowMs)) return this.postpone(row, result);
     } else {
       if (prepared.subscriber && (await this.smsSentThisMonth()) >= settings.smsMonthlyBudget) {
         await this.finish(row, attempts, { ok: false, statusCode: null, message: 'Monthly SMS budget used up', retry: false });
@@ -508,7 +521,9 @@ export class ChannelService {
         result.failed++;
         return;
       }
-      if (!this.globalLimiter.take('sms', settings.smsPerMinute, nowMs)) return this.postpone(row, result);
+      // On-call SMS are never postponed; they still use up the minute's SMS for subscribers.
+      if (!prepared.subscriber) this.globalLimiter.record('sms', nowMs);
+      else if (!this.globalLimiter.take('sms', settings.smsPerMinute, nowMs)) return this.postpone(row, result);
     }
     const sent = await this.send(prepared);
     await this.finish(row, attempts, sent);

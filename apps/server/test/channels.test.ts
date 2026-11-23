@@ -378,6 +378,24 @@ describe('webhook subscriptions of visitors', () => {
     expect(await t.db.selectFrom('channel_subscribers').select('id').execute()).toHaveLength(1);
   });
 
+  it('are limited per webhook, and admin webhooks never wait behind them', async () => {
+    await admin.patch('/api/admin/channel-settings', { webhookSubscriptions: true, webhookHostPerMinute: 1 });
+    for (let i = 0; i < 3; i++) {
+      const { reference } = (await subscribe({ channel: 'webhook', webhookKind: 'discord', url: `https://discord.com/api/webhooks/9${i}/x` })).json().meta;
+      await confirm(reference, await codeOf(reference));
+    }
+    await deliver();
+    // Three Discord webhooks on one host: one confirmation each in the same minute.
+    expect(sent.length).toBe(3);
+    await admin.post('/api/admin/webhooks', { name: 'Ops', kind: 'discord', url: 'https://discord.com/api/webhooks/1/ops' });
+    sent = [];
+    await incident([serviceA]);
+    const r = await deliver();
+    // The subscribers used up their minute; the admin webhook on the same host goes out now.
+    expect(sent.map((s) => s.url)).toEqual(['https://discord.com/api/webhooks/1/ops']);
+    expect(r.postponed).toBe(3);
+  });
+
   it('share the per-client subscribe limit with the email subscriptions', async () => {
     await admin.patch('/api/admin/channel-settings', { webhookSubscriptions: true });
     const codes: number[] = [];

@@ -232,9 +232,13 @@ export const ChannelSettingsInput = z.object({
   smsMonthlyBudget: z.number().int().min(0).max(1_000_000).default(200),
   /** Subscriber webhook deliveries per minute (all subscribers together). */
   subscriberWebhooksPerMinute: z.number().int().min(1).max(10_000).default(60),
-  /** Webhook requests per destination host and minute (admin and subscriber webhooks). */
+  /**
+   * Webhook requests per destination and minute: per webhook for admin webhooks and for
+   * Discord, Slack and Teams subscribers (those services limit per webhook), per host for
+   * generic subscriber webhooks. The setting keeps its name for compatibility.
+   */
   webhookHostPerMinute: z.number().int().min(1).max(10_000).default(30),
-  /** SMS per minute (all SMS). */
+  /** Subscriber SMS per minute; on-call SMS count toward it but are never postponed. */
   smsPerMinute: z.number().int().min(1).max(10_000).default(30),
   /** Confirmation SMS per hour (public subscriptions together). */
   smsConfirmationsPerHour: z.number().int().min(1).max(10_000).default(20),

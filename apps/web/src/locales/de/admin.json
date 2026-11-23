@@ -1209,7 +1209,7 @@
       "smsConfirmationsPerHour": "Bestätigungs-SMS pro Stunde",
       "smsPerMinute": "SMS pro Minute",
       "subscriberWebhooksPerMinute": "Webhook-Nachrichten an Besucher pro Minute",
-      "webhookHostPerMinute": "Webhook-Anfragen pro Zielhost und Minute"
+      "webhookHostPerMinute": "Webhook-Anfragen pro Ziel und Minute"
     },
     "webhooks": {
       "title": "Team-Webhooks",

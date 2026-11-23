@@ -98,7 +98,9 @@ Unter **Abonnements von Besuchern und Limits**:
   Nummern abonnieren dürfen. Leer (Standard) heißt: keine SMS-Abonnements.
 - **SMS pro Monat**: Ist das Budget erreicht, pausieren SMS an Besucher und neue
   SMS-Abonnements bis zum nächsten Monat, und die Admins erhalten eine E-Mail.
-- Die Limits pro Minute und Stunde.
+- Die Limits pro Minute und Stunde. Mit den Standardwerten gehen Webhooks von
+  Besuchern mit 60 pro Minute und SMS mit 30 pro Minute hinaus; deine eigenen
+  Webhooks und Bereitschafts-SMS warten nie dahinter.
 
 Die Anmeldeseite (`/subscribe`) verlinkt dann auf **Webhook** und **SMS**. Ein
 Besucher gibt URL oder Nummer ein und erhält eine Nachricht mit einem

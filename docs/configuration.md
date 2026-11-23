@@ -359,7 +359,7 @@ management UI (`/admin`) never loads the tracker.
   `POST /api/public/channel-subscriptions/confirm` allows 10 requests per minute, the
   verify form `POST /subscription/verify` 10 per minute; the manage endpoints and forms
   (`/s/:id/:token`, `/subscription/channel`) 30 per minute per client IP. The delivery
-  limits (per destination host and minute, for visitor webhooks and SMS) are set under
+  limits (per destination and minute, for visitor webhooks and SMS) are set under
   **Visitor subscriptions and limits** in the admin UI.
 - Analytics proxy: `GET /pulse/p.js` 60 and `POST /pulse/api/send` 120 requests per
   minute per client IP (see [Analytics](#analytics)).

@@ -92,7 +92,9 @@ In **Visitor subscriptions and limits**:
   numbers may subscribe. Empty (the default) means no SMS subscriptions.
 - **SMS per month**: when the budget is reached, SMS to visitors and new SMS
   subscriptions pause until the next month, and the admins get an email.
-- The rate limits per minute and hour.
+- The rate limits per minute and hour. With the defaults, visitors' webhooks go
+  out at 60 per minute and SMS at 30 per minute; your own webhooks and on-call
+  SMS never wait behind them.
 
 The subscribe page (`/subscribe`) then links to **Webhook** and **SMS**. A
 visitor enters the URL or number and gets a message with a **6-digit code**;

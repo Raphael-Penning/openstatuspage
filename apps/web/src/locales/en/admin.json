@@ -1209,7 +1209,7 @@
       "smsConfirmationsPerHour": "Confirmation SMS per hour",
       "smsPerMinute": "SMS per minute",
       "subscriberWebhooksPerMinute": "Visitor webhook messages per minute",
-      "webhookHostPerMinute": "Webhook requests per destination host and minute"
+      "webhookHostPerMinute": "Webhook requests per destination and minute"
     },
     "webhooks": {
       "title": "Team webhooks",

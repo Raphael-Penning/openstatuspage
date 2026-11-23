@@ -322,11 +322,23 @@ Every message goes through the `channel_outbox` table and the worker task
   sending.
 - Retries after 1, 5, 15 and 60 minutes, at most 5 attempts. `4xx` answers other
   than 408, 425 and 429 are final.
-- Rate limits (**Administration → Webhooks & SMS**, section *Visitor subscriptions and limits*): webhook requests per destination host
-  and minute, subscriber webhook messages per minute, SMS per minute and
-  confirmation SMS per hour. A message over a limit waits a minute without
+- Rate limits (**Administration → Webhooks & SMS**, section *Visitor subscriptions and limits*): webhook requests per destination
+  and minute, subscriber webhook messages per minute, subscriber SMS per minute
+  and confirmation SMS per hour. A message over a limit waits a minute without
   losing an attempt. The limits are counted in memory by the instance that holds
   the task's lease (one at a time).
+  - The destination is the webhook itself for admin webhooks and for visitors'
+    Discord, Slack and Teams webhooks (these services limit per webhook), and the
+    host for visitors' generic webhooks. Admin webhooks never wait behind
+    visitors' messages to the same service.
+  - On-call SMS are never postponed; they count toward the SMS per minute, so
+    subscriber SMS slow down while they go out.
+  - Throughput: visitor webhooks go out at **subscriber webhook messages per
+    minute** (default 60) in total, at most **webhook requests per destination**
+    (default 30) to one webhook or generic host. With the defaults, an event for
+    600 webhook subscribers takes about 10 minutes, one for 300 SMS subscribers
+    about 10 minutes at 30 SMS per minute. Raise the limits if your provider
+    allows more.
 - An admin webhook is disabled after 10 failed requests in a row; the admins get
   an email (when a mail transport is configured), and the audit log records
   `webhook.auto_disable`.
