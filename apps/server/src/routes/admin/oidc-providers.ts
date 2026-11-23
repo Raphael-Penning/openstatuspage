@@ -7,6 +7,9 @@
  *   PATCH  /api/admin/oidc-providers/:id          partial update; `clientSecret` null removes the secret;
  *                                                 a new issuer needs a new secret and unlinks the users
  *   DELETE /api/admin/oidc-providers/:id          also removes the identities linked through it
+ *
+ * With LOCAL_LOGIN_ENABLED=false and no environment provider, the last enabled
+ * provider can be neither disabled nor deleted (409).
  *   POST   /api/admin/oidc-providers/test         discovery test of an issuer URL (not stored)
  *   POST   /api/admin/oidc-providers/:id/test     discovery test of a provider
  *
@@ -29,6 +32,7 @@ import { newId } from '../../lib/ids.js';
 import { collection, created, document, metaDocument, noContent, resource, selfLink } from '../../lib/jsonapi.js';
 import { nowIso } from '../../lib/time.js';
 import { useJsonApi } from '../../plugins/jsonapi.js';
+import { envProvider } from '../../services/oidc.js';
 import { loadAdminOidcProviders, MAX_OIDC_PROVIDERS, testOidcDiscovery } from '../../services/oidc-providers.js';
 import { admin, auditRequest } from './util.js';
 
@@ -117,6 +121,26 @@ function registerRoutes(app: FastifyInstance): void {
       throw conflict('This provider is configured with the OIDC_* environment variables and cannot be changed here');
     }
   };
+  /**
+   * With LOCAL_LOGIN_ENABLED=false and no environment provider, the stored providers
+   * are the only way into the management UI: the last enabled one may not be
+   * disabled or deleted (nobody could sign in afterwards, not even to undo it).
+   */
+  const assertNotLastLogin = async (id: string) => {
+    if (config.LOCAL_LOGIN_ENABLED || envProvider(config)) return;
+    const other = await db
+      .selectFrom('oidc_providers')
+      .select('id')
+      .where('enabled', '=', 1)
+      .where('id', '!=', id)
+      .limit(1)
+      .executeTakeFirst();
+    if (!other) {
+      throw conflict(
+        'This is the last enabled SSO provider and the password login is off (LOCAL_LOGIN_ENABLED=false): nobody could sign in any more',
+      );
+    }
+  };
 
   app.get('/api/admin/oidc-providers', admin, async (req) =>
     collection(req, (await loadAdminOidcProviders(db, config)).map(oidcProviderResource)),
@@ -192,6 +216,7 @@ function registerRoutes(app: FastifyInstance): void {
     // Another issuer is another identity provider: the stored secret must not reach its
     // token endpoint, and the sub values of the old one mean nothing there (a sub is only
     // unique per issuer), so its links to user accounts are removed.
+    if (current.enabled && !input.enabled) await assertNotLastLogin(id);
     const issuerChanged = input.issuerUrl !== current.issuerUrl;
     if (issuerChanged) {
       assertIssuerAllowed(config, input.issuerUrl);
@@ -238,6 +263,7 @@ function registerRoutes(app: FastifyInstance): void {
     const id = idOf(req);
     assertWritable(id);
     const provider = await get(id);
+    if (provider.enabled) await assertNotLastLogin(id);
     await db.transaction().execute(async (trx) => {
       await trx.deleteFrom('user_oidc_identities').where('provider_id', '=', id).execute();
       await trx.deleteFrom('oidc_providers').where('id', '=', id).execute();

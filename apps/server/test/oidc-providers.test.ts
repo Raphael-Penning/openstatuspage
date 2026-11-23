@@ -9,6 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecretBox } from '../src/lib/crypto.js';
 import { OIDC_STATE_COOKIE, OidcClient, type Claims } from '../src/services/oidc.js';
+import { createSession } from '../src/services/sessions.js';
 import { sameIssuer, testOidcDiscovery } from '../src/services/oidc-providers.js';
 import {
   adminClient,
@@ -373,6 +374,51 @@ describe('production', () => {
       const test = await admin.post('/api/admin/oidc-providers/test', doc('oidc-discovery-tests', { issuerUrl: issuer }));
       expect(test.statusCode).toBe(400);
       expect(test.body).toContain('must use https');
+    } finally {
+      await t.close();
+    }
+  });
+});
+
+describe('without password login', () => {
+  it('keeps the last enabled provider so somebody can still sign in', async () => {
+    t = await createTestApp({ LOCAL_LOGIN_ENABLED: 'false' });
+    try {
+      const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin', password: null });
+      const { token } = await createSession(t.app.ctx, adminId);
+      admin = client(t.app, { cookie: `osp_session=${token}` });
+      const a = await createProvider({ name: 'A' });
+      const b = await createProvider({ name: 'B' });
+      const disabled = await createProvider({ name: 'Disabled', enabled: false });
+      // A disabled provider does not count, and can always go.
+      expect((await admin.delete(`/api/admin/oidc-providers/${disabled.id}`)).statusCode).toBe(204);
+
+      expect((await admin.patch(`/api/admin/oidc-providers/${a.id}`, { enabled: false })).statusCode).toBe(200);
+      const last = await admin.patch(`/api/admin/oidc-providers/${b.id}`, { enabled: false });
+      expect(last.statusCode).toBe(409);
+      expect(last.body).toContain('LOCAL_LOGIN_ENABLED');
+      expect((await admin.delete(`/api/admin/oidc-providers/${b.id}`)).statusCode).toBe(409);
+      // Other changes of the last provider still work.
+      expect((await admin.patch(`/api/admin/oidc-providers/${b.id}`, { name: 'B2' })).statusCode).toBe(200);
+
+      // With a second enabled provider the first may go again.
+      expect((await admin.patch(`/api/admin/oidc-providers/${a.id}`, { enabled: true })).statusCode).toBe(200);
+      expect((await admin.delete(`/api/admin/oidc-providers/${b.id}`)).statusCode).toBe(204);
+      const providers = await t.db.selectFrom('oidc_providers').select(['name', 'enabled']).execute();
+      expect(providers).toEqual([{ name: 'A', enabled: 1 }]);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('does not guard the stored providers while the environment provider exists', async () => {
+    t = await createTestApp({ ...ENV, LOCAL_LOGIN_ENABLED: 'false' });
+    try {
+      const adminId = await createUser(t.db, { email: 'admin@example.com', role: 'admin', password: null });
+      const { token } = await createSession(t.app.ctx, adminId);
+      admin = client(t.app, { cookie: `osp_session=${token}` });
+      const a = await createProvider();
+      expect((await admin.delete(`/api/admin/oidc-providers/${a.id}`)).statusCode).toBe(204);
     } finally {
       await t.close();
     }
