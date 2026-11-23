@@ -17,7 +17,7 @@ import {
   type UploadExtension,
 } from '@openstatuspage/shared';
 import type { DB } from '../db/index.js';
-import { badRequest, HttpError } from '../lib/errors.js';
+import { badRequest, HttpError, isUniqueViolation } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 
@@ -88,7 +88,14 @@ export async function storeUpload(db: DB, bytes: Buffer, filename: string | null
     filename,
     created_at: nowIso(),
   };
-  await db.insertInto('uploads').values({ ...row, data: bytes, created_by: userId }).execute();
+  try {
+    await db.insertInto('uploads').values({ ...row, data: bytes, created_by: userId }).execute();
+  } catch (err) {
+    // The same bytes uploaded at the same time: the other request stored them.
+    if (!isUniqueViolation(err)) throw err;
+    const stored = await db.selectFrom('uploads').select(ADMIN_COLUMNS).where('hash', '=', hash).executeTakeFirstOrThrow();
+    return { upload: toAdminUpload(stored), created: false };
+  }
   return { upload: toAdminUpload(row), created: true };
 }
 
