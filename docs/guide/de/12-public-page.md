@@ -177,7 +177,8 @@ erzeugt:
   Programme. **`/feed.rss`** und **`/feed.atom`** enthalten Vorfälle und
   Wartungen.
 - **`/api/openapi.json`** ist die [OpenAPI-3.1](https://spec.openapis.org/oas/latest.html)-Beschreibung
-  des öffentlichen Teils der API. Die Fußzeile zeigt einen Link **API** dorthin.
+  des öffentlichen Teils der API. Die Fußzeile zeigt einen Link **API** dorthin
+  (nicht auf privaten Seiten).
   Unter *Copyright und Hinweis* in den Einstellungen blendet *API-Beschreibung
   veröffentlichen* den Link und die Datei aus: Besucher bekommen dann `404`, während
   angemeldete Nutzer die ganze API weiterhin unter **API** in der Verwaltung sehen.

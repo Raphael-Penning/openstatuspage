@@ -166,9 +166,10 @@ Language models and agents find the page through these files, all generated:
   maintenance.
 - **`/api/openapi.json`** is the [OpenAPI 3.1](https://spec.openapis.org/oas/latest.html)
   description of the public part of the API. The footer shows an **API** link to
-  it. Under *Copyright and attribution* in the settings, *Publish the API
-  description* hides the link and the file: visitors then get `404`, while
-  signed-in users still see the whole API under **API** in the management UI.
+  it (not on private pages). Under *Copyright and attribution* in the settings,
+  *Publish the API description* hides the link and the file: visitors then get
+  `404`, while signed-in users still see the whole API under **API** in the
+  management UI.
 
 The text of these files comes from your settings and your public incidents, and
 it is escaped so that an incident title cannot inject headings or links into
