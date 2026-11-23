@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import { SUBSCRIPTION_LOCALES, type SubscriptionLocale } from './subscriptions.js';
+import type { ChannelOptions } from './channel-schemas.js';
 import {
   AGGREGATION_MODES,
   CHECK_STATES,
@@ -1245,6 +1246,8 @@ export interface PublicSummary {
   upcomingMaintenances: PublicMaintenance[];
   /** Email subscriptions are enabled in the settings AND a mail transport is configured. */
   emailSubscriptions: boolean;
+  /** Webhook and SMS subscriptions offered to visitors. */
+  channelSubscriptions: ChannelOptions;
   generatedAt: string;
 }
 
@@ -1411,3 +1414,5 @@ export interface ApiError {
   issues?: unknown;
 }
 
+
+export * from './channel-schemas.js';
