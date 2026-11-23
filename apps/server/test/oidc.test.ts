@@ -199,6 +199,24 @@ describe('resolveOidcUser', () => {
     expect(other).toEqual({ ok: false, error: 'account_conflict' });
   });
 
+  it('links by e-mail only for providers that allow it', async () => {
+    const adminId = await createUser(t.db, { email: 'boss@example.com', role: 'admin' });
+    const provider: OidcProvider = { ...config, id: 'p-1', source: 'database', linkByEmail: false, roleMappings: [], defaultRole: 'editor' };
+    const claims = { sub: 'abc', email: 'Boss@example.com', email_verified: true };
+    expect(await resolveOidcUser(t.db, provider, claims)).toEqual({ ok: false, error: 'account_not_linked' });
+    // Auto creation never reuses the address either.
+    expect(await resolveOidcUser(t.db, { ...provider, autoCreateUsers: true }, claims)).toEqual({
+      ok: false,
+      error: 'account_not_linked',
+    });
+    expect(await identities()).toEqual([]);
+
+    const linked = await resolveOidcUser(t.db, { ...provider, linkByEmail: true }, claims);
+    expect(linked).toMatchObject({ ok: true, linked: true, user: { id: adminId, role: 'admin' } });
+    // Once linked by sub, the option no longer matters.
+    expect(await resolveOidcUser(t.db, provider, claims)).toMatchObject({ ok: true, linked: false, user: { id: adminId } });
+  });
+
   it('creates users for a verified e-mail only', async () => {
     const claims = { sub: 'squatter', email: 'newhire@example.com', groups: ['statuspage-editors'] };
     for (const email_verified of [undefined, false, 'false']) {

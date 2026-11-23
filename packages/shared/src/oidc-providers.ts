@@ -46,6 +46,7 @@ export const OIDC_LOGIN_ERRORS = [
   'missing_subject',
   'email_not_verified',
   'account_conflict',
+  'account_not_linked',
 ] as const;
 
 /** Lower-case DNS name with at least two labels, e.g. `example.com`. */
@@ -101,6 +102,13 @@ export const OidcProviderInput = z.object({
     .refine((value) => value.split(/\s+/).includes('openid'), 'The scopes must contain openid'),
   /** Create unknown users on their first login (only with a verified e-mail address). */
   autoCreateUsers: z.boolean().default(false),
+  /**
+   * Link a local account that is not linked to this provider yet to the identity
+   * with the same verified e-mail address. Off by default: whoever controls the
+   * address claims of this IdP could otherwise sign in to any existing account,
+   * admins included.
+   */
+  linkByEmail: z.boolean().default(false),
   /** Only e-mail addresses (verified) of these domains may sign in; empty: any. */
   allowedDomains: z
     .array(z.string().trim().toLowerCase().regex(DOMAIN_PATTERN, 'Not a domain name'))
@@ -132,6 +140,7 @@ export interface AdminOidcProvider {
   hasClientSecret: boolean;
   scopes: string;
   autoCreateUsers: boolean;
+  linkByEmail: boolean;
   allowedDomains: string[];
   roleClaim: string;
   roleMappings: OidcRoleMapping[];

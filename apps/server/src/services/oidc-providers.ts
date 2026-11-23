@@ -62,6 +62,7 @@ export function providerFromRow(row: OidcProviderRow, secrets?: SecretBox): Oidc
     clientSecret: secrets && row.client_secret ? secrets.decrypt(row.client_secret) : null,
     scopes: row.scopes,
     autoCreateUsers: row.auto_create_users === 1,
+    linkByEmail: row.link_by_email === 1,
     // Unreadable domains must not widen access: an impossible domain lets nobody in.
     allowedDomains: parseJson(Domains, row.allowed_domains) ?? ['invalid.invalid'],
     roleClaim: row.role_claim,
@@ -91,6 +92,7 @@ export function toAdminOidcProvider(
     hasClientSecret: extra.hasClientSecret,
     scopes: provider.scopes,
     autoCreateUsers: provider.autoCreateUsers,
+    linkByEmail: provider.linkByEmail,
     allowedDomains: provider.allowedDomains,
     roleClaim: provider.roleClaim,
     roleMappings: provider.roleMappings,

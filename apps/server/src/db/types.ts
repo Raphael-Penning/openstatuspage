@@ -60,6 +60,8 @@ export interface OidcProvidersTable {
   client_secret: string | null;
   scopes: string;
   auto_create_users: Bool;
+  /** Link existing local accounts by verified e-mail address. */
+  link_by_email: Bool;
   /** JSON array of lower-case domains. */
   allowed_domains: string;
   role_claim: string;

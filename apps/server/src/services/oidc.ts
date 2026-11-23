@@ -57,6 +57,8 @@ export interface OidcProvider {
   clientSecret: string | null;
   scopes: string;
   autoCreateUsers: boolean;
+  /** Link existing local accounts by verified e-mail (otherwise only by `sub`). */
+  linkByEmail: boolean;
   allowedDomains: string[];
   roleClaim: string;
   roleMappings: OidcRoleMapping[];
@@ -86,7 +88,7 @@ export function oidcCallbackPath(providerId: string): string {
  * The provider of the OIDC_* environment variables, or null. It keeps the
  * behaviour of 0.3.x: OIDC_ADMIN_GROUP / OIDC_EDITOR_GROUP become role
  * mappings; with an editor group everybody else is denied, without one
- * everybody else is an editor.
+ * everybody else is an editor; local accounts are linked by verified e-mail.
  */
 export function envProvider(
   config: Pick<
@@ -118,6 +120,8 @@ export function envProvider(
     clientSecret: config.OIDC_CLIENT_SECRET || null,
     scopes: config.OIDC_SCOPES,
     autoCreateUsers: config.OIDC_AUTO_CREATE_USERS,
+    // 0.3.x linked by verified e-mail; the environment provider keeps doing so.
+    linkByEmail: true,
     allowedDomains: [],
     roleClaim: config.OIDC_GROUPS_CLAIM,
     roleMappings,
@@ -184,6 +188,7 @@ export type OidcErrorCode =
   | 'missing_email'
   | 'email_not_verified'
   | 'account_conflict'
+  | 'account_not_linked'
   | 'missing_subject';
 
 export type OidcUserResult =
@@ -208,9 +213,12 @@ async function revokeAccess(db: DB, userId: string): Promise<void> {
 /**
  * Finds (or creates) the local user for a verified ID token of `provider`.
  *
- * - Linking order: the identity (`sub` of this provider), then a verified
- *   e-mail. A user is linked to at most one identity per provider, but may be
- *   linked to several providers.
+ * - Linking order: the identity (`sub` of this provider), then, only with
+ *   `linkByEmail`, a verified e-mail. A user is linked to at most one identity
+ *   per provider, but may be linked to several providers. Without
+ *   `linkByEmail` an existing account with the address is never taken over
+ *   (`account_not_linked`): its role, admin included, would otherwise be
+ *   granted to whoever this IdP asserts the address for.
  * - Users are only created for a verified e-mail and with auto creation on.
  * - With allowed domains, only verified addresses of those domains get in.
  * - A denied role ends the sessions and revokes the API tokens of the linked
@@ -221,7 +229,7 @@ export async function resolveOidcUser(
   db: DB,
   provider: Pick<
     OidcProvider,
-    'id' | 'autoCreateUsers' | 'allowedDomains' | 'roleClaim' | 'roleMappings' | 'defaultRole' | 'roleSync'
+    'id' | 'autoCreateUsers' | 'linkByEmail' | 'allowedDomains' | 'roleClaim' | 'roleMappings' | 'defaultRole' | 'roleSync'
   >,
   claims: Claims,
   log?: OidcLogger,
@@ -271,6 +279,7 @@ export async function resolveOidcUser(
         .where('provider_id', '=', provider.id)
         .executeTakeFirst();
       if (other) return { ok: false, error: 'account_conflict' };
+      if (!provider.linkByEmail) return { ok: false, error: 'account_not_linked' };
       if (!verified) return { ok: false, error: 'email_not_verified' };
       await db
         .insertInto('user_oidc_identities')

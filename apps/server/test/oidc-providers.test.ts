@@ -138,6 +138,7 @@ describe('admin API', () => {
       enabled: true,
       scopes: 'openid email profile',
       autoCreateUsers: false,
+      linkByEmail: false,
       allowedDomains: ['example.com'],
       roleClaim: 'groups',
       roleMappings: [{ value: 'admins', role: 'admin' }],
@@ -484,8 +485,8 @@ describe('login', () => {
   });
 
   it('links one user to several providers by sub per provider', async () => {
-    const a = await createProvider({ name: 'A' });
-    const b = await createProvider({ name: 'B' });
+    const a = await createProvider({ name: 'A', linkByEmail: true });
+    const b = await createProvider({ name: 'B', linkByEmail: true });
     const janeId = await createUser(t.db, { email: 'jane@example.com', role: 'editor', password: null });
 
     claims({ sub: 'jane-at-a', email: 'jane@example.com', email_verified: true });
@@ -513,6 +514,26 @@ describe('login', () => {
     ]);
     const users = data<Any[]>(await admin.get('/api/admin/users'));
     expect(users.find((u) => u.id === janeId)).toMatchObject({ oidcLinked: true });
+  });
+
+  it('never takes over an existing account by e-mail unless the provider links by e-mail', async () => {
+    // An editor-level IdP (no mappings, default editor) asserting the admin's verified address.
+    const provider = await createProvider({ autoCreateUsers: true });
+    const as = () => {
+      vi.restoreAllMocks();
+      claims({ sub: 'mallory', email: 'admin@example.com', email_verified: true });
+      return callback(provider.id);
+    };
+    expect((await as()).headers.location).toBe('/admin/login?error=account_not_linked');
+    expect(await t.db.selectFrom('user_oidc_identities').select('subject').execute()).toEqual([]);
+    expect(await t.db.selectFrom('users').select('email').execute()).toEqual([{ email: 'admin@example.com' }]);
+
+    // Opted in: linked, and the account keeps its role (no mappings).
+    expect((await admin.patch(`/api/admin/oidc-providers/${provider.id}`, { linkByEmail: true })).statusCode).toBe(200);
+    const linked = await as();
+    expect(linked.headers.location).toBe('/admin');
+    const audit = await auditOf();
+    expect(JSON.parse(audit.at(-1)!.details!)).toMatchObject({ fields: ['linkByEmail'], linkByEmail: true });
   });
 
   it('maps roles from nested claims and syncs them on every login', async () => {

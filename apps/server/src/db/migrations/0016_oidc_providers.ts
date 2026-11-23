@@ -50,6 +50,8 @@ export async function up(db: Kysely<any>): Promise<void> {
     .addColumn('client_secret', 'text')
     .addColumn('scopes', 'text', (c) => c.notNull())
     .addColumn('auto_create_users', 'integer', (c) => c.notNull().defaultTo(0))
+    // Link existing local accounts by verified e-mail (off: only by sub).
+    .addColumn('link_by_email', 'integer', (c) => c.notNull().defaultTo(0))
     .addColumn('allowed_domains', 'text', (c) => c.notNull().defaultTo('[]'))
     .addColumn('role_claim', 'text', (c) => c.notNull())
     .addColumn('role_mappings', 'text', (c) => c.notNull().defaultTo('[]'))

@@ -49,6 +49,7 @@ const base = {
   hasClientSecret: true,
   scopes: 'openid email profile',
   autoCreateUsers: false,
+  linkByEmail: false,
   allowedDomains: [] as string[],
   roleClaim: 'groups',
   roleSync: 'login' as const,

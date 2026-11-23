@@ -48,6 +48,7 @@ beforeAll(async () => {
       client_secret: new SecretBox(SECRET_KEY).encrypt('client-secret'),
       scopes: 'openid email profile',
       auto_create_users: 0,
+      link_by_email: 0,
       allowed_domains: '[]',
       role_claim: 'groups',
       role_mappings: '[]',

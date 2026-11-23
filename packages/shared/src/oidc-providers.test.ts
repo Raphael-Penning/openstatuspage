@@ -11,6 +11,7 @@ describe('OidcProviderInput', () => {
       enabled: true,
       scopes: 'openid email profile',
       autoCreateUsers: false,
+      linkByEmail: false,
       allowedDomains: [],
       roleClaim: 'groups',
       roleMappings: [],
