@@ -77,6 +77,11 @@ as an argument.
 
 See [oidc.md](oidc.md) for IdP setup and the role mapping rules.
 
+The `OIDC_*` variables configure one provider. Further providers (any number)
+are managed in the management UI under *Administration → Single sign-on*; their
+client secrets are stored encrypted with `SECRET_KEY`. The provider of the
+environment is listed there read-only and keeps working unchanged.
+
 ## Deployment role
 
 One build can run as different kinds of instances. `APP_ROLE` selects what an
