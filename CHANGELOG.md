@@ -8,12 +8,25 @@ breaking changes.
 
 ### Added
 
+- Starter template for your own theme in `contrib/themes/` (`starter.json`,
+  `starter.css`): every token is set, also the optional ones, and it passes
+  WCAG 2.2 AA in light and dark mode.
+- Guide chapter *Creating a theme* (English and German): from the starter
+  template through colours, contrast, preview, installation and troubleshooting;
+  [Themes](docs/themes.md) has a quickstart that links to it.
+- **Administration → Appearance** links to the new guide chapter
+  *Creating a theme* in the help area.
 - Visitors find the API description: the public footer links the
   machine-readable OpenAPI description (`/api/openapi.json`) as "API", also in
   `llms.txt` and in the page head (`rel="service-desc"`). The new setting
   **Publish the API description** (`publicApiDescription`, default on) turns it
   off; then the endpoint answers `404` to anonymous clients and on public
   instances, while signed-in users keep the whole API.
+
+### Fixed
+
+- The topic list of the help area no longer adds a second unnamed
+  complementary landmark next to the navigation (axe `landmark-unique`).
 
 ## [0.4.0] - 2026-11-23
 

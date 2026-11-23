@@ -1568,6 +1568,7 @@
     "title": "Darstellung",
     "description": "Themes der öffentlichen Statusseite: Farben, Ecken, Schriften und Abstände im hellen und dunklen Modus. Eingebaute Themes und der Themes-Ordner des Servers sind schreibgeschützt; hochgeladene Themes kannst du bearbeiten.",
     "import": "Theme importieren",
+    "createGuide": "Wie erstelle ich ein Theme?",
     "accentOverride": "Die Akzentfarbe {{color}} aus den Einstellungen ersetzt den Akzent jedes Themes. Entferne sie in den Einstellungen, um den Akzent des Themes zu verwenden.",
     "empty": "Keine Themes.",
     "fields": {

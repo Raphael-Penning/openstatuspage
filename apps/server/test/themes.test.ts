@@ -78,14 +78,33 @@ describe('themes folder', () => {
     expect(skipped).toHaveLength(6);
   });
 
-  it('accepts the example theme of contrib/themes (valid, passes AA)', async () => {
+  it('accepts the example themes of contrib/themes (valid, passes AA)', async () => {
     const { themeContrastFailures } = await import('@openstatuspage/shared');
     const logger = log();
     const themes = loadThemeFolder(new URL('../../../contrib/themes', import.meta.url).pathname, logger);
     expect(logger.warn).not.toHaveBeenCalled();
-    const ocean = themes.get('ocean')!;
-    expect(ocean.css).toContain('var(--accent)');
-    expect(themeContrastFailures(ocean.theme)).toEqual([]);
+    expect([...themes.keys()].sort()).toEqual(['ocean', 'starter']);
+    for (const id of ['ocean', 'starter']) {
+      const theme = themes.get(id)!;
+      expect(theme.css, id).toContain('var(--accent)');
+      expect(themeContrastFailures(theme.theme), id).toEqual([]);
+    }
+  });
+
+  it('the starter template sets every token, also the optional ones', async () => {
+    const { THEME_STATUSES } = await import('@openstatuspage/shared');
+    const themes = loadThemeFolder(new URL('../../../contrib/themes', import.meta.url).pathname, log());
+    const starter = themes.get('starter')!.theme;
+    expect(starter).toMatchObject({ author: expect.any(String), description: expect.any(String), radius: expect.any(String), density: expect.any(String) });
+    expect(Object.keys(starter.fonts ?? {}).sort()).toEqual(['mono', 'sans']);
+    for (const mode of ['light', 'dark'] as const) {
+      const tokens = starter[mode];
+      expect(Object.keys(tokens).sort(), mode).toEqual(
+        ['accent', 'background', 'border', 'borderStrong', 'focus', 'muted', 'status', 'statusText', 'surface', 'surfaceAlt', 'text'].sort(),
+      );
+      expect(Object.keys(tokens.status).sort(), mode).toEqual([...THEME_STATUSES, 'noData'].sort());
+      expect(Object.keys(tokens.statusText ?? {}).sort(), mode).toEqual([...THEME_STATUSES].sort());
+    }
   });
 
   it('is optional', () => {

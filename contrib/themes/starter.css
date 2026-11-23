@@ -1,0 +1,26 @@
+/*
+ * Extra CSS of the starter theme (docs/themes.md#extra-css). Optional: delete
+ * this file if the tokens in starter.json are enough. Rename it together with
+ * the JSON file: both are named after the theme id (my-theme.json,
+ * my-theme.css).
+ *
+ * Rules of thumb:
+ * - Use the theme's custom properties (var(--accent), var(--surface),
+ *   var(--fg), var(--muted), var(--border)) instead of fixed colours, so the
+ *   rules work in light and dark mode.
+ * - url() only to /uploads/... (images uploaded in the admin) or to a
+ *   relative path. No @import, no other hosts, no data: URLs.
+ * - No less-than sign anywhere, also not in comments.
+ * - Check the result with "Preview the public page" in the admin: the
+ *   contrast check only covers the tokens, not this file.
+ */
+
+/* A line in the accent colour under the page header. */
+header {
+  border-bottom: 3px solid var(--accent);
+}
+
+/* Slightly wider letter spacing for the group titles. */
+.osp-group > details > summary {
+  letter-spacing: 0.01em;
+}

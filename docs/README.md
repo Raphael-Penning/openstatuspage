@@ -21,6 +21,7 @@ It is also shown in the management UI under **Help**, in English or German.
 | Search engines, AI agents and the public page | [en](guide/en/12-public-page.md) | [de](guide/de/12-public-page.md) |
 | Installation without containers | [en](guide/en/13-installation-without-containers.md) | [de](guide/de/13-installation-without-containers.md) |
 | Webhooks and SMS | [en](guide/en/14-webhooks-and-sms.md) | [de](guide/de/14-webhooks-and-sms.md) |
+| Creating a theme | [en](guide/en/15-creating-a-theme.md) | [de](guide/de/15-creating-a-theme.md) |
 
 ## Reference
 

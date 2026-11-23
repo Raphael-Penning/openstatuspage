@@ -148,7 +148,7 @@ function HelpTopic({ topics, index, lang }: { topics: GuideTopic[]; index: numbe
 
   return (
     <div className="lg:grid lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-10">
-      <aside className="hidden lg:block">
+      <div className="hidden lg:block">
         <nav aria-label={t('topics')} className="sticky top-8 flex max-h-[calc(100dvh-4rem)] flex-col gap-3 overflow-y-auto pb-4">
           <Link to={HELP_BASE_PATH} className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
             <ChevronLeft aria-hidden className="size-4" />
@@ -189,7 +189,7 @@ function HelpTopic({ topics, index, lang }: { topics: GuideTopic[]; index: numbe
             ))}
           </ul>
         </nav>
-      </aside>
+      </div>
 
       <article className="min-w-0">
         <Link to={HELP_BASE_PATH} className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg lg:hidden">

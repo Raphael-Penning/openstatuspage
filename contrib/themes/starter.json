@@ -1,0 +1,65 @@
+{
+  "id": "starter",
+  "name": "Starter",
+  "version": 1,
+  "author": "Your name or organisation",
+  "description": "Starter template: copy it, change the id and the file names to your own, then change the colours. Every token is set, including the optional ones.",
+  "light": {
+    "background": "#f7f7f8",
+    "surface": "#ffffff",
+    "surfaceAlt": "#efeff2",
+    "border": "#dcdce2",
+    "borderStrong": "#71717a",
+    "text": "#18181b",
+    "muted": "#52525b",
+    "accent": "#a21caf",
+    "focus": "#86198f",
+    "status": {
+      "operational": "#15803d",
+      "maintenance": "#2563eb",
+      "degraded": "#a16207",
+      "partialOutage": "#c2410c",
+      "majorOutage": "#dc2626",
+      "noData": "#71717a"
+    },
+    "statusText": {
+      "operational": "#166534",
+      "maintenance": "#1d4ed8",
+      "degraded": "#854d0e",
+      "partialOutage": "#9a3412",
+      "majorOutage": "#b91c1c"
+    }
+  },
+  "dark": {
+    "background": "#121214",
+    "surface": "#1b1b1f",
+    "surfaceAlt": "#26262b",
+    "border": "#33333a",
+    "borderStrong": "#8b8b94",
+    "text": "#f4f4f5",
+    "muted": "#b4b4bc",
+    "accent": "#e879f9",
+    "focus": "#f0abfc",
+    "status": {
+      "operational": "#4ade80",
+      "maintenance": "#60a5fa",
+      "degraded": "#facc15",
+      "partialOutage": "#fb923c",
+      "majorOutage": "#f87171",
+      "noData": "#8b8b94"
+    },
+    "statusText": {
+      "operational": "#86efac",
+      "maintenance": "#93c5fd",
+      "degraded": "#fde047",
+      "partialOutage": "#fdba74",
+      "majorOutage": "#fca5a5"
+    }
+  },
+  "radius": "0.5rem",
+  "fonts": {
+    "sans": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+  },
+  "density": "comfortable"
+}

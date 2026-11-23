@@ -20,18 +20,22 @@ import {
   type ThemeMode,
   type ThemeModeTokens,
 } from '@openstatuspage/shared';
-import { Check, Copy, Download, ExternalLink, Eye, Pencil, Plus, Trash2, TriangleAlert, Upload } from 'lucide-react';
+import { Check, CircleHelp, Copy, Download, ExternalLink, Eye, Pencil, Plus, Trash2, TriangleAlert, Upload } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { HELP_BASE_PATH } from '../../help/markdown';
 import { ApiError, api } from '../../lib/api';
 import { ConfirmDialog, Dialog, useConfirm } from '../components/Dialog';
 import { inputClass, SelectField, TextAreaField, TextField } from '../components/fields';
-import { Badge, Button, Card, EmptyState, IconButton, PageHeader, QueryState, Table, td, th, tr } from '../components/ui';
+import { Badge, Button, Card, EmptyState, IconButton, LinkButton, PageHeader, QueryState, Table, td, th, tr } from '../components/ui';
 import { THEME_DOCUMENT } from '../lib/documents';
 import { apiErrorMessage } from '../lib/errors';
 import { useAdminMutation, useSettings, useThemes } from '../lib/queries';
 
 const path = (id: string) => `/api/admin/themes/${encodeURIComponent(id)}`;
+
+/** Guide chapter docs/guide/<lang>/15-creating-a-theme.md in the help area. */
+export const THEME_GUIDE_PATH = `${HELP_BASE_PATH}/creating-a-theme`;
 
 /** The failed checks of a 409 contrast_failures answer. */
 function contrastFailuresOf(error: unknown): ContrastCheck[] | null {
@@ -125,9 +129,14 @@ export default function AppearancePage() {
         title={t('appearance.title')}
         description={t('appearance.description')}
         actions={
-          <Button variant="primary" icon={Upload} onClick={() => setImporting(true)}>
-            {t('appearance.import')}
-          </Button>
+          <>
+            <LinkButton to={THEME_GUIDE_PATH} icon={CircleHelp}>
+              {t('appearance.createGuide')}
+            </LinkButton>
+            <Button variant="primary" icon={Upload} onClick={() => setImporting(true)}>
+              {t('appearance.import')}
+            </Button>
+          </>
         }
       />
       {accentOverride && (

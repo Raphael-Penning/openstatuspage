@@ -5,6 +5,30 @@ mode, corner radius, font stacks and spacing, plus optional extra CSS. Themes
 are chosen in the management UI under **Administration → Appearance**. The
 management UI itself keeps its own look (only the accent follows the theme).
 
+## Quickstart
+
+1. Copy [contrib/themes/starter.json](../contrib/themes/starter.json) (and
+   optionally `starter.css`), or open **Administration → Appearance** and click
+   the copy icon (**Customize a copy of …**) on a built-in or folder theme you
+   like. For an uploaded theme, download its JSON, change the `id` and import it.
+2. Change the `id` and `name`. The `id` (lower-case letters, digits, hyphens)
+   cannot be changed later.
+3. Set the colours of `light` and `dark`. Keep the same tokens in both.
+4. Check the contrast in the editor (WCAG 2.2 AA: 3:1 for controls and status
+   fills, 4.5:1 for text and status text) and fix every failing pair.
+5. Look at the result: **Preview** in the list, and **Preview the public page**
+   (`/?theme=<id>`, visible to signed-in admins only).
+6. Install it: **Import theme** in the admin, or put `<id>.json` (and
+   `<id>.css`) into the themes folder and restart.
+7. Click **Activate**, and download the theme as JSON to keep a copy.
+
+The step-by-step guide, with troubleshooting, is
+[Creating a theme](guide/en/15-creating-a-theme.md) (German:
+[Ein Theme erstellen](guide/de/15-creating-a-theme.md)). The starter template is
+described in [contrib/themes](../contrib/themes/README.md).
+
+Contents:
+
 - [Where themes come from](#where-themes-come-from)
 - [Theme file format](#theme-file-format)
 - [Token reference](#token-reference)
@@ -22,7 +46,7 @@ management UI itself keeps its own look (only the accent follows the theme).
 | --- | --- | --- | --- |
 | Built-in | Built-in | no (copy it) | `default` (the original look), `slate`, `forest`, `high-contrast`; all pass WCAG 2.2 AA in light and dark ([packages/shared/src/theme-builtins.ts](../packages/shared/src/theme-builtins.ts)). |
 | Themes folder | Themes folder | no (copy it) | `THEMES_DIR`, read once on start. `<id>.json` and an optional `<id>.css` with the same name. Invalid files are logged (`Theme file skipped: ...`) and skipped. |
-| Upload | Uploaded | yes | **Import theme** in the admin (a `.json` and optionally a `.css`), or **Customize a copy** of any theme. Stored in the database (table `themes`, migration 0017). |
+| Upload | Uploaded | yes | **Import theme** in the admin (a `.json` and optionally a `.css`), or **Customize a copy** of a built-in or folder theme. Stored in the database (table `themes`, migration 0017). |
 
 Ids are unique across the sources. When ids collide, a built-in theme wins over
 a folder theme (the folder file is skipped and logged), and a folder theme wins
@@ -137,7 +161,7 @@ buttons. The checker is the same in the browser and on the server
 `checkThemeContrast`).
 
 - The admin list shows **Passes AA** or the number of problems; the editor shows
-  every failing pair live (`Light: muted on surface 2.4:1 (needs 4.5:1)`).
+  every failing pair live (`Light: muted on surface 2.40:1 (needs 4.5:1)`).
 - A theme that fails is **not activated** by default: the API answers 409
   `contrast_failures` with the failed checks. The admin can confirm explicitly
   (**Activate anyway**, `acceptContrastFailures: true`); this is written to the
