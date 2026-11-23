@@ -31,7 +31,7 @@ beforeEach(async () => {
   const preset = (await admin.get('/api/admin/sms-presets')).json().data.find((p: { id: string }) => p.id === 'seven').attributes;
   await admin.patch('/api/admin/sms-provider', { ...preset, enabled: true, password: 'key' });
   sent.length = 0;
-  t.app.ctx.channels.request = async (_url, init = {}): Promise<SafeResponse> => {
+  t.app.ctx.channels!.request = async (_url, init = {}): Promise<SafeResponse> => {
     sent.push(init.body ?? '');
     return { status: 200, body: '', address: '203.0.113.1' };
   };
@@ -94,7 +94,7 @@ describe('webhook subscription without JavaScript', () => {
     expect(elements(verifyForm, 'input').find((i) => i.name === 'ref')?.value).toBe(ref);
     expect(elements(verifyForm, 'input').find((i) => i.name === 'code')).toMatchObject({ autocomplete: 'one-time-code' });
 
-    await t.app.ctx.channels.deliverDue();
+    await t.app.ctx.channels!.deliverDue();
     const code = await codeFor(ref);
     expect(sent[0]).toContain(code);
 

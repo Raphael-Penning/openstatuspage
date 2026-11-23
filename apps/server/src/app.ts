@@ -144,7 +144,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
 
   if (onRoute) app.addHook('onRoute', onRoute);
 
-  const ctx: AppContext = createContext(config, db, app.log, { mailer });
+  // The webhook and SMS delivery code stays out of public instances (memory, see AppContext.channels).
+  const channelModule = config.APP_ROLE === 'public' ? null : await import('./services/channels/service.js');
+  const ctx: AppContext = createContext(config, db, app.log, { mailer, ChannelService: channelModule?.ChannelService });
   app.decorate('ctx', ctx);
   app.addHook('onClose', async () => {
     // Let work that runs after a response (e.g. subscribing) finish before the database goes away.

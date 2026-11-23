@@ -40,6 +40,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import type { Kysely, Transaction } from 'kysely';
 import { z } from 'zod';
+import { requireChannels } from '../../context.js';
 import type { Database, NotificationWebhook } from '../../db/types.js';
 import { badRequest, notFound } from '../../lib/errors.js';
 import { IdParams, parse, unique } from '../../lib/http.js';
@@ -179,7 +180,8 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
 }
 
 function registerWebhookRoutes(app: FastifyInstance): void {
-  const { db, secrets, channels } = app.ctx;
+  const { db, secrets } = app.ctx;
+  const channels = requireChannels(app.ctx);
   const typed = { ...admin, config: { jsonapi: { type: CHANNEL_TYPES.webhook, relationships: { services: CHANNEL_TYPES.service } } } };
 
   const load = async (ids?: string[]): Promise<AdminWebhook[]> => {
@@ -377,7 +379,8 @@ function registerWebhookRoutes(app: FastifyInstance): void {
 }
 
 function registerSmsRoutes(app: FastifyInstance): void {
-  const { db, secrets, channels } = app.ctx;
+  const { db, secrets } = app.ctx;
+  const channels = requireChannels(app.ctx);
 
   const providerResource = async () => {
     const [provider, settings, used] = await Promise.all([getSmsProvider(db), getChannelSettings(db), smsUsedThisMonth(db)]);

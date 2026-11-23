@@ -65,7 +65,7 @@ beforeAll(async () => {
   await publicApp.ready();
   workerApp = await buildApp({ config: pgdb.config('worker'), db: owner, serveWeb: false, mailer: new MemoryMailer() });
   await workerApp.ready();
-  workerApp.ctx.channels.request = async (url, init = {}): Promise<SafeResponse> => {
+  workerApp.ctx.channels!.request = async (url, init = {}): Promise<SafeResponse> => {
     sent.push({ url, body: init.body ?? '' });
     return { status: 204, body: '', address: '203.0.113.1' };
   };
@@ -141,7 +141,7 @@ describe('webhook subscription through the functions', () => {
     expect(row.target_enc).not.toContain('pg-token');
     expect(targetBox(workerApp.ctx.config).decrypt(row.target_enc)).toBe(url);
     // The function queued the confirmation without content; the worker renders it.
-    await workerApp.ctx.channels.deliverDue();
+    await workerApp.ctx.channels!.deliverDue();
     const code = channelCode(workerApp.ctx.config.SUBSCRIPTION_TOKEN_KEY, row.token_salt);
     expect(sent.at(-1)!.url).toBe(url);
     expect(sent.at(-1)!.body).toContain(code);

@@ -40,7 +40,7 @@ import {
 } from '@openstatuspage/shared';
 import { sql } from 'kysely';
 import type { Config } from '../../config.js';
-import type { AppContext } from '../../context.js';
+import { requireChannels, type AppContext } from '../../context.js';
 import type { DB } from '../../db/index.js';
 import { MAX_CODE_ATTEMPTS, MAX_CODE_SENDS } from '../../db/migrations/0015_notification_channels.js';
 import type { ChannelSubscriber } from '../../db/types.js';
@@ -201,7 +201,8 @@ async function messageAllowed(db: DB, channel: 'webhook' | 'sms', now: Date): Pr
 }
 
 async function queueMessage(ctx: AppContext, channel: 'webhook' | 'sms', subscriberId: string, event: string, nowIso: string) {
-  await ctx.channels.enqueue([{ channel, recipientType: 'subscriber', recipientId: subscriberId, event, payload: '' }], new Date(nowIso));
+  // Only on the direct path: a public instance queues through the database functions.
+  await requireChannels(ctx).enqueue([{ channel, recipientType: 'subscriber', recipientId: subscriberId, event, payload: '' }], new Date(nowIso));
 }
 
 async function replaceServices(db: DB, subscriberId: string, serviceIds: string[]): Promise<void> {

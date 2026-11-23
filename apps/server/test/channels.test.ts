@@ -34,7 +34,7 @@ beforeEach(async () => {
   serviceB = (await admin.post('/api/admin/services', { name: 'Dashboard' })).json().data.id;
   sent = [];
   answer = 204;
-  t.app.ctx.channels.request = async (url, init = {}, options = {}): Promise<SafeResponse> => {
+  t.app.ctx.channels!.request = async (url, init = {}, options = {}): Promise<SafeResponse> => {
     sent.push({ url, init, options });
     return { status: answer, body: answer >= 400 ? '{"message":"Unknown Webhook"}' : '', address: '203.0.113.1' };
   };
@@ -43,7 +43,7 @@ afterEach(async () => {
   await t.close();
 });
 
-const deliver = () => t.app.ctx.channels.deliverDue();
+const deliver = () => t.app.ctx.channels!.deliverDue();
 const bodyOf = (s: Sent) => JSON.parse(s.init.body ?? '{}') as Record<string, unknown>;
 
 async function incident(serviceIds: string[], notify = true) {
@@ -115,8 +115,8 @@ describe('admin webhooks', () => {
     // Due again after the backoff.
     answer = 204;
     const later = new Date(Date.now() + 2 * 60_000);
-    t.app.ctx.channels.clock = () => later;
-    expect(await t.app.ctx.channels.deliverDue(later)).toMatchObject({ sent: 1 });
+    t.app.ctx.channels!.clock = () => later;
+    expect(await t.app.ctx.channels!.deliverDue(later)).toMatchObject({ sent: 1 });
     const log = page<{ status: string; attempts: number }>(await admin.get(`/api/admin/webhooks/${all}/deliveries`));
     expect(log.items[0]).toMatchObject({ status: 'sent', attempts: 2 });
     expect(page(await admin.get(`/api/admin/webhooks/${onlyB}/deliveries`)).items).toEqual([]);
@@ -391,7 +391,7 @@ describe('webhook subscriptions of visitors', () => {
     await deliver();
     await confirm(reference, await codeOf(reference));
     // The server's own network (or the SSRF guard) refuses: not the destination's fault.
-    t.app.ctx.channels.request = async () => {
+    t.app.ctx.channels!.request = async () => {
       throw Object.assign(new Error('address not allowed'), { code: 'address' });
     };
     for (let i = 0; i < 6; i++) {
@@ -526,7 +526,7 @@ describe('SMS subscriptions of visitors', () => {
       await confirm(reference, await codeOf(reference));
       subscribed.push(phone.slice(1));
     }
-    t.app.ctx.channels.request = async (url, init = {}): Promise<SafeResponse> => {
+    t.app.ctx.channels!.request = async (url, init = {}): Promise<SafeResponse> => {
       sent.push({ url, init, options: {} });
       const rejected = (bodyOf({ url, init, options: {} }) as { recipients: string[] }).recipients[0] === subscribed[0];
       return { status: rejected ? 422 : 201, body: '', address: '203.0.113.1' };
