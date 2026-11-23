@@ -22,6 +22,7 @@ export const RATE_LIMIT_KEYS = 1000;
  *   /api/ingest/*        push endpoints for monitoring systems (source token)
  *   /feed.rss, /feed.atom
  *   /uploads/<sha256>.<ext>  uploaded images (uploads.ts)
+ *   /theme/<hash>.css   stylesheets of the active theme (themes.ts)
  *   /robots.txt, /sitemap*.xml, /llms.txt, /llms-full.txt  (discovery.ts)
  *   /pulse/p.js, /pulse/api/send  Umami analytics proxy, only with UMAMI_URL (analytics.ts)
  *
@@ -75,8 +76,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // robots.txt, sitemaps and llms.txt where the public pages are served.
   if (features.publicWeb) {
-    const { registerDiscoveryRoutes } = await import('./discovery.js');
+    const [{ registerDiscoveryRoutes }, { registerThemeRoutes }] = await Promise.all([import('./discovery.js'), import('./themes.js')]);
     await registerDiscoveryRoutes(app);
+    // The stylesheets of the active theme (and, for signed-in admins, of a preview).
+    await registerThemeRoutes(app, { sessions: features.adminApi });
     if (config.UMAMI_URL) {
       const { registerAnalyticsRoutes } = await import('./analytics.js');
       await registerAnalyticsRoutes(app, { upstream: config.UMAMI_URL, baseUrl: config.PUBLIC_BASE_URL });

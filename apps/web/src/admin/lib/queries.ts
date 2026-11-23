@@ -5,6 +5,7 @@
 import type {
   AdminApiToken,
   AdminOidcProvider,
+  AdminTheme,
   AdminSitePage,
   AdminUpload,
   AdminPrivatePage,
@@ -95,6 +96,7 @@ export const keys = {
   tokens: ['admin', 'api-tokens'] as const,
   privatePages: ['admin', 'private-pages'] as const,
   oidcProviders: ['admin', 'oidc-providers'] as const,
+  themes: ['admin', 'themes'] as const,
   sitePages: ['admin', 'pages'] as const,
   uploads: ['admin', 'uploads'] as const,
   instance: ['admin', 'instance'] as const,
@@ -235,6 +237,7 @@ export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
 export const usePrivatePages = () => useAdminQuery<AdminPrivatePage[]>(keys.privatePages, '/api/admin/private-pages');
 export const useOidcProviders = () => useAdminQuery<AdminOidcProvider[]>(keys.oidcProviders, '/api/admin/oidc-providers');
+export const useThemes = () => useAdminQuery<AdminTheme[]>(keys.themes, '/api/admin/themes');
 export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
   useQuery({
     queryKey: keys.audit(page, entityType),

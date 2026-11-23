@@ -62,6 +62,11 @@ the Secret the public instance references), optional otherwise. */}}
 {{- if and (ne $role "public") (or $existing $v.secrets.smtpPassword) }}
 {{ include "openstatuspage.secretEnv" (dict "name" "SMTP_PASSWORD" "secret" $secret "key" "SMTP_PASSWORD" "optional" $existing) }}
 {{- end }}
+{{- /* Themes folder from a ConfigMap: every instance that serves pages. */}}
+{{- if and $v.themes.enabled (ne $role "worker") }}
+- name: THEMES_DIR
+  value: /themes
+{{- end }}
 {{- with $v.extraEnv }}
 {{ toYaml . }}
 {{- end }}
@@ -122,6 +127,9 @@ spec:
         checksum/config: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
         {{- if or (include "openstatuspage.createSecret" $root) (include "openstatuspage.createPublicSecret" $root) }}
         checksum/secret: {{ include (print $root.Template.BasePath "/secret.yaml") $root | sha256sum }}
+        {{- end }}
+        {{- if and $v.themes.enabled (not $v.themes.existingConfigMap) (ne .role "worker") }}
+        checksum/themes: {{ include (print $root.Template.BasePath "/themes-configmap.yaml") $root | sha256sum }}
         {{- end }}
         {{- with $v.podAnnotations }}
         {{- toYaml . | nindent 8 }}
@@ -196,11 +204,21 @@ spec:
               mountPath: /tmp
             - name: data
               mountPath: /data
+            {{- if and $v.themes.enabled (ne .role "worker") }}
+            - name: themes
+              mountPath: /themes
+              readOnly: true
+            {{- end }}
             {{- with $v.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
         {{- include "openstatuspage.volumes" (dict "root" $root "sqlite" .sqlite) | trim | nindent 8 }}
+        {{- if and $v.themes.enabled (ne .role "worker") }}
+        - name: themes
+          configMap:
+            name: {{ default (printf "%s-themes" (include "openstatuspage.fullname" $root)) $v.themes.existingConfigMap }}
+        {{- end }}
       {{- with (default $v.nodeSelector $c.nodeSelector) }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

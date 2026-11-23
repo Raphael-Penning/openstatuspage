@@ -13,6 +13,7 @@ import { registerPrivatePageRoutes } from './private-pages.js';
 import { registerChannelRoutes } from './channels.js';
 import { registerServiceRoutes } from './services.js';
 import { registerSubscriberRoutes } from './subscribers.js';
+import { registerThemeAdminRoutes } from './themes.js';
 import { registerUserRoutes } from './users.js';
 
 /** /api/admin/*: every route declares its role with `editor` / `admin` from ./util.ts. */
@@ -32,4 +33,5 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   await registerOidcProviderRoutes(app);
   await registerContentRoutes(app);
   await registerChannelRoutes(app);
+  await registerThemeAdminRoutes(app);
 }

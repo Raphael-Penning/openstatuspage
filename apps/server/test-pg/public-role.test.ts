@@ -526,6 +526,8 @@ describe('tables', () => {
     'osp_public_roles',
     'site_pages',
     'uploads',
+    'themes',
+    'active_theme',
   ];
 
   it('without public data are not readable at all', async () => {

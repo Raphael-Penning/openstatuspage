@@ -96,7 +96,7 @@ export function useTheme(): ThemeContextValue {
 }
 
 /** Applies the configurable accent color from page settings. */
-export function useAccentColor(color: string | undefined): void {
+export function useAccentColor(color: string | null | undefined): void {
   useEffect(() => {
     if (color) document.documentElement.style.setProperty('--accent', color);
   }, [color]);

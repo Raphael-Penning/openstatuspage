@@ -72,7 +72,8 @@ Options of `install`:
 
 - Packages: `curl`, `tar` and `gzip` if missing; PostgreSQL, Postfix and
   OpenDKIM only with the matching option (on Rocky and RHEL OpenDKIM comes from
-  EPEL, which the script enables).
+  EPEL and needs CodeReady Builder (CRB);
+  the script enables both).
 - Users `openstatuspage` (runs the services) and `openstatuspage-public` (runs
   only the public instance of the split deployment), both without login.
 - `/opt/openstatuspage/app` (the release, owned by root), the previous release

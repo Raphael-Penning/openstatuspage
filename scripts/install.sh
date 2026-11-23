@@ -228,6 +228,8 @@ ensure_dirs() {
   install -d -m 0755 -o root -g root "$PREFIX"
   install -d -m 0750 -o root -g "$APP_USER" "$CONF_DIR"
   install -d -m 0750 -o "$APP_USER" -g "$APP_USER" "$DATA_DIR"
+  # Themes folder (docs/themes.md) and the mount point of the public instance.
+  install -d -m 0755 -o root -g root "$CONF_DIR/themes" "$PREFIX/themes"
 }
 
 installed_by_package() {
@@ -554,6 +556,16 @@ setup_postfix() {
       if ! dnf -q list opendkim > /dev/null 2>&1; then
         log "OpenDKIM is in EPEL: enabling it"
         pkg_install epel-release
+      fi
+      # EPEL's OpenDKIM needs libmemcached.so.11 from CodeReady Builder (CRB).
+      if ! dnf -q repolist --enabled 2> /dev/null | grep -Eiq '(^| )(crb|codeready-builder)'; then
+        log "OpenDKIM needs CodeReady Builder (CRB): enabling it"
+        if command -v crb > /dev/null 2>&1; then
+          crb enable
+        else
+          pkg_install dnf-plugins-core
+          dnf config-manager --set-enabled crb
+        fi
       fi
       pkg_install postfix opendkim opendkim-tools
       ;;

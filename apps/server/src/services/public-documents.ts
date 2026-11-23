@@ -9,7 +9,7 @@
  * (see public-catalog.ts, incidents.ts, maintenances.ts, serializers/public.ts).
  * Nothing about monitoring sources or checks is ever exposed here.
  */
-import { overallStatus, shiftUptimeDay, uptimeDayStart, zId, type ChannelOptions, type DataDocument, type ImageSize, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type PublicSiteExtras, type ResourceObject } from '@openstatuspage/shared';
+import { overallStatus, shiftUptimeDay, uptimeDayStart, zId, type ChannelOptions, type DataDocument, type ImageSize, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type PublicSiteExtras, type PublicThemeInfo, type ResourceObject } from '@openstatuspage/shared';
 import { z } from 'zod';
 
 const NO_CHANNELS: ChannelOptions = { webhookKinds: [], sms: false, smsCallingCodes: [] };
@@ -130,6 +130,8 @@ export interface PublicDocumentsOptions {
   analytics?: boolean;
   /** Webhook and SMS subscriptions offered (summary). Default: none. */
   channels?: () => Promise<ChannelOptions>;
+  /** The active theme (stylesheets, accent in effect). Without it: no theme information. */
+  theme?: () => Promise<PublicThemeInfo & { accent: string }>;
 }
 
 /** Builds the documents of the public read API (one instance per app). */
@@ -154,11 +156,18 @@ export class PublicDocuments {
    * published content pages (footer and navigation) and the size of an uploaded logo.
    */
   private async siteSettings(settings: PublicPageSettings): Promise<PublicPageSettings & PublicSiteExtras> {
-    const [pages, logoSizes] = await Promise.all([
+    const [pages, logoSizes, theme] = await Promise.all([
       loadPublicPageLinks(this.db),
       settings.logoUrl ? uploadSizes(this.db, [settings.logoUrl]) : Promise.resolve({} as Record<string, ImageSize>),
+      this.options.theme?.(),
     ]);
-    return { ...this.publicSettings(settings), pages, logoSize: (settings.logoUrl && logoSizes[settings.logoUrl]) || null };
+    return {
+      ...this.publicSettings(settings),
+      // The accent in effect: the override of the settings or the active theme's.
+      ...(theme ? { accentColor: theme.accent, theme: { id: theme.id, stylesheets: theme.stylesheets } } : {}),
+      pages,
+      logoSize: (settings.logoUrl && logoSizes[settings.logoUrl]) || null,
+    };
   }
 
   /** GET /api/public/settings */

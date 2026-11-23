@@ -200,7 +200,7 @@ function registerUploadAdminRoutes(app: FastifyInstance): void {
     const [upload] = await loadAdminUploads(db, id);
     if (!upload) throw notFound('Upload');
     // An image still in use is not deleted: the logo or the page would break silently.
-    const usedBy = await uploadReferences(db, upload.url, await getSettings(db));
+    const usedBy = await uploadReferences(db, upload.url, await getSettings(db), app.ctx.themes.folderThemes().values());
     if (usedBy.length > 0) throw conflict(`The image is in use (${usedBy.join(', ')}); remove it there first`);
     await db.deleteFrom('uploads').where('id', '=', id).execute();
     await auditRequest(db, req, 'upload.delete', 'upload', id, { url: upload.url });

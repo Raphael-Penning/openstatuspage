@@ -5,8 +5,8 @@
  * origin only. Pages carry no inline scripts that run: the state block and the
  * JSON-LD are data blocks (type application/json, application/ld+json), which
  * script-src does not govern. Inline styles stay allowed: React writes style
- * attributes (uptime bars, map markers) and the page head carries the accent
- * color as a <style> element. Images may come from any HTTPS origin, because
+ * attributes (uptime bars, map markers). The theme of the public pages is a
+ * same-origin stylesheet (/theme/<hash>.css), never a <style> element. Images may come from any HTTPS origin, because
  * the logo and favicon of the settings are URLs. A public page may be embedded
  * by other sites (no frame-ancestors); the management UI may not.
  */

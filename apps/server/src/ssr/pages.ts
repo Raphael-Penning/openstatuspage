@@ -46,6 +46,8 @@ import {
   headElements,
   isPersonalPath,
   SSR_STATE_ID,
+  THEME_LINK_ATTR,
+  THEME_PREVIEW_QUERY,
   type DataDocument,
   type AnalyticsTag,
   type PageHead,
@@ -95,6 +97,18 @@ export interface SsrPagesOptions {
   concurrency?: number;
   /** Pages waiting for a render at most; more get a stale page or 503 at once (default 4). */
   maxWaiting?: number;
+  /** Stylesheets of the active theme (services/themes.ts) and of a preview for signed-in admins. */
+  theme?: SsrThemeOptions;
+}
+
+export interface SsrThemeOptions {
+  /** The active theme's stylesheet URLs (`/theme/<hash>.css`). */
+  stylesheets(): Promise<string[]>;
+  /**
+   * The stylesheets of a theme preview (`?theme=<id>`) when the request may see
+   * one (a signed-in admin); null otherwise: the page is the usual one.
+   */
+  preview?(req: FastifyRequest): Promise<string[] | null>;
 }
 
 interface RenderedPage {
@@ -203,16 +217,28 @@ export function parseTemplate(html: string): PageTemplate {
   };
 }
 
-export function composePage(template: PageTemplate, page: SsrRenderResult): string {
+/**
+ * Link elements of the theme stylesheets: same-origin paths only (anything else is dropped).
+ * The browser keeps them; the client adds them itself only on a page the server did not render.
+ */
+export function themeLinks(stylesheets: readonly string[]): string {
+  return stylesheets
+    .filter((href) => /^\/theme\/[0-9a-f]+\.css$/.test(href))
+    .map((href) => `<link rel="stylesheet" href="${href}" ${THEME_LINK_ATTR}>`)
+    .join('');
+}
+
+export function composePage(template: PageTemplate, page: SsrRenderResult, stylesheets: readonly string[] = []): string {
   const theme = page.theme === 'system' ? '' : ` data-theme="${page.theme}"`;
+  // After the app's stylesheet (end of <head>): the extra CSS of a theme overrides it.
+  const links = themeLinks(stylesheets);
+  const rest = links ? template.headRestAndBodyStart.replace(/<\/head>/i, `${links}</head>`) : template.headRestAndBodyStart;
   return (
     `${template.beforeHtml}<html lang="${escapeHtml(page.lang)}" dir="${page.dir}"${theme}>` +
     template.headStart +
     headTags(page.head, page.hoisted) +
-    // The accent color before the stylesheet (it is more specific); never a way out of <style>.
-    (page.css ? `<style>${page.css.replace(/</g, '')}</style>` : '') +
     (page.analytics ? analyticsScriptTag(page.analytics) : '') +
-    template.headRestAndBodyStart +
+    rest +
     page.html +
     // Data, not code: type=application/json is never executed.
     `</div><script type="application/json" id="${SSR_STATE_ID}">${page.state}</script>` +
@@ -339,6 +365,13 @@ export class SsrPages {
    */
   async send(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
     if (this.unavailable || req.url.length > MAX_URL) return false;
+    if (this.options.theme?.preview && hasPreviewQuery(req.url)) {
+      const preview = await this.options.theme.preview(req).catch((err: unknown) => {
+        req.log.error({ err }, 'Theme preview failed; sending the page with the active theme');
+        return null;
+      });
+      if (preview) return this.sendPreview(req, reply, preview);
+    }
     let answer: PageAnswer;
     try {
       answer = await this.render(req);
@@ -371,6 +404,26 @@ export class SsrPages {
       return true;
     }
     await sendPage(req, reply.status(page.status), page);
+    return true;
+  }
+
+  /** A theme preview for a signed-in admin: rendered for this request only, never stored. */
+  private async sendPreview(req: FastifyRequest, reply: FastifyReply, stylesheets: string[]): Promise<boolean> {
+    let rendered: RenderedPage;
+    try {
+      const module = await this.module_();
+      rendered = await this.limiter.run(() => this.renderPage(module, this.inputOf(req), stylesheets));
+    } catch (err) {
+      if (err instanceof RenderQueueFull) this.queueFull(req.log, false);
+      else req.log.error({ err }, 'Server-side rendering of a theme preview failed');
+      return false;
+    }
+    reply
+      .status(rendered.status)
+      .header('Cache-Control', PRIVATE_CACHE_CONTROL)
+      .header('Vary', 'Accept-Language, Cookie, Accept-Encoding')
+      .header('X-Robots-Tag', 'noindex, nofollow');
+    await sendPage(req, reply, rendered);
     return true;
   }
 
@@ -435,9 +488,16 @@ export class SsrPages {
     return { url: req.url, cookie: header('cookie'), acceptLanguage: header('accept-language') };
   }
 
-  private async renderPage(module: RenderModule, input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptLanguage' | 'form'>): Promise<RenderedPage> {
-    const result = await module.render({ ...input, source: this.source, baseUrl: this.options.baseUrl, now: Date.now() });
-    const body = Buffer.from(composePage(this.loadTemplate(), result));
+  private async renderPage(
+    module: RenderModule,
+    input: Pick<SsrRenderInput, 'url' | 'cookie' | 'acceptLanguage' | 'form'>,
+    stylesheets?: string[],
+  ): Promise<RenderedPage> {
+    const [result, sheets] = await Promise.all([
+      module.render({ ...input, source: this.source, baseUrl: this.options.baseUrl, now: Date.now() }),
+      stylesheets ?? this.options.theme?.stylesheets() ?? [],
+    ]);
+    const body = Buffer.from(composePage(this.loadTemplate(), result, sheets));
     const gzip = gzipSync(body, { level: GZIP_LEVEL });
     const expires = Date.now() + this.ttlMs;
     return { status: result.status, body, gzip, etag: etagOf(body), expires, staleUntil: expires + this.staleMs };
@@ -514,6 +574,12 @@ export class SsrPages {
     this.cache.delete(key);
     this.cachedBytes -= pageBytes(page);
   }
+}
+
+/** Whether the URL asks for a theme preview (`?theme=<id>`). */
+function hasPreviewQuery(url: string): boolean {
+  const query = url.indexOf('?');
+  return query !== -1 && new URLSearchParams(url.slice(query + 1)).has(THEME_PREVIEW_QUERY);
 }
 
 const pageBytes = (page: RenderedPage) => page.body.length + page.gzip.length;

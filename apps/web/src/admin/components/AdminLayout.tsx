@@ -14,6 +14,7 @@ import {
   CircleHelp,
   ExternalLink,
   Fingerprint,
+  Palette,
   FolderTree,
   History,
   KeyRound,
@@ -86,6 +87,7 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
       title: t('nav.administration'),
       items: [
         { to: '/admin/settings', label: t('nav.settings'), icon: Settings, adminOnly: true },
+        { to: '/admin/appearance', label: t('nav.appearance'), icon: Palette, adminOnly: true },
         { to: '/admin/pages', label: t('nav.pages'), icon: FileText, adminOnly: true },
         { to: '/admin/users', label: t('nav.users'), icon: Users, adminOnly: true },
         { to: '/admin/subscribers', label: t('nav.subscribers'), icon: Mail, adminOnly: true },
