@@ -14,8 +14,8 @@ management UI itself keeps its own look (only the accent follows the theme).
 2. Change the `id` and `name`. The `id` (lower-case letters, digits, hyphens)
    cannot be changed later.
 3. Set the colours of `light` and `dark`. Keep the same tokens in both.
-4. Check the contrast in the editor (WCAG 2.2 AA: 4.5:1 for text, 3:1 for
-   controls and status colours) and fix every failing pair.
+4. Check the contrast in the editor (WCAG 2.2 AA: 3:1 for controls and status
+   fills, 4.5:1 for text and status text) and fix every failing pair.
 5. Look at the result: **Preview** in the list, and **Preview the public page**
    (`/?theme=<id>`, visible to signed-in admins only).
 6. Install it: **Import theme** in the admin, or put `<id>.json` (and
@@ -161,7 +161,7 @@ buttons. The checker is the same in the browser and on the server
 `checkThemeContrast`).
 
 - The admin list shows **Passes AA** or the number of problems; the editor shows
-  every failing pair live (`Light: muted on surface 2.4:1 (needs 4.5:1)`).
+  every failing pair live (`Light: muted on surface 2.40:1 (needs 4.5:1)`).
 - A theme that fails is **not activated** by default: the API answers 409
   `contrast_failures` with the failed checks. The admin can confirm explicitly
   (**Activate anyway**, `acceptContrastFailures: true`); this is written to the
