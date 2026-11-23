@@ -6,6 +6,19 @@ breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- Starter template for your own theme in `contrib/themes/` (`starter.json`,
+  `starter.css`): every token is set, also the optional ones, and it passes
+  WCAG 2.2 AA in light and dark mode.
+- **Administration → Appearance** links to the new guide chapter
+  *Creating a theme* in the help area.
+
+### Fixed
+
+- The topic list of the help area no longer adds a second unnamed
+  complementary landmark next to the navigation (axe `landmark-unique`).
+
 ## [0.4.0] - 2026-11-23
 
 ### Upgrading
