@@ -11,6 +11,9 @@ breaking changes.
 - Starter template for your own theme in `contrib/themes/` (`starter.json`,
   `starter.css`): every token is set, also the optional ones, and it passes
   WCAG 2.2 AA in light and dark mode.
+- Guide chapter *Creating a theme* (English and German): from the starter
+  template through colours, contrast, preview, installation and troubleshooting;
+  [Themes](docs/themes.md) has a quickstart that links to it.
 - **Administration → Appearance** links to the new guide chapter
   *Creating a theme* in the help area.
 
