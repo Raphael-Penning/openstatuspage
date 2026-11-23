@@ -11,6 +11,7 @@ import { UploadButton } from '../components/UploadButton';
 import { Button, Card, IconButton, PageHeader, QueryState } from '../components/ui';
 import { moveId } from '../lib/ordering';
 import { useAdminMutation, useSettings } from '../lib/queries';
+import { useBranding } from '../session';
 import { useForm } from '../lib/useForm';
 
 interface FooterLinkRow {
@@ -106,7 +107,7 @@ const toValues = (s: PublicPageSettings): Values => ({
 });
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
-/** The accent of the built-in default theme (shown while no override is set). */
+/** The accent of the built-in default theme (until the public settings are loaded). */
 const DEFAULT_ACCENT = '#7c6cf2';
 
 export default function SettingsPage() {
@@ -182,7 +183,9 @@ function SettingsForm({ settings }: { settings: AdminPageSettings }) {
 
   const links = v.footerLinks;
   const setLinks = (next: FooterLinkRow[]) => form.set('footerLinks', next);
-  const previewColor = HEX.test(v.accentColor) ? v.accentColor : (settings.accentColor ?? DEFAULT_ACCENT);
+  // Without an override: the active theme's accent (the public settings answer the accent in effect).
+  const branding = useBranding();
+  const previewColor = HEX.test(v.accentColor) ? v.accentColor : (settings.accentColor ?? branding.data?.accentColor ?? DEFAULT_ACCENT);
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-6">

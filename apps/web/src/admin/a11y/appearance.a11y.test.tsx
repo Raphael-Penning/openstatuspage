@@ -2,7 +2,8 @@
 /**
  * Settings → Appearance (themes): accessibility (WCAG 2.2 AA, axe-core) of the
  * list, the live preview, the editor and the import dialog in both languages,
- * and the activation of a theme that fails AA (refused until confirmed).
+ * the activation of a theme that fails AA (refused until confirmed), and the
+ * accent preview of Settings without an override.
  * Renders the real admin routes against a fake API.
  */
 import { BUILTIN_THEMES, themeContrastFailures, type AdminTheme, type AdminUser, type AuthConfig } from '@openstatuspage/shared';
@@ -66,6 +67,8 @@ const unconfirmedThemes: AdminTheme[] = [
   { ...themes[2]!, active: true, contrastUnconfirmed: true },
 ];
 let served = themes;
+/** The accent in effect that the public settings answer (the active theme's, without an override). */
+let publicAccent = settings.accentColor;
 
 const JSONAPI = { version: '1.1' };
 const one = (type: string, id: string, attributes: object) => ({ jsonapi: JSONAPI, data: { type, id, attributes } });
@@ -88,8 +91,12 @@ function respond(method: string, path: string, body: unknown): { status: number;
       },
     };
   }
-  if (method === 'GET' && path === '/api/public/settings') return { status: 200, body: settingsDocument(settings) };
+  if (method === 'GET' && path === '/api/public/settings') return { status: 200, body: settingsDocument({ ...settings, accentColor: publicAccent }) };
   if (method === 'GET' && path === '/api/admin/settings') return { status: 200, body: one('settings', 'site', { ...settings, accentColor: null, analyticsAvailable: false }) };
+  // Not part of these tests (the settings page shows the mail status).
+  if (method === 'GET' && path === '/api/admin/notifications/status') {
+    return { status: 403, body: { jsonapi: JSONAPI, errors: [{ status: '403', code: 'forbidden', detail: 'not here' }] } };
+  }
   if (method === 'GET' && path === '/api/admin/themes') return { status: 200, body: many('themes', served) };
   const single = /^\/api\/admin\/themes\/([^/]+)$/.exec(path);
   if (method === 'GET' && single) {
@@ -115,7 +122,7 @@ function respond(method: string, path: string, body: unknown): { status: number;
 let root: Root | null = null;
 let queryClient: QueryClient | null = null;
 
-async function render(path: string, lang: 'en' | 'de'): Promise<HTMLElement> {
+async function render(path: string, lang: 'en' | 'de', ready = 'table'): Promise<HTMLElement> {
   localStorage.clear();
   localStorage.setItem('osp-lang-chosen', '1');
   await i18n.changeLanguage(lang);
@@ -137,7 +144,7 @@ async function render(path: string, lang: 'en' | 'de'): Promise<HTMLElement> {
   });
   for (let i = 0; i < 300; i++) {
     await settle();
-    if (container.querySelector('main h1') && container.querySelector('table') && !container.querySelector('[aria-busy="true"], .animate-spin')) {
+    if (container.querySelector('main h1') && container.querySelector(ready) && !container.querySelector('[aria-busy="true"], .animate-spin')) {
       return container;
     }
   }
@@ -173,6 +180,7 @@ beforeAll(() => {
 
 afterEach(() => {
   served = themes;
+  publicAccent = settings.accentColor;
   act(() => root?.unmount());
   queryClient?.clear();
   root = null;
@@ -243,4 +251,13 @@ describe.each(['en', 'de'] as const)('Appearance (%s)', (lang) => {
     },
     AXE_TIMEOUT_MS,
   );
+
+  it('the accent preview of the settings shows the accent of the active theme while no override is set', async () => {
+    publicAccent = '#2563eb';
+    const label = i18n.t('admin:settings.pickColor');
+    await render('/admin/settings', lang, `input[type="color"][aria-label="${label}"]`);
+    const picker = document.querySelector<HTMLInputElement>(`input[type="color"][aria-label="${label}"]`)!;
+    expect(picker.value).toBe('#2563eb');
+    expect(document.querySelector<HTMLInputElement>('#accent-hex')!.value).toBe('');
+  });
 });
