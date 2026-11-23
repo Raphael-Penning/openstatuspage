@@ -74,7 +74,8 @@ Optionen von `install`:
 
 - Pakete: `curl`, `tar` und `gzip`, falls sie fehlen; PostgreSQL, Postfix und
   OpenDKIM nur mit der passenden Option (auf Rocky und RHEL kommt OpenDKIM aus
-  EPEL, das das Skript dafür aktiviert).
+  EPEL und braucht CodeReady Builder (CRB);
+  das Skript aktiviert beides).
 - Die Benutzer `openstatuspage` (führt die Dienste aus) und
   `openstatuspage-public` (führt nur die Public-Instanz der geteilten
   Installation aus), beide ohne Login.
