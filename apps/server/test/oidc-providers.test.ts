@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecretBox } from '../src/lib/crypto.js';
 import { OIDC_STATE_COOKIE, OidcClient, type Claims } from '../src/services/oidc.js';
-import { testOidcDiscovery } from '../src/services/oidc-providers.js';
+import { sameIssuer, testOidcDiscovery } from '../src/services/oidc-providers.js';
 import {
   adminClient,
   BASE_URL,
@@ -304,9 +304,17 @@ describe('testOidcDiscovery', () => {
     expect((await testOidcDiscovery(`${issuer}/html`)).message).toContain('did not return JSON');
   });
 
-  it('accepts a trailing slash only when the issuer has one', async () => {
-    expect((await testOidcDiscovery(`${issuer}/`)).ok).toBe(false);
+  it('compares the issuers like the login does', async () => {
+    // Without a path the slash does not count (URL#href), neither does the host case.
+    expect((await testOidcDiscovery(`${issuer}/`)).ok).toBe(true);
     expect((await testOidcDiscovery(issuer)).ok).toBe(true);
+    expect((await testOidcDiscovery(issuer.replace('http://', 'HTTP://'))).ok).toBe(true);
+  });
+
+  it('treats a trailing slash after a path as a different issuer', () => {
+    expect(sameIssuer('https://idp.example.com', 'https://IDP.example.com/')).toBe(true);
+    expect(sameIssuer('https://idp.example.com/realms/a', 'https://idp.example.com/realms/a/')).toBe(false);
+    expect(sameIssuer('not a url', 'not a url')).toBe(false);
   });
 });
 

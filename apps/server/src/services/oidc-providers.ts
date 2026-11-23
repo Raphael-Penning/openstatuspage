@@ -218,6 +218,15 @@ const DiscoveryDocument = z.object({
   code_challenge_methods_supported: z.array(z.string()).optional(),
 });
 
+/** Whether two issuer identifiers are equal the way openid-client compares them (`URL#href`). */
+export function sameIssuer(a: string, b: string): boolean {
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+}
+
 /** Where the discovery document of `issuerUrl` lives (OpenID Connect Discovery 1.0, section 4). */
 export function discoveryUrl(issuerUrl: string): string {
   return `${issuerUrl.replace(/\/+$/, '')}/.well-known/openid-configuration`;
@@ -265,8 +274,9 @@ export async function testOidcDiscovery(
     endSessionEndpoint: doc.end_session_endpoint ? describeUrl(doc.end_session_endpoint) : null,
     warnings: [],
   };
-  // The login validates the issuer exactly like this (a trailing slash counts).
-  if (doc.issuer !== issuerUrl) {
+  // The login (openid-client) compares the issuers as parsed URLs: the host case and
+  // the slash of an empty path do not count, any other difference does.
+  if (!sameIssuer(doc.issuer, issuerUrl)) {
     return {
       ...result,
       ok: false,

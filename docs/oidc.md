@@ -65,7 +65,8 @@ redirect URI to the IdP, then enable it.
 before saving) and shows the issuer and the authorization, token, userinfo,
 JWKS and end session endpoints, or why it failed (unreachable, HTTP error,
 redirect, not a discovery document, an issuer that differs from the configured
-URL, endpoints that are not https, no authorization code flow). It follows the
+URL (compared like the login does: the case of the host and the slash of an
+empty path do not count, a trailing slash after a path does), endpoints that are not https, no authorization code flow). It follows the
 rules of every request an admin can trigger: admins only, at most 10 tests per
 minute, a 10 second time limit, at most 256 KiB, no redirects followed, and
 messages without credentials or query strings. Only a plain `GET` is sent; the
@@ -243,7 +244,8 @@ have, and API tokens they created stay valid:
 
 - Create an *OAuth2/OpenID Provider* (confidential client) and an application.
 - Issuer: `https://<authentik-host>/application/o/<application-slug>/` (with
-  the trailing slash: the test reports a differing issuer otherwise).
+  the trailing slash: after a path it counts, so without it the test reports a
+  differing issuer and the login fails).
 - The default `profile` scope mapping already includes a `groups` claim with
   the user's group names.
 
@@ -251,7 +253,11 @@ have, and API tokens they created stay valid:
 
 - Register an application (web platform) with the redirect URI above and
   create a client secret.
-- Issuer: `https://login.microsoftonline.com/<tenant-id>/v2.0`.
+- Issuer: `https://login.microsoftonline.com/<tenant-id>/v2.0`. The
+  multi-tenant `common` and `organizations` endpoints announce the issuer
+  `https://login.microsoftonline.com/{tenantid}/v2.0`, a template that never
+  equals the configured URL, so they fail the test and the login; use the
+  tenant id.
 - Groups: in *Token configuration* add a groups claim. Entra sends group
   **object IDs** in `groups`, so map the IDs; or define *App roles*, set the
   role claim to `roles` and map the role values.
