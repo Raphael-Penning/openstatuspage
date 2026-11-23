@@ -25,10 +25,12 @@ Du hast zwei Wege:
 - **Vorlage:** lade `starter.json` (und optional `starter.css`) aus
   [contrib/themes](../../../contrib/themes/README.md) herunter. Jede Farbe ist
   gesetzt, auch die optionalen, sodass du alle Tokens auf einmal siehst.
-- **Kopie anpassen:** öffne in **Administration → Darstellung** bei einem
-  eingebauten, einem Theme aus dem Ordner oder einem hochgeladenen Theme den
-  Knopf **Kopie anpassen**. Der Editor öffnet sich mit allen Werten, die du dort
-  ändern kannst.
+- **Kopie anpassen:** klicke in **Administration → Darstellung** bei einem
+  eingebauten Theme oder einem Theme aus dem Ordner auf das Kopier-Symbol
+  (beschriftet mit **Kopie von „…“ anpassen**). Der Editor öffnet sich mit allen
+  Werten, die du dort ändern kannst. Hochgeladene Themes haben kein
+  Kopier-Symbol: Bearbeite sie direkt, oder lade das JSON herunter, ändere die
+  `id` und importiere es als neues Theme.
 
 Vergib vor dem Speichern eine neue **ID**. Die ID ist der Name des Themes und
 zugleich der Dateiname (`mein-theme.json`). Sie darf 1 bis 48 Zeichen lang sein

@@ -9,7 +9,8 @@ management UI itself keeps its own look (only the accent follows the theme).
 
 1. Copy [contrib/themes/starter.json](../contrib/themes/starter.json) (and
    optionally `starter.css`), or open **Administration → Appearance** and click
-   **Customize a copy** on a theme you like.
+   the copy icon (**Customize a copy of …**) on a built-in or folder theme you
+   like. For an uploaded theme, download its JSON, change the `id` and import it.
 2. Change the `id` and `name`. The `id` (lower-case letters, digits, hyphens)
    cannot be changed later.
 3. Set the colours of `light` and `dark`. Keep the same tokens in both.

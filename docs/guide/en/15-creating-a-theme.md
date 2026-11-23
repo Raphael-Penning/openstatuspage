@@ -25,9 +25,11 @@ You have two ways to start:
 - **Starter template:** download `starter.json` (and optionally `starter.css`)
   from [contrib/themes](../../../contrib/themes/README.md). Every color is set,
   including the optional ones, so you can see all the tokens at once.
-- **Customize a copy:** in **Administration → Appearance**, click **Customize a
-  copy** on a built-in, folder or uploaded theme. The editor opens with all
-  values filled in, and you can change them there.
+- **Customize a copy:** in **Administration → Appearance**, click the copy
+  icon (labelled **Customize a copy of …**) on a built-in or folder theme. The
+  editor opens with all values filled in, and you can change them there.
+  Uploaded themes have no copy icon: edit them directly, or download the JSON,
+  change the `id` and import it as a new theme.
 
 Choose a new **ID** before you save. The ID is the name of the theme in the
 URL and the file name (`my-theme.json`). It may contain 1 to 48 lower-case
