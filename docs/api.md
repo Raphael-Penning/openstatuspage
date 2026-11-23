@@ -320,10 +320,14 @@ zod schemas of [`schemas.ts`](../packages/shared/src/schemas.ts), converted with
   route (`NON_API_ROUTES`: crawler files, the analytics proxy, the HTML forms and
   the short manage link `/s/:id/:token`; the static files of the web client), or
   when the declared roles, JSON:API types, relationships, `include` support or
-  rate limits differ from the routes.
+  rate limits differ from the routes. Files with a content-hashed name that
+  clients fetch by a URL from the API are described like any endpoint: images
+  (`/uploads/<sha256>.<ext>`) and theme stylesheets (`/theme/<hash>.css`, from
+  `theme.stylesheets` of the public settings), both under *Feeds and files*.
 - `GET /api/openapi.json` serves it with an `ETag` (`304` for `If-None-Match`).
   Anonymous clients, and every client of an `APP_ROLE=public` instance, get the
-  public part (public API, private pages, subscriptions, feeds, images, health);
+  public part (public API, private pages, subscriptions, feeds, images, theme
+  stylesheets, health);
   a signed-in user or an API token on an `admin` or `all` instance gets the whole
   API (`Cache-Control: private, no-cache`, `Vary: Cookie, Authorization`). Worker
   instances do not serve it. The document has no server version and a relative
