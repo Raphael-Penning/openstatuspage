@@ -333,6 +333,8 @@ zod schemas of [`schemas.ts`](../packages/shared/src/schemas.ts), converted with
   *Try it* for requests to the same instance with the current session (the CSRF
   header is added). Requests that change data need a confirmation first;
   redirects (OIDC, unsubscribe links) and image uploads cannot be sent from there.
+  The page also offers the JSON document as a download (the same answer as
+  `GET /api/openapi.json` with the current session).
 
 ## Authentication
 
