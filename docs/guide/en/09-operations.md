@@ -105,7 +105,8 @@ Every upgrade follows the same steps:
 2. Make a backup (see above).
 3. Switch to the new version (see below).
 4. Database migrations run **automatically** on start. Watch the log for
-   errors and check `/api/health`.
+   errors and check `/api/health`. The running version is shown at the bottom of
+   the management UI's sidebar (*Version …*), so you can confirm the upgrade there.
 
 ### Docker Compose
 

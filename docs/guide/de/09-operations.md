@@ -108,7 +108,8 @@ Jedes Update läuft in denselben Schritten ab:
 2. Erstelle eine Sicherung (siehe oben).
 3. Wechsle auf die neue Version (siehe unten).
 4. Datenbankmigrationen laufen beim Start **automatisch**. Achte im Log auf
-   Fehler und prüfe `/api/health`.
+   Fehler und prüfe `/api/health`. Die laufende Version steht unten in der Seitenleiste
+   der Verwaltungsoberfläche („Version …“), so kannst du das Update dort bestätigen.
 
 ### Docker Compose
 
