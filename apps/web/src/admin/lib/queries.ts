@@ -4,6 +4,7 @@
  */
 import type {
   AdminApiToken,
+  AdminOidcProvider,
   AdminPrivatePage,
   AdminCheckBundle,
   AdminCorrection,
@@ -91,6 +92,7 @@ export const keys = {
   users: ['admin', 'users'] as const,
   tokens: ['admin', 'api-tokens'] as const,
   privatePages: ['admin', 'private-pages'] as const,
+  oidcProviders: ['admin', 'oidc-providers'] as const,
   audit: (page: number, entityType: string) => ['admin', 'audit-log', page, entityType] as const,
   subscribers: (query: SubscriberListQuery) => ['admin', 'subscribers', query] as const,
   notificationStatus: ['admin', 'notifications', 'status'] as const,
@@ -205,6 +207,7 @@ export const useSettings = () => useAdminQuery<AdminPageSettings>(keys.settings,
 export const useUsers = () => useAdminQuery<AdminUser[]>(keys.users, '/api/admin/users');
 export const useApiTokens = () => useAdminQuery<AdminApiToken[]>(keys.tokens, '/api/admin/api-tokens');
 export const usePrivatePages = () => useAdminQuery<AdminPrivatePage[]>(keys.privatePages, '/api/admin/private-pages');
+export const useOidcProviders = () => useAdminQuery<AdminOidcProvider[]>(keys.oidcProviders, '/api/admin/oidc-providers');
 export const useAuditLog = (page: number, entityType: string, pageSize = 25) =>
   useQuery({
     queryKey: keys.audit(page, entityType),
