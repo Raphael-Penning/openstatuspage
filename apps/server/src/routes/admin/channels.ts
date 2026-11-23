@@ -62,7 +62,7 @@ import { admin, assertExist, auditRequest } from './util.js';
 export const CHANNEL_TYPES = {
   webhook: 'webhooks',
   delivery: 'webhook-deliveries',
-  smsProvider: 'sms-providers',
+  smsProvider: 'sms-provider',
   smsPreset: 'sms-presets',
   smsRecipient: 'sms-recipients',
   channelSettings: 'channel-settings',
