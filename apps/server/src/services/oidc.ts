@@ -193,7 +193,14 @@ export type OidcErrorCode =
   | 'missing_subject';
 
 export type OidcUserResult =
-  | { ok: true; user: User; created: boolean; linked: boolean }
+  | {
+      ok: true;
+      user: User;
+      created: boolean;
+      linked: boolean;
+      /** Set when the role sync changed the role of an existing user with this login. */
+      roleChange?: { from: UserRole; to: UserRole };
+    }
   | { ok: false; error: OidcErrorCode };
 
 function isVerified(value: unknown): boolean {
@@ -316,6 +323,7 @@ async function resolveOnce(
   }
 
   if (user) {
+    let roleChange: { from: UserRole; to: UserRole } | undefined;
     if (syncsRoleOnLogin(provider) && user.role !== mappedRole) {
       // Same safeguards as a change in the admin UI (token revocation, last admin).
       if ((await changeUserRole(db, user.id, mappedRole)) === 'last_admin') {
@@ -325,6 +333,7 @@ async function resolveOnce(
           'OIDC role sync skipped: the user is the last admin and cannot be demoted',
         );
       } else {
+        roleChange = { from: user.role, to: mappedRole };
         user = { ...user, role: mappedRole };
       }
     }
@@ -334,7 +343,7 @@ async function resolveOnce(
       .where('provider_id', '=', provider.id)
       .where('subject', '=', sub)
       .execute();
-    return { ok: true, user, created: false, linked };
+    return { ok: true, user, created: false, linked, ...(roleChange ? { roleChange } : {}) };
   }
 
   if (!provider.autoCreateUsers) return { ok: false, error: 'no_account' };

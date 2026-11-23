@@ -608,6 +608,12 @@ describe('login', () => {
     expect(await role()).toBe('admin');
     expect((await as(['statuspage-editors'])).headers.location).toBe('/admin');
     expect(await role()).toBe('editor');
+    // Every change made by the sync is in the audit log, with the provider.
+    const changes = await t.db.selectFrom('audit_log').select('details').where('action', '=', 'user.update').orderBy('created_at').execute();
+    expect(changes.map((c) => JSON.parse(c.details!))).toMatchObject([
+      { fields: ['role'], previousRole: 'editor', role: 'admin', method: 'oidc', provider: provider.id },
+      { fields: ['role'], previousRole: 'admin', role: 'editor', method: 'oidc', provider: provider.id },
+    ]);
 
     // Deny wins and ends the sessions of the linked user.
     const janeId = (await t.db.selectFrom('users').select('id').where('email', '=', 'jane@example.com').executeTakeFirstOrThrow()).id;

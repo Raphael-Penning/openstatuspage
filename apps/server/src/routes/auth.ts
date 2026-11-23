@@ -196,6 +196,23 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       entityId: result.user.id,
       details: { method: 'oidc', provider: provider.id, providerName: provider.label, ...(result.linked ? { linked: true } : {}) },
     });
+    if (result.roleChange) {
+      // Role sync: traceable like a change in the management UI, with the provider that made it.
+      await audit(db, {
+        userId: result.user.id,
+        action: 'user.update',
+        entityType: 'user',
+        entityId: result.user.id,
+        details: {
+          fields: ['role'],
+          role: result.roleChange.to,
+          previousRole: result.roleChange.from,
+          method: 'oidc',
+          provider: provider.id,
+          providerName: provider.label,
+        },
+      });
+    }
     return reply.redirect('/admin', 302);
   }
 
