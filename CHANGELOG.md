@@ -25,6 +25,17 @@ breaking changes.
   be completed at another. `/api/auth/config` lists them in `oidcProviders`.
 - Users are linked by `sub` per provider and can be linked to several
   providers. `create-user --unlink-oidc` removes every link.
+- Providers of the management UI link an existing account through its verified
+  e-mail address only with *Link existing accounts by e-mail* (`linkByEmail`,
+  off by default); otherwise the login is refused with `account_not_linked`.
+  The environment provider keeps linking by e-mail as in 0.3.x.
+- A new issuer URL of a provider needs its client secret again and removes the
+  provider's links to user accounts (audited with `previousIssuerUrl` and
+  `unlinkedUsers`).
+- With `LOCAL_LOGIN_ENABLED=false` and no environment provider, the last
+  enabled provider cannot be disabled or deleted (`409`).
+- Role changes made by the SSO role sync are written to the audit log
+  (`user.update` with `previousRole` and the provider).
 
 ### Changed
 
