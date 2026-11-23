@@ -11,10 +11,19 @@
 #   3. Append generated secrets (keep a copy, they cannot be changed freely):
 #        printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
 #        chmod 600 .env
-#   4. Edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD (and HOST_PORT /
-#      TRUST_PROXY for your proxy). The port is published on 127.0.0.1 only
-#      by default, for a reverse proxy on the same host.
+#   4. Edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, MAIL_DOMAIN (and
+#      HOST_PORT / TRUST_PROXY for your proxy). The port is published on
+#      127.0.0.1 only by default, for a reverse proxy on the same host.
 #   5. docker compose up -d
+#   6. Publish the DNS records shown in Settings -> Email delivery (SPF, DKIM,
+#      DMARC) for the bundled mail server.
+#
+# Mail: the "postfix" service is a send-only mail server for the notification
+# mails (profile "mail", turned on by COMPOSE_PROFILES=mail in .env). It signs
+# with DKIM (key generated on first start), is never published on a host port
+# and relays only for the app container. To use another mail server instead,
+# set SMTP_HOST (and SMTP_*) in .env, remove MAIL_DOMAIN and remove "mail" from
+# COMPOSE_PROFILES. Needs Docker Compose 2.23.1 or newer (inline configs).
 #
 # All settings live in .env next to this file; every option of the
 # configuration reference can be set there without editing this file.
@@ -46,8 +55,17 @@ services:
       SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY in .env}"
       # Always points to the db service below (overrides DATABASE_URL from .env).
       DATABASE_URL: postgres://openstatuspage:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/openstatuspage
+      # Mail: SMTP_* from .env win. Without SMTP_HOST but with MAIL_DOMAIN the app
+      # sends through the bundled postfix service (internal network, no login).
+      SMTP_HOST: ${SMTP_HOST:-${MAIL_DOMAIN:+postfix}}
+      SMTP_FROM: ${SMTP_FROM:-${MAIL_DOMAIN:+Status <status@${MAIL_DOMAIN}>}}
+      # DKIM public keys of the bundled postfix, for the DNS records in the admin portal.
+      MAIL_DKIM_DIR: ${MAIL_DOMAIN:+/mail-dkim}
     volumes:
       - data:/data
+      # Public keys only: the private keys stay in the postfix service.
+      - dkim-public:/mail-dkim:ro
+    networks: [default, mail]
     depends_on:
       db:
         condition: service_healthy
@@ -68,6 +86,69 @@ services:
       timeout: 5s
       retries: 10
 
+  # Send-only mail server for the notification mails: boky/postfix, a widely
+  # used Postfix image (https://github.com/bokysan/docker-postfix), pinned by
+  # tag. Postfix relays only for the internal "mail" network (the app) and only
+  # for senders of MAIL_DOMAIN; rspamd signs with DKIM. Without MAIL_RELAYHOST it
+  # delivers directly to the recipients' servers: that needs outbound port 25,
+  # a PTR record and the DNS records shown in the admin portal.
+  postfix:
+    image: boky/postfix:v5.2.1-alpine
+    profiles: [mail]
+    restart: unless-stopped
+    # No env_file: the mail server must not receive the app's secrets.
+    environment:
+      ALLOWED_SENDER_DOMAINS: ${MAIL_DOMAIN:-}
+      # Host name used in HELO; should match the PTR record of the sending address.
+      POSTFIX_myhostname: ${MAIL_HOSTNAME:-${MAIL_DOMAIN:-localhost.localdomain}}
+      # Relay only for this container and the internal mail network.
+      POSTFIX_mynetworks: 127.0.0.0/8 ${MAIL_SUBNET:-172.30.250.0/28}
+      # The mail network is internal (app and postfix only): no STARTTLS offer,
+      # so the app needs no certificate exception.
+      POSTFIX_smtpd_tls_security_level: none
+      DKIM_AUTOGENERATE: "true"
+      DKIM_SELECTOR: ${DKIM_SELECTOR:-mail}
+      # Optional smarthost, e.g. [smtp.example.com]:587, when port 25 is blocked.
+      RELAYHOST: ${MAIL_RELAYHOST:-}
+      RELAYHOST_USERNAME: ${MAIL_RELAYHOST_USERNAME:-}
+      RELAYHOST_PASSWORD: ${MAIL_RELAYHOST_PASSWORD:-}
+    volumes:
+      # The DKIM key pair, generated on first start. Back it up with the database.
+      - dkim:/var/lib/rspamd/dkim
+      - dkim-public:/mail-dkim
+    configs:
+      - source: postfix-publish-dkim
+        target: /docker-init.d/50-publish-dkim.sh
+    # "mail" reaches the app only, "mail-out" is the way to the internet.
+    networks: [mail, mail-out]
+
+configs:
+  # Runs in the postfix container after the DKIM keys were generated: copies the
+  # public keys (never the private ones) to the volume the app reads read-only.
+  postfix-publish-dkim:
+    content: |
+      set -eu
+      mkdir -p /mail-dkim
+      for f in /var/lib/rspamd/dkim/*.txt; do
+        [ -f "$$f" ] || continue
+        cp "$$f" /mail-dkim/
+        chmod 0644 "/mail-dkim/$$(basename "$$f")"
+      done
+      chmod 0755 /mail-dkim
+
+networks:
+  default:
+  # App <-> postfix, without a route to the outside. MAIL_SUBNET must not
+  # overlap with another network of the host.
+  mail:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${MAIL_SUBNET:-172.30.250.0/28}
+  mail-out:
+
 volumes:
   data:
   pg:
+  dkim:
+  dkim-public:
