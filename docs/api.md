@@ -346,6 +346,8 @@ error documents like everywhere else.
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
 | GET | `/llms.txt`, `/llms-full.txt` | Summary of the status page for language models ([llmstxt.org](https://llmstxt.org)) and the current status as Markdown (`text/plain`). Roles `public` and `all`. |
 | GET | `/uploads/<sha256>.<ext>` | An uploaded image (`png`, `jpg`, `webp`, `ico`) with the type detected on upload, `Cache-Control: public, max-age=31536000, immutable`, an `ETag` (`304` for `If-None-Match`), `Content-Disposition: inline; filename="<file>"` (the name of the URL), `X-Content-Type-Options: nosniff` and a CSP that allows nothing. Roles `public`, `admin` and `all`. |
+| GET | `/theme/<hash>.css` | A stylesheet of the active theme ([themes.md](themes.md#how-the-public-pages-load-a-theme)): its tokens as CSS custom properties, or its extra CSS (`text/css; charset=utf-8`, `Cache-Control: public, max-age=31536000, immutable`, an `ETag`, `304` for `If-None-Match`, `nosniff`). A preview stylesheet (`?theme=<id>`) only for a signed-in admin, `private, no-store`; `404` for anything else. Roles `public`, `admin` and `all`. |
+| GET | `/api/admin/themes/:id/export`, `/api/admin/themes/:id/export-css` | Downloads of a theme file (`application/json`) and its extra CSS (`text/css`, `404` without), `Content-Disposition: attachment; filename="<id>.json"` / `"<id>.css"`. Role `admin`. |
 | GET | `/api/auth/oidc/login` | Provider of the `OIDC_*` environment variables: `302` to the identity provider (PKCE, state, nonce and the provider id in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | Provider of the environment: `302` to `/admin` after login, or `/admin/login?error=<code>` |
 | GET | `/api/auth/oidc/:providerId/login` | The same for a provider of the management UI (`404` for an id that is not a UUID, `302` with `error=oidc_unavailable` for an unknown or disabled one) |
@@ -914,6 +916,10 @@ read-only attributes besides the settings: `pages`, the published pages for the
 navigation and the footer (`systemKey`, `slug`, `path`, `title`,
 `showInFooter`, `showInNav`, `sortOrder`, no texts), and `logoSize`
 (`{ "width", "height" }` when `logoUrl` is an upload of this instance, else null).
+`theme` is the active theme: `{ "id", "stylesheets": ["/theme/<hash>.css", ...] }`
+(tokens first, then the extra CSS), and `accentColor` is the accent in effect:
+the override of the settings, or the light accent of the active theme
+([themes.md](themes.md)).
 A published system page replaces the link of the settings: `legal-notice`,
 `privacy` and `accessibility` the footer links `imprintUrl`, `privacyUrl` and
 `accessibilityUrl`, `about` the navigation link `infoLinkUrl` (its label
@@ -1484,7 +1490,7 @@ HTTP/1.1 204 No Content
 | Method | Path | Body / parameters | Response | Role |
 | --- | --- | --- | --- | --- |
 | GET | `/api/admin/overview` | – | `overviews/current`: attribute `counts: { services, incidentsActive, maintenancesActive, maintenancesUpcoming, sources, sourcesFailing, checks, checksFailing }`, relationships `services` (non-operational first) and `recentAudit` (`audit-entries`), both included. Source and check counts leave out the virtual check bundle source and its checks; editors only get `incident` and `maintenance` audit entries. | editor |
-| GET | `/api/admin/settings` | – | `settings/site` (`PublicPageSettings`) | editor |
+| GET | `/api/admin/settings` | – | `settings/site` (`PublicPageSettings`; `accentColor` is the accent override, `null` or missing: the theme's accent) | editor |
 | PATCH | `/api/admin/settings` | `settings` (`SettingsInput`, partial) | `settings/site` | admin |
 | GET | `/api/admin/audit-log` | `page[number]`, `page[size]`, `filter[entityType]` | paginated `audit-entries` (`AuditLogEntry`, newest first); relationship `user` (the acting user, `null` for API tokens and deleted users; `userName` stays an attribute) | admin |
 
@@ -4507,6 +4513,80 @@ Content-Type: application/vnd.api+json
   "links": { "self": "/api/admin/oidc-providers" }
 }
 ```
+
+### Themes
+
+Role `admin`. Resource type `themes`: the themes of the public pages, built-in,
+from the themes folder (`THEMES_DIR`) and uploaded (stored in the database).
+Format, tokens, the contrast check and the CSS filter: [themes.md](themes.md).
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/admin/themes` | every theme: built-in first, then the folder, then the uploaded ones by name; without `css` |
+| POST | `/api/admin/themes` | import: `definition` (the theme file) and `css` (optional); `201`; `400` (code `invalid_theme` for the file, `css_<problem>` for the CSS: `css_import`, `css_url`, `css_html`, ...); `409` for an id that is taken by any source; at most 50 uploaded themes |
+| GET | `/api/admin/themes/:id` | the theme with `css` |
+| PATCH | `/api/admin/themes/:id` | uploaded themes only (`409` otherwise): `definition` (the id cannot change, `400`), `css` (`null` removes it), `acceptContrastFailures` |
+| DELETE | `/api/admin/themes/:id` | `204`; uploaded themes only; `409` for the active theme |
+| POST | `/api/admin/themes/:id/activate` | `acceptContrastFailures` (default `false`); answers the theme |
+
+Attributes: `name`, `author`, `description`, `source` (`builtin`, `folder`,
+`database`), `readOnly`, `active`, `definition` (the theme file),
+`css` (single theme only), `cssBytes`, `contrastFailures` (the failed WCAG 2.2
+AA checks with the current accent override: `mode`, `foreground`,
+`background`, `ratio`, `required`) and `updatedAt`.
+
+Activating a theme that fails AA, or changing the active theme so that it
+fails, is refused unless `acceptContrastFailures` is `true`:
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "errors": [{
+    "status": "409", "code": "contrast_failures",
+    "title": "Conflict",
+    "detail": "The theme fails WCAG 2.2 AA in 3 checks; confirm with acceptContrastFailures to use it anyway",
+    "meta": {"failures": [
+      {"mode": "light", "foreground": "muted", "background": "surface", "ratio": 2.31, "required": 4.5, "pass": false}
+    ]}
+  }]
+}
+```
+
+<details>
+<summary><code>POST /api/admin/themes/ocean/activate</code></summary>
+
+```http
+POST /api/admin/themes/ocean/activate
+Content-Type: application/vnd.api+json
+
+{ "data": { "type": "themes", "attributes": { "acceptContrastFailures": false } } }
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{
+  "jsonapi": {"version": "1.1"},
+  "data": {
+    "type": "themes", "id": "ocean",
+    "attributes": {
+      "name": "Ocean", "author": "Example Ltd.", "description": "Blue-green surfaces and a teal accent.",
+      "source": "folder", "readOnly": true, "active": true,
+      "definition": {"id": "ocean", "name": "Ocean", "version": 1, "light": {"...": "..."}, "dark": {"...": "..."}},
+      "css": "header { border-bottom: 3px solid var(--accent); }\n", "cssBytes": 51,
+      "contrastFailures": [], "updatedAt": "2026-11-19T21:25:02.844Z"
+    },
+    "links": {"self": "/api/admin/themes/ocean"}
+  },
+  "links": {"self": "/api/admin/themes/ocean/activate"}
+}
+```
+
+</details>
 
 ### Pages, images and instance (admin)
 
