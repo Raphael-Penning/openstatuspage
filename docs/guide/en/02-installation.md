@@ -19,6 +19,7 @@ Choose one of these ways to run it:
 | [Kubernetes](#kubernetes) | external PostgreSQL (or SQLite on a volume) | clusters with an ingress controller, plain manifests (Kustomize) |
 | [Building the image yourself](#building-the-image-yourself) | as with Compose | own changes, other platforms |
 | [From source](#from-source) | SQLite or PostgreSQL | hosts without Docker, development |
+| [Without containers](13-installation-without-containers.md) | SQLite or PostgreSQL (installed for you if you like) | servers without Docker: install script, `.deb`/`.rpm` packages or release tarball with systemd units, optional local Postfix |
 
 ## Minimal configuration
 
@@ -625,6 +626,10 @@ Pass both `-f` files to every later command, or put
 `docker build -f docker/Dockerfile -t openstatuspage:local .`
 
 ## From source
+
+For a production server without Docker, the release tarball, the packages
+and the install script are easier and come with hardened systemd units: see
+[installation without containers](13-installation-without-containers.md).
 
 Requirements: Node.js 22 or newer and pnpm 10 (`corepack enable` installs the
 pnpm version pinned in `package.json`). Building the native SQLite and

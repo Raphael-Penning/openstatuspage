@@ -23,6 +23,12 @@ du Abonnements ohne Versandart, zeigt die Einstellungsseite eine Warnung.
 
 ## Mailserver
 
+Die Compose-Dateien und das Installationsskript können ein Postfix nur zum
+Versenden mitbringen, das mit DKIM signiert und keine der Variablen unten
+braucht; die Einstellungsseite zeigt dann die zu veröffentlichenden
+DNS-Einträge. Siehe [Mailserver](13-installation-without-containers.md#mailserver).
+Die Variablen unten wählen jeden anderen Server und haben immer Vorrang.
+
 | Variable | Standard | Beschreibung |
 | --- | --- | --- |
 | `MAIL_TRANSPORT` | `smtp`, wenn `SMTP_HOST` gesetzt ist, sonst `none` | `smtp` versendet per SMTP. `log` schreibt jede E-Mail ins Server-Log, statt sie zu versenden (nur für Entwicklung und Tests: Das Log enthält dann die Links aus Bestätigungs- und Verwaltungs-E-Mails; mit `NODE_ENV=production`, dem Standard des Container-Images, stehen dort statt der Tokens `[redacted]`). `none` schaltet E-Mail ab, auch wenn `SMTP_HOST` gesetzt ist. |
@@ -242,7 +248,8 @@ von `SMTP_FROM` gilt:
   Anbieter erlauben, z. B. `v=spf1 include:_spf.mail-provider.example -all`.
 - **DKIM**: Lass den Mailserver oder Anbieter ausgehende E-Mails signieren und
   veröffentliche den öffentlichen Schlüssel im DNS. OpenStatusPage signiert
-  selbst nicht.
+  selbst nicht; das mitgelieferte Postfix tut es, und die Einstellungsseite
+  zeigt seinen Eintrag.
 - **DMARC**: Veröffentliche eine Richtlinie, z. B.
   `_dmarc.example.com TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"`,
   und achte darauf, dass SPF oder DKIM zur Absender-Domain passen.

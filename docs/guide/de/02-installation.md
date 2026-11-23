@@ -19,6 +19,7 @@ Du hast diese Möglichkeiten:
 | [Kubernetes](#kubernetes) | externes PostgreSQL (oder SQLite auf einem Volume) | Cluster mit Ingress-Controller, einfache Manifeste (Kustomize) |
 | [Image selbst bauen](#image-selbst-bauen) | wie bei Compose | eigene Änderungen, andere Plattformen |
 | [Aus dem Quellcode](#aus-dem-quellcode) | SQLite oder PostgreSQL | Hosts ohne Docker, Entwicklung |
+| [Ohne Container](13-installation-without-containers.md) | SQLite oder PostgreSQL (auf Wunsch mitinstalliert) | Server ohne Docker: Installationsskript, `.deb`/`.rpm`-Pakete oder Release-Tarball mit systemd-Units, optional lokales Postfix |
 
 ## Minimale Konfiguration
 
@@ -651,6 +652,10 @@ Wurzelverzeichnis des Repositorys mit
 `docker build -f docker/Dockerfile -t openstatuspage:local .`
 
 ## Aus dem Quellcode
+
+Für einen Produktivserver ohne Docker sind der Release-Tarball, die Pakete und
+das Installationsskript einfacher und bringen gehärtete systemd-Units mit:
+siehe [Installation ohne Container](13-installation-without-containers.md).
 
 Voraussetzungen: Node.js 22 oder neuer und pnpm 10 (`corepack enable`
 installiert die in `package.json` festgelegte pnpm-Version). Für die nativen
