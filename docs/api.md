@@ -4316,7 +4316,7 @@ anonymous clients).
 | GET | `/api/admin/pages` | every page, the four system pages first; type `pages` |
 | POST | `/api/admin/pages` | a custom page, input `SitePageInput`; `409` when the slug is taken (also by a system page) |
 | GET | `/api/admin/pages/:id` | |
-| PATCH | `/api/admin/pages/:id` | partial update; a system page keeps its slug, path and placement |
+| PATCH | `/api/admin/pages/:id` | partial update; `title`, `description` and `body` merge per language (`{"title":{"en":"FAQ"}}` keeps the German title); a system page keeps its slug, path and placement |
 | DELETE | `/api/admin/pages/:id` | `204`; `409` for a system page (unpublish it instead) |
 | GET | `/api/admin/uploads` | uploaded images, newest first; type `uploads` |
 | POST | `/api/admin/uploads?fileName=<name>` | the image bytes as `application/octet-stream` (no JSON:API document); `201` with the upload, `200` with the existing one for the same bytes, `413` above 1 MiB, `415` for anything but PNG, JPEG, WebP or ICO (by magic bytes; SVG is refused) or another `Content-Type` |
