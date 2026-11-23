@@ -14,7 +14,7 @@ was a breaking change: there is no compatibility layer for the plain JSON format
 
 Contents: [Conventions](#conventions) · [Authentication](#authentication) ·
 [Endpoints outside JSON:API](#endpoints-outside-jsonapi) · [Public API](#public-api) ·
-[Email subscriptions](#email-subscriptions) · [Auth](#auth) · [Admin API](#admin-api) ·
+[Email subscriptions](#email-subscriptions) · [Webhook and SMS subscriptions](#webhook-and-sms-subscriptions) · [Auth](#auth) · [Admin API](#admin-api) ·
 [Ingest API](#ingest-api)
 
 ## Conventions
@@ -320,8 +320,10 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
 - Every mutating admin call writes an audit log entry. Mutations through API tokens
   are audited with `userId = null` and `details.apiToken = <token name>`.
 - Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP (the API and the
-  HTML form `POST /subscribe` together),
-  subscription token endpoints 30/min per IP, ingest 120/min per source.
+  HTML form `POST /subscribe` together), webhook and SMS subscribe 5/min per IP (shared with
+  the same limit), webhook and SMS confirm 10/min per IP,
+  subscription token endpoints 30/min per IP, ingest 120/min per source, image uploads 30/min per IP,
+  uploaded image URLs 600/min per IP.
 
 ```sh
 curl -g -H "Authorization: Bearer $OSP_TOKEN" -H "Accept: application/vnd.api+json" \
@@ -340,14 +342,16 @@ error documents like everywhere else.
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes, once the database answers. Exists in every role; the role itself is only logged on start. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
-| GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
+| GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/`, the short manage links `/s/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
 | GET | `/llms.txt`, `/llms-full.txt` | Summary of the status page for language models ([llmstxt.org](https://llmstxt.org)) and the current status as Markdown (`text/plain`). Roles `public` and `all`. |
+| GET | `/uploads/<sha256>.<ext>` | An uploaded image (`png`, `jpg`, `webp`, `ico`) with the type detected on upload, `Cache-Control: public, max-age=31536000, immutable`, an `ETag` (`304` for `If-None-Match`), `Content-Disposition: inline; filename="<file>"` (the name of the URL), `X-Content-Type-Options: nosniff` and a CSP that allows nothing. Roles `public`, `admin` and `all`. |
 | GET | `/api/auth/oidc/login` | Provider of the `OIDC_*` environment variables: `302` to the identity provider (PKCE, state, nonce and the provider id in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | Provider of the environment: `302` to `/admin` after login, or `/admin/login?error=<code>` |
 | GET | `/api/auth/oidc/:providerId/login` | The same for a provider of the management UI (`404` for an id that is not a UUID, `302` with `error=oidc_unavailable` for an unknown or disabled one) |
 | GET | `/api/auth/oidc/:providerId/callback` | The same; only accepts a login state started at this provider (`error=invalid_state` otherwise) |
 | GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | `303` to the manage page with the unsubscribe confirmation (never deletes) |
+| GET | `/s/:id/:token` | Short manage link of webhook and SMS messages: `303` to `/subscription/channel?id=…&token=…` (never deletes) |
 | POST/GET | `/subscribe`, `/subscription/*`, `/preferences/*` | HTML form handlers of the public pages, see [HTML forms](#html-forms) |
 
 Examples:
@@ -413,6 +417,9 @@ outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age
 - The summary attribute `emailSubscriptions` is `true` when email subscriptions are
   enabled in the settings and a mail transport is configured (the page then offers
   the subscribe form).
+- The summary attribute `channelSubscriptions` holds what visitors may subscribe with:
+  `webhookKinds` (`discord`, `slack`, `teams` and `generic` when allowed), `sms` and
+  `smsCallingCodes`. Nothing is offered by default (empty list, `false`).
 
 Examples:
 
@@ -891,6 +898,54 @@ Content-Type: application/vnd.api+json
 </details>
 
 
+### Content pages
+
+Published content pages: the about page (`about`), the legal notice
+(`legal-notice`), the privacy policy (`privacy`), the accessibility statement
+(`accessibility`) and custom pages. Resource type `pages`. Unpublished pages
+answer `404`.
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| GET | `/api/public/pages/{slug}` | the page: `systemKey` (one of the four keys above, or null), `slug`, `path` (`/<key>` for the four system pages, `/pages/<slug>` for custom pages), `title`, `description` and `body` (Markdown) as `{ "en": "…", "de": "…" }` (an empty text means: show the other language), `images` (width and height of the uploaded images the texts show, by path), `createdAt`, `updatedAt` |
+
+The settings document (`GET /api/public/settings`) carries two derived
+read-only attributes besides the settings: `pages`, the published pages for the
+navigation and the footer (`systemKey`, `slug`, `path`, `title`,
+`showInFooter`, `showInNav`, `sortOrder`, no texts), and `logoSize`
+(`{ "width", "height" }` when `logoUrl` is an upload of this instance, else null).
+A published system page replaces the link of the settings: `legal-notice`,
+`privacy` and `accessibility` the footer links `imprintUrl`, `privacyUrl` and
+`accessibilityUrl`, `about` the navigation link `infoLinkUrl` (its label
+`infoLinkLabel` stays).
+
+```http
+GET /api/public/pages/legal-notice
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "pages",
+    "id": "5d1c…",
+    "attributes": {
+      "systemKey": "legal-notice",
+      "slug": "legal-notice",
+      "path": "/legal-notice",
+      "title": { "en": "Legal notice", "de": "Impressum" },
+      "description": { "en": "", "de": "" },
+      "body": { "en": "Example Ltd.\n\n1 Example Street", "de": "Beispiel GmbH\n\nBeispielstraße 1" },
+      "images": {},
+      "createdAt": "2026-11-20T09:00:00.000Z",
+      "updatedAt": "2026-11-21T10:00:00.000Z"
+    },
+    "links": { "self": "/api/public/pages/legal-notice" }
+  },
+  "links": { "self": "/api/public/pages/legal-notice" }
+}
+```
+
 ### Private pages
 
 A private page (`/p/<token>`, see [the guide](guide/en/12-public-page.md#private-pages))
@@ -974,6 +1029,8 @@ X-Private-Page-Token: 4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj
 `/api/public/subscriptions`, no authentication. Double opt-in; see
 [notifications.md](notifications.md). Responses are sent with
 `Cache-Control: no-store`. Unknown ids and wrong tokens get the same `404`.
+Webhook and SMS subscriptions use their own resource, see
+[Webhook and SMS subscriptions](#webhook-and-sms-subscriptions).
 
 A subscription is a `subscriptions` resource (`PublicSubscription`): attributes
 `email`, `locale`, `allServices`, `confirmed`; the selected services are the
@@ -1168,6 +1225,85 @@ HTTP/1.1 204 No Content
 
 </details>
 
+
+## Webhook and SMS subscriptions
+
+Visitors can subscribe with a Discord, Slack or Teams webhook, a generic
+webhook (only when the admin allows it) or a phone number, with the same scope
+choice as email. What is offered is `channelSubscriptions` of
+`GET /api/public/summary`:
+
+```json
+{ "webhookKinds": ["discord", "slack", "teams"], "sms": true, "smsCallingCodes": ["49", "43"] }
+```
+
+Resources are `channel-subscriptions` with a `services` relationship. The manage
+token travels in `X-Subscription-Token`. Unknown ids, wrong tokens and wrong
+codes all get the same `404`. See [webhooks-and-sms.md](webhooks-and-sms.md)
+for the messages and the generic payload.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/api/public/channel-subscriptions` | Subscribe. Attributes `channel` (`webhook` or `sms`), `webhookKind` and `url` (webhook) or `phone` (sms, international format), `locale`, `allServices`; relationship `services`. Always `202` with `meta: { accepted: true, reference }` (also for a known destination); the work runs after the answer. `404` when the channel or kind is not offered, `400` for an invalid target (error `code`: `webhook_host`, `webhook_insecure`, `phone_format`, `phone_country`, `invalid_value`, pointer to the attribute). Rate limited together with the email subscriptions (5 per client and minute). |
+| POST | `/api/public/channel-subscriptions/confirm` | `{ reference, code }` → the subscription with `manageToken` (and `signingSecret` for a generic webhook). `404` for a wrong, used or expired code. 10 requests per client and minute; 5 wrong codes end a code. |
+| GET | `/api/public/channel-subscriptions/:id` | The subscription (`channel`, `webhookKind`, `target` masked, `locale`, `allServices`, `confirmed`, `signingSecret` for generic webhooks). |
+| PATCH | `/api/public/channel-subscriptions/:id` | Change `locale`, `allServices` and `services` (left out: kept). |
+| DELETE | `/api/public/channel-subscriptions/:id` | Unsubscribe (`204`); queued messages are dropped. |
+
+<details>
+<summary><code>POST /api/public/channel-subscriptions</code></summary>
+
+```http
+POST /api/public/channel-subscriptions
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "channel-subscriptions", "attributes": {"channel": "webhook", "webhookKind": "discord",
+  "url": "https://discord.com/api/webhooks/123/abc", "locale": "en", "allServices": true}}}
+```
+
+```http
+HTTP/1.1 202 Accepted
+Content-Type: application/vnd.api+json
+
+{"jsonapi": {"version": "1.1"}, "meta": {"accepted": true, "reference": "T0f6TfeTVXK1d1goSqj-eqK4sbJfb9gWpgSmwxEqKBQ"}}
+```
+
+</details>
+
+<details>
+<summary><code>POST /api/public/channel-subscriptions/confirm</code></summary>
+
+```http
+POST /api/public/channel-subscriptions/confirm
+Content-Type: application/vnd.api+json
+
+{"data": {"type": "channel-subscriptions", "attributes": {"reference": "T0f6TfeTVXK1d1goSqj-eqK4sbJfb9gWpgSmwxEqKBQ", "code": "123456"}}}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/vnd.api+json
+
+{"jsonapi": {"version": "1.1"}, "data": {"type": "channel-subscriptions", "id": "WSsceGtDY4vB",
+  "attributes": {"channel": "webhook", "webhookKind": "discord", "target": "discord.com/…", "locale": "en",
+    "allServices": true, "confirmed": true, "manageToken": "Zk9…"},
+  "relationships": {"services": {"data": []}}, "links": {"self": "/api/public/channel-subscriptions/WSsceGtDY4vB"}}}
+```
+
+</details>
+
+The messages carry the short manage link `GET /s/:id/:token`, which answers
+`303` to the manage page `/subscription/channel?id=…&token=…` (or
+`/subscription/channel?error=invalid`).
+
+The same steps as HTML forms (no JavaScript): `POST /subscribe/webhook`
+(`kind`, `url`, `locale`, `scope`, `service…`, `group…`, `website`) and
+`POST /subscribe/sms` (`phone`, …) → `303 /subscription/verify?ref=…&channel=…`;
+`POST /subscription/verify` (`ref`, `code`, `channel`) → `303` to the manage
+page with `confirmed=1`, a wrong code answers the page with the error (`422`);
+`POST /subscription/channel` (`id`, `token`, `locale`, `scope`, …) →
+`saved=1`; `POST /subscription/channel/unsubscribe` (`id`, `token`) →
+`/subscription/channel?unsubscribed=1`.
 
 ## Auth
 
@@ -4163,13 +4299,22 @@ Content-Type: application/vnd.api+json
     "attributes": {
       "transport": "smtp", "configured": true, "from": "Example Status <status@example.com>",
       "subscriptionsEnabled": true, "subscribers": {"confirmed": 1, "pending": 0},
-      "queue": {"pending": 1, "failed": 0}, "lastSentAt": null, "lastError": null
+      "queue": {"pending": 1, "failed": 0}, "lastSentAt": null, "lastError": null,
+      "dns": null
     },
     "links": {"self": "/api/admin/notifications/status"}
   },
   "links": {"self": "/api/admin/notifications/status"}
 }
 ```
+
+`dns` is null unless the bundled mail server is used (`MAIL_DKIM_DIR`, see
+[configuration.md](configuration.md#email-notifications)) and a DKIM public key
+exists for the domain of the sender (`SMTP_FROM`). Then it lists the records to
+publish: `{"domain": "example.com", "selector": "osp", "records": [{"kind": "spf" |
+"dkim" | "dmarc", "type": "TXT", "name": "...", "value": "..."}]}`, for example the
+DKIM record `osp._domainkey.example.com`. The SPF value contains the placeholders
+`<server-ipv4>` and `<server-ipv6>` for the addresses the mail server sends from.
 
 </details>
 
@@ -4208,6 +4353,29 @@ Content-Type: application/vnd.api+json
 
 </details>
 
+
+### Webhooks and SMS
+
+Admins only. URLs, header values, signing secrets and SMS credentials are
+write-only; they never appear in answers or in the audit log.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/api/admin/webhooks` | Team webhooks (`webhooks`): `name`, `kind` (`discord`, `slack`, `teams`, `generic`), `host`, `enabled`, `allowHttp`, `allServices`, relationship `services`, `headerNames`, `consecutiveFailures`, `disabledReason`, `disabledAt`, `lastDeliveryAt`, `lastStatusCode`. |
+| POST | `/api/admin/webhooks` | Create: `name`, `kind`, `url` (https, or http with `allowHttp`), `enabled`, `allServices`/`services`, `headers` (`[{ name, value }]`, generic only). A generic webhook's answer carries `signingSecret` (only here). |
+| GET/PATCH/DELETE | `/api/admin/webhooks/:id` | Read, change (partial; `url` and `headers` left out keep their values; enabling resets the failures), delete (with its delivery log). |
+| POST | `/api/admin/webhooks/:id/test` | Sends a test message now → `meta: { ok, statusCode, message }`; logged as a delivery. |
+| POST | `/api/admin/webhooks/:id/rotate-secret` | Generic only: a new `signingSecret` (only in this answer). |
+| POST | `/api/admin/webhooks/:id/retry-failed` | Queues the failed deliveries again → `meta: { requeued }`. |
+| GET | `/api/admin/webhooks/:id/deliveries` | Delivery log (`webhook-deliveries`, paged, newest first): `event`, `status` (`pending`, `sent`, `failed`), `attempts`, `statusCode`, `error`, `createdAt`, `lastAttemptAt`, `sentAt`. |
+| GET/PATCH | `/api/admin/sms-provider` | The SMS template (`enabled`, `preset`, `method`, `url`, `headers`, `bodyType`, `body`, `from`, `successStatuses`), `usernameSet`, `passwordSet`, `sentThisMonth`, `monthlyBudget`, `budgetExhausted`. PATCH takes `username` and `password` (left out: kept; `null`: removed). |
+| GET | `/api/admin/sms-presets` | The preset templates (`twilio`, `vonage`, `seven`, `messagebird`). |
+| POST | `/api/admin/sms-provider/test` | `{ to }` → sends a test SMS now → `meta: { ok, statusCode, message }` (counts toward the budget). |
+| GET/POST | `/api/admin/sms-recipients` | On-call numbers (`sms-recipients`): `name`, `phone` (E.164), `enabled`, `allServices`/`services`. |
+| GET/PATCH/DELETE | `/api/admin/sms-recipients/:id` | Read, change (partial), delete. |
+| GET/PATCH | `/api/admin/channel-settings` | `webhookSubscriptions`, `genericWebhookSubscriptions`, `smsCallingCodes`, `smsMonthlyBudget`, `subscriberWebhooksPerMinute`, `webhookHostPerMinute`, `smsPerMinute`, `smsConfirmationsPerHour` (singleton `current`). |
+| GET | `/api/admin/channel-subscribers` | Webhook and SMS subscribers (`channel-subscribers`, paged): `filter[channel]` (`all`, `webhook`, `sms`), `filter[status]` (`all`, `confirmed`, `pending`); `channel`, `webhookKind`, `target` (masked), `locale`, `allServices`, `services`, `confirmed`, `createdAt`, `confirmedAt`. |
+| DELETE | `/api/admin/channel-subscribers/:id` | Deletes a subscriber and its queued messages. |
 
 ### Private pages (admin)
 
@@ -4337,6 +4505,62 @@ Content-Type: application/vnd.api+json
     "links": { "self": "/api/admin/oidc-providers/1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b" }
   },
   "links": { "self": "/api/admin/oidc-providers" }
+}
+```
+
+### Pages, images and instance (admin)
+
+Pages and images: role `admin`. The instance: every signed-in user (never
+anonymous clients).
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/admin/pages` | every page, the four system pages first; type `pages` |
+| POST | `/api/admin/pages` | a custom page, input `SitePageInput`; `409` when the slug is taken (also by a system page) |
+| GET | `/api/admin/pages/:id` | |
+| PATCH | `/api/admin/pages/:id` | partial update; `title`, `description` and `body` merge per language (`{"title":{"en":"FAQ"}}` keeps the German title); a system page keeps its slug, path and placement |
+| DELETE | `/api/admin/pages/:id` | `204`; `409` for a system page (unpublish it instead) |
+| GET | `/api/admin/uploads` | uploaded images, newest first; type `uploads` |
+| POST | `/api/admin/uploads?fileName=<name>` | the image bytes as `application/octet-stream` (no JSON:API document); `201` with the upload, `200` with the existing one for the same bytes, `413` above 1 MiB, `415` for anything but PNG, JPEG, WebP or ICO (by magic bytes; SVG is refused) or another `Content-Type` |
+| DELETE | `/api/admin/uploads/:id` | `204`; `409` while the logo, the favicon or a content page (by its Markdown) uses the image; the detail names them |
+| GET | `/api/admin/instance` | `instances/current` with `version` (the server package version) |
+
+- `SitePageInput`: `slug` (lower case letters, digits, single dashes, at most 64),
+  `title`, `description` (single lines, at most 120 and 300 characters) and `body`
+  (Markdown, at most 50,000 characters) as `{ "en", "de" }`, a title in at least
+  one language; `published`, `showInFooter`, `showInNav`, `sortOrder` (0 to 10,000).
+- An upload: `url` (`/uploads/<sha256>.<ext>`, usable as `logoUrl`, `faviconUrl` and
+  in Markdown), `contentType`, `size` (bytes), `width`, `height`, `filename`
+  (display only), `createdAt`.
+- Audit log: `page.create`, `.update`, `.delete` (slug); `upload.create`,
+  `.delete` (URL and size).
+
+```http
+POST /api/admin/uploads?fileName=logo.png
+Content-Type: application/octet-stream
+X-Requested-With: openstatuspage
+
+<the bytes of the PNG>
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "uploads",
+    "id": "0b8e…",
+    "attributes": {
+      "url": "/uploads/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08.png",
+      "contentType": "image/png",
+      "size": 18342,
+      "width": 320,
+      "height": 64,
+      "filename": "logo.png",
+      "createdAt": "2026-11-20T09:00:00.000Z"
+    },
+    "links": { "self": "/api/admin/uploads/0b8e…" }
+  },
+  "links": { "self": "/api/admin/uploads?fileName=logo.png" }
 }
 ```
 

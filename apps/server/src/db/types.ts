@@ -24,6 +24,7 @@ import type {
   StatusMode,
   SubscriptionLocale,
   UserRole,
+  WebhookKind,
 } from '@openstatuspage/shared';
 
 type Bool = number; // 0 | 1
@@ -482,6 +483,135 @@ export interface PrivatePageServicesTable {
   sort_order: number;
 }
 
+/** Content pages (0014_site_pages_uploads): the four system pages and custom pages. */
+export interface SitePagesTable {
+  id: string;
+  system_key: string | null;
+  slug: string;
+  title_en: string;
+  title_de: string;
+  description_en: string;
+  description_de: string;
+  body_en: string;
+  body_de: string;
+  published: Bool;
+  show_in_footer: Bool;
+  show_in_nav: Bool;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Uploaded images (0014_site_pages_uploads), served at /uploads/<hash>.<extension>. */
+export interface UploadsTable {
+  id: string;
+  /** SHA-256 (hex) of the bytes. */
+  hash: string;
+  extension: string;
+  content_type: string;
+  byte_size: number;
+  width: number;
+  height: number;
+  data: Buffer;
+  filename: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Admin webhooks (0015). URL, secret and header values are SecretBox ciphertexts. */
+export interface NotificationWebhooksTable {
+  id: string;
+  name: string;
+  kind: WebhookKind;
+  url_enc: string;
+  host: string;
+  secret_enc: string | null;
+  headers_enc: string | null;
+  /** JSON array of the header names. */
+  header_names: string;
+  allow_http: Bool;
+  all_services: Bool;
+  enabled: Bool;
+  consecutive_failures: number;
+  disabled_reason: string | null;
+  disabled_at: string | null;
+  last_delivery_at: string | null;
+  last_status_code: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationWebhookServicesTable {
+  webhook_id: string;
+  service_id: string;
+}
+
+/** On-call SMS recipients of the admins (0015). */
+export interface SmsRecipientsTable {
+  id: string;
+  name: string;
+  phone: string;
+  enabled: Bool;
+  all_services: Bool;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsRecipientServicesTable {
+  recipient_id: string;
+  service_id: string;
+}
+
+/** Visitors subscribed with a webhook or a phone number (0015). */
+export interface ChannelSubscribersTable {
+  id: string;
+  channel: 'webhook' | 'sms';
+  webhook_kind: WebhookKind | null;
+  /** Encrypted URL or phone number (key derived from SUBSCRIPTION_TOKEN_KEY). */
+  target_enc: string;
+  /** HMAC of the normalized target: finds it again, and the `reference` of the code form. */
+  target_hash: string;
+  target_hint: string;
+  locale: SubscriptionLocale;
+  all_services: Bool;
+  token_salt: string;
+  code_hash: string;
+  code_attempts: number;
+  code_sends: number;
+  code_sent_at: string | null;
+  confirmed_at: string | null;
+  manage_token_hash: string;
+  token_key: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChannelSubscriberServicesTable {
+  subscriber_id: string;
+  service_id: string;
+}
+
+export type ChannelRecipientType = 'admin_webhook' | 'sms_recipient' | 'subscriber' | 'test';
+
+/** Webhook and SMS deliveries (0015). */
+export interface ChannelOutboxTable {
+  id: string;
+  channel: 'webhook' | 'sms';
+  recipient_type: ChannelRecipientType;
+  recipient_id: string | null;
+  event: string;
+  payload: string;
+  status: 'pending' | 'sent' | 'failed';
+  attempts: number;
+  next_attempt_at: string;
+  status_code: number | null;
+  last_error: string | null;
+  last_attempt_at: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
+
 export interface Database {
   settings: SettingsTable;
   users: UsersTable;
@@ -519,6 +649,15 @@ export interface Database {
   task_leases: TaskLeasesTable;
   private_pages: PrivatePagesTable;
   private_page_services: PrivatePageServicesTable;
+  site_pages: SitePagesTable;
+  uploads: UploadsTable;
+  notification_webhooks: NotificationWebhooksTable;
+  notification_webhook_services: NotificationWebhookServicesTable;
+  sms_recipients: SmsRecipientsTable;
+  sms_recipient_services: SmsRecipientServicesTable;
+  channel_subscribers: ChannelSubscribersTable;
+  channel_subscriber_services: ChannelSubscriberServicesTable;
+  channel_outbox: ChannelOutboxTable;
 }
 
 export type User = Selectable<UsersTable>;
@@ -534,6 +673,9 @@ export type Incident = Selectable<IncidentsTable>;
 export type Maintenance = Selectable<MaintenancesTable>;
 export type Subscriber = Selectable<SubscribersTable>;
 export type OutboxRow = Selectable<EmailOutboxTable>;
+export type ChannelOutboxRow = Selectable<ChannelOutboxTable>;
+export type ChannelSubscriber = Selectable<ChannelSubscribersTable>;
+export type NotificationWebhook = Selectable<NotificationWebhooksTable>;
 export type NewService = Insertable<ServicesTable>;
 export type ServiceUpdate = Updateable<ServicesTable>;
 

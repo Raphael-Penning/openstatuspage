@@ -57,9 +57,11 @@ export const adminRoutes: RouteObject[] = [
           { path: 'settings', ...adminPage(() => import('./pages/SettingsPage')) },
           { path: 'users', ...adminPage(() => import('./pages/UsersPage')) },
           { path: 'subscribers', ...adminPage(() => import('./pages/SubscribersPage')) },
+          { path: 'notifications', ...adminPage(() => import('./pages/NotificationChannelsPage')) },
           { path: 'api-tokens', ...adminPage(() => import('./pages/ApiTokensPage')) },
           { path: 'private-pages', ...adminPage(() => import('./pages/PrivatePagesPage')) },
           { path: 'sso', ...adminPage(() => import('./pages/SsoProvidersPage')) },
+          { path: 'pages', ...adminPage(() => import('./pages/SitePagesPage')) },
           { path: 'audit-log', ...adminPage(() => import('./pages/AuditLogPage')) },
           // Help area for every signed-in user; the guide markdown lives in docs/guide.
           { path: 'help', ...page(() => import('../help/HelpPage')) },

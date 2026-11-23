@@ -99,7 +99,7 @@ async function routesOf(role: string, env: Record<string, string> = {}): Promise
 }
 
 const isPublicRoute = (r: string) =>
-  /^\w+ (\/api\/public(\/|$)|\/feed\.|\/api\/health$|\/robots\.txt$|\/sitemap|\/llms)/.test(r);
+  /^\w+ (\/api\/public(\/|$)|\/s\/:id\/:token$|\/feed\.|\/api\/health$|\/robots\.txt$|\/sitemap|\/llms|\/uploads\/)/.test(r);
 
 /** Files for crawlers that describe the status page: not on a management instance (robots.txt only). */
 const STATUS_PAGE_ONLY = /^GET \/(sitemap|llms)/;
@@ -181,6 +181,10 @@ describe('APP_ROLE requests', () => {
     }
     expect((await t.app.inject('/api/public/status')).statusCode).toBe(200);
     expect((await t.app.inject('/feed.rss')).statusCode).toBe(200);
+    // The webhook and SMS delivery code is not loaded (memory); the public summary still works.
+    expect(t.app.ctx.channels).toBeNull();
+    expect((await t.app.inject('/api/public/summary')).statusCode).toBe(200);
+    expect((await make('admin')).app.ctx.channels).not.toBeNull();
   });
 
   it('answers 404 for everything but the health check on a worker instance', async () => {

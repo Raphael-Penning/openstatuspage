@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import type { OidcLoginProvider } from './oidc-providers.js';
 import { SUBSCRIPTION_LOCALES, type SubscriptionLocale } from './subscriptions.js';
+import type { ChannelOptions } from './channel-schemas.js';
 import {
   AGGREGATION_MODES,
   CHECK_STATES,
@@ -1251,6 +1252,8 @@ export interface PublicSummary {
   upcomingMaintenances: PublicMaintenance[];
   /** Email subscriptions are enabled in the settings AND a mail transport is configured. */
   emailSubscriptions: boolean;
+  /** Webhook and SMS subscriptions offered to visitors. */
+  channelSubscriptions: ChannelOptions;
   generatedAt: string;
 }
 
@@ -1388,6 +1391,27 @@ export interface NotificationStatus {
   queue: { pending: number; failed: number };
   lastSentAt: string | null;
   lastError: { message: string; at: string } | null;
+  /**
+   * DNS records for the bundled mail server (MAIL_DKIM_DIR): SPF, the DKIM public
+   * key and a DMARC suggestion for the sender domain. Null without a bundled server.
+   */
+  dns: MailDnsRecords | null;
+}
+
+/** One DNS record an operator should publish for mail delivery. */
+export interface MailDnsRecord {
+  kind: 'spf' | 'dkim' | 'dmarc';
+  type: 'TXT';
+  /** Fully qualified name, e.g. `mail._domainkey.example.com`. */
+  name: string;
+  /** TXT value; the SPF value contains placeholders for the server's addresses. */
+  value: string;
+}
+
+export interface MailDnsRecords {
+  domain: string;
+  selector: string;
+  records: MailDnsRecord[];
 }
 
 /** Input of the admin API of private pages (create and full update; see private-pages.ts). */
@@ -1417,3 +1441,5 @@ export interface ApiError {
   issues?: unknown;
 }
 
+
+export * from './channel-schemas.js';

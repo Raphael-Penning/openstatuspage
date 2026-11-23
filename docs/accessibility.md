@@ -6,7 +6,8 @@ visitors and subscribers see:
 - the **public status page** (`apps/web/src/public` and the shared components it
   uses): overview, services and service detail, locations with the world map,
   history, incident and maintenance pages, the email subscription pages
-  (subscribe, confirm, manage) and the "not found" page, including the header
+  (subscribe, confirm, manage), the webhook and SMS subscription pages (subscribe,
+  verify code, manage) and the "not found" page, including the header
   controls (time zone, language, theme) and the subscribe menu;
 - the **notification emails** (`apps/server/src/mail/templates.ts`): HTML and
   plain text part of the confirmation, manage, test, incident and maintenance
@@ -64,7 +65,7 @@ All of these run in the CI job **check** (`pnpm -r test`):
 
 | Test | What it checks |
 | --- | --- |
-| `apps/web/src/public/a11y/pages.a11y.test.tsx` | Renders every public page (13 routes and states, including error and "not found" states) in **light and dark theme** and in **English and German** in jsdom with a fake API and runs **axe-core** with all WCAG 2.0, 2.1 and 2.2 A/AA rules plus a few structural best practices (landmarks, heading order). Any violation fails the test. It also checks interactive states: the open subscribe menu (Escape returns focus), the uptime tooltip (keyboard, live region, Escape), the map with a selected location and pan controls, form errors (focus, `aria-invalid`, suggestion), the success message and focus after navigation. Private pages (`/p/<token>`: overview, service, day and a wrong link) are checked the same way, and that all their links stay below `/p/<token>`. |
+| `apps/web/src/public/a11y/pages.a11y.test.tsx` | Renders every public page and state listed in `PAGES` (including the email, webhook and SMS subscription pages, error and "not found" states) in **light and dark theme** and in **English and German** in jsdom with a fake API and runs **axe-core** with all WCAG 2.0, 2.1 and 2.2 A/AA rules plus a few structural best practices (landmarks, heading order). Any violation fails the test. It also checks interactive states: the open subscribe menu (Escape returns focus), the uptime tooltip (keyboard, live region, Escape), the map with a selected location and pan controls, form errors (focus, `aria-invalid`, suggestion), the success message and focus after navigation. Private pages (`/p/<token>`: overview, service, day and a wrong link) are checked the same way, and that all their links stay below `/p/<token>`. |
 | `apps/web/src/ssr.test.tsx`, `apps/server/test/ssr-pages.test.ts` | Every public page is rendered on the server (`<html lang>`/`dir` of the visitor's language, content in the HTML, so it works without JavaScript) and hydrates without a single hydration warning in both languages, also a page that answers a form with errors; unknown pages answer 404. |
 | `apps/server/test/nojs-pages.test.ts`, `forms-subscriptions.test.ts`, `forms-preferences.test.ts` | Without JavaScript: every control of every public page is a link or a form with its action, method and field names, no button, field or tab stop needs a script; every form handler on success, invalid input (values, error summary, `aria-invalid`, `aria-describedby`), cross-site posts and rate limits. |
 | `apps/web/src/tokens.test.ts` | Contrast of the design tokens in `styles.css` for both themes: text and muted text (4.5:1), status text (4.5:1), status fills, the no-data outline and field borders (3:1), accent text and focus color (4.5:1), and that the default accent variants match the runtime calculation. jsdom has no layout, so axe's `color-contrast` rule is disabled in the page tests and covered here instead. |
@@ -152,6 +153,13 @@ plain text view.
   UI language; text written in another language is not marked as such
   (WCAG 3.1.2). Write updates in the language most of your visitors use, and
   keep titles short and descriptive.
+- **Content pages** (about page, legal pages, custom pages) have one `h1`, the
+  page title; Markdown headings start at `h2`, so the outline stays intact. Text
+  shown in the other language (a page without text in the visitor's language)
+  is marked with its `lang` (WCAG 3.1.2). Images need a description in the
+  Markdown (`![description](/uploads/...)`); uploaded images carry their width
+  and height, so nothing shifts while they load. Wide tables scroll inside a
+  labelled, focusable region. Checked by axe in both themes and languages.
 - **Logos** are shown with an empty `alt` because the site name is always shown
   next to them. A logo that contains important text other than the site name is
   not described.

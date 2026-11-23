@@ -30,13 +30,20 @@ import {
   absoluteUrl,
   articleLd,
   breadcrumbLd,
+  eventLd,
+  isStructuredDataImage,
   languageAlternates,
   organizationLd,
+  serviceLd,
   summarize,
+  webPageLd,
   websiteLd,
   withLang,
+  type AboutRef,
   type Crumb,
+  type EventInput,
   type SiteInfo,
+  type WebPageInput,
 } from './seo';
 
 export interface PageHeadInput {
@@ -59,8 +66,14 @@ export interface PageHeadInput {
   home?: boolean;
   /** Pages between the overview and this page, this page last (BreadcrumbList). */
   breadcrumbs?: Crumb[];
-  /** Incident and maintenance reports: Article markup and og:type article. */
-  article?: { datePublished: string; dateModified: string };
+  /** Incident and maintenance reports: og:type article; Article markup unless `event` is set. */
+  article?: { datePublished: string; dateModified: string; about?: AboutRef[] };
+  /** Maintenance windows: Event markup (in place of Article). */
+  event?: Omit<EventInput, 'url' | 'name' | 'description'>;
+  /** Service pages: Service markup. */
+  service?: { name: string; description?: string };
+  /** Content pages: WebPage (or AboutPage) markup. */
+  webPage?: Omit<WebPageInput, 'url' | 'name' | 'description'>;
 }
 
 /**
@@ -149,7 +162,8 @@ export function usePageHead(input: PageHeadInput): void {
     name: site,
     baseUrl,
     lang,
-    ...(settings?.logoUrl ? { logo: absoluteUrl(settings.logoUrl, baseUrl) } : {}),
+    // An ICO logo is neither a JSON-LD logo/image nor a link preview image (og:image).
+    ...(settings?.logoUrl && isStructuredDataImage(settings.logoUrl) ? { logo: absoluteUrl(settings.logoUrl, baseUrl) } : {}),
     ...(settings?.brandUrl ? { sameAs: [settings.brandUrl] } : {}),
     ...(settings?.description ? { description: summarize(settings.description) } : {}),
   };
@@ -157,9 +171,15 @@ export function usePageHead(input: PageHeadInput): void {
   const jsonLd: Record<string, unknown>[] = [];
   if (indexable) {
     if (input.home) jsonLd.push(websiteLd(info), organizationLd(info));
-    if (input.article && canonical) {
-      jsonLd.push(articleLd(info, { headline: input.title ?? site, description, url: canonical, ...input.article }));
+    // The URL of the page as its canonical link names it.
+    const pageUrl = canonical;
+    if (input.event && pageUrl) {
+      jsonLd.push(eventLd(info, { name: input.title ?? site, description, url: pageUrl, ...input.event }));
+    } else if (input.article && pageUrl) {
+      jsonLd.push(articleLd(info, { headline: input.title ?? site, description, url: pageUrl, ...input.article }));
     }
+    if (input.service && pageUrl) jsonLd.push(serviceLd(info, { ...input.service, url: pageUrl }));
+    if (input.webPage && pageUrl) jsonLd.push(webPageLd(info, { name: input.title ?? site, description, url: pageUrl, ...input.webPage }));
     if (input.breadcrumbs?.length) jsonLd.push(breadcrumbLd(info, input.breadcrumbs));
     if (input.jsonLd) jsonLd.push(...input.jsonLd);
   }

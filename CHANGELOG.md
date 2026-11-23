@@ -6,8 +6,104 @@ breaking changes.
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Docker Compose 2.23.1 or newer** is needed for the new `compose.yaml` and
+  `compose.split.yaml` (inline `configs`), also when the bundled mail server
+  stays off. Check `docker compose version` before `docker compose up -d`.
+- Both files now always create the internal `mail` network with a fixed subnet
+  (`172.30.250.0/28`, split `172.30.251.0/28`). If `up` fails with `Pool
+  overlaps with other one on this address space`, because the range is in use
+  or a second project runs on the same host, set a free range per project with
+  `MAIL_SUBNET` in `.env`.
+- The bundled mail server lets every process on the host send as
+  `MAIL_DOMAIN` (the Docker host is on its network; with `install.sh` every
+  local user reaches `127.0.0.1:25`). Use it on a single-tenant host only.
+
 ### Added
 
+- **Installation without containers.** Every release attaches
+  `openstatuspage-<version>-linux-x64.tar.gz` and `…-linux-arm64.tar.gz`, `.deb`
+  and `.rpm` packages, `install.sh` and `SHA256SUMS`. `install.sh` installs a
+  checksum-verified release with hardened systemd units (one instance or the
+  split deployment, whose public instance runs as its own user), generates
+  `SECRET_KEY`, can set up a local PostgreSQL with the roles of `roles.sql` and
+  a send-only Postfix with OpenDKIM, and has `update`, `rollback` and
+  `uninstall` (keeps data). Guide: installation without containers.
+- **Bundled mail server in Docker Compose.** `compose.yaml` and
+  `compose.split.yaml` have a send-only `postfix` service (profile `mail`, on
+  in a new `.env` with `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`) that signs
+  with a DKIM key generated on first start, is never published and relays only
+  on an internal network (the app and the Docker host) for senders of
+  `MAIL_DOMAIN`. `SMTP_*` still select any other server.
+  Existing `.env` files are not changed: to turn the bundled server on, add
+  `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`.
+- **DNS records for the bundled mail server** in Settings → Email delivery and
+  in `GET /api/admin/notifications/status` (`dns`): SPF, DKIM and DMARC for the
+  sender domain, read from the public keys in the new `MAIL_DKIM_DIR`.
+- Caddy and nginx templates in `deploy/proxy/` for one instance and the split
+  deployment.
+- **Content pages.** *Administration → Pages* edits the about page (`/about`),
+  the legal notice (`/legal-notice`), the privacy policy (`/privacy`), the
+  accessibility statement (`/accessibility`) and any number of custom pages
+  (`/pages/<slug>`) in Markdown per language (English, German) with a preview.
+  A standard page is either the internal page (published) or, until it is
+  published, the external link of the settings as before; nothing changes on
+  upgrade. Pages are rendered on the server without raw HTML, have their own
+  title, description and language alternates, appear in the navigation and
+  footer, the sitemap and `llms.txt`, and are read by the PostgreSQL public role
+  through the view `osp_public.site_pages` (published pages only).
+- **Image uploads.** The logo, the favicon and images for pages can be uploaded
+  (PNG, JPEG, WebP or ICO, at most 1 MiB, checked by magic bytes; SVG is
+  refused). They are stored in the database, served at
+  `/uploads/<sha256>.<ext>` with immutable caching, `nosniff` and a CSP that
+  allows nothing, and rendered with their width and height. The public role
+  reads them through the view `osp_public.uploads`. URLs for logo and favicon
+  keep working.
+- **App version in the management UI**, from `GET /api/admin/instance`
+  (signed-in users only).
+- **Structured data**: maintenance windows as `Event` (online, on the status
+  page, `EventScheduled` or `EventCancelled`), service pages as `Service`,
+  content pages as `AboutPage` / `WebPage`; incident articles get the logo as
+  image and the affected services as `about`. Every JSON-LD object is checked
+  against schema.org and Google's required fields in the tests.
+- **Public API**: `GET /api/public/pages/{slug}` returns the published content pages;
+  the settings document gains `pages` (navigation and footer links) and `logoSize`.
+- An uploaded image that the logo, the favicon or a content page still uses is
+  not deleted (`409` naming the references); `PATCH /api/admin/pages/:id`
+  merges `title`, `description` and `body` per language.
+- **Webhook notifications.** Admins add team webhooks for Discord (embeds),
+  Slack (Block Kit), Microsoft Teams (Adaptive Cards for the Workflows webhook)
+  and generic JSON (versioned payload, HMAC-SHA256 signature with timestamp,
+  optional extra headers stored encrypted), for all or selected services. They
+  get the same events as the email subscribers, through a new outbox with
+  retries and backoff, have a test button and a delivery log, and are disabled
+  after 10 failed deliveries in a row with an email to the admins.
+- **SMS notifications.** A generic SMS provider (HTTP request template with
+  placeholders and presets for Twilio, Vonage, seven.io and MessageBird,
+  credentials stored encrypted), on-call SMS recipients with scope, a monthly
+  SMS budget that pauses public SMS and notifies the admins, and GSM-7 aware
+  one-segment texts.
+- **Webhook and SMS subscriptions for visitors**, with the same scope choice as
+  email, through the JSON:API (`/api/public/channel-subscriptions`) and plain
+  forms (`/subscribe/webhook`, `/subscribe/sms`, `/subscription/verify`,
+  `/subscription/channel`). A 6-digit code in the confirmation message
+  activates a subscription; every message carries a manage/unsubscribe link
+  (`/s/<id>/<token>`). Off by default: Discord, Slack and Teams need the
+  admin's switch (official hosts only), generic webhooks a second one, SMS an
+  allowlist of countries.
+- **SSRF guard for every outbound webhook and SMS request**: https only (http
+  only for admin webhooks that allow it), DNS resolved once and pinned, private,
+  loopback, link-local, CGNAT, multicast, metadata and IPv6 ULA ranges refused,
+  no redirects, strict timeouts and size limits; plus rate limits per client,
+  per destination (per webhook, per host for generic visitor webhooks; admin
+  webhooks and on-call SMS never wait behind visitors) and for all subscriber
+  webhooks and SMS.
+- Visitors' webhook and SMS subscriptions are removed automatically only when
+  the destination refused the last five messages (webhook `4xx`, a number the
+  SMS provider rejects); a used-up budget, provider or network errors never
+  remove anyone.
+- Admin page **Webhooks & SMS** and a channel switch on the subscriber list.
 - **Several SSO providers, managed in the management UI** (*Administration →
   Single sign-on*, admins only). Each OpenID Connect provider has a name,
   button order, enabled flag, issuer URL, client id, a write-only client
@@ -36,9 +132,15 @@ breaking changes.
   enabled provider cannot be disabled or deleted (`409`).
 - Role changes made by the SSO role sync are written to the audit log
   (`user.update` with `previousRole` and the provider).
+- Migration `0014_site_pages_uploads`.
+- Migration `0015_notification_channels`: on PostgreSQL the restricted public
+  role writes webhook and SMS subscriptions only through new `SECURITY DEFINER`
+  functions in `osp_public` and cannot read any of the new tables.
 
 ### Changed
 
+- **Maintenance windows** are marked up as `Event` in the structured data (they were
+  `Article`). Incident pages stay `Article`.
 - The provider of the `OIDC_*` environment variables keeps its routes, redirect
   URI and role rules and is listed read-only in the management UI (it is not
   copied into the database). Migration `0016_oidc_providers` moves the existing

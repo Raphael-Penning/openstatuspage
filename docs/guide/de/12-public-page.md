@@ -40,8 +40,12 @@ Jede öffentliche Seite beschreibt sich selbst:
   einfache Adresse gilt als `x-default`. `?lang=` zeigt immer diese Sprache, egal
   was Besucher vorher gewählt haben.
 - **Strukturierte Daten (JSON-LD).** Die Übersicht beschreibt die Seite und die
-  Organisation dahinter. Die anderen Seiten haben Breadcrumbs. Vorfall- und
-  Wartungsseiten werden als Artikel mit Beginn und letzter Änderung beschrieben.
+  Organisation dahinter. Die anderen Seiten haben Breadcrumbs. Vorfallseiten
+  werden als Artikel mit Beginn, letzter Änderung und den betroffenen Diensten
+  beschrieben, Wartungen als Veranstaltungen online auf der Statusseite (Beginn,
+  Ende, abgesagt oder nicht), Dienstseiten als Dienste deiner Organisation und
+  die Inhaltsseiten als Webseiten („Über diese Seite“ als About-Seite). Seiten,
+  die nicht indexiert werden, tragen keine strukturierten Daten.
 - **Link-Vorschauen.** Open-Graph- und Twitter-Card-Angaben enthalten Seitenname,
   Titel, Beschreibung und das Logo (sofern du eins hinterlegt hast), damit ein
   geteilter Link die richtige Vorschau zeigt.
@@ -212,6 +216,40 @@ Skripte machen die Seite nur bequemer. Ohne sie gilt:
 Ohne JavaScript fehlen nur: die Live-Aktualisierung des Status alle 60 Sekunden,
 die interaktive Karte, die Umstellung der Zeitzone und das Schließen der Menüs per
 Klick außerhalb oder mit der Escape-Taste.
+
+## Inhaltsseiten und Bilder
+
+Unter *Administration → Seiten* (nur Admins) schreibst du die Seiten rund um den
+Status, in Markdown und je Sprache (Englisch und Deutsch), mit Vorschau:
+
+- **Die vier Standardseiten**: *Über diese Seite* unter `/about`, das Impressum
+  unter `/legal-notice`, die Datenschutzerklärung unter `/privacy` und die
+  Erklärung zur Barrierefreiheit unter `/accessibility`. Jede ist entweder eine
+  hier geschriebene interne Seite oder, solange du sie nicht veröffentlichst, der
+  externe Link aus den Einstellungen (*Rechtliche Links*,
+  *Info-Link*), genau wie bisher. Setze den Haken *Interne Seite verwenden*, um
+  sie zu veröffentlichen: Der Link in der Fußzeile (bei „Über diese Seite“ der
+  Info-Eintrag der Navigation) führt dann zur internen Seite; die Beschriftung
+  aus den Einstellungen bleibt.
+- **Eigene Seiten** unter `/pages/<slug>`, zum Beispiel `/pages/faq`: angezeigt in
+  der Navigation und/oder der Fußzeile, sortiert nach der Zahl unter
+  *Reihenfolge*.
+
+Eine Seite ohne Text in einer Sprache zeigt den Text der anderen Sprache. Die
+Seiten werden auf dem Server gerendert (sie funktionieren ohne JavaScript),
+haben einen eigenen Titel, eine Beschreibung (die eingegebene oder den Anfang
+des Textes) und Sprachfassungen (`?lang=de`); veröffentlichte Seiten stehen in
+der Sitemap und in `llms.txt`. HTML im Markdown wird nicht angezeigt.
+
+**Bilder**: Lade PNG-, JPEG-, WebP- oder ICO-Dateien bis 1 MB auf derselben
+Seite hoch (*Bilder*) oder mit *Logo hochladen* / *Favicon hochladen* in den
+Einstellungen. SVG wird nicht angenommen. Jedes Bild bekommt eine feste Adresse
+wie `https://status.example.com/uploads/9f86….png`; die Datenbank speichert es,
+deshalb liefert es jede Instanz einer geteilten Installation aus. Füge eins mit
+`![Was das Bild zeigt](/uploads/9f86….png)` in eine Seite ein, immer mit einer
+Beschreibung für Screenreader. Eine https-URL für Logo oder Favicon funktioniert
+weiterhin. Ein Bild, das Logo, Favicon oder eine Seite noch nutzt, kannst du
+nicht löschen; entferne es dort zuerst.
 
 ## Private Seiten
 

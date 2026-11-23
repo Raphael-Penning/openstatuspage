@@ -3,6 +3,8 @@
 Visitors of the public page can subscribe to email notifications about public
 incidents and maintenance, either for all updates or for selected services.
 Subscriptions are off until you configure a mail server and enable them.
+Webhooks and SMS work the same way and are described in
+[Webhooks and SMS](14-webhooks-and-sms.md).
 
 ## Overview
 
@@ -21,6 +23,12 @@ The entry only appears when subscriptions are enabled in the settings
 subscriptions without a transport, the settings page shows a warning.
 
 ## Mail server
+
+The Compose files and the install script can bring a send-only Postfix that
+signs with DKIM and needs none of the variables below; the settings page then
+shows the DNS records to publish. See
+[mail server](13-installation-without-containers.md#mail-server). The
+variables below select any other server and always win over it.
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -223,7 +231,8 @@ domain of `SMTP_FROM`:
 - **SPF**: the DNS TXT record of the domain must allow your SMTP server or
   provider, e.g. `v=spf1 include:_spf.mail-provider.example -all`.
 - **DKIM**: let the mail server or provider sign outgoing mail and publish the
-  public key in DNS. OpenStatusPage does not sign mail itself.
+  public key in DNS. OpenStatusPage does not sign mail itself; the bundled
+  Postfix does, and the settings page shows its record.
 - **DMARC**: publish a policy, e.g.
   `_dmarc.example.com TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"`,
   and make sure SPF or DKIM align with the From domain.

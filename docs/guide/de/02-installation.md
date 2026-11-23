@@ -19,6 +19,7 @@ Du hast diese Möglichkeiten:
 | [Kubernetes](#kubernetes) | externes PostgreSQL (oder SQLite auf einem Volume) | Cluster mit Ingress-Controller, einfache Manifeste (Kustomize) |
 | [Image selbst bauen](#image-selbst-bauen) | wie bei Compose | eigene Änderungen, andere Plattformen |
 | [Aus dem Quellcode](#aus-dem-quellcode) | SQLite oder PostgreSQL | Hosts ohne Docker, Entwicklung |
+| [Ohne Container](13-installation-without-containers.md) | SQLite oder PostgreSQL (auf Wunsch mitinstalliert) | Server ohne Docker: Installationsskript, `.deb`/`.rpm`-Pakete oder Release-Tarball mit systemd-Units, optional lokales Postfix |
 
 ## Minimale Konfiguration
 
@@ -60,7 +61,7 @@ curl -fsSLO https://github.com/Raphael-Penning/openstatuspage/releases/latest/do
 curl -fsSL -o .env https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/env.example
 printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
 chmod 600 .env
-# edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD (and HOST_PORT / TRUST_PROXY for your proxy)
+# edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, MAIL_DOMAIN (and HOST_PORT / TRUST_PROXY for your proxy)
 docker compose up -d
 ```
 
@@ -100,6 +101,7 @@ ADMIN_PASSWORD=ein-langes-passwort
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Der [erste Administrator](#der-erste-administrator); wird nur angelegt, solange die Datenbank keinen Benutzer enthält. |
 | `HOST_PORT` | Adresse und Port auf dem Host, Standard `127.0.0.1:3000` (nur localhost), siehe [HOST_PORT](#host_port). |
 | `TRUST_PROXY` | Anzahl der Reverse Proxys vor der Anwendung, `1` in der Vorlage. Ohne Proxy lässt du den Wert leer, siehe [TRUST_PROXY](03-reverse-proxy.md#trust_proxy). |
+| `MAIL_DOMAIN`, `COMPOSE_PROFILES=mail` | Absender-Domain des mitgelieferten Postfix nur zum Versenden (E-Mails kommen von `status@MAIL_DOMAIN`), in der Vorlage eingeschaltet. Veröffentliche die DNS-Einträge aus **Einstellungen → E-Mail-Versand**; für einen anderen Mailserver siehe [Mailserver](13-installation-without-containers.md#mailserver). |
 | `OSP_VERSION` | [Image-Tag](#image-tags), der laufen soll. Leg dich auf ein Release fest. |
 | `OSP_IMAGE` | Image ohne Tag, Standard `ghcr.io/raphael-penning/openstatuspage`. Ändere es für einen Fork oder einen eigenen Registry-Mirror. |
 | `SECRET_KEY`, `POSTGRES_PASSWORD` | Erzeugt vom Installationsbefehl. Ändere sie später nicht: Ein neuer `SECRET_KEY` macht gespeicherte Monitoring-Zugangsdaten unlesbar, und `POSTGRES_PASSWORD` wirkt nur beim Anlegen der Datenbank. |
@@ -651,6 +653,10 @@ Wurzelverzeichnis des Repositorys mit
 `docker build -f docker/Dockerfile -t openstatuspage:local .`
 
 ## Aus dem Quellcode
+
+Für einen Produktivserver ohne Docker sind der Release-Tarball, die Pakete und
+das Installationsskript einfacher und bringen gehärtete systemd-Units mit:
+siehe [Installation ohne Container](13-installation-without-containers.md).
 
 Voraussetzungen: Node.js 22 oder neuer und pnpm 10 (`corepack enable`
 installiert die in `package.json` festgelegte pnpm-Version). Für die nativen

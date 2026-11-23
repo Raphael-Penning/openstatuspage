@@ -12,6 +12,7 @@ import { adminClient, createTestApp, data, seedChecks, type Client, type TestApp
 const NON_JSONAPI = [
   'GET /api/health',
   'GET /api/public/subscriptions/:id/unsubscribe',
+  'GET /s/:id/:token',
   'GET /api/auth/oidc/login',
   'GET /api/auth/oidc/callback',
   'GET /api/auth/oidc/:provider/login',
@@ -25,6 +26,7 @@ const NON_JSONAPI = [
   'GET /sitemap-services-:page.xml',
   'GET /llms.txt',
   'GET /llms-full.txt',
+  'GET /uploads/:file',
 ];
 
 /** Non-JSON:API routes whose successful answer is plain JSON. */

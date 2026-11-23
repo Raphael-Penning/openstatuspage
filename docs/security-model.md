@@ -53,9 +53,14 @@ tests) and history imports. The public instance never connects to either.
 | Read public incidents and maintenance with their updates, affected public services and public locations | views |
 | Read the status history of public services and the history corrections that affect them (status and time range only) | views |
 | Read the page settings (`settings` row `page`: site name, colors, which features are shown) | view |
+| Read the **published** content pages (about page, legal notice, privacy policy, accessibility statement, custom pages): slug, titles, descriptions and Markdown texts, placement | view `osp_public.site_pages` (migration `0014`) |
+| Read the uploaded images (logo, favicon, images of the content pages): hash, type, size in pixels and bytes | view `osp_public.uploads` (migration `0014`) |
 | Read the applied schema version (`kysely_migration`) | view |
 | Subscribe an address (double opt-in) | `osp_public.subscribe(...)` |
 | Confirm, read, change and delete one subscription, **only with its token** | `osp_public.subscription_confirm/get/update/delete(...)` |
+| Read which webhook kinds and SMS countries visitors may subscribe with (the admin options, no secrets) | `osp_public.channel_options()` |
+| Subscribe a webhook URL or phone number (the target stored encrypted; the function enforces the admin options, the country allowlist, the hourly confirmation cap and the monthly SMS budget) | `osp_public.channel_subscribe(...)` |
+| Confirm a webhook or SMS subscription with its 6-digit code (5 attempts, 24 hours), and read, change and delete it **only with its manage token** | `osp_public.channel_confirm/channel_subscription_get/update/delete(...)` |
 | Read **one private page with its token**: its name, its services (also hidden ones), their history and corrections, and the public incidents and maintenance windows that affect them | `osp_public.private_page*(token, ...)` |
 | Check whether its own login is restricted, and in which schemas it may still create objects | `osp_public.connection_restricted()`, `osp_public.connection_create_schemas()` |
 
@@ -78,8 +83,19 @@ from `/api/`, `/admin` and the personal subscription links.
   `email_outbox`, `monitor_sources`, `monitor_checks`, `monitor_check_history`,
   `service_checks`, `check_bundles`, `check_bundle_members`, `history_imports`,
   `history_import_intervals`, `task_leases`, `private_pages`,
-  `private_page_services`, `oidc_providers`, `user_oidc_identities` and the role
-  registry `osp_public_roles`.
+  `private_page_services`, `oidc_providers`, `user_oidc_identities`,
+  `notification_webhooks`, `notification_webhook_services`,
+  `sms_recipients`, `sms_recipient_services`, `channel_subscribers`,
+  `channel_subscriber_services`, `channel_outbox` and the role registry
+  `osp_public_roles`, nor on the settings rows `channels` and `sms_provider`.
+- **Read unpublished pages or who wrote what.** The tables `site_pages` and
+  `uploads` (migration `0014`) have the row level security of the private
+  tables and no privilege for the public role. It reads them only through two
+  views in `osp_public` that run with the owner's rights (`security_barrier`,
+  like the views that blank columns): `site_pages` with the published pages
+  only and without `created_by`, `uploads` without `created_by` and the original
+  file name. Every upload is public by design: it is served at
+  `/uploads/<sha256>.<ext>` without login.
 - **List private pages or their services.** It cannot read the private page
   tables, their token hashes or which hidden service is on which page. The
   `osp_public.private_page*` functions (migration `0009`, `SECURITY DEFINER`,
@@ -108,6 +124,14 @@ from `/api/`, `/admin` and the personal subscription links.
 - **Choose what a mail says.** The subscription functions queue confirmation and
   "manage" mails without content; the worker renders them from its own templates.
   The recipient is always the subscriber's stored address.
+- **Learn or choose where a webhook or SMS goes.** Webhook URLs and phone
+  numbers of subscribers are stored encrypted (a key derived from
+  `SUBSCRIPTION_TOKEN_KEY`) and never returned; the public role cannot read
+  admin webhooks, on-call numbers or SMS credentials (encrypted with
+  `SECRET_KEY`, which the public instance does not have). The channel functions
+  queue confirmation messages without content, and the worker checks every
+  decrypted destination against the admin options and the URL rules again
+  before it connects (SSRF guard, see [webhooks-and-sms.md](webhooks-and-sms.md#outbound-requests-ssrf-protection)).
 - **Use a subscription without its token.** The functions compare the SHA-256 of
   the given token with the stored hash (migration `0006`). The database never
   sees the token key and hands out a salt (from which the public instance
@@ -326,7 +350,7 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   does not govern, and they are escaped so they cannot end their element. Inline
   styles stay allowed (style attributes of the rendered markup, the accent color
   in the head). Images may come from any HTTPS origin because the logo and
-  favicon of the settings are URLs. zod runs without compiled parsers in the
+  favicon of the settings may be URLs. zod runs without compiled parsers in the
   browser, so no `unsafe-eval` is needed. The optional Umami tracker is served
   from the page's own origin (`/pulse/p.js`) and sends to it (`/pulse/api/send`),
   so analytics needs no exception either.
@@ -336,6 +360,24 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   API and the pages with a personal link (private pages at `/p/<token>`,
   subscription confirm and manage pages at `/subscription/...`) add
   `frame-ancestors 'none'` and `X-Frame-Options: DENY`.
+
+Uploaded images (`/uploads/<sha256>.<ext>`, `apps/server/src/routes/uploads.ts`)
+are accepted only as PNG, JPEG, WebP or ICO, recognized by their magic bytes
+(never by the file name or the declared type), at most 1 MiB; SVG is refused
+because it can carry scripts, event handlers, foreign objects and external
+references. They are served with the type detected on upload,
+`X-Content-Type-Options: nosniff`, `Content-Disposition: inline; filename="<file>"`, `Cache-Control:
+public, max-age=31536000, immutable` (the name is the SHA-256 of the bytes) and
+`Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'none';
+script-src 'none'; frame-ancestors 'none'; sandbox`, so a file opened directly
+runs and loads nothing. The upload endpoint takes the bytes only as
+`application/octet-stream` (no form post can send that type cross-site) and
+needs an admin session with the CSRF header or an admin API token.
+
+The Markdown of the content pages is rendered without raw HTML (react-markdown
+without `rehype-raw`, `skipHtml`); link URLs pass react-markdown's default URL
+filter (no `javascript:` or `data:`), outbound links get `rel="noopener
+noreferrer"`, and images are limited to uploads of the instance and https URLs.
 
 HSTS is left to the reverse proxy that terminates TLS.
 
@@ -435,6 +477,46 @@ Their login owns the tables, so the database does not restrict them. Run them in
 an internal network only, keep their credentials (database, `SECRET_KEY`,
 monitoring credentials, SMTP) out of the public host, and patch them like any
 internal service.
+
+### Bundled mail server
+
+The Compose files and the install script can run a send-only Postfix (see the
+[installation without containers](guide/en/13-installation-without-containers.md#mail-server)
+and the Compose files). It is never reachable from the internet, but it is
+not limited to the app either: **any process on the host** can submit mail
+through it, and that mail is DKIM-signed for `MAIL_DOMAIN`. Run it on a
+single-tenant host only, where every local user and process is trusted to send
+as the status domain; otherwise use an external mail server with its own login.
+
+- **Compose**: no published port. The `mail` network is `internal`, so it has no
+  route outside; the server relays only for senders of `MAIL_DOMAIN` and from its
+  `mynetworks` subnet. That subnet includes the Docker host itself (the network's
+  gateway address), so host processes can relay too; other containers cannot,
+  unless they join the `mail` network. There is no STARTTLS and no login on that
+  internal hop. The mail container gets none of the app's secrets (no
+  `env_file`). The public instance of the split deployment is not on the network.
+- **Install script**: Postfix listens on `127.0.0.1` only and relays for loopback
+  clients only, and only for senders of `MAIL_DOMAIN`. Every local user can
+  connect to that port, so every local user can send as the domain. Only mail
+  received over SMTP is signed (no milter for the `sendmail` command), and only
+  root may use `sendmail`.
+- **DKIM**: the private key stays with Postfix (volume `dkim` in Compose,
+  `/etc/opendkim/keys` on a host). Only the public key is copied to the directory
+  the app reads (`MAIL_DKIM_DIR`, read-only). The app parses those files strictly,
+  limits their size and count, and never sees a private key.
+- **Without a smarthost** Postfix delivers mail directly, so the host's address
+  and its PTR record become visible to recipients' servers.
+
+### Installation without containers
+
+Each role runs as its own systemd unit with `ProtectSystem=strict`,
+`NoNewPrivileges`, an empty capability bounding set, a system call filter and
+its own memory limit (see [installation without containers](guide/en/13-installation-without-containers.md)).
+In split mode the public instance runs as the separate user `openstatuspage-public`
+and reads only `public.env`, which has no `SECRET_KEY`, admin password, SMTP
+credentials or owner database login. Settings files are `0640` and owned by root
+with the service group; the database passwords of `--with-postgres` are kept in a
+root-only file.
 
 ## Verification
 

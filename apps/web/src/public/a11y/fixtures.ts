@@ -12,10 +12,13 @@ import type {
   PublicLocationsResponse,
   PublicMaintenance,
   PublicPageSettings,
+  PublicSiteExtras,
+  PublicSitePage,
   PublicPrivatePage,
   PublicService,
   PublicServiceDay,
   PublicServiceGroup,
+  PublicChannelSubscription,
   PublicSubscription,
   PublicSummary,
   ServiceStatus,
@@ -30,9 +33,11 @@ import {
   serviceDocument,
   servicesDocument,
   settingsDocument,
+  sitePageDocument,
   summaryDocument,
   subscribeAcceptedDocument,
   subscriptionDocument,
+  channelSubscriptionDocument,
 } from './documents';
 
 const DAY = 86_400_000;
@@ -204,6 +209,7 @@ export const summary: PublicSummary = {
   activeMaintenances: [maintenance],
   upcomingMaintenances: [upcoming],
   emailSubscriptions: true,
+  channelSubscriptions: { webhookKinds: ['discord', 'slack', 'teams', 'generic'], sms: true, smsCallingCodes: ['49', '43'] },
   generatedAt: iso(-60_000),
 };
 
@@ -262,6 +268,21 @@ export const subscription: PublicSubscription = {
 };
 
 export const SUBSCRIPTION_TOKEN = 'token-0123456789abcdef';
+
+/** A confirmed generic webhook subscription (manage page of /subscription/channel). */
+export const channelSubscription: PublicChannelSubscription = {
+  id: 'ch-1',
+  channel: 'webhook',
+  webhookKind: 'generic',
+  target: 'hooks.example.com/…',
+  locale: 'en',
+  allServices: false,
+  serviceIds: ['api'],
+  confirmed: true,
+  signingSecret: 'whsec_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG',
+};
+
+export const CHANNEL_TOKEN = 'chtoken0123456789abcde';
 
 /**
  * A day of the API in detail (GET /api/public/services/api/days/:date): any day
@@ -325,6 +346,67 @@ export const privatePage: PublicPrivatePage = {
 };
 
 /** Response of the fake API for a request, or null for "not found". */
+const UPLOAD = `/uploads/${'a'.repeat(64)}.png`;
+
+/** Published content pages: the accessibility statement and a custom page (footer and navigation). */
+export const sitePages: PublicSitePage[] = [
+  {
+    id: 'page-accessibility',
+    systemKey: 'accessibility',
+    slug: 'accessibility',
+    path: '/accessibility',
+    title: { en: 'Accessibility statement', de: 'Erklärung zur Barrierefreiheit' },
+    description: { en: 'How accessible this status page is.', de: '' },
+    body: {
+      en: [
+        '# Our commitment',
+        '',
+        'We want this page to be usable by **everyone**. Contact [our team](mailto:a11y@example.com) or read the [WCAG](https://www.w3.org/TR/WCAG22/).',
+        '',
+        '## Known limitations',
+        '',
+        '- The world map is decorative.',
+        '- Older reports may lack descriptions.',
+        '',
+        '| Criterion | Status |',
+        '| --- | --- |',
+        '| 1.4.3 Contrast | Met |',
+        '',
+        `![Diagram of the status page](${UPLOAD})`,
+        '',
+        '<script>alert(1)</script>',
+      ].join('\n'),
+      // No German text: the English one is shown, marked with lang="en".
+      de: '',
+    },
+    images: { [UPLOAD]: { width: 640, height: 320 } },
+    createdAt: iso(-30 * DAY),
+    updatedAt: iso(-2 * DAY),
+  },
+  {
+    id: 'page-faq',
+    systemKey: null,
+    slug: 'faq',
+    path: '/pages/faq',
+    title: { en: 'FAQ', de: 'Häufige Fragen' },
+    description: { en: '', de: '' },
+    body: { en: 'How often is the status updated?\n\nEvery minute.', de: 'Wie oft wird der Status aktualisiert?\n\nJede Minute.' },
+    images: {},
+    createdAt: iso(-10 * DAY),
+    updatedAt: iso(-10 * DAY),
+  },
+];
+
+/** The settings document: the settings plus the links of the published pages. */
+export const siteSettings: PublicPageSettings & PublicSiteExtras = {
+  ...settings,
+  pages: [
+    { systemKey: 'accessibility', slug: 'accessibility', path: '/accessibility', title: sitePages[0]!.title, showInFooter: false, showInNav: false, sortOrder: 3 },
+    { systemKey: null, slug: 'faq', path: '/pages/faq', title: sitePages[1]!.title, showInFooter: true, showInNav: true, sortOrder: 10 },
+  ],
+  logoSize: null,
+};
+
 export function respond(method: string, path: string, headers: Headers = new Headers()): { status: number; body: unknown } {
   const ok = (body: unknown) => ({ status: 200, body });
   if (method === 'GET' && path.startsWith('/api/public/private-page') && headers.get('x-private-page-token') === PRIVATE_TOKEN) {
@@ -337,7 +419,9 @@ export function respond(method: string, path: string, headers: Headers = new Hea
     if (detail) return ok(serviceDayDocument(detail, api, [resolvedIncident], []));
   }
   if (method === 'GET') {
-    if (path === '/api/public/settings') return ok(settingsDocument(settings));
+    if (path === '/api/public/settings') return ok(settingsDocument(siteSettings));
+    const sitePage = sitePages.find((p) => path === `/api/public/pages/${p.slug}`);
+    if (sitePage) return ok(sitePageDocument(sitePage));
     if (path === '/api/public/summary') return ok(summaryDocument(summary));
     if (path === '/api/public/services') return ok(servicesDocument(groups, ungrouped, counts));
     if (path === '/api/public/services/api') return ok(serviceDocument(api, [incident, resolvedIncident], [maintenance]));
@@ -354,6 +438,9 @@ export function respond(method: string, path: string, headers: Headers = new Hea
     if (path === '/api/public/maintenances/m-1') return ok(maintenanceDocument(maintenance));
     if (path === '/api/public/history') return ok(historyDocument(history));
     if (path === '/api/public/subscriptions/sub-1') return ok(subscriptionDocument(subscription));
+    if (path === '/api/public/channel-subscriptions/ch-1' && headers.get('x-subscription-token') === CHANNEL_TOKEN) {
+      return ok(channelSubscriptionDocument(channelSubscription));
+    }
   }
   if (method === 'POST' && path === '/api/public/subscriptions/sub-1/confirm') {
     return ok(subscriptionDocument(subscription, SUBSCRIPTION_TOKEN));

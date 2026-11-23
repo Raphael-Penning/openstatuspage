@@ -365,5 +365,84 @@
     "notFound": "Diese private Statusseite gibt es nicht oder sie ist nicht mehr verfügbar.",
     "back": "Zurück zur Übersicht",
     "home": "Übersicht dieser privaten Statusseite"
+  },
+  "channels": {
+    "seo": "Benachrichtigungen von {{site}} per Webhook oder SMS erhalten.",
+    "language": "Sprache der Nachrichten",
+    "sendCode": "Bestätigungscode senden",
+    "unavailable": "Diese Statusseite bietet diese Art von Benachrichtigung zurzeit nicht an.",
+    "nav": {
+      "label": "Wege, benachrichtigt zu werden",
+      "email": "E-Mail",
+      "webhook": "Webhook",
+      "sms": "SMS"
+    },
+    "kinds": {
+      "discord": "Discord",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "generic": "Andere (JSON-Webhook)"
+    },
+    "webhook": {
+      "title": "Webhook-Benachrichtigungen",
+      "subtitle": "Vorfälle und Wartungen in einen Chat-Kanal oder an deinen eigenen Endpunkt senden.",
+      "kind": "Wohin sollen wir senden?",
+      "url": "Webhook-URL",
+      "help": {
+        "discord": "In Discord: Servereinstellungen > Integrationen > Webhooks > Neuer Webhook > Webhook-URL kopieren.",
+        "slack": "In Slack: eine App mit „Incoming Webhooks“ anlegen und die Webhook-URL des Kanals kopieren.",
+        "teams": "In Microsoft Teams: Workflows > „In einem Kanal posten, wenn eine Webhook-Anforderung empfangen wird“, dann die URL kopieren.",
+        "generic": "Jeder https-Endpunkt. Nachrichten sind signiert (X-OSP-Signature); den Schlüssel siehst du nach der Bestätigung."
+      },
+      "privacy": "Wir senden eine Nachricht mit einem 6-stelligen Code an diesen Webhook; dein Abonnement startet, sobald du den Code eingibst. Die URL wird verschlüsselt gespeichert und nur für diese Benachrichtigungen genutzt. Jede Nachricht enthält einen Link zum Abmelden."
+    },
+    "sms": {
+      "title": "SMS-Benachrichtigungen",
+      "subtitle": "Erhalte eine SMS, wenn wir Vorfälle oder Wartungen veröffentlichen.",
+      "phone": "Handynummer",
+      "countries": "Internationales Format mit Ländervorwahl. Erlaubt: {{codes}}.",
+      "privacy": "Wir senden eine SMS mit einem 6-stelligen Code an diese Nummer; dein Abonnement startet, sobald du den Code eingibst. Deine Nummer wird verschlüsselt gespeichert und nur für diese Benachrichtigungen genutzt. Jede SMS enthält einen kurzen Link zum Abmelden; wo dein Anbieter es unterstützt, kannst du auch mit STOP antworten."
+    },
+    "verify": {
+      "title": "Code eingeben",
+      "subtitleWebhook": "Wir haben eine Nachricht mit einem 6-stelligen Code an deinen Webhook gesendet.",
+      "subtitleSms": "Wir haben eine SMS mit einem 6-stelligen Code an deine Nummer gesendet.",
+      "code": "Bestätigungscode",
+      "help": "Der Code gilt 24 Stunden. Nach ein paar Minuten nichts angekommen? Prüfe URL oder Nummer und melde dich erneut an.",
+      "submit": "Abonnement bestätigen"
+    },
+    "manage": {
+      "title": "Deine Benachrichtigungen",
+      "subtitle": "Wähle, worüber du informiert wirst, oder melde dich ab.",
+      "confirmed": "Dein Abonnement ist bestätigt. Du kannst es hier jederzeit anpassen.",
+      "details": "Abonnement",
+      "channel": "Kanal",
+      "target": "Ziel",
+      "status": "Status",
+      "active": "Aktiv",
+      "pending": "Wartet auf den Bestätigungscode",
+      "signingSecret": "Signaturschlüssel",
+      "signingHelp": "Prüfe den Header X-OSP-Signature jeder Nachricht: v1= gefolgt vom hexadezimalen HMAC-SHA256 von „<X-OSP-Timestamp>.<Body>“ mit diesem Schlüssel.",
+      "unsubscribeDescription": "Beendet alle Benachrichtigungen an dieses Ziel. Es wird von dieser Statusseite gelöscht.",
+      "unsubscribe": "Abmelden",
+      "unsubscribed": "Du wurdest abgemeldet",
+      "unsubscribedDescription": "Dieses Ziel erhält keine Benachrichtigungen mehr von uns und wurde gelöscht."
+    },
+    "errors": {
+      "url": "Gib eine gültige Webhook-URL ein, die mit https:// beginnt.",
+      "urlHost": "Das ist keine Webhook-URL des gewählten Dienstes. Kopiere die URL aus seinen Webhook-Einstellungen.",
+      "urlInsecure": "Die Webhook-URL muss mit https:// beginnen.",
+      "kind": "Wähle, wohin wir senden sollen.",
+      "phone": "Gib die Nummer im internationalen Format ein, z. B. +49 151 2345678.",
+      "phoneCountry": "Nummern aus diesem Land können sich hier nicht anmelden.",
+      "code": "Dieser Code ist falsch oder abgelaufen. Prüfe ihn oder melde dich erneut an, um einen neuen zu erhalten.",
+      "codeFormat": "Gib die 6 Ziffern des Codes ein."
+    }
+  },
+  "page": {
+    "loading": "Seite",
+    "notFound": "Diese Seite gibt es nicht oder sie ist nicht veröffentlicht.",
+    "updated": "Zuletzt aktualisiert:",
+    "table": "Tabelle (scrollbar)"
   }
 }

@@ -211,6 +211,16 @@ export const FORM_PATHS = {
   manage: '/subscription/manage',
   /** POST: id, token (the manage token). */
   unsubscribe: '/subscription/unsubscribe',
+  /** POST: kind=discord|slack|teams|generic, url, locale, scope, service…, group…, website → the code page. */
+  subscribeWebhook: '/subscribe/webhook',
+  /** POST: phone, locale, scope, service…, group…, website → the code page. */
+  subscribeSms: '/subscribe/sms',
+  /** POST: ref, code, channel → the manage page of the webhook or SMS subscription. */
+  verify: '/subscription/verify',
+  /** POST: id, token, locale, scope, service…, group… (webhook or SMS subscription). */
+  channelManage: '/subscription/channel',
+  /** POST: id, token (webhook or SMS subscription). */
+  channelUnsubscribe: '/subscription/channel/unsubscribe',
 } as const;
 
 /** Query parameter of the preference handlers with the path to return to. */

@@ -9,10 +9,12 @@
  * server runs it before rendering the page (see loaders.ts).
  */
 import type { RouteObject } from 'react-router';
-import { isPrivatePageToken, isUptimeDay, normalizePrivatePageToken } from '@openstatuspage/shared';
+import { isPrivatePageToken, isUptimeDay, normalizePrivatePageToken, SYSTEM_PAGE_KEYS } from '@openstatuspage/shared';
 import { privateQueries, publicQueries } from './hooks/queries';
+import { channelSubscriptionQuery } from './hooks/channel-subscriptions';
 import { subscriptionQuery } from './hooks/subscriptions';
 import type { PublicRouteHandle } from './loaders';
+import { ChannelManagePage, SubscribeSmsPage, SubscribeWebhookPage, VerifyCodePage } from './pages/ChannelSubscriptionPages';
 import { HistoryPage, historyQuery } from './pages/HistoryPage';
 import { IncidentPage } from './pages/IncidentPage';
 import { LocationsPage } from './pages/LocationsPage';
@@ -100,6 +102,30 @@ export const publicRoutes: RouteObject[] = [
         element: <SubscribePage />,
         handle: handle({ prefetch: ({ load, get }) => load(publicQueries.summary(get)) }),
       },
+      {
+        path: 'subscribe/webhook',
+        element: <SubscribeWebhookPage />,
+        handle: handle({ prefetch: ({ load, get }) => load(publicQueries.summary(get)) }),
+      },
+      {
+        path: 'subscribe/sms',
+        element: <SubscribeSmsPage />,
+        handle: handle({ prefetch: ({ load, get }) => load(publicQueries.summary(get)) }),
+      },
+      // The code of a webhook or SMS subscription, and its manage page (the link of every message).
+      { path: 'subscription/verify', element: <VerifyCodePage /> },
+      {
+        path: 'subscription/channel',
+        element: <ChannelManagePage />,
+        handle: handle({
+          prefetch: async ({ search, load, get }) => {
+            const id = search.get('id')?.trim();
+            const token = search.get('token')?.trim();
+            if (!id || !token) return;
+            await Promise.all([load(channelSubscriptionQuery(id, token, get)), load(publicQueries.summary(get))]);
+          },
+        }),
+      },
       // Links carry the token in the query (older ones in the fragment, which only the browser sees).
       { path: 'subscription/confirm', element: <SubscriptionConfirmPage /> },
       {
@@ -113,6 +139,21 @@ export const publicRoutes: RouteObject[] = [
             await Promise.all([load(subscriptionQuery(id, token, get)), load(publicQueries.summary(get))]);
           },
         }),
+      },
+      // Content pages (about, legal pages, custom pages): loaded lazily with their Markdown
+      // renderer. The server renders them like every other page; the browser loads the
+      // route module before it hydrates (hydrate.tsx).
+      ...SYSTEM_PAGE_KEYS.map(
+        (key): RouteObject => ({
+          path: key,
+          lazy: async () => ({ Component: (await import('./pages/ContentPage')).systemPage(key) }),
+          handle: handle({ prefetch: ({ load, get }) => load(publicQueries.page(key, get)) }),
+        }),
+      ),
+      {
+        path: 'pages/:slug',
+        lazy: async () => ({ Component: (await import('./pages/ContentPage')).CustomContentPage }),
+        handle: handle({ prefetch: ({ params, load, get }) => load(publicQueries.page(params.slug ?? '', get)) }),
       },
       // Unknown public paths render inside the layout. /admin/* is matched by
       // the admin routes, which are more specific.

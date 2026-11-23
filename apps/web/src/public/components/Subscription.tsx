@@ -57,14 +57,23 @@ export function FieldError({ id, children }: { id: string; children?: ReactNode 
 }
 
 /** Language of the notification emails (field `locale`). */
-export function LocaleSelect({ value, onChange }: { value: SubscriptionLocale; onChange: (v: SubscriptionLocale) => void }) {
+export function LocaleSelect({
+  value,
+  onChange,
+  label,
+}: {
+  value: SubscriptionLocale;
+  onChange: (v: SubscriptionLocale) => void;
+  /** Label of the field (default: the language of the emails). */
+  label?: string;
+}) {
   const { t } = useTranslation('public');
   const id = useId();
   const options = LANGUAGES.filter((l) => (SUBSCRIPTION_LOCALES as readonly string[]).includes(l.code));
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">
-        {t('subscription.language')}
+        {label ?? t('subscription.language')}
       </label>
       <select id={id} name="locale" value={value} onChange={(e) => onChange(e.target.value as SubscriptionLocale)} className={fieldClass}>
         {options.map((l) => (

@@ -1,0 +1,41 @@
+# Caddy in front of a split OpenStatusPage deployment on the same host: the
+# public instance on the public domain, the admin instance on its own domain.
+# The worker is never proxied (its port serves /api/health only).
+#
+# Install: copy to /etc/caddy/Caddyfile, replace the domains and the allowed
+# networks, then: systemctl reload caddy
+#
+# App settings (scripts/install.sh --mode split writes them):
+#   public.env:  BASE_URL=https://status.example.com     PORT=3000 HOST=127.0.0.1 TRUST_PROXY=1
+#   admin.env:   BASE_URL=https://status.admin.example.com PORT=3001
+#   openstatuspage.env: PUBLIC_BASE_URL=https://status.example.com, HOST=127.0.0.1, TRUST_PROXY=1
+# A hop count in TRUST_PROXY is safe only while the ports listen on 127.0.0.1.
+
+status.example.com {
+	request_body {
+		max_size 1MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:3000
+}
+
+status.admin.example.com {
+	# Bulk check uploads from monitoring systems (ingest) may be up to 5 MiB.
+	request_body {
+		max_size 6MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	# Restrict the admin domain to your networks (documentation ranges below:
+	# replace them). Monitoring systems that push results need access as well.
+	@denied not remote_ip 192.0.2.0/24 2001:db8::/32
+	respond @denied "Forbidden" 403
+
+	reverse_proxy 127.0.0.1:3001
+}

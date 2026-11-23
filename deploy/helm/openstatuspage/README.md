@@ -129,6 +129,24 @@ chart's public Secret, for every instance):
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `OIDC_CLIENT_SECRET` | optional | – | optional | – |
 | `SMTP_PASSWORD` | optional | – | optional | optional |
 
+### Mail server
+
+Unlike the Compose files, the chart bundles no mail server. Set `config.SMTP_*`
+(and `SMTP_PASSWORD` in the Secret) to the relay of your cluster or provider.
+Reasons:
+
+- Most Kubernetes platforms block outbound port 25 and give pod egress no
+  stable address with a matching PTR record, so direct delivery from a pod
+  would mostly end in spam folders or rejections. A relay is needed anyway.
+- The admin portal reads the DKIM public key from a volume shared with the mail
+  server. In Kubernetes that needs a ReadWriteMany volume, or write access to
+  the Kubernetes API for the mail server, which the chart avoids on purpose.
+- A cluster usually has a mail relay already (or an operator for one) that
+  handles DKIM and the DNS records centrally.
+
+Run the bundled Postfix of the Compose files or scripts/install.sh outside the
+cluster and point `SMTP_HOST` at it if you want the same setup.
+
 ## Values
 
 | Key | Default | Description |

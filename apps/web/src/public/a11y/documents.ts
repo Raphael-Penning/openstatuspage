@@ -10,10 +10,13 @@ import type {
   PublicLocation,
   PublicMaintenance,
   PublicPageSettings,
+  PublicSiteExtras,
+  PublicSitePage,
   PublicPrivatePage,
   PublicService,
   PublicServiceDay,
   PublicServiceGroup,
+  PublicChannelSubscription,
   PublicSubscription,
   PublicSummary,
   RelationshipObject,
@@ -36,7 +39,7 @@ function doc(data: ResourceObject | ResourceObject[], included: Included = new M
   return { jsonapi: { version: '1.1' }, data, included: [...included.values()], ...(meta ? { meta } : {}) };
 }
 
-const settingsResource = (s: PublicPageSettings): ResourceObject => ({ type: 'settings', id: 'site', attributes: { ...s } });
+const settingsResource = (s: PublicPageSettings & PublicSiteExtras): ResourceObject => ({ type: 'settings', id: 'site', attributes: { ...s } });
 
 function serviceResource(s: PublicService, extra: Record<string, RelationshipObject> = {}): ResourceObject {
   const { id, groupId, locationIds, ...attributes } = s;
@@ -80,7 +83,13 @@ function maintenanceResource(m: PublicMaintenance, included: Included): Resource
   };
 }
 
-export const settingsDocument = (s: PublicPageSettings) => doc(settingsResource(s));
+export const settingsDocument = (s: PublicPageSettings & PublicSiteExtras) => doc(settingsResource(s));
+
+/** A published content page (GET /api/public/pages/{slug}). */
+export function sitePageDocument(page: PublicSitePage): DataDocument {
+  const { id, ...attributes } = page;
+  return doc({ type: 'pages', id, attributes });
+}
 
 export function summaryDocument(s: PublicSummary): DataDocument {
   const included: Included = new Map();
@@ -92,7 +101,12 @@ export function summaryDocument(s: PublicSummary): DataDocument {
   const data: ResourceObject = {
     type: 'summaries',
     id: 'current',
-    attributes: { overall: s.overall, emailSubscriptions: s.emailSubscriptions, generatedAt: s.generatedAt },
+    attributes: {
+      overall: s.overall,
+      emailSubscriptions: s.emailSubscriptions,
+      channelSubscriptions: s.channelSubscriptions,
+      generatedAt: s.generatedAt,
+    },
     relationships: {
       page: { data: { type: 'settings', id: 'site' } },
       groups: ids('service-groups', s.groups),
@@ -166,6 +180,12 @@ export function subscriptionDocument(sub: PublicSubscription, manageToken?: stri
     attributes: { ...attributes, ...(manageToken ? { manageToken } : {}) },
     relationships: { services: idList('services', serviceIds) },
   });
+}
+
+/** `channel-subscriptions` resource (webhook or SMS subscription). */
+export function channelSubscriptionDocument(sub: PublicChannelSubscription): DataDocument {
+  const { id, serviceIds, ...attributes } = sub;
+  return doc({ type: 'channel-subscriptions', id, attributes, relationships: { services: idList('services', serviceIds) } });
 }
 
 /** Answer of POST /api/public/subscriptions (always the same meta-only document). */

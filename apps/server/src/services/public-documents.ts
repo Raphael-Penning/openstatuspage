@@ -9,8 +9,10 @@
  * (see public-catalog.ts, incidents.ts, maintenances.ts, serializers/public.ts).
  * Nothing about monitoring sources or checks is ever exposed here.
  */
-import { overallStatus, shiftUptimeDay, uptimeDayStart, zId, type DataDocument, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type ResourceObject } from '@openstatuspage/shared';
+import { overallStatus, shiftUptimeDay, uptimeDayStart, zId, type ChannelOptions, type DataDocument, type ImageSize, type PublicIncident, type PublicMaintenance, type PublicPageSettings, type PublicSiteExtras, type ResourceObject } from '@openstatuspage/shared';
 import { z } from 'zod';
+
+const NO_CHANNELS: ChannelOptions = { webhookKinds: [], sms: false, smsCallingCodes: [] };
 import type { DB } from '../db/index.js';
 import { HttpError, notFound } from '../lib/errors.js';
 import { collection, document, Included, resource, selfLink, toMany, toOne, type DocumentRequest } from '../lib/jsonapi.js';
@@ -26,12 +28,15 @@ import {
   serviceResource,
   settingsResource,
   SETTINGS_ID,
+  sitePageResource,
 } from '../serializers/public.js';
 import { loadIncidents, toPublicIncident } from './incidents.js';
 import { loadMaintenances, toPublicMaintenance } from './maintenances.js';
 import { countStatuses, loadPublicCatalog, loadPublicLocations, loadPublicService } from './public-catalog.js';
 import { bucketAttributes, dayIncidentIds, dayMaintenanceIds, loadDaySegments } from './service-days.js';
 import { getSettings } from './settings.js';
+import { loadPublicPageLinks, loadPublicSitePage } from './site-pages.js';
+import { uploadSizes } from './uploads.js';
 
 const DAY_MS = 86400_000;
 const SERVICE_INCIDENT_DAYS = 90;
@@ -123,6 +128,8 @@ function monthRange(month: string): [string, string] {
 export interface PublicDocumentsOptions {
   /** The instance has an analytics upstream (UMAMI_URL). Without it `analyticsEnabled` is always false. */
   analytics?: boolean;
+  /** Webhook and SMS subscriptions offered (summary). Default: none. */
+  channels?: () => Promise<ChannelOptions>;
 }
 
 /** Builds the documents of the public read API (one instance per app). */
@@ -142,9 +149,28 @@ export class PublicDocuments {
     return analyticsEnabled === settings.analyticsEnabled ? settings : { ...settings, analyticsEnabled };
   }
 
+  /**
+   * The public settings plus what the pages derive from the database: the
+   * published content pages (footer and navigation) and the size of an uploaded logo.
+   */
+  private async siteSettings(settings: PublicPageSettings): Promise<PublicPageSettings & PublicSiteExtras> {
+    const [pages, logoSizes] = await Promise.all([
+      loadPublicPageLinks(this.db),
+      settings.logoUrl ? uploadSizes(this.db, [settings.logoUrl]) : Promise.resolve({} as Record<string, ImageSize>),
+    ]);
+    return { ...this.publicSettings(settings), pages, logoSize: (settings.logoUrl && logoSizes[settings.logoUrl]) || null };
+  }
+
   /** GET /api/public/settings */
   async settings(req: DocumentRequest): Promise<DataDocument> {
-    return document(settingsResource(this.publicSettings(await getSettings(this.db))), { links: { self: selfLink(req) } });
+    return document(settingsResource(await this.siteSettings(await getSettings(this.db))), { links: { self: selfLink(req) } });
+  }
+
+  /** GET /api/public/pages/{slug}: a published content page. */
+  async page(req: DocumentRequest, slug: string): Promise<DataDocument> {
+    const page = await loadPublicSitePage(this.db, slug);
+    if (!page) throw notFound('Page');
+    return document(sitePageResource(page), { links: { self: selfLink(req) } });
   }
 
   /** GET /api/public/summary: everything the overview page shows. */
@@ -160,7 +186,7 @@ export class PublicDocuments {
       activeMaintenanceIds(this.db).then((ids) => publicMaintenances(this.db, ids)),
       upcomingMaintenanceIds(this.db, nowIso).then((ids) => publicMaintenances(this.db, ids)),
     ]);
-    const included = new Included().add(settingsResource(this.publicSettings(settings)));
+    const included = new Included().add(settingsResource(await this.siteSettings(settings)));
     included.add(...catalog.groups.map((g) => groupResource(g, included)));
     included.add(...catalog.ungrouped.map((s) => serviceResource(s)));
     for (const inc of [...active, ...recent]) included.add(incidentResource(inc, included));
@@ -172,6 +198,7 @@ export class PublicDocuments {
       {
         overall: overallStatus(catalog.services.map((s) => s.status)),
         emailSubscriptions: settings.emailSubscriptionsEnabled && mailerConfigured(this.mailer),
+        channelSubscriptions: this.options.channels ? await this.options.channels() : NO_CHANNELS,
         generatedAt: nowIso,
       },
       {

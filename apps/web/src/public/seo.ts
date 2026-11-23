@@ -6,10 +6,21 @@
  * Markup used, and only where it describes the page truthfully:
  *   - WebSite and Organization on the overview (name, URL, logo of the page settings),
  *   - BreadcrumbList on every other indexable page,
- *   - Article on incident and maintenance pages (a dated report of what happened).
- * No Event markup: an outage or a maintenance window is not an event people attend.
+ *   - Article on incident pages (a dated report of what happened, about the
+ *     affected services),
+ *   - Event on maintenance pages: a scheduled window with start and end, held
+ *     online (VirtualLocation: the status page), organized by the organization,
+ *     EventCancelled when it was cancelled,
+ *   - Service on service pages (name, description, URL, provider). schema.org
+ *     has no property for the current status of a Service, so it is not marked up,
+ *   - AboutPage (the about page) or WebPage (legal notice, privacy policy,
+ *     accessibility statement, custom pages) on the content pages.
+ * Not SpecialAnnouncement for incidents: schema.org defines it for public
+ * health and emergency announcements, and Google no longer shows it.
+ * Pages that are not indexed (private pages, day pages, variants, errors)
+ * carry no JSON-LD at all (head.tsx).
  */
-import { LANG_QUERY } from '@openstatuspage/shared';
+import { LANG_QUERY, type MaintenanceStatus } from '@openstatuspage/shared';
 import { LANGUAGES } from '../lib/languages';
 
 /** Longest meta description; search engines cut longer ones. */
@@ -62,6 +73,15 @@ export interface SiteInfo {
   description?: string;
   /** Language of the page (BCP 47). */
   lang: string;
+}
+
+/**
+ * Whether an image URL may be a logo or image in JSON-LD. Google's logo and
+ * image guidelines do not list ICO, so an ICO logo stays out of the markup
+ * (the page itself still shows it).
+ */
+export function isStructuredDataImage(url: string): boolean {
+  return !/\.ico$/i.test(url.replace(/[?#].*$/, ''));
 }
 
 const homeUrl = (site: SiteInfo) => `${site.baseUrl}/`;
@@ -124,14 +144,27 @@ export interface ArticleInput {
   url: string;
 }
 
-/** An incident or maintenance report, written and published by the organization. */
-export function articleLd(site: SiteInfo, article: ArticleInput): Record<string, unknown> {
-  const organization = {
-    '@type': 'Organization',
-    '@id': organizationId(site),
-    name: site.name,
-    url: homeUrl(site),
-  };
+/** The organization as a nested object (self-contained: other pages define it fully). */
+const organizationRef = (site: SiteInfo) => ({
+  '@type': 'Organization',
+  '@id': organizationId(site),
+  name: site.name,
+  url: homeUrl(site),
+});
+
+/** The organization as publisher: with its logo when there is one. */
+const publisherOf = (site: SiteInfo) =>
+  site.logo ? { ...organizationRef(site), logo: { '@type': 'ImageObject', url: site.logo } } : organizationRef(site);
+
+/** A thing a page is about (a service), with its page. */
+export interface AboutRef {
+  name: string;
+  /** Absolute URL of its page. */
+  url: string;
+}
+
+/** An incident report, written and published by the organization. */
+export function articleLd(site: SiteInfo, article: ArticleInput & { about?: AboutRef[] }): Record<string, unknown> {
   return {
     '@context': SCHEMA,
     '@type': 'Article',
@@ -142,7 +175,113 @@ export function articleLd(site: SiteInfo, article: ArticleInput): Record<string,
     inLanguage: site.lang,
     url: article.url,
     mainEntityOfPage: article.url,
-    author: organization,
-    publisher: site.logo ? { ...organization, logo: { '@type': 'ImageObject', url: site.logo } } : organization,
+    ...(site.logo ? { image: site.logo } : {}),
+    author: organizationRef(site),
+    publisher: publisherOf(site),
+    ...(article.about?.length ? { about: article.about.map((a) => ({ '@type': 'Service', name: a.name, url: a.url })) } : {}),
   };
+}
+
+export interface EventInput {
+  name: string;
+  description: string;
+  /** ISO 8601 timestamps. */
+  startDate: string;
+  endDate: string;
+  status: MaintenanceStatus;
+  /** Absolute URL of the page. */
+  url: string;
+}
+
+/** A maintenance window: a scheduled event held online on the status page, organized by the organization. */
+export function eventLd(site: SiteInfo, event: EventInput): Record<string, unknown> {
+  return {
+    '@context': SCHEMA,
+    '@type': 'Event',
+    '@id': `${event.url}#event`,
+    name: summarize(event.name, HEADLINE_MAX),
+    description: event.description,
+    startDate: event.startDate,
+    endDate: event.endDate < event.startDate ? event.startDate : event.endDate,
+    eventStatus: `${SCHEMA}/${event.status === 'cancelled' ? 'EventCancelled' : 'EventScheduled'}`,
+    eventAttendanceMode: `${SCHEMA}/OnlineEventAttendanceMode`,
+    location: { '@type': 'VirtualLocation', url: homeUrl(site) },
+    organizer: organizationRef(site),
+    url: event.url,
+    inLanguage: site.lang,
+    ...(site.logo ? { image: site.logo } : {}),
+  };
+}
+
+export interface ServiceInput {
+  name: string;
+  description?: string;
+  /** Absolute URL of the service page. */
+  url: string;
+}
+
+/** A service of the organization (its page on the status page). No status: schema.org has no property for it. */
+export function serviceLd(site: SiteInfo, service: ServiceInput): Record<string, unknown> {
+  return {
+    '@context': SCHEMA,
+    '@type': 'Service',
+    '@id': `${service.url}#service`,
+    name: service.name,
+    ...(service.description ? { description: service.description } : {}),
+    url: service.url,
+    provider: organizationRef(site),
+  };
+}
+
+/** schema.org types of the content pages. */
+export type WebPageType = 'WebPage' | 'AboutPage' | 'ContactPage';
+
+export interface WebPageInput {
+  type: WebPageType;
+  name: string;
+  description: string;
+  /** Absolute URL of the page. */
+  url: string;
+  /** ISO 8601 timestamps. */
+  datePublished: string;
+  dateModified: string;
+}
+
+/** A content page (about page, legal pages, custom pages) of the status page, published by the organization. */
+export function webPageLd(site: SiteInfo, page: WebPageInput): Record<string, unknown> {
+  return {
+    '@context': SCHEMA,
+    '@type': page.type,
+    '@id': `${page.url}#webpage`,
+    name: page.name,
+    description: page.description,
+    url: page.url,
+    inLanguage: site.lang,
+    datePublished: page.datePublished,
+    dateModified: page.dateModified < page.datePublished ? page.datePublished : page.dateModified,
+    isPartOf: { '@type': 'WebSite', '@id': `${homeUrl(site)}#website`, name: site.name, url: homeUrl(site) },
+    publisher: publisherOf(site),
+    ...(page.type === 'AboutPage' ? { about: organizationRef(site) } : {}),
+  };
+}
+
+/**
+ * Characters of Markdown markdownText reads. A meta description is cut to
+ * DESCRIPTION_MAX anyway; reading only the start keeps the cost of a render
+ * bounded for long or unbalanced bodies (up to 50,000 characters).
+ */
+export const MARKDOWN_TEXT_SCAN_MAX = 2000;
+
+/** Plain text of Markdown for a meta description: no markup, no image or link targets. */
+export function markdownText(markdown: string): string {
+  return markdown
+    .slice(0, MARKDOWN_TEXT_SCAN_MAX)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g, ' ')
+    .replace(/\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '')
+    .replace(/[*_`~|]+/g, '')
+    .replace(/<[^>\n]{0,200}>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

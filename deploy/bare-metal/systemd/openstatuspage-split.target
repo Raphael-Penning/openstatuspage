@@ -1,0 +1,10 @@
+# OpenStatusPage split deployment: starts, stops and restarts the public, admin
+# and worker instances together.
+#   systemctl enable --now openstatuspage-split.target
+[Unit]
+Description=OpenStatusPage split deployment
+Documentation=https://github.com/Raphael-Penning/openstatuspage/tree/main/docs/guide
+Wants=openstatuspage-public.service openstatuspage-admin.service openstatuspage-worker.service
+
+[Install]
+WantedBy=multi-user.target

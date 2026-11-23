@@ -12,7 +12,8 @@ ihre `-f`-Optionen bei jedem Befehl oder setzt `COMPOSE_FILE` in `.env`.
 ### Was du sichern musst
 
 1. **Die Datenbank**: PostgreSQL-Datenbank oder SQLite-Datei. Darin steckt
-   alles: Services, Vorfälle, Verlauf, Benutzer, Einstellungen, Abonnenten.
+   alles: Services, Vorfälle, Verlauf, Benutzer, Einstellungen, Abonnenten und
+   die hochgeladenen Bilder (Logo, Favicon, Bilder der Seiten).
 2. **`SECRET_KEY`** (und den Rest deiner `.env`). Ohne denselben Schlüssel
    kann eine wiederhergestellte Datenbank die gespeicherten
    Monitoring-Zugangsdaten nicht entschlüsseln. Bewahre ihn getrennt von der
@@ -107,7 +108,8 @@ Jedes Update läuft in denselben Schritten ab:
 2. Erstelle eine Sicherung (siehe oben).
 3. Wechsle auf die neue Version (siehe unten).
 4. Datenbankmigrationen laufen beim Start **automatisch**. Achte im Log auf
-   Fehler und prüfe `/api/health`.
+   Fehler und prüfe `/api/health`. Die laufende Version steht unten in der Seitenleiste
+   der Verwaltungsoberfläche („Version …“), so kannst du das Update dort bestätigen.
 
 ### Docker Compose
 

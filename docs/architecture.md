@@ -104,6 +104,10 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
   `routes/subscriptions.ts` (public) and `routes/admin/subscribers.ts`.
 - Fan-out only enqueues rows; it never sends inside the request, and errors are
   logged without failing the admin request.
+- Webhooks and SMS follow the same pattern with their own tables (`channel_outbox`,
+  `notification_webhooks`, `sms_recipients`, `channel_subscribers`; code in
+  `apps/server/src/services/channels/`). Outbound requests go through the SSRF guard in
+  `apps/server/src/lib/safe-http.ts`; see [webhooks-and-sms.md](webhooks-and-sms.md).
 - Only public incidents/maintenance notify, and mails list public services only.
 - Subscription tokens are derived with HMAC-SHA256 from `SUBSCRIPTION_TOKEN_KEY` (default `SECRET_KEY`) and a per
   subscriber salt; they are never stored. Deleting a subscriber cascades to its
@@ -124,6 +128,9 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
   whose results become stale stop counting
 - session cleanup (hourly)
 - `email-delivery`: sends due outbox mails every 10 s
+- `channel-delivery`: sends due webhook and SMS messages every 10 s (and right after an
+  event); `channel-cleanup` (hourly) removes sent and failed messages after 40 days and
+  unconfirmed visitor subscriptions after 7 days
 - `maintenance-reminders`: queues reminders every minute
 - `notification-cleanup` (hourly): deletes unconfirmed subscriptions after 7 days and
   sent/failed mails after 30 days
@@ -173,6 +180,7 @@ instance. What keeps them consistent:
 | --- | --- |
 | Periodic tasks (maintenance transitions, reminders, mail delivery, bundle evaluation, cleanups) | Lease per task in `task_leases` (`lib/task-leases.ts`): one instance runs a task at a time, and a scheduled run happens once per interval in the whole deployment |
 | Polling | Lease `poll:<source id>` per source: every worker schedules every source, one of them polls it per interval; manual polls ("poll now") take the same lease and report when another instance is polling |
+| Webhook and SMS delivery | Lease on `channel-delivery` plus the per-row claim in `channel_outbox`; the per-host and per-minute limits are counted by the instance holding the lease |
 | Mail sending | Lease on `email-delivery` plus the per-row claim in `email_outbox`; reminders and automatic maintenance transitions are claimed with conditional updates, so no event is announced twice |
 | Bundle evaluation | In-process queue plus `pg_advisory_xact_lock` while evaluating and storing (`db/locks.ts`) |
 | Service status and its history | `pg_advisory_xact_lock` around each recompute, so concurrent recomputes never open two history segments |
@@ -238,6 +246,14 @@ Instances that migrate run `osp_grant_public_role()` on start
 (`db/public-role.ts`). Mails queued by those functions carry no content; the
 worker renders them (`NotificationService`). See
 [security-model.md](security-model.md).
+
+Roles are chosen the same way everywhere. Containers run one service per role
+(`compose.split.yaml`, Helm, Kubernetes). Without containers the systemd units
+`openstatuspage-public`, `-admin` and `-worker` (or `openstatuspage` for `all`)
+start the same roles through `bin/openstatuspage serve <role>` (see
+[installation without containers](guide/en/13-installation-without-containers.md)).
+The optional bundled mail server is a separate send-only service; the app reads
+only its public DKIM keys (`MAIL_DKIM_DIR`).
 
 ## Server-side rendering
 
@@ -470,12 +486,29 @@ agents. Everything is built from the page settings and public data only.
     `og:locale` (`en_US`, `de_DE`) with the other languages as alternates, and
     the logo of the settings as image (no image tags without a logo);
     `theme-color` is the accent color.
-- **JSON-LD** (schema.org), only on indexable pages: `WebSite` and
-  `Organization` (name, URL, logo) on the overview, `BreadcrumbList` on every
-  other page, `Article` on incident and maintenance pages (headline,
-  `datePublished` = start of the incident / creation of the maintenance window,
-  `dateModified`, author and publisher = the organization). No `Event` markup:
-  an outage is not an event anybody attends. Escaped with `scriptJson`.
+- **JSON-LD** (schema.org), only on indexable pages (never on private pages,
+  day pages, variants or errors): `WebSite` and `Organization` (name, URL, logo)
+  on the overview, `BreadcrumbList` on every other page, `Article` on incident
+  pages (headline, `datePublished` = start of the incident, `dateModified`,
+  image = logo, author and publisher = the organization, `about` = the affected
+  services), `Event` on maintenance pages (start and end, `eventStatus`
+  `EventScheduled` or `EventCancelled`, online attendance with a
+  `VirtualLocation` = the status page, organizer = the organization), `Service`
+  on service pages (name, description, URL, provider; schema.org has no status
+  property for it, so the status is not marked up), `AboutPage` on the about
+  page and `WebPage` on the other content pages (with `isPartOf` the site and
+  the organization as publisher). Incidents are no `SpecialAnnouncement`: that
+  type is meant for public health and emergency announcements and Google no
+  longer shows it. `apps/web/src/public/jsonld-check.ts` checks every object
+  against the schema.org properties of its type and Google's required fields in
+  the tests. Escaped with `scriptJson`.
+- **Content pages** (`public/pages/ContentPage.tsx`): `/about`,
+  `/legal-notice`, `/privacy`, `/accessibility` and `/pages/<slug>`, Markdown per
+  language from `GET /api/public/pages/{slug}`, rendered by
+  `components/PageMarkdown.tsx` (react-markdown, no raw HTML). The route module
+  is loaded lazily, so only visitors of these pages load the Markdown renderer;
+  the server renders it like every other page and `hydrate.tsx` loads the module
+  before it hydrates.
 - **Discovery files** (`apps/server/src/routes/discovery.ts`, data from
   `services/site-index.ts`; registered before the web client, never rendered):
 
@@ -551,6 +584,18 @@ burst and slightly above it at the kernel peak, so limiting concurrent
 connections at the proxy (below) matters more now. Zod must stay out of the
 public bundles (it once came in through a schema in `private-pages.ts` and
 grew the render bundle from 439 to 556 kB).
+
+Webhook and SMS subscriptions (measured the same way, with the image's runtime
+flags, against the build before them in alternation: two runs of this build,
+three of the one before): public 81.4 / 97.2–98.3 / 102.6–104.7 / 87.5–88.1 MB
+(after start / peak under load / burst / after load), kernel peak 105–106 MB,
+against 79.5–79.8 / 95.3–96.7 / 99.5–103.5 / 86.7–87.7 MB and 102.7–105.3 MB
+before. The new public routes, forms and pages cost about 1.5 MB after start
+and 2–3 MB at the peak; the delivery code (formats, SMS provider, outbound
+requests) is not loaded on public instances at all. In this run the build
+before also went above 100 MB under the burst (the table above has 95–97 MB),
+so compare the pairs, not with the table; the limit at the proxy (below)
+matters for both.
 
 Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
 after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The

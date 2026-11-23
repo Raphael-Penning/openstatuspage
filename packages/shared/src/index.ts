@@ -9,3 +9,6 @@ export * from './analytics.js';
 export * from './days.js';
 export * from './private-pages.js';
 export * from './oidc-providers.js';
+export * from './site-pages.js';
+export * from './uploads.js';
+export * from './channels.js';
