@@ -56,6 +56,9 @@ tests) and history imports. The public instance never connects to either.
 | Read the applied schema version (`kysely_migration`) | view |
 | Subscribe an address (double opt-in) | `osp_public.subscribe(...)` |
 | Confirm, read, change and delete one subscription, **only with its token** | `osp_public.subscription_confirm/get/update/delete(...)` |
+| Read which webhook kinds and SMS countries visitors may subscribe with (the admin options, no secrets) | `osp_public.channel_options()` |
+| Subscribe a webhook URL or phone number (the target stored encrypted; the function enforces the admin options, the country allowlist, the hourly confirmation cap and the monthly SMS budget) | `osp_public.channel_subscribe(...)` |
+| Confirm a webhook or SMS subscription with its 6-digit code (5 attempts, 24 hours), and read, change and delete it **only with its manage token** | `osp_public.channel_confirm/channel_subscription_get/update/delete(...)` |
 | Read **one private page with its token**: its name, its services (also hidden ones), their history and corrections, and the public incidents and maintenance windows that affect them | `osp_public.private_page*(token, ...)` |
 | Check whether its own login is restricted, and in which schemas it may still create objects | `osp_public.connection_restricted()`, `osp_public.connection_create_schemas()` |
 
@@ -78,7 +81,10 @@ from `/api/`, `/admin` and the personal subscription links.
   `email_outbox`, `monitor_sources`, `monitor_checks`, `monitor_check_history`,
   `service_checks`, `check_bundles`, `check_bundle_members`, `history_imports`,
   `history_import_intervals`, `task_leases`, `private_pages`,
-  `private_page_services` and the role registry `osp_public_roles`.
+  `private_page_services`, `notification_webhooks`, `notification_webhook_services`,
+  `sms_recipients`, `sms_recipient_services`, `channel_subscribers`,
+  `channel_subscriber_services`, `channel_outbox` and the role registry
+  `osp_public_roles`, nor on the settings rows `channels` and `sms_provider`.
 - **List private pages or their services.** It cannot read the private page
   tables, their token hashes or which hidden service is on which page. The
   `osp_public.private_page*` functions (migration `0009`, `SECURITY DEFINER`,
@@ -107,6 +113,14 @@ from `/api/`, `/admin` and the personal subscription links.
 - **Choose what a mail says.** The subscription functions queue confirmation and
   "manage" mails without content; the worker renders them from its own templates.
   The recipient is always the subscriber's stored address.
+- **Learn or choose where a webhook or SMS goes.** Webhook URLs and phone
+  numbers of subscribers are stored encrypted (a key derived from
+  `SUBSCRIPTION_TOKEN_KEY`) and never returned; the public role cannot read
+  admin webhooks, on-call numbers or SMS credentials (encrypted with
+  `SECRET_KEY`, which the public instance does not have). The channel functions
+  queue confirmation messages without content, and the worker checks every
+  decrypted destination against the admin options and the URL rules again
+  before it connects (SSRF guard, see [notifications.md](notifications.md#outbound-requests-ssrf-protection)).
 - **Use a subscription without its token.** The functions compare the SHA-256 of
   the given token with the stored hash (migration `0006`). The database never
   sees the token key and hands out a salt (from which the public instance
