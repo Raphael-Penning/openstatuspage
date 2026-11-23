@@ -31,6 +31,7 @@ It is also shown in the management UI under **Help**, in English or German.
 | [webhooks-and-sms.md](webhooks-and-sms.md) | Webhooks (Discord, Slack, Teams, generic JSON) and SMS: events, delivery, limits, SSRF guard, formats, signing, providers |
 | [themes.md](themes.md) | Themes of the public page: file format, token reference, contrast check, extra CSS filter, themes folder for Compose, Helm and bare metal |
 | [api.md](api.md) | HTTP API: public, auth, admin, webhook and SMS subscription and ingest endpoints |
+| [openapi.json](openapi.json) | OpenAPI 3.1 description of the same API (generated, see [api.md](api.md#openapi-description)); browsable under **API** in the management UI |
 | [adapters/](adapters/README.md) | Monitoring adapters: Icinga 2, Uptime Kuma, openITCockpit, generic webhook |
 | [oidc.md](oidc.md) | Single sign-on with OpenID Connect, role mapping, provider notes |
 | [architecture.md](architecture.md) | Code layout, privacy model, status model, database, worker |

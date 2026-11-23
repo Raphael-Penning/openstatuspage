@@ -7,8 +7,10 @@
  * - CSRF: cookie-authenticated mutating requests must send
  *   `X-Requested-With: openstatuspage`. Bearer requests are exempt.
  *
- * Authentication is only resolved for `/api/admin/*` and `/api/auth/*`, so
- * public endpoints never touch the session tables.
+ * Authentication is only resolved for `/api/admin/*`, `/api/auth/*` and
+ * `/api/openapi.json` (the latter only where this plugin is registered, i.e.
+ * APP_ROLE admin or all), so other public endpoints never touch the session
+ * tables.
  */
 import type { UserRole } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
@@ -48,9 +50,18 @@ export const CSRF_VALUE = 'openstatuspage';
 const ROLE_RANK: Record<UserRole, number> = { editor: 1, admin: 2 };
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** Routes that resolve the session or API token (route paths, see registerAuth). */
+/**
+ * Routes that resolve the session or API token (route paths, see registerAuth).
+ * /api/openapi.json describes the whole API to signed-in users (routes/openapi.ts).
+ */
 export function isAuthenticatedPath(route: string): boolean {
-  return route.startsWith('/api/admin/') || route.startsWith('/api/auth/') || route === '/api/admin' || route === '/api/auth';
+  return (
+    route.startsWith('/api/admin/') ||
+    route.startsWith('/api/auth/') ||
+    route === '/api/admin' ||
+    route === '/api/auth' ||
+    route === '/api/openapi.json'
+  );
 }
 
 export function hasRole(user: Pick<AuthUser, 'role'>, role: UserRole): boolean {

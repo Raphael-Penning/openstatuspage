@@ -182,6 +182,18 @@ curl -fsS https://status.example.com/api/admin/incidents \
 Änderungen schickst du per `PATCH`; dabei ändern sich nur die Felder, die du
 mitsendest.
 
+Alle Endpunkte, ihre Parameter und die nötige Rolle findest du unter **API** in
+der Verwaltung (neben **Hilfe**). Dort kannst du Anfragen auch mit deiner
+Sitzung ausprobieren; Anfragen, die Daten ändern, musst du vorher bestätigen.
+Codegeneratoren und API-Werkzeuge lesen dieselbe Beschreibung als OpenAPI 3.1
+unter `/api/openapi.json` auf der Instanz mit der Verwaltung, zum Beispiel
+`https://status.example.com/api/openapi.json` bei einer einzelnen Instanz oder
+`https://status.admin.example.com/api/openapi.json`, wenn öffentliche Seiten und
+Verwaltung getrennt laufen. Auf einer Instanz mit Verwaltung (`APP_ROLE` `admin`
+oder `all`) bekommst du mit einem Token oder einer angemeldeten Sitzung die ganze
+API; ohne beides nur den öffentlichen Teil. Eine öffentliche Instanz
+(`APP_ROLE=public`) liefert immer nur den öffentlichen Teil, auch mit Token.
+
 Tokens werden automatisch widerrufen, wenn der Benutzer gelöscht wird, der sie
 angelegt hat; Administrator-Tokens auch dann, wenn dieser die
 Administratorrolle verliert. Ein Token, das mit einem anderen Token angelegt

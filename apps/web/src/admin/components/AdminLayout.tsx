@@ -7,6 +7,7 @@ import { clsx } from 'clsx';
 import {
   FileText,
   BellRing,
+  Braces,
   Boxes,
   ChevronUp,
   Combine,
@@ -98,7 +99,10 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
       ],
     },
     {
-      items: [{ to: '/admin/help', label: tHelp('nav'), icon: CircleHelp }],
+      items: [
+        { to: '/admin/help', label: tHelp('nav'), icon: CircleHelp },
+        { to: '/admin/api', label: t('nav.apiDocs'), icon: Braces },
+      ],
     },
   ];
 }

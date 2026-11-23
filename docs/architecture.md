@@ -650,7 +650,8 @@ What keeps it small:
   no admin, auth or ingest code. Cookies and static files are registered only where
   the role needs them. nodemailer (first mail), openid-client (first OIDC login),
   argon2 (first password check), the history importers with their Socket.IO
-  client (first import job) and mysql2 (Icinga DB import) are loaded on first use.
+  client (first import job), mysql2 (Icinga DB import) and the OpenAPI document
+  builder (first `GET /api/openapi.json`) are loaded on first use.
 - **No ICU on hot paths.** Feeds and mails format dates without `Intl`
   (`formatUtcDateTime` in `lib/time.ts`), the public history sorts without
   `localeCompare`, and server-side rendering formats without `Intl` until

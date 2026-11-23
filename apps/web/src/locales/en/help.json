@@ -11,5 +11,7 @@
   "repoFile": "File in the repository: {{path}}",
   "fallbackNotice": "This topic is not available in your language yet, so the English version is shown.",
   "notFound": "This help topic does not exist.",
-  "loadError": "The help could not be loaded."
+  "loadError": "The help could not be loaded.",
+  "apiDocs": "API documentation",
+  "apiDocsSummary": "Every endpoint of the HTTP API (OpenAPI 3.1), with examples and a form to try requests."
 }

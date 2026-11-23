@@ -141,7 +141,19 @@ breaking changes.
 - Migration `0015_notification_channels`: on PostgreSQL the restricted public
   role writes webhook and SMS subscriptions only through new `SECURITY DEFINER`
   functions in `osp_public` and cannot read any of the new tables.
-
+- **OpenAPI 3.1 description of the HTTP API** at `GET /api/openapi.json` and
+  in the repository as `docs/openapi.json`. It is generated from the zod
+  schemas the server validates with and from a declaration of every route
+  (JSON:API envelopes, parameters, status codes, rate limits, security
+  schemes, required role as `x-required-role`); `pnpm openapi:generate`
+  rewrites the file, and the tests fail when it is out of date or a route is
+  missing. Anonymous clients and `APP_ROLE=public` instances get only the
+  public part; signed-in users and API tokens on `admin` and `all` instances
+  get the whole API. Answers carry an `ETag` (`304` for `If-None-Match`).
+- **API documentation in the management UI** (*API*, next to *Help*, for every
+  signed-in user): the endpoints by topic with a filter, parameters, schemas
+  and examples, and *Try it* for requests to the own instance with the
+  current session. Requests that change data need an explicit confirmation.
 - **Themes** for the public page (docs/themes.md): JSON token files (colors for
   light and dark, status colors, focus ring, corner radius, system font stacks,
   density) plus optional extra CSS. Built-in themes `default`, `slate`, `forest`
@@ -175,7 +187,6 @@ breaking changes.
 - The public pages load the theme (accent included) as a hashed same-origin
   stylesheet at the end of the head instead of an inline `<style>` element;
   `/api/public/settings` carries `theme.stylesheets` and the accent in effect.
-
 - **Maintenance windows** are marked up as `Event` in the structured data (they were
   `Article`). Incident pages stay `Article`.
 - The provider of the `OIDC_*` environment variables keeps its routes, redirect

@@ -11,5 +11,7 @@
   "repoFile": "Datei im Repository: {{path}}",
   "fallbackNotice": "Dieses Thema gibt es noch nicht auf Deutsch, daher wird die englische Fassung angezeigt.",
   "notFound": "Dieses Hilfethema gibt es nicht.",
-  "loadError": "Die Hilfe konnte nicht geladen werden."
+  "loadError": "Die Hilfe konnte nicht geladen werden.",
+  "apiDocs": "API-Dokumentation",
+  "apiDocsSummary": "Alle Endpunkte der HTTP-API (OpenAPI 3.1), mit Beispielen und einem Formular zum Ausprobieren."
 }

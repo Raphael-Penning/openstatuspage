@@ -11,6 +11,10 @@ was a breaking change: there is no compatibility layer for the plain JSON format
 - The examples below were recorded from a running server and shortened: ids are cut
   to `1b6f…`, secrets to `…`, collections show their first resource and long
   arrays their first two entries.
+- Machine-readable: the [OpenAPI 3.1 description](#openapi-description)
+  [`openapi.json`](openapi.json), served by every instance at
+  `GET /api/openapi.json`, and the interactive API documentation of the
+  management UI at `/admin/api`.
 
 Contents: [Conventions](#conventions) · [Authentication](#authentication) ·
 [Endpoints outside JSON:API](#endpoints-outside-jsonapi) · [Public API](#public-api) ·
@@ -298,6 +302,44 @@ Content-Type: application/vnd.api+json
 Timestamps are ISO 8601 UTC strings. Slugs are generated from the name when not
 provided; duplicates get a numeric suffix, an explicit slug that is taken is `409`.
 
+### OpenAPI description
+
+[`docs/openapi.json`](openapi.json) describes every endpoint of this document as
+OpenAPI 3.1: JSON:API request and response envelopes, path and query parameters
+(`include`, `page[...]`, `filter[...]`), status codes with error documents, rate
+limits (`x-rate-limit`), the required role (`x-required-role`) and the security
+schemes (`sessionCookie` with `csrfHeader`, `apiToken`, `ingestToken` or
+`?token=`, `subscriptionToken`, `privatePageToken`). Request attributes are the
+zod schemas of [`schemas.ts`](../packages/shared/src/schemas.ts), converted with
+`z.toJSONSchema`; response attributes name their type there.
+
+- Generated from the route declarations in
+  [`apps/server/src/openapi`](../apps/server/src/openapi): `pnpm openapi:generate`
+  rewrites the file, `pnpm openapi:check` compares. The tests fail when the file
+  is out of date, when a route is neither described nor listed as a non-API
+  route (`NON_API_ROUTES`: crawler files, the analytics proxy, the HTML forms and
+  the short manage link `/s/:id/:token`; the static files of the web client), or
+  when the declared roles, JSON:API types, relationships, `include` support or
+  rate limits differ from the routes. Files with a content-hashed name that
+  clients fetch by a URL from the API are described like any endpoint: images
+  (`/uploads/<sha256>.<ext>`) and theme stylesheets (`/theme/<hash>.css`, from
+  `theme.stylesheets` of the public settings), both under *Feeds and files*.
+- `GET /api/openapi.json` serves it with an `ETag` (`304` for `If-None-Match`).
+  Anonymous clients, and every client of an `APP_ROLE=public` instance, get the
+  public part (public API, private pages, subscriptions, feeds, images, theme
+  stylesheets, health);
+  a signed-in user or an API token on an `admin` or `all` instance gets the whole
+  API (`Cache-Control: private, no-cache`, `Vary: Cookie, Authorization`). Worker
+  instances do not serve it. The document has no server version and a relative
+  server URL.
+- The management UI shows it at **API** (`/admin/api`, every signed-in user):
+  the endpoints by topic with a filter, parameters, schemas, examples and
+  *Try it* for requests to the same instance with the current session (the CSRF
+  header is added). Requests that change data need a confirmation first;
+  redirects (OIDC, unsubscribe links) and image uploads cannot be sent from there.
+  The page also offers the JSON document as a download (the same answer as
+  `GET /api/openapi.json` with the current session).
+
 ## Authentication
 
 | Area | Credentials |
@@ -341,6 +383,7 @@ error documents like everywhere else.
 | Method | Path | Response |
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes, once the database answers. Exists in every role; the role itself is only logged on start. |
+| GET | `/api/openapi.json` | The [OpenAPI 3.1 description](#openapi-description) (`application/json`, `ETag`): the public part for anonymous clients and public instances, the whole API for signed-in users and API tokens on `admin` and `all` instances. Not on worker instances. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 | GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/`, the short manage links `/s/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |

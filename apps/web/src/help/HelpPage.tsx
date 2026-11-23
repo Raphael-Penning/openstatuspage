@@ -15,6 +15,8 @@ import { extractHeadings, HELP_BASE_PATH } from './markdown';
 import './help.css';
 
 const topicPath = (slug: string) => `${HELP_BASE_PATH}/${slug}`;
+/** The API documentation of the management UI (admin/pages/ApiDocsPage.tsx). */
+const API_DOCS_PATH = '/admin/api';
 
 /**
  * Loaded guides per language. A plain promise cache instead of TanStack Query:
@@ -102,6 +104,12 @@ function HelpIndex({ topics }: { topics: GuideTopic[] }) {
           </li>
         ))}
       </ul>
+      <p className="mt-6 text-sm">
+        <Link to={API_DOCS_PATH} className="font-medium text-accent underline">
+          {t('apiDocs')}
+        </Link>
+        <span className="text-muted"> – {t('apiDocsSummary')}</span>
+      </p>
     </>
   );
 }

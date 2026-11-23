@@ -77,6 +77,16 @@ the same views, with the same `is_public` filters on every other database; they
 list only what the public pages show, and `robots.txt` keeps crawlers away
 from `/api/`, `/admin` and the personal subscription links.
 
+The OpenAPI description at `GET /api/openapi.json` (`routes/openapi.ts`, built
+from `apps/server/src/openapi`) follows the same split: anonymous clients and
+public instances get only the public part, and the whole API is described only
+to a signed-in user or an API token on an `admin` or `all` instance. It reads no
+content rows. On `admin` and `all` instances it resolves the session cookie or
+API token like `/api/admin/*` does (which reads, and may refresh, `sessions` and
+`api_tokens`); public instances never resolve authentication for it. It
+contains no secrets, no server version and no host name (the examples use
+`example.com`).
+
 ## What the public role cannot do
 
 - **Read anything private.** It has no privilege at all on `users`, `sessions`,
