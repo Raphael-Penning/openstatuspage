@@ -10,6 +10,8 @@ import type {
   PublicLocation,
   PublicMaintenance,
   PublicPageSettings,
+  PublicSiteExtras,
+  PublicSitePage,
   PublicPrivatePage,
   PublicService,
   PublicServiceDay,
@@ -36,7 +38,7 @@ function doc(data: ResourceObject | ResourceObject[], included: Included = new M
   return { jsonapi: { version: '1.1' }, data, included: [...included.values()], ...(meta ? { meta } : {}) };
 }
 
-const settingsResource = (s: PublicPageSettings): ResourceObject => ({ type: 'settings', id: 'site', attributes: { ...s } });
+const settingsResource = (s: PublicPageSettings & PublicSiteExtras): ResourceObject => ({ type: 'settings', id: 'site', attributes: { ...s } });
 
 function serviceResource(s: PublicService, extra: Record<string, RelationshipObject> = {}): ResourceObject {
   const { id, groupId, locationIds, ...attributes } = s;
@@ -80,7 +82,13 @@ function maintenanceResource(m: PublicMaintenance, included: Included): Resource
   };
 }
 
-export const settingsDocument = (s: PublicPageSettings) => doc(settingsResource(s));
+export const settingsDocument = (s: PublicPageSettings & PublicSiteExtras) => doc(settingsResource(s));
+
+/** A published content page (GET /api/public/pages/{slug}). */
+export function sitePageDocument(page: PublicSitePage): DataDocument {
+  const { id, ...attributes } = page;
+  return doc({ type: 'pages', id, attributes });
+}
 
 export function summaryDocument(s: PublicSummary): DataDocument {
   const included: Included = new Map();

@@ -8,11 +8,12 @@
 import { headElements, type DataDocument, type PageHead, type PublicDocumentSource } from '@openstatuspage/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { render } from '../entry-server';
-import { history, incident, maintenance, respond, settings } from './a11y/fixtures';
+import { API_YESTERDAY, history, incident, maintenance, respond, settings } from './a11y/fixtures';
 import { historyDocument } from './a11y/documents';
 import { installBrowserStubs } from './a11y/harness';
 import { applyHead } from './head';
-import { breadcrumbLd, languageAlternates, summarize, withLang } from './seo';
+import { validateJsonLd } from './jsonld-check';
+import { breadcrumbLd, eventLd, languageAlternates, markdownText, summarize, webPageLd, withLang } from './seo';
 
 const BASE_URL = 'https://status.example.com';
 
@@ -143,25 +144,115 @@ describe('JSON-LD', () => {
     expect(items.every((i) => i['@type'] === 'ListItem' && i.item.startsWith(BASE_URL))).toBe(true);
   });
 
-  it.each([
-    ['/incidents/inc-1', incident.title, incident.startedAt, incident.updatedAt],
-    ['/maintenance/m-1', maintenance.title, maintenance.createdAt, maintenance.updatedAt],
-  ])('%s is an Article by the organization', async (url, headline, published, modified) => {
+  it('/incidents/inc-1 is an Article by the organization about the affected services', async () => {
+    const url = '/incidents/inc-1';
     const head = await headOf(url, { logoUrl: '/logo.png' });
     expect(head.type).toBe('article');
     expect(ldTypes(head)).toEqual(['Article', 'BreadcrumbList']);
     expect(ld(head, 'Article')).toMatchObject({
       '@context': 'https://schema.org',
-      headline,
-      datePublished: published,
-      dateModified: modified,
+      headline: incident.title,
+      datePublished: incident.startedAt,
+      dateModified: incident.updatedAt,
       url: `${BASE_URL}${url}`,
       mainEntityOfPage: `${BASE_URL}${url}`,
+      image: `${BASE_URL}/logo.png`,
       author: { '@type': 'Organization', name: settings.siteName, url: `${BASE_URL}/` },
       publisher: { '@type': 'Organization', name: settings.siteName, logo: { '@type': 'ImageObject', url: `${BASE_URL}/logo.png` } },
+      about: incident.affectedServices.map((s) => ({ '@type': 'Service', name: s.name, url: expect.stringMatching(new RegExp(`^${BASE_URL}/services/`)) })),
     });
-    // Never event markup for outages or maintenance windows.
-    expect(JSON.stringify(head.jsonLd)).not.toMatch(/Event/);
+    // An outage is no event and no special announcement.
+    expect(JSON.stringify(head.jsonLd)).not.toMatch(/Event|SpecialAnnouncement/);
+  });
+
+  it('/maintenance/m-1 is an Event held online on the status page, organized by the organization', async () => {
+    const url = '/maintenance/m-1';
+    const head = await headOf(url, { logoUrl: '/logo.png' });
+    expect(head.type).toBe('article');
+    expect(ldTypes(head)).toEqual(['Event', 'BreadcrumbList']);
+    expect(ld(head, 'Event')).toMatchObject({
+      '@context': 'https://schema.org',
+      name: maintenance.title,
+      startDate: maintenance.actualStart ?? maintenance.scheduledStart,
+      endDate: maintenance.actualEnd ?? maintenance.scheduledEnd,
+      eventStatus: 'https://schema.org/EventScheduled',
+      eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
+      location: { '@type': 'VirtualLocation', url: `${BASE_URL}/` },
+      organizer: { '@type': 'Organization', name: settings.siteName, url: `${BASE_URL}/` },
+      url: `${BASE_URL}${url}`,
+      image: `${BASE_URL}/logo.png`,
+    });
+  });
+
+  it('marks a cancelled maintenance window as EventCancelled', () => {
+    const site = { name: 'Example Status', baseUrl: BASE_URL, lang: 'en' };
+    const event = eventLd(site, { name: 'x', description: 'y', startDate: '2026-01-02T00:00:00.000Z', endDate: '2026-01-01T00:00:00.000Z', status: 'cancelled', url: `${BASE_URL}/maintenance/x` });
+    expect(event.eventStatus).toBe('https://schema.org/EventCancelled');
+    // Never an end before the start.
+    expect(event.endDate).toBe(event.startDate);
+  });
+
+  it('/services/api is a Service of the organization, without a made-up status property', async () => {
+    const head = await headOf('/services/api');
+    expect(ldTypes(head)).toEqual(['Service', 'BreadcrumbList']);
+    const service = ld(head, 'Service')!;
+    expect(service).toMatchObject({
+      name: 'API',
+      url: `${BASE_URL}/services/api`,
+      provider: { '@type': 'Organization', name: settings.siteName, url: `${BASE_URL}/` },
+    });
+    expect(Object.keys(service).filter((k) => /status/i.test(k))).toEqual([]);
+    expect(JSON.stringify(service)).not.toMatch(/operational|degraded|outage/i);
+  });
+
+  it.each([
+    ['/accessibility', 'WebPage', 'Accessibility statement'],
+    ['/pages/faq', 'WebPage', 'FAQ'],
+  ])('%s is a %s of the site with breadcrumbs', async (url, type, title) => {
+    const head = await headOf(url);
+    expect(head.title).toBe(`${title} · ${settings.siteName}`);
+    expect(head.canonical).toBe(`${BASE_URL}${url}`);
+    expect(head.alternates?.map((a) => a.hreflang)).toEqual(['en', 'de', 'x-default']);
+    expect(ldTypes(head)).toEqual([type, 'BreadcrumbList']);
+    expect(ld(head, type)).toMatchObject({
+      name: title,
+      url: `${BASE_URL}${url}`,
+      inLanguage: 'en',
+      isPartOf: { '@type': 'WebSite', url: `${BASE_URL}/` },
+      publisher: { '@type': 'Organization', name: settings.siteName },
+    });
+  });
+
+  it('uses the page description, or the start of its text', async () => {
+    expect((await headOf('/accessibility')).description).toBe('How accessible this status page is.');
+    expect((await headOf('/pages/faq')).description).toBe('How often is the status updated? Every minute.');
+    expect((await headOf('/pages/faq?lang=de')).description).toBe('Wie oft wird der Status aktualisiert? Jede Minute.');
+  });
+
+  it('makes the about page an AboutPage about the organization', () => {
+    const site = { name: 'Example Status', baseUrl: BASE_URL, lang: 'de' };
+    const page = webPageLd(site, { type: 'AboutPage', name: 'Über', description: 'd', url: `${BASE_URL}/about`, datePublished: '2026-01-01T00:00:00.000Z', dateModified: '2026-01-02T00:00:00.000Z' });
+    expect(page).toMatchObject({ '@type': 'AboutPage', about: { '@type': 'Organization', name: 'Example Status' }, inLanguage: 'de' });
+  });
+
+  it('the schema check itself rejects unknown types and properties, missing fields and bad values', () => {
+    const bad = { '@context': 'https://schema.org', '@type': 'Event', name: 'x', status: 'operational', startDate: 'today', location: { '@type': 'Place' } };
+    const problems = validateJsonLd(bad);
+    expect(problems).toEqual(
+      expect.arrayContaining([
+        '$: Event has no property status',
+        '$.startDate: not an ISO 8601 date-time',
+        '$: Event needs eventStatus',
+        '$.location: unknown @type Place',
+      ]),
+    );
+    expect(validateJsonLd({ '@type': 'SpecialAnnouncement' })).toContain('$: unknown @type SpecialAnnouncement');
+  });
+
+  it.each([...INDEXABLE.map(([url]) => url), '/accessibility', '/pages/faq'])('%s: every JSON-LD object passes the schema check', async (url) => {
+    const head = await headOf(url, { logoUrl: '/logo.png', brandUrl: 'https://www.example.com/' });
+    expect(head.jsonLd?.length).toBeGreaterThan(0);
+    for (const obj of head.jsonLd ?? []) expect(validateJsonLd(obj), JSON.stringify(obj)).toEqual([]);
   });
 
   it('is valid JSON in the head elements, also with markup in the data', async () => {
@@ -185,6 +276,8 @@ describe('variants of a page: followed, not indexed', () => {
     '/?upcoming=all',
     '/subscribe?sent=1',
     '/subscribe?error=invalid',
+    // Day pages: thin, one per service and day.
+    `/services/api/days/${API_YESTERDAY}`,
   ])('%s: noindex, follow, no canonical or alternates', async (url) => {
     const head = await headOf(url);
     expect(head.status ?? 200).toBe(200);
@@ -216,6 +309,9 @@ describe('pages that are not indexed', () => {
     ['/does-not-exist', 404],
     ['/incidents/missing', 404],
     ['/services/missing', 404],
+    ['/legal-notice', 404],
+    ['/pages/missing', 404],
+    ['/pages/accessibility', 404],
   ])('%s: noindex, no canonical, alternates or JSON-LD', async (url, status) => {
     const head = await headOf(url);
     expect(head.status ?? 200).toBe(status);
@@ -258,6 +354,12 @@ describe('seo helpers', () => {
     expect(long.length).toBeLessThanOrEqual(160);
     expect(long.endsWith('word…')).toBe(true);
     expect(summarize('x'.repeat(200)).length).toBe(160);
+  });
+
+  it('markdownText keeps the words of Markdown', () => {
+    expect(markdownText('# Title\n\nSome **bold** [link](https://example.com) and ![img](/x.png)\n\n- item\n\n```\ncode\n```')).toBe(
+      'Title Some bold link and item',
+    );
   });
 
   it('builds language URLs and breadcrumbs', () => {
