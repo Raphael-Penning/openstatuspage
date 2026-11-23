@@ -18,14 +18,15 @@ It is also shown in the management UI under **Help**, in English or German.
 | Operations: backups, upgrades, monitoring | [en](guide/en/09-operations.md) | [de](guide/de/09-operations.md) |
 | Troubleshooting | [en](guide/en/10-troubleshooting.md) | [de](guide/de/10-troubleshooting.md) |
 | Security checklist | [en](guide/en/11-security-checklist.md) | [de](guide/de/11-security-checklist.md) |
+| Webhooks and SMS | [en](guide/en/13-webhooks-and-sms.md) | [de](guide/de/13-webhooks-and-sms.md) |
 
 ## Reference
 
 | Document | Contents |
 | --- | --- |
 | [configuration.md](configuration.md) | Every environment variable with defaults |
-| [notifications.md](notifications.md) | Email subscriptions: mail transport, delivery queue, stored data, deliverability, troubleshooting |
-| [api.md](api.md) | HTTP API: public, auth, admin and ingest endpoints |
+| [notifications.md](notifications.md) | Email subscriptions: mail transport, delivery queue, stored data, deliverability, troubleshooting; webhooks (Discord, Slack, Teams, generic JSON) and SMS: events, formats, signing, providers, limits |
+| [api.md](api.md) | HTTP API: public, auth, admin, webhook and SMS subscription and ingest endpoints |
 | [adapters/](adapters/README.md) | Monitoring adapters: Icinga 2, Uptime Kuma, openITCockpit, generic webhook |
 | [oidc.md](oidc.md) | Single sign-on with OpenID Connect, role mapping, provider notes |
 | [architecture.md](architecture.md) | Code layout, privacy model, status model, database, worker |
