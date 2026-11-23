@@ -203,7 +203,7 @@ Confirmation and unsubscribe links are signed with `SUBSCRIPTION_TOKEN_KEY`
 
 Webhooks (Discord, Slack, Microsoft Teams, generic JSON) and SMS are configured in
 the management UI under **Administration → Webhooks & SMS**, not with environment
-variables. See [notifications.md](notifications.md#webhooks-and-sms) for the
+variables. See [webhooks-and-sms.md](webhooks-and-sms.md) for the
 events, formats, delivery and the SMS providers, and the
 [guide chapter](guide/en/13-webhooks-and-sms.md) for the set-up.
 

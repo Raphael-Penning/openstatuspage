@@ -72,7 +72,7 @@ Feld leer, um sie zu behalten. Mit **Eigene** beschreibst du die Anfrage selbst:
 Methode, URL, Header, ein Formular- oder JSON-Body und die Statuscodes, die
 Erfolg bedeuten. Die Platzhalter `{{to}}`, `{{to_digits}}` (ohne `+`),
 `{{from}}`, `{{text}}`, `{{username}}`, `{{password}}` und `{{basic_auth}}`
-werden für jede SMS gefüllt. Die [Referenz zu Benachrichtigungen](../../notifications.md#sms)
+werden für jede SMS gefüllt. Die [Referenz zu Benachrichtigungen](../../webhooks-and-sms.md#sms)
 nennt, was jede Vorlage über die API des Anbieters annimmt.
 
 Sende eine Test-SMS, bevor du dich darauf verlässt. Jede SMS ist ein einzelnes
@@ -126,7 +126,7 @@ außerdem den Abmeldelink.
 ## Generische Webhooks prüfen
 
 Generische Webhooks senden JSON (`"version": 1`, siehe die
-[Referenz zu Benachrichtigungen](../../notifications.md#generic-json-payload))
+[Referenz zu Benachrichtigungen](../../webhooks-and-sms.md#generic-json-payload))
 mit diesen Headern:
 
 - `X-OSP-Timestamp`: Unix-Zeit in Sekunden.

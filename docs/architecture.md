@@ -107,7 +107,7 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
 - Webhooks and SMS follow the same pattern with their own tables (`channel_outbox`,
   `notification_webhooks`, `sms_recipients`, `channel_subscribers`; code in
   `apps/server/src/services/channels/`). Outbound requests go through the SSRF guard in
-  `apps/server/src/lib/safe-http.ts`; see [notifications.md](notifications.md#webhooks-and-sms).
+  `apps/server/src/lib/safe-http.ts`; see [webhooks-and-sms.md](webhooks-and-sms.md).
 - Only public incidents/maintenance notify, and mails list public services only.
 - Subscription tokens are derived with HMAC-SHA256 from `SUBSCRIPTION_TOKEN_KEY` (default `SECRET_KEY`) and a per
   subscriber salt; they are never stored. Deleting a subscriber cascades to its

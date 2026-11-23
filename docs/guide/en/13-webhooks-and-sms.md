@@ -68,7 +68,7 @@ keep them. With **Custom** you describe the request yourself: method, URL,
 headers, a form or JSON body and the status codes that mean success. The
 placeholders `{{to}}`, `{{to_digits}}` (without `+`), `{{from}}`, `{{text}}`,
 `{{username}}`, `{{password}}` and `{{basic_auth}}` are filled in for every SMS.
-The [notifications reference](../../notifications.md#sms) lists what each preset
+The [notifications reference](../../webhooks-and-sms.md#sms) lists what each preset
 assumes about the provider's API.
 
 Send a test SMS before you rely on it. Every SMS is a single segment: texts are
@@ -119,7 +119,7 @@ subscription is removed. Every SMS also carries the unsubscribe link.
 ## Verifying generic webhooks
 
 Generic webhooks send JSON (`"version": 1`, see the
-[notifications reference](../../notifications.md#generic-json-payload)) with
+[notifications reference](../../webhooks-and-sms.md#generic-json-payload)) with
 these headers:
 
 - `X-OSP-Timestamp`: Unix time in seconds.

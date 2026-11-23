@@ -7,7 +7,7 @@
  * - Microsoft Teams: an Adaptive Card 1.4 in the message envelope that the
  *   Workflows webhook trigger expects ({ type: "message", attachments: [...] }).
  * - Generic JSON: a stable, versioned document (WEBHOOK_PAYLOAD_VERSION), signed
- *   with HMAC-SHA256 over "<timestamp>.<body>" (see signGeneric, docs/api.md).
+ *   with HMAC-SHA256 over "<timestamp>.<body>" (see signGeneric, docs/webhooks-and-sms.md#generic-json-payload).
  * - SMS: one segment (GSM-7 aware): site, headline and the short manage link.
  *
  * Every message to a subscriber carries the manage/unsubscribe link. Event data
@@ -390,7 +390,7 @@ export function teamsPayload(m: ChannelMessage, ctx: RenderContext): unknown {
 
 // --- Generic JSON --------------------------------------------------------------------
 
-/** The generic payload (version 1, documented in docs/api.md#webhooks). */
+/** The generic payload (version 1, documented in docs/webhooks-and-sms.md#generic-json-payload). */
 export function genericPayload(m: ChannelMessage, ctx: RenderContext): unknown {
   return {
     version: WEBHOOK_PAYLOAD_VERSION,

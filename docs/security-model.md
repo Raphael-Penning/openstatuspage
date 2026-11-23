@@ -120,7 +120,7 @@ from `/api/`, `/admin` and the personal subscription links.
   `SECRET_KEY`, which the public instance does not have). The channel functions
   queue confirmation messages without content, and the worker checks every
   decrypted destination against the admin options and the URL rules again
-  before it connects (SSRF guard, see [notifications.md](notifications.md#outbound-requests-ssrf-protection)).
+  before it connects (SSRF guard, see [webhooks-and-sms.md](webhooks-and-sms.md#outbound-requests-ssrf-protection)).
 - **Use a subscription without its token.** The functions compare the SHA-256 of
   the given token with the stored hash (migration `0006`). The database never
   sees the token key and hands out a salt (from which the public instance

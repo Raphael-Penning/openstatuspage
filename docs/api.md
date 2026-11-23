@@ -1187,7 +1187,7 @@ choice as email. What is offered is `channelSubscriptions` of
 
 Resources are `channel-subscriptions` with a `services` relationship. The manage
 token travels in `X-Subscription-Token`. Unknown ids, wrong tokens and wrong
-codes all get the same `404`. See [notifications.md](notifications.md#webhooks-and-sms)
+codes all get the same `404`. See [webhooks-and-sms.md](webhooks-and-sms.md)
 for the messages and the generic payload.
 
 | Method | Path | Description |

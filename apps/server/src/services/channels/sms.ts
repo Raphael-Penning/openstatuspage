@@ -15,7 +15,7 @@
  * headers. The request goes through the SSRF guard (lib/safe-http.ts).
  *
  * Presets fill the template for common providers. They follow the providers'
- * public REST APIs as documented in late 2026 (docs/configuration.md#sms lists the
+ * public REST APIs as documented in late 2026 (docs/webhooks-and-sms.md#sms lists the
  * assumptions); every field stays editable.
  */
 import type { SmsPreset, SmsProviderInput } from '@openstatuspage/shared';
