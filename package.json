@@ -16,6 +16,8 @@
     "test": "pnpm -r test",
     "db:migrate": "pnpm --filter @openstatuspage/server db:migrate",
     "db:seed": "pnpm --filter @openstatuspage/server db:seed",
+    "openapi:generate": "pnpm --filter @openstatuspage/server openapi:generate",
+    "openapi:check": "pnpm --filter @openstatuspage/server openapi:check",
     "measure:memory": "node scripts/measure-memory.mjs"
   },
   "pnpm": {
