@@ -111,6 +111,15 @@ describe('head of the indexable pages', () => {
     expect(ld(head, 'Organization')?.logo).toBe(`${BASE_URL}/logo.png`);
     expect((await headOf('/incidents/inc-1', { logoUrl: 'https://cdn.example.com/l.png' })).image).toBe('https://cdn.example.com/l.png');
   });
+
+  it('leaves an ICO logo out of JSON-LD and the preview image', async () => {
+    const home = await headOf('/', { logoUrl: '/uploads/abc.ico' });
+    expect(home.image).toBeUndefined();
+    expect(ld(home, 'Organization')?.logo).toBeUndefined();
+    const incident = await headOf('/incidents/inc-1', { logoUrl: 'https://cdn.example.com/l.ICO?v=2' });
+    expect(ld(incident, 'Article')?.image).toBeUndefined();
+    expect(ld(incident, 'Article')?.publisher).not.toHaveProperty('logo');
+  });
 });
 
 describe('JSON-LD', () => {

@@ -31,6 +31,7 @@ import {
   articleLd,
   breadcrumbLd,
   eventLd,
+  isStructuredDataImage,
   languageAlternates,
   organizationLd,
   serviceLd,
@@ -161,7 +162,8 @@ export function usePageHead(input: PageHeadInput): void {
     name: site,
     baseUrl,
     lang,
-    ...(settings?.logoUrl ? { logo: absoluteUrl(settings.logoUrl, baseUrl) } : {}),
+    // An ICO logo is neither a JSON-LD logo/image nor a link preview image (og:image).
+    ...(settings?.logoUrl && isStructuredDataImage(settings.logoUrl) ? { logo: absoluteUrl(settings.logoUrl, baseUrl) } : {}),
     ...(settings?.brandUrl ? { sameAs: [settings.brandUrl] } : {}),
     ...(settings?.description ? { description: summarize(settings.description) } : {}),
   };

@@ -75,6 +75,15 @@ export interface SiteInfo {
   lang: string;
 }
 
+/**
+ * Whether an image URL may be a logo or image in JSON-LD. Google's logo and
+ * image guidelines do not list ICO, so an ICO logo stays out of the markup
+ * (the page itself still shows it).
+ */
+export function isStructuredDataImage(url: string): boolean {
+  return !/\.ico$/i.test(url.replace(/[?#].*$/, ''));
+}
+
 const homeUrl = (site: SiteInfo) => `${site.baseUrl}/`;
 const organizationId = (site: SiteInfo) => `${homeUrl(site)}#organization`;
 
