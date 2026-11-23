@@ -16,6 +16,7 @@ import type {
   PublicService,
   PublicServiceDay,
   PublicServiceGroup,
+  PublicChannelSubscription,
   PublicSubscription,
   PublicSummary,
   ServiceStatus,
@@ -33,6 +34,7 @@ import {
   summaryDocument,
   subscribeAcceptedDocument,
   subscriptionDocument,
+  channelSubscriptionDocument,
 } from './documents';
 
 const DAY = 86_400_000;
@@ -204,6 +206,7 @@ export const summary: PublicSummary = {
   activeMaintenances: [maintenance],
   upcomingMaintenances: [upcoming],
   emailSubscriptions: true,
+  channelSubscriptions: { webhookKinds: ['discord', 'slack', 'teams', 'generic'], sms: true, smsCallingCodes: ['49', '43'] },
   generatedAt: iso(-60_000),
 };
 
@@ -262,6 +265,21 @@ export const subscription: PublicSubscription = {
 };
 
 export const SUBSCRIPTION_TOKEN = 'token-0123456789abcdef';
+
+/** A confirmed generic webhook subscription (manage page of /subscription/channel). */
+export const channelSubscription: PublicChannelSubscription = {
+  id: 'ch-1',
+  channel: 'webhook',
+  webhookKind: 'generic',
+  target: 'hooks.example.com/…',
+  locale: 'en',
+  allServices: false,
+  serviceIds: ['api'],
+  confirmed: true,
+  signingSecret: 'whsec_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG',
+};
+
+export const CHANNEL_TOKEN = 'chtoken0123456789abcde';
 
 /**
  * A day of the API in detail (GET /api/public/services/api/days/:date): any day
@@ -354,6 +372,9 @@ export function respond(method: string, path: string, headers: Headers = new Hea
     if (path === '/api/public/maintenances/m-1') return ok(maintenanceDocument(maintenance));
     if (path === '/api/public/history') return ok(historyDocument(history));
     if (path === '/api/public/subscriptions/sub-1') return ok(subscriptionDocument(subscription));
+    if (path === '/api/public/channel-subscriptions/ch-1' && headers.get('x-subscription-token') === CHANNEL_TOKEN) {
+      return ok(channelSubscriptionDocument(channelSubscription));
+    }
   }
   if (method === 'POST' && path === '/api/public/subscriptions/sub-1/confirm') {
     return ok(subscriptionDocument(subscription, SUBSCRIPTION_TOKEN));

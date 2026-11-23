@@ -14,6 +14,7 @@ import type {
   PublicService,
   PublicServiceDay,
   PublicServiceGroup,
+  PublicChannelSubscription,
   PublicSubscription,
   PublicSummary,
   RelationshipObject,
@@ -92,7 +93,12 @@ export function summaryDocument(s: PublicSummary): DataDocument {
   const data: ResourceObject = {
     type: 'summaries',
     id: 'current',
-    attributes: { overall: s.overall, emailSubscriptions: s.emailSubscriptions, generatedAt: s.generatedAt },
+    attributes: {
+      overall: s.overall,
+      emailSubscriptions: s.emailSubscriptions,
+      channelSubscriptions: s.channelSubscriptions,
+      generatedAt: s.generatedAt,
+    },
     relationships: {
       page: { data: { type: 'settings', id: 'site' } },
       groups: ids('service-groups', s.groups),
@@ -166,6 +172,12 @@ export function subscriptionDocument(sub: PublicSubscription, manageToken?: stri
     attributes: { ...attributes, ...(manageToken ? { manageToken } : {}) },
     relationships: { services: idList('services', serviceIds) },
   });
+}
+
+/** `channel-subscriptions` resource (webhook or SMS subscription). */
+export function channelSubscriptionDocument(sub: PublicChannelSubscription): DataDocument {
+  const { id, serviceIds, ...attributes } = sub;
+  return doc({ type: 'channel-subscriptions', id, attributes, relationships: { services: idList('services', serviceIds) } });
 }
 
 /** Answer of POST /api/public/subscriptions (always the same meta-only document). */

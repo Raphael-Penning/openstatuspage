@@ -7,7 +7,7 @@
  * success. With JavaScript the page checks the input itself and posts to the
  * JSON:API instead.
  */
-import { FORM_PATHS, type SubscriptionLocale } from '@openstatuspage/shared';
+import { FORM_PATHS, type ChannelOptions, type SubscriptionLocale } from '@openstatuspage/shared';
 import { Loader2, MailCheck, MailX } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -41,6 +41,7 @@ import {
   type SubscriptionErrors,
 } from '../utils/subscription';
 import { loadSchemas } from '../utils/schemas';
+import { ChannelLinks } from './ChannelSubscriptionPages';
 
 const EMAIL_FIELD_ID = 'subscription-email';
 
@@ -68,13 +69,14 @@ export function SubscribePage() {
 
   if (summary.isPending) return <SubscribeSkeleton />;
   if (summary.isError) return <ErrorState onRetry={() => void summary.refetch()} />;
-  if (!summary.data.emailSubscriptions || unavailable) return <UnavailableState />;
+  if (!summary.data.emailSubscriptions || unavailable) return <UnavailableState channels={summary.data.channelSubscriptions} />;
   // Sent with JavaScript (the address is known), or the redirect of the form handler.
   if (sentTo || params.get('sent') === '1') return <SentState email={sentTo} />;
 
   return (
     <div>
       <PageTitle title={t('subscription.title')} subtitle={t('subscription.subtitle')} />
+      <ChannelLinks email channels={summary.data.channelSubscriptions} current="email" />
       <SubscribeForm sections={sections} onUnavailable={() => setUnavailable(true)} onSent={setSentTo} />
     </div>
   );
@@ -248,16 +250,28 @@ function SentState({ email }: { email: string | null }) {
   );
 }
 
-function UnavailableState() {
+function UnavailableState({ channels }: { channels: ChannelOptions | undefined }) {
   const { t } = useTranslation('public');
   return (
     <ResultState
       icon={<MailX aria-hidden className="size-10 text-muted" />}
       title={t('subscription.unavailable.title')}
       actions={
-        <Link to="/" className={secondaryButton}>
-          {t('subscription.backHome')}
-        </Link>
+        <>
+          {(channels?.webhookKinds.length ?? 0) > 0 && (
+            <Link to="/subscribe/webhook" className={primaryButton}>
+              {t('channels.nav.webhook')}
+            </Link>
+          )}
+          {channels?.sms && (
+            <Link to="/subscribe/sms" className={primaryButton}>
+              {t('channels.nav.sms')}
+            </Link>
+          )}
+          <Link to="/" className={secondaryButton}>
+            {t('subscription.backHome')}
+          </Link>
+        </>
       }
     >
       <p>{t('subscription.unavailable.description')}</p>

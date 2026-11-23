@@ -11,8 +11,10 @@
 import type { RouteObject } from 'react-router';
 import { isPrivatePageToken, isUptimeDay, normalizePrivatePageToken } from '@openstatuspage/shared';
 import { privateQueries, publicQueries } from './hooks/queries';
+import { channelSubscriptionQuery } from './hooks/channel-subscriptions';
 import { subscriptionQuery } from './hooks/subscriptions';
 import type { PublicRouteHandle } from './loaders';
+import { ChannelManagePage, SubscribeSmsPage, SubscribeWebhookPage, VerifyCodePage } from './pages/ChannelSubscriptionPages';
 import { HistoryPage, historyQuery } from './pages/HistoryPage';
 import { IncidentPage } from './pages/IncidentPage';
 import { LocationsPage } from './pages/LocationsPage';
@@ -99,6 +101,30 @@ export const publicRoutes: RouteObject[] = [
         path: 'subscribe',
         element: <SubscribePage />,
         handle: handle({ prefetch: ({ load, get }) => load(publicQueries.summary(get)) }),
+      },
+      {
+        path: 'subscribe/webhook',
+        element: <SubscribeWebhookPage />,
+        handle: handle({ prefetch: ({ load, get }) => load(publicQueries.summary(get)) }),
+      },
+      {
+        path: 'subscribe/sms',
+        element: <SubscribeSmsPage />,
+        handle: handle({ prefetch: ({ load, get }) => load(publicQueries.summary(get)) }),
+      },
+      // The code of a webhook or SMS subscription, and its manage page (the link of every message).
+      { path: 'subscription/verify', element: <VerifyCodePage /> },
+      {
+        path: 'subscription/channel',
+        element: <ChannelManagePage />,
+        handle: handle({
+          prefetch: async ({ search, load, get }) => {
+            const id = search.get('id')?.trim();
+            const token = search.get('token')?.trim();
+            if (!id || !token) return;
+            await Promise.all([load(channelSubscriptionQuery(id, token, get)), load(publicQueries.summary(get))]);
+          },
+        }),
       },
       // Links carry the token in the query (older ones in the fragment, which only the browser sees).
       { path: 'subscription/confirm', element: <SubscriptionConfirmPage /> },
