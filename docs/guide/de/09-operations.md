@@ -12,7 +12,8 @@ ihre `-f`-Optionen bei jedem Befehl oder setzt `COMPOSE_FILE` in `.env`.
 ### Was du sichern musst
 
 1. **Die Datenbank**: PostgreSQL-Datenbank oder SQLite-Datei. Darin steckt
-   alles: Services, Vorfälle, Verlauf, Benutzer, Einstellungen, Abonnenten.
+   alles: Services, Vorfälle, Verlauf, Benutzer, Einstellungen, Abonnenten und
+   die hochgeladenen Bilder (Logo, Favicon, Bilder der Seiten).
 2. **`SECRET_KEY`** (und den Rest deiner `.env`). Ohne denselben Schlüssel
    kann eine wiederhergestellte Datenbank die gespeicherten
    Monitoring-Zugangsdaten nicht entschlüsseln. Bewahre ihn getrennt von der
