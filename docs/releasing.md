@@ -1,4 +1,4 @@
-# Releasing and container images
+# Releasing, container images and packages
 
 This page is for maintainers. It describes how the container image and the
 release assets are built and published and how to cut a release. Operators find the deployment steps in
@@ -135,6 +135,59 @@ every further command), or migrate the database with `pg_dump`/restore, see
 [Operations](guide/en/09-operations.md). Mention this in the release notes of
 the first release with the new file.
 
+## Release assets (installation without containers)
+
+Every release also attaches the files of the
+[installation without containers](guide/en/13-installation-without-containers.md):
+
+| Asset | Built by | Content |
+| --- | --- | --- |
+| `openstatuspage-X.Y.Z-linux-x64.tar.gz`, `…-linux-arm64.tar.gz` | `bundle` job, [`scripts/build-bundle.sh`](../scripts/build-bundle.sh) | Server and web client builds, production `node_modules` (native modules built for the architecture), launcher, systemd units, `roles.sql`/`harden.sql`, proxy templates, `install.sh`, `VERSION`. |
+| `openstatuspage_X.Y.Z_amd64.deb`, `…_arm64.deb`, `openstatuspage-X.Y.Z-1.x86_64.rpm`, `…aarch64.rpm` | `packages` job, [`scripts/build-packages.sh`](../scripts/build-packages.sh) with nfpm ([`deploy/bare-metal/nfpm.yaml`](../deploy/bare-metal/nfpm.yaml)) | Exactly the tarball in `/opt/openstatuspage/app` plus the units in `/usr/lib/systemd/system`; maintainer scripts in [`deploy/bare-metal/package/`](../deploy/bare-metal/package/). |
+| `install.sh` | copy of [`scripts/install.sh`](../scripts/install.sh) | The install script; the guide downloads it from `releases/latest/download/install.sh`. |
+| `SHA256SUMS` | `packages` job | SHA-256 of every asset above. `install.sh install`/`update` refuse a tarball whose checksum does not match it. |
+
+How the jobs run:
+
+- `bundle` builds the tarball inside a `node:22-bullseye` container (glibc
+  2.31), so the native modules (better-sqlite3, argon2) load on Debian 11+,
+  Ubuntu 22.04+ and RHEL 9+. arm64 is built under QEMU on the x64 runner, like
+  the arm64 image. The tarball is reproducible for a commit
+  (`SOURCE_DATE_EPOCH` = commit time, sorted entries, owner 0). It needs
+  Node.js 22 at run time: the native modules are built for its ABI.
+- `packages` lints the shell scripts with shellcheck, installs nfpm (the
+  version and the SHA-256 of its tarball and `checksums.txt` are pinned in
+  the job, like kubeconform) and builds `.deb` and `.rpm` for both
+  architectures from the tarballs, then writes `SHA256SUMS`.
+- `install-test` starts Debian 12 and Rocky Linux 9 containers with systemd
+  and runs `install.sh install` with the x64 tarball in three variants: SQLite
+  on Debian, `--with-postgres --with-postfix` on Rocky, and `--mode split
+  --with-postgres --with-postfix` on Debian. It checks the services and
+  `/api/health`, the PostgreSQL version (15 or newer), the DKIM public key and
+  that Postfix refuses foreign senders, that the public user of the split
+  cannot read the main settings, reruns the install (the settings must not
+  change), runs `update` and `uninstall` (data must stay), and finally
+  installs, starts and removes the `.deb`/`.rpm` (Debian and Rocky entries).
+- Pull requests run `bundle` (x64 only), `packages` and `install-test` as a dry
+  run with the version `<package.json version>-ci.<run number>`; pushes to
+  `main` skip them. For a `v*` tag all three run for both architectures, and
+  the `release` job waits for them, checks that the tarballs carry the tag's
+  version and that `SHA256SUMS` matches, and uploads everything with
+  `--clobber`.
+
+To upgrade nfpm, take the new release's tarball SHA-256 and the SHA-256 of its
+`checksums.txt` from <https://github.com/goreleaser/nfpm/releases> and update
+`NFPM_VERSION`, `NFPM_SHA256` and `NFPM_CHECKSUMS_SHA256` together.
+
+Build them locally (Linux with Node.js 22, pnpm and a C++ toolchain; nfpm for
+the packages):
+
+```bash
+scripts/build-bundle.sh 1.2.3                 # dist/release/openstatuspage-1.2.3-linux-<arch>.tar.gz
+scripts/build-packages.sh dist/release/openstatuspage-1.2.3-linux-*.tar.gz
+(cd dist/release && sha256sum -- *.tar.gz *.deb *.rpm > SHA256SUMS)
+```
+
 ## Helm chart
 
 The chart in [`deploy/helm/openstatuspage`](../deploy/helm/openstatuspage) is
@@ -190,7 +243,9 @@ helm show chart oci://ghcr.io/raphael-penning/charts/openstatuspage --version 1.
 4. Wait for the CI run of the tag. The `image` job pushes `1.2.3`, `1.2`, `1`
    and `latest` (see [Tags](#tags)); the `release` job then creates the GitHub
    release with generated notes and attaches `compose.yaml` and `env.example`
-   (see [Release assets](#release-assets-compose-deployment)), and the
+   (see [Release assets](#release-assets-compose-deployment)) as well as the
+   tarballs, packages, `install.sh` and `SHA256SUMS` (see
+   [installation without containers](#release-assets-installation-without-containers)), and the
    `helm-publish` job pushes the Helm chart `1.2.3` (see [Helm chart](#helm-chart)).
 5. Edit the release notes on GitHub and put upgrade notes (configuration
    changes, migrations) at the top. Check that the assets are attached and

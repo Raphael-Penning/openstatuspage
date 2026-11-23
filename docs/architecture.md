@@ -239,6 +239,14 @@ Instances that migrate run `osp_grant_public_role()` on start
 worker renders them (`NotificationService`). See
 [security-model.md](security-model.md).
 
+Roles are chosen the same way everywhere. Containers run one service per role
+(`compose.split.yaml`, Helm, Kubernetes). Without containers the systemd units
+`openstatuspage-public`, `-admin` and `-worker` (or `openstatuspage` for `all`)
+start the same roles through `bin/openstatuspage serve <role>` (see
+[installation without containers](guide/en/13-installation-without-containers.md)).
+The optional bundled mail server is a separate send-only service; the app reads
+only its public DKIM keys (`MAIL_DKIM_DIR`).
+
 ## Server-side rendering
 
 The public pages are rendered on the server and hydrated in the browser, so

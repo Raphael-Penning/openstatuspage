@@ -32,6 +32,7 @@ import type { DB } from '../db/index.js';
 import type { OutboxRow } from '../db/types.js';
 import { conflict } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
+import { mailDnsRecords } from '../mail/dns.js';
 import { mailerConfigured, type Mailer } from '../mail/mailer.js';
 import {
   confirmationMail,
@@ -600,6 +601,7 @@ export class NotificationService {
         lastError?.last_error && lastError.last_attempt_at
           ? { message: lastError.last_error, at: lastError.last_attempt_at }
           : null,
+      dns: await mailDnsRecords(this.config.MAIL_DKIM_DIR, this.mailer.from),
     };
   }
 }

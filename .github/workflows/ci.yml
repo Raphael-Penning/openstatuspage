@@ -273,12 +273,315 @@ jobs:
           provenance: mode=max
           sbom: true
 
+  bundle:
+    # Installation without containers (docs/guide/en/13-installation-without-containers.md):
+    # builds the release tarball openstatuspage-<version>-linux-<arch>.tar.gz with
+    # scripts/build-bundle.sh in a node:22-bullseye container (glibc 2.31, so the
+    # native modules run on Debian 11+, Ubuntu 22.04+ and RHEL 9+). arm64 is
+    # built under QEMU, like the arm64 image. Pull requests build x64 only as a
+    # dry run; version tags build both; pushes to main build nothing.
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v')
+    needs: [check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(startsWith(github.ref, 'refs/tags/v') && '["x64","arm64"]' || '["x64"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        if: matrix.arch == 'arm64'
+      - name: Build the tarball
+        env:
+          ARCH: ${{ matrix.arch }}
+          REF_NAME: ${{ github.ref_name }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -euo pipefail
+          if [[ "$IS_TAG" == true ]]; then
+            version="${REF_NAME#v}"
+          else
+            version="$(jq -r .version package.json)-ci.$GITHUB_RUN_NUMBER"
+          fi
+          platform=linux/amd64
+          [[ "$ARCH" == arm64 ]] && platform=linux/arm64
+          docker run --rm --platform "$platform" \
+            -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+            -e SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" \
+            -e OUT_DIR=/src/dist/release \
+            -v "$PWD:/src" -w /src node:22-bullseye \
+            bash -c 'corepack enable && scripts/build-bundle.sh "$1"' _ "$version"
+          ls -l dist/release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle-${{ matrix.arch }}
+          path: dist/release/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  packages:
+    # .deb and .rpm packages (nfpm, deploy/bare-metal/nfpm.yaml) from the
+    # tarballs, plus SHA256SUMS over everything the release attaches. Also lints
+    # the shell scripts of the installation without containers.
+    needs: [bundle]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # nfpm release, pinned twice like kubeconform in the "helm" job: the
+      # SHA-256 of the tarball and of the release's checksums.txt are hard-coded
+      # (taken from https://github.com/goreleaser/nfpm/releases/tag/v2.48.0).
+      NFPM_VERSION: v2.48.0
+      NFPM_SHA256: 6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
+      NFPM_CHECKSUMS_SHA256: d78f05f5a94dc4231629bc5731baae2ab8062c89b70e70498d95b106f046fd7b
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          shellcheck scripts/install.sh scripts/build-bundle.sh scripts/build-packages.sh \
+            deploy/bare-metal/openstatuspage deploy/bare-metal/package/*.sh
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: bundle-*
+          path: dist/release
+          merge-multiple: true
+      - name: Install nfpm
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/nfpm"
+          mkdir -p "$dir"
+          cd "$dir"
+          version="${NFPM_VERSION#v}"
+          base="https://github.com/goreleaser/nfpm/releases/download/$NFPM_VERSION"
+          file="nfpm_${version}_Linux_x86_64.tar.gz"
+          curl -fsSLo checksums.txt "$base/checksums.txt"
+          curl -fsSLo "$file" "$base/$file"
+          echo "$NFPM_CHECKSUMS_SHA256  checksums.txt" | sha256sum --check --strict
+          grep -qx "$NFPM_SHA256  $file" checksums.txt
+          echo "$NFPM_SHA256  $file" | sha256sum --check --strict
+          tar -xzf "$file" nfpm
+          echo "$dir" >> "$GITHUB_PATH"
+      - name: Build the packages
+        run: scripts/build-packages.sh dist/release/*.tar.gz
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cp scripts/install.sh dist/release/install.sh
+          cd dist/release
+          sha256sum -- *.tar.gz *.deb *.rpm install.sh | tee SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bare-metal-release
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 7
+
+  install-test:
+    # Runs scripts/install.sh against the x64 tarball in Debian and Rocky Linux
+    # containers with systemd: install (SQLite on Debian; PostgreSQL and the
+    # local Postfix on Rocky; the split deployment with PostgreSQL and Postfix
+    # on Debian), check /api/health, the services and the mail setup, update,
+    # uninstall (data kept), then install and remove the .deb/.rpm package.
+    needs: [packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian
+            image: debian:12
+            setup: apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus ca-certificates curl && rm -rf /var/lib/apt/lists/*
+            init: /lib/systemd/systemd
+            split: false
+            postfix: false
+            install_args: ""
+            package: apt-get install -y /artifacts/openstatuspage_*_amd64.deb
+            remove: apt-get remove -y openstatuspage
+          - name: rocky
+            image: rockylinux/rockylinux:9
+            setup: dnf install -y systemd procps-ng && dnf clean all
+            init: /usr/sbin/init
+            split: false
+            postfix: true
+            install_args: --with-postgres --with-postfix --mail-domain example.com
+            package: dnf install -y /artifacts/openstatuspage-*.x86_64.rpm
+            remove: dnf remove -y openstatuspage
+          - name: debian-split
+            image: debian:12
+            setup: apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv dbus ca-certificates curl && rm -rf /var/lib/apt/lists/*
+            init: /lib/systemd/systemd
+            split: true
+            postfix: true
+            install_args: --mode split --with-postgres --admin-url http://localhost:3001 --with-postfix --mail-domain example.com
+            # The packages are tested by the other two entries.
+            package: ""
+            remove: ""
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bare-metal-release
+          path: artifacts
+      - name: Start a ${{ matrix.name }} container with systemd
+        env:
+          IMAGE: ${{ matrix.image }}
+          SETUP: ${{ matrix.setup }}
+          INIT: ${{ matrix.init }}
+        run: |
+          set -euo pipefail
+          printf 'FROM %s\nRUN %s\nSTOPSIGNAL SIGRTMIN+3\nCMD ["%s"]\n' "$IMAGE" "$SETUP" "$INIT" > Dockerfile.systemd
+          docker build -q -t osp-systemd -f Dockerfile.systemd .
+          docker run -d --name osp --privileged --cgroupns=host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock \
+            -v "$PWD/artifacts:/artifacts:ro" osp-systemd
+          for i in $(seq 1 30); do
+            state="$(docker exec osp systemctl is-system-running 2>/dev/null || true)"
+            [[ "$state" == running || "$state" == degraded ]] && break
+            sleep 1
+          done
+          echo "systemd: $state"
+      - name: Install from the tarball
+        env:
+          ARGS: ${{ matrix.install_args }}
+          SPLIT: ${{ matrix.split }}
+        run: |
+          set -euo pipefail
+          tarball="$(cd artifacts && ls openstatuspage-*-linux-x64.tar.gz)"
+          # shellcheck disable=SC2086
+          docker exec osp bash /artifacts/install.sh install --tarball "/artifacts/$tarball" \
+            --base-url http://localhost:3000 $ARGS
+          if [[ "$SPLIT" == true ]]; then
+            docker exec osp systemctl is-active openstatuspage-split.target openstatuspage-public.service \
+              openstatuspage-admin.service openstatuspage-worker.service
+            docker exec osp systemctl is-enabled openstatuspage-split.target
+            docker exec osp curl -fsS http://127.0.0.1:3001/api/health
+            docker exec osp stat -c '%a %U %G' /etc/openstatuspage/public.env | grep -x '640 root openstatuspage-public'
+            # The public instance's user cannot read the main settings.
+            if docker exec osp runuser -u openstatuspage-public -- cat /etc/openstatuspage/openstatuspage.env > /dev/null 2>&1; then
+              echo "::error::openstatuspage-public can read openstatuspage.env"
+              exit 1
+            fi
+            if docker exec osp grep -q '^SECRET_KEY=' /etc/openstatuspage/public.env; then
+              echo "::error::public.env has SECRET_KEY"
+              exit 1
+            fi
+          else
+            docker exec osp systemctl is-active openstatuspage.service
+            docker exec osp systemctl is-enabled openstatuspage.service
+          fi
+          docker exec osp curl -fsS http://127.0.0.1:3000/api/health
+          docker exec osp stat -c '%a %U %G' /etc/openstatuspage/openstatuspage.env | grep -x '640 root openstatuspage'
+          # A rerun changes nothing and keeps the secret.
+          before="$(docker exec osp sha256sum /etc/openstatuspage/openstatuspage.env)"
+          # shellcheck disable=SC2086
+          docker exec osp bash /artifacts/install.sh install --tarball "/artifacts/$tarball" $ARGS
+          [[ "$before" == "$(docker exec osp sha256sum /etc/openstatuspage/openstatuspage.env)" ]]
+      - name: Check PostgreSQL
+        if: contains(matrix.install_args, '--with-postgres')
+        run: |
+          set -euo pipefail
+          # 15 or newer for security_invoker views (RHEL 9 defaults to 13).
+          version="$(docker exec osp runuser -u postgres -- psql -XtAc 'SHOW server_version_num')"
+          echo "PostgreSQL $version"
+          [[ "$version" -ge 150000 ]]
+          docker exec osp grep -q '^DATABASE_URL=postgres://osp_app:' /etc/openstatuspage/openstatuspage.env
+      - name: Check the mail server
+        if: matrix.postfix
+        run: |
+          set -euo pipefail
+          docker exec osp systemctl is-active opendkim postfix
+          # Only the public key, readable by the app, in MAIL_DKIM_DIR.
+          docker exec osp grep -q 'p=[A-Za-z0-9+/]' /etc/openstatuspage/dkim/example.com.osp.txt
+          docker exec osp runuser -u openstatuspage -- test -r /etc/openstatuspage/dkim/example.com.osp.txt
+          if docker exec osp runuser -u openstatuspage -- ls /etc/opendkim/keys/example.com > /dev/null 2>&1; then
+            echo "::error::the app user can read the DKIM private key directory"
+            exit 1
+          fi
+          docker exec osp grep -qx 'MAIL_DKIM_DIR=/etc/openstatuspage/dkim' /etc/openstatuspage/openstatuspage.env
+          docker exec osp grep -qx 'SMTP_HOST=127.0.0.1' /etc/openstatuspage/openstatuspage.env
+          # Postfix accepts senders of the mail domain and refuses others. A bash
+          # SMTP dialog up to RCPT TO (no curl: curl-minimal on Rocky lacks SMTP),
+          # so no mail is queued.
+          cat > smtp-rcpt.sh << 'SH'
+          exec 3<> /dev/tcp/127.0.0.1/25
+          reply() {
+            local line
+            while IFS= read -r -t 10 line <&3; do
+              line="${line%$'\r'}"
+              [[ "$line" =~ ^[0-9]{3}- ]] || { printf '%s\n' "$line"; return; }
+            done
+          }
+          reply > /dev/null
+          printf 'EHLO ci.example.com\r\n' >&3; reply > /dev/null
+          printf 'MAIL FROM:<%s>\r\n' "$1" >&3; reply > /dev/null
+          printf 'RCPT TO:<someone@example.org>\r\n' >&3; reply
+          printf 'QUIT\r\n' >&3
+          SH
+          ok="$(docker exec -i osp bash -s status@example.com < smtp-rcpt.sh)"
+          echo "status@example.com: $ok"
+          [[ "$ok" == 250* ]]
+          refused="$(docker exec -i osp bash -s someone@example.net < smtp-rcpt.sh)"
+          echo "someone@example.net: $refused"
+          [[ "$refused" == 5* ]]
+      - name: Update, uninstall
+        env:
+          SPLIT: ${{ matrix.split }}
+        run: |
+          set -euo pipefail
+          tarball="$(cd artifacts && ls openstatuspage-*-linux-x64.tar.gz)"
+          docker exec osp bash /artifacts/install.sh update --tarball "/artifacts/$tarball"
+          if [[ "$SPLIT" == true ]]; then
+            docker exec osp systemctl is-active openstatuspage-public.service openstatuspage-admin.service openstatuspage-worker.service
+            docker exec osp curl -fsS http://127.0.0.1:3001/api/health
+          else
+            docker exec osp systemctl is-active openstatuspage.service
+          fi
+          docker exec osp curl -fsS http://127.0.0.1:3000/api/health
+          docker exec osp bash /artifacts/install.sh uninstall
+          docker exec osp test ! -e /opt/openstatuspage/app
+          docker exec osp test -f /etc/openstatuspage/openstatuspage.env
+          docker exec osp test -d /var/lib/openstatuspage
+      - name: Install and remove the package
+        if: matrix.package != ''
+        env:
+          PACKAGE: ${{ matrix.package }}
+          REMOVE: ${{ matrix.remove }}
+        run: |
+          set -euo pipefail
+          docker exec osp bash -c "$PACKAGE"
+          # Never enabled by the package itself.
+          if docker exec osp systemctl is-enabled --quiet openstatuspage.service; then
+            echo "::error::the package enabled openstatuspage.service"
+            exit 1
+          fi
+          docker exec osp id openstatuspage-public
+          docker exec osp /opt/openstatuspage/app/scripts/install.sh node
+          docker exec osp systemctl start openstatuspage.service
+          for i in $(seq 1 60); do docker exec osp curl -fsS http://127.0.0.1:3000/api/health && break; sleep 1; done
+          docker exec osp curl -fsS http://127.0.0.1:3000/api/health
+          docker exec osp bash -c "$REMOVE"
+          docker exec osp test -f /etc/openstatuspage/openstatuspage.env
+      - name: Logs
+        if: failure()
+        run: docker exec osp journalctl --no-pager -n 300 -u 'openstatuspage*' -u postgresql -u postfix -u opendkim || true
+
   release:
     # For a version tag: creates (or updates) the GitHub release with generated
     # notes and uploads the Compose deployment files as assets, with the image
     # version pinned to the tag. "releases/latest/download/compose.yaml" thus
-    # always serves the newest stable release. See docs/releasing.md.
-    needs: image
+    # always serves the newest stable release. It also attaches the files of the
+    # installation without containers (tarballs, .deb, .rpm, install.sh and
+    # SHA256SUMS from the "packages" job). See docs/releasing.md.
+    needs: [image, packages, install-test]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -312,6 +615,20 @@ jobs:
           grep -F "\${OSP_VERSION:-$version}" "$ASSETS/compose.yaml"
           grep -x "OSP_VERSION=$version" "$ASSETS/env.example"
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bare-metal-release
+          path: ${{ runner.temp }}/bare-metal
+
+      - name: Check the bare-metal assets
+        # The version inside the tarballs must be the tag, and SHA256SUMS must match.
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/bare-metal"
+          version="${TAG#v}"
+          ls "openstatuspage-$version-linux-x64.tar.gz" "openstatuspage-$version-linux-arm64.tar.gz"
+          sha256sum --check --strict SHA256SUMS
+
       - name: Create or update the release and upload the assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -328,6 +645,7 @@ jobs:
               --prerelease="$prerelease" --latest="$LATEST"
           fi
           gh release upload "$TAG" "$ASSETS/compose.yaml" "$ASSETS/env.example" --clobber
+          gh release upload "$TAG" "$RUNNER_TEMP"/bare-metal/* --clobber
 
   helm-publish:
     # For a version tag: packages the Helm chart with version and appVersion =

@@ -1,0 +1,32 @@
+# Caddy in front of one OpenStatusPage instance (APP_ROLE=all) on the same
+# host. Caddy obtains and renews the certificate automatically: the DNS name
+# must point to this host and ports 80 and 443 must be reachable.
+#
+# Install: copy to /etc/caddy/Caddyfile, replace status.example.com, then
+#   systemctl reload caddy
+#
+# App settings (/etc/openstatuspage/openstatuspage.env or .env):
+#   BASE_URL=https://status.example.com
+#   HOST=127.0.0.1        the app listens on localhost only
+#   TRUST_PROXY=1         one proxy hop; safe only while the app port is not
+#                         reachable from outside (HOST=127.0.0.1)
+#
+# Caddy sets X-Forwarded-For/-Proto/-Host itself and passes compression,
+# caching and security headers of the app through unchanged
+# (docs/guide/en/03-reverse-proxy.md).
+
+status.example.com {
+	# Bulk check uploads from monitoring systems may be up to 5 MiB.
+	request_body {
+		max_size 6MB
+	}
+
+	header {
+		# Add once the site is served over HTTPS only (it is with Caddy).
+		Strict-Transport-Security "max-age=31536000"
+		# Caddy's own version header.
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:3000
+}

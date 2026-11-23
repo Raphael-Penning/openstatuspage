@@ -6,8 +6,43 @@ breaking changes.
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Docker Compose 2.23.1 or newer** is needed for the new `compose.yaml` and
+  `compose.split.yaml` (inline `configs`), also when the bundled mail server
+  stays off. Check `docker compose version` before `docker compose up -d`.
+- Both files now always create the internal `mail` network with a fixed subnet
+  (`172.30.250.0/28`, split `172.30.251.0/28`). If `up` fails with `Pool
+  overlaps with other one on this address space`, because the range is in use
+  or a second project runs on the same host, set a free range per project with
+  `MAIL_SUBNET` in `.env`.
+- The bundled mail server lets every process on the host send as
+  `MAIL_DOMAIN` (the Docker host is on its network; with `install.sh` every
+  local user reaches `127.0.0.1:25`). Use it on a single-tenant host only.
+
 ### Added
 
+- **Installation without containers.** Every release attaches
+  `openstatuspage-<version>-linux-x64.tar.gz` and `…-linux-arm64.tar.gz`, `.deb`
+  and `.rpm` packages, `install.sh` and `SHA256SUMS`. `install.sh` installs a
+  checksum-verified release with hardened systemd units (one instance or the
+  split deployment, whose public instance runs as its own user), generates
+  `SECRET_KEY`, can set up a local PostgreSQL with the roles of `roles.sql` and
+  a send-only Postfix with OpenDKIM, and has `update`, `rollback` and
+  `uninstall` (keeps data). Guide: installation without containers.
+- **Bundled mail server in Docker Compose.** `compose.yaml` and
+  `compose.split.yaml` have a send-only `postfix` service (profile `mail`, on
+  in a new `.env` with `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`) that signs
+  with a DKIM key generated on first start, is never published and relays only
+  on an internal network (the app and the Docker host) for senders of
+  `MAIL_DOMAIN`. `SMTP_*` still select any other server.
+  Existing `.env` files are not changed: to turn the bundled server on, add
+  `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`.
+- **DNS records for the bundled mail server** in Settings → Email delivery and
+  in `GET /api/admin/notifications/status` (`dns`): SPF, DKIM and DMARC for the
+  sender domain, read from the public keys in the new `MAIL_DKIM_DIR`.
+- Caddy and nginx templates in `deploy/proxy/` for one instance and the split
+  deployment.
 - **Content pages.** *Administration → Pages* edits the about page (`/about`),
   the legal notice (`/legal-notice`), the privacy policy (`/privacy`), the
   accessibility statement (`/accessibility`) and any number of custom pages

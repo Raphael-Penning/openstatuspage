@@ -1,0 +1,64 @@
+# OpenStatusPage split deployment: the background worker (APP_ROLE=worker:
+# polling, mails, maintenance, cleanup). Its port serves /api/health only.
+# Settings: openstatuspage.env, then worker.env (PORT, BASE_URL of the public
+# page), both in /etc/openstatuspage.
+[Unit]
+Description=OpenStatusPage worker
+Documentation=https://github.com/Raphael-Penning/openstatuspage/tree/main/docs/guide
+Wants=network-online.target
+After=network-online.target postgresql.service postfix.service openstatuspage-admin.service
+PartOf=openstatuspage-split.target
+Conflicts=openstatuspage.service
+
+[Service]
+Type=simple
+User=openstatuspage
+Group=openstatuspage
+EnvironmentFile=/etc/openstatuspage/openstatuspage.env
+EnvironmentFile=/etc/openstatuspage/worker.env
+ExecStart=/opt/openstatuspage/app/bin/openstatuspage serve worker
+WorkingDirectory=/var/lib/openstatuspage
+StateDirectory=openstatuspage
+StateDirectoryMode=0750
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Resources: about 80-100 MB in use, short peaks above (docs/architecture.md#memory).
+MemoryHigh=200M
+MemoryMax=256M
+TasksMax=64
+LimitNOFILE=8192
+
+# Hardening. Writable: only /var/lib/openstatuspage (StateDirectory) and a
+# private /tmp. No MemoryDenyWriteExecute: the V8 JIT needs writable code pages.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+[Install]
+WantedBy=openstatuspage-split.target

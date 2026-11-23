@@ -999,7 +999,15 @@
     "retry": "Retry failed",
     "nothingToRetry": "There are no failed emails.",
     "requeued_one": "{{count}} email queued again.",
-    "requeued_other": "{{count}} emails queued again."
+    "requeued_other": "{{count}} emails queued again.",
+    "dnsTitle": "DNS records for the bundled mail server",
+    "dnsIntro": "Publish these TXT records for {{domain}} so that receiving servers accept the mails. Replace the placeholders in the SPF record with the public addresses the server sends from (remove the ip6 part without IPv6); if the domain already has an SPF record, add these addresses to it instead of publishing a second one. Also set a PTR (reverse DNS) record for those addresses.",
+    "dnsDmarcHint": "Start with p=none while you check the DMARC reports, then tighten it to p=quarantine or p=reject.",
+    "dnsKinds": {
+      "spf": "SPF ({{name}})",
+      "dkim": "DKIM ({{name}})",
+      "dmarc": "DMARC ({{name}})"
+    }
   },
   "subscribers": {
     "title": "Subscribers",
