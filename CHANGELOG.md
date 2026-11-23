@@ -6,6 +6,15 @@ breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- Visitors find the API description: the public footer links the
+  machine-readable OpenAPI description (`/api/openapi.json`) as "API", also in
+  `llms.txt` and in the page head (`rel="service-desc"`). The new setting
+  **Publish the API description** (`publicApiDescription`, default on) turns it
+  off; then the endpoint answers `404` to anonymous clients and on public
+  instances, while signed-in users keep the whole API.
+
 ## [0.4.0] - 2026-11-23
 
 ### Upgrading

@@ -332,6 +332,13 @@ zod schemas of [`schemas.ts`](../packages/shared/src/schemas.ts), converted with
   API (`Cache-Control: private, no-cache`, `Vary: Cookie, Authorization`). Worker
   instances do not serve it. The document has no server version and a relative
   server URL.
+- The setting `publicApiDescription` (default `true`) publishes the public part:
+  the public pages then link it in the footer ("API"), in the page head
+  (`<link rel="service-desc" type="application/openapi+json">`, RFC 8631) and in
+  `llms.txt`. When it is `false` the links are gone and every request that would
+  get the public part (anonymous clients, every client of a public instance) is
+  answered with `404`; signed-in users and API tokens on `admin` and `all`
+  instances still get the whole API, so `/admin/api` keeps working.
 - The management UI shows it at **API** (`/admin/api`, every signed-in user):
   the endpoints by topic with a filter, parameters, schemas, examples and
   *Try it* for requests to the same instance with the current session (the CSRF
@@ -1546,6 +1553,7 @@ Footer, navigation and link settings (attributes of `settings/site`, all optiona
 | `copyrightText` | string (≤ 200, one line), default `""` | Plain-text notice; `{year}` becomes the year of the render. Empty: `© <year> <siteName>`. |
 | `brandUrl` | http(s) URL or `null` | Links the notice to your website; also `sameAs` of the Organization JSON-LD. |
 | `showPoweredBy` | boolean, default `true` | Shows the "Powered by OpenStatusPage" line. |
+| `publicApiDescription` | boolean, default `true` | Publishes the API description: the "API" link in the footer, in the page head and in `llms.txt`, and `GET /api/openapi.json` for anonymous clients (`404` when `false`). |
 | `infoLinkUrl` | http(s) URL, a path on this site (`/about`: one leading `/`, no `//`, backslash or whitespace) or `null` | Extra entry of the page navigation; hidden when `null`. |
 | `infoLinkLabel` | string (≤ 60), default `""` | Its text; empty: "About this page" (translated). |
 | `utmEnabled` | boolean, default `false` | Append UTM parameters to the configured outbound links. |
