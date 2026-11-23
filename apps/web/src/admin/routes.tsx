@@ -66,6 +66,8 @@ export const adminRoutes: RouteObject[] = [
           // Help area for every signed-in user; the guide markdown lives in docs/guide.
           { path: 'help', ...page(() => import('../help/HelpPage')) },
           { path: 'help/:topic', ...page(() => import('../help/HelpPage')) },
+          // The OpenAPI description of the HTTP API with "try it" (its own chunk).
+          { path: 'api', ...page(() => import('./pages/ApiDocsPage')) },
           { path: '*', ...page(() => import('./pages/AdminNotFound')) },
         ],
       },
