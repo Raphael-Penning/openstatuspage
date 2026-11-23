@@ -269,7 +269,8 @@ All instances need the same `SUBSCRIPTION_TOKEN_KEY`: the public instance
 derives the token hashes of new subscriptions and the manage token it returns on
 confirmation from it, the worker the tokens in the mails. The public instance
 gets **only** this key, not `SECRET_KEY` (which encrypts the monitoring
-credentials and signs the OIDC state cookie of the admin instance); it logs a
+credentials and the SSO client secrets, and signs the OIDC state cookie of the admin
+instance); it logs a
 warning when it gets `SECRET_KEY` anyway. When the token key changes, the admin
 and worker instances refresh the stored hashes on their next start (existing
 mail links stop working).
