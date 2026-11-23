@@ -104,6 +104,10 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
   `routes/subscriptions.ts` (public) and `routes/admin/subscribers.ts`.
 - Fan-out only enqueues rows; it never sends inside the request, and errors are
   logged without failing the admin request.
+- Webhooks and SMS follow the same pattern with their own tables (`channel_outbox`,
+  `notification_webhooks`, `sms_recipients`, `channel_subscribers`; code in
+  `apps/server/src/services/channels/`). Outbound requests go through the SSRF guard in
+  `apps/server/src/lib/safe-http.ts`; see [notifications.md](notifications.md#webhooks-and-sms).
 - Only public incidents/maintenance notify, and mails list public services only.
 - Subscription tokens are derived with HMAC-SHA256 from `SUBSCRIPTION_TOKEN_KEY` (default `SECRET_KEY`) and a per
   subscriber salt; they are never stored. Deleting a subscriber cascades to its
@@ -124,6 +128,9 @@ admin request (incident/maintenance, notify = true)   scheduler / reminder task
   whose results become stale stop counting
 - session cleanup (hourly)
 - `email-delivery`: sends due outbox mails every 10 s
+- `channel-delivery`: sends due webhook and SMS messages every 10 s (and right after an
+  event); `channel-cleanup` (hourly) removes sent and failed messages after 40 days and
+  unconfirmed visitor subscriptions after 7 days
 - `maintenance-reminders`: queues reminders every minute
 - `notification-cleanup` (hourly): deletes unconfirmed subscriptions after 7 days and
   sent/failed mails after 30 days
@@ -173,6 +180,7 @@ instance. What keeps them consistent:
 | --- | --- |
 | Periodic tasks (maintenance transitions, reminders, mail delivery, bundle evaluation, cleanups) | Lease per task in `task_leases` (`lib/task-leases.ts`): one instance runs a task at a time, and a scheduled run happens once per interval in the whole deployment |
 | Polling | Lease `poll:<source id>` per source: every worker schedules every source, one of them polls it per interval; manual polls ("poll now") take the same lease and report when another instance is polling |
+| Webhook and SMS delivery | Lease on `channel-delivery` plus the per-row claim in `channel_outbox`; the per-host and per-minute limits are counted by the instance holding the lease |
 | Mail sending | Lease on `email-delivery` plus the per-row claim in `email_outbox`; reminders and automatic maintenance transitions are claimed with conditional updates, so no event is announced twice |
 | Bundle evaluation | In-process queue plus `pg_advisory_xact_lock` while evaluating and storing (`db/locks.ts`) |
 | Service status and its history | `pg_advisory_xact_lock` around each recompute, so concurrent recomputes never open two history segments |
