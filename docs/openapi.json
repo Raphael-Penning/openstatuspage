@@ -34,7 +34,7 @@
     },
     {
       "name": "Feeds and files",
-      "description": "Formats other tools depend on: feeds and uploaded images. Not JSON:API; errors are JSON:API error documents."
+      "description": "Formats other tools depend on: feeds, uploaded images and the stylesheets of the active theme. Not JSON:API; errors are JSON:API error documents."
     },
     {
       "name": "Meta",
@@ -97,6 +97,10 @@
       "description": "Content pages and uploaded images."
     },
     {
+      "name": "Admin: themes",
+      "description": "Themes of the public pages (built-in, themes folder, uploaded): import, edit, activate and export (docs/themes.md)."
+    },
+    {
       "name": "Ingest",
       "description": "Push endpoints for monitoring systems. Native payloads, JSON:API responses."
     }
@@ -143,6 +147,7 @@
           "Public"
         ],
         "summary": "Page settings",
+        "description": "The page settings plus what the pages derive from the database (`PublicSiteExtras`, packages/shared/src/site-pages.ts): `pages` (published pages for the navigation and the footer), `logoSize` and `theme`, the active theme as `{ id, stylesheets }` with the same-origin stylesheet URLs `/theme/<hash>.css` (tokens first, then the extra CSS). `accentColor` is the accent in effect: the override of the settings, or the light accent of the active theme.",
         "responses": {
           "200": {"description":"The singleton `settings/site`. Attributes: `PublicPageSettings` (packages/shared/src/schemas.ts).","content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"settings"}}}}}]}}}},
           "400": {"$ref":"#/components/responses/BadRequest"},
@@ -490,6 +495,31 @@
         ],
         "responses": {
           "200": {"description":"The image.","headers":{"ETag":{"description":"Validator for `If-None-Match`.","schema":{"type":"string"}}},"content":{"image/png":{"schema":{"type":"string","contentMediaType":"application/octet-stream"}},"image/jpeg":{"schema":{"type":"string","contentMediaType":"application/octet-stream"}},"image/webp":{"schema":{"type":"string","contentMediaType":"application/octet-stream"}},"image/x-icon":{"schema":{"type":"string","contentMediaType":"application/octet-stream"}}}},
+          "304": {"description":"Not modified (`If-None-Match` matched the `ETag`)."},
+          "404": {"$ref":"#/components/responses/NotFound"},
+          "429": {"$ref":"#/components/responses/TooManyRequests"}
+        },
+        "x-rate-limit": {
+          "max": 600,
+          "window": "1 minute",
+          "per": "client IP address"
+        },
+        "x-jsonapi": false
+      }
+    },
+    "/theme/{file}": {
+      "get": {
+        "operationId": "getThemeByFile",
+        "tags": [
+          "Feeds and files"
+        ],
+        "summary": "A stylesheet of the active theme",
+        "description": "The tokens of the active theme as CSS custom properties, or its extra CSS; the URLs are in `theme.stylesheets` of `GET /api/public/settings`. Named by a hash of the content: cached for a year as immutable, with an `ETag` (`304` for `If-None-Match`) and `nosniff`. A preview stylesheet (a theme that is not active, `?theme=<id>` on a public page) is only answered to a signed-in admin (session cookie) on an `admin` or `all` instance, with `Cache-Control: private, no-store` and without `304`; anything else is `404`.\n\nRate limit: 600 requests per minute and client IP address.",
+        "parameters": [
+          {"name":"file","in":"path","description":"`<hash>.css`: the first 20 hex digits of the SHA-256 of the stylesheet.","required":true,"schema":{"type":"string","pattern":"^[0-9a-f]{20}\\.css$"}}
+        ],
+        "responses": {
+          "200": {"description":"The stylesheet.","headers":{"ETag":{"description":"Validator for `If-None-Match`.","schema":{"type":"string"}}},"content":{"text/css; charset=utf-8":{"schema":{"type":"string"}}}},
           "304": {"description":"Not modified (`If-None-Match` matched the `ETag`)."},
           "404": {"$ref":"#/components/responses/NotFound"},
           "429": {"$ref":"#/components/responses/TooManyRequests"}
@@ -4394,6 +4424,223 @@
         "x-required-role": "admin"
       }
     },
+    "/api/admin/themes": {
+      "get": {
+        "operationId": "getAdminThemes",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "Themes",
+        "description": "Every theme: built-in first, then the themes folder (`THEMES_DIR`), then the uploaded ones by name; without `css`. `contrastFailures` lists the failed WCAG 2.2 AA checks with the current accent override; `contrastUnconfirmed` is `true` for the active theme when it fails and no admin confirmed it.\n\n**Admin only** (role `admin`).",
+        "responses": {
+          "200": {"description":"The themes. Attributes: `AdminTheme` (packages/shared/src/schemas.ts).","content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/CollectionDocument"},{"type":"object","properties":{"data":{"type":"array","items":{"type":"object","properties":{"type":{"const":"themes"}}}}}}]}}}},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "406": {"$ref":"#/components/responses/NotAcceptable"}
+        },
+        "security": [
+          {"sessionCookie":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin"
+      },
+      "post": {
+        "operationId": "postAdminThemes",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "Import a theme",
+        "description": "A theme file (`definition`) and its optional extra CSS (`css`, at most 64 KB). `400` with code `invalid_theme` for problems of the file (pointers below `/data/attributes/definition`) or `css_<problem>` for CSS that the filter refuses (`css_import`, `css_url`, `css_html`, ...); `409` when the id is taken by any source or 50 themes are stored already. The theme is not activated.\n\n**Admin only** (role `admin`).",
+        "requestBody": {
+          "required": true,
+          "content": {"application/vnd.api+json":{"schema":{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"themes"},"attributes":{"$ref":"#/components/schemas/ThemeImportInput"}},"required":["type"]}},"required":["data"]},"example":{"data":{"type":"themes","attributes":{"definition":{"id":"ocean","name":"Ocean","version":1,"light":{"...":"..."},"dark":{"...":"..."}},"css":"header { border-bottom: 3px solid var(--accent); }\n"}}}}}
+        },
+        "responses": {
+          "201": {"description":"The new theme with `css`, with a `Location` header. Attributes: `AdminTheme` (packages/shared/src/schemas.ts).","headers":{"Location":{"description":"URL of the resource.","schema":{"type":"string"}}},"content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"themes"}}}}}]}}}},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "406": {"$ref":"#/components/responses/NotAcceptable"},
+          "409": {"$ref":"#/components/responses/Conflict"},
+          "413": {"$ref":"#/components/responses/PayloadTooLarge"},
+          "415": {"$ref":"#/components/responses/UnsupportedMediaType"}
+        },
+        "security": [
+          {"sessionCookie":[],"csrfHeader":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin"
+      }
+    },
+    "/api/admin/themes/{id}": {
+      "get": {
+        "operationId": "getAdminThemesById",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "A theme",
+        "description": "**Admin only** (role `admin`).",
+        "parameters": [
+          {"name":"id","in":"path","description":"Id of the theme.","required":true,"schema":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"}}
+        ],
+        "responses": {
+          "200": {"description":"The theme with `css`. Attributes: `AdminTheme` (packages/shared/src/schemas.ts).","content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"themes"}}}}}]}}}},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "404": {"$ref":"#/components/responses/NotFound"},
+          "406": {"$ref":"#/components/responses/NotAcceptable"}
+        },
+        "security": [
+          {"sessionCookie":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin"
+      },
+      "patch": {
+        "operationId": "patchAdminThemesById",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "Change an uploaded theme",
+        "description": "Uploaded themes only (`409` for built-in and folder themes): a new `definition` (its id cannot change, `400`) and/or `css` (`null` removes it). Changing the active theme so that it fails WCAG 2.2 AA is `409` with code `contrast_failures` (the failed checks in `meta.failures`) unless `acceptContrastFailures` is `true`; the confirmation is written to the audit log.\n\n**Admin only** (role `admin`).",
+        "parameters": [
+          {"name":"id","in":"path","description":"Id of the theme.","required":true,"schema":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/vnd.api+json":{"schema":{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"themes"},"attributes":{"$ref":"#/components/schemas/ThemeUpdateInputPartial"}},"required":["type"]}},"required":["data"]}}}
+        },
+        "responses": {
+          "200": {"description":"The theme with `css`. Attributes: `AdminTheme` (packages/shared/src/schemas.ts).","content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"themes"}}}}}]}}}},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "404": {"$ref":"#/components/responses/NotFound"},
+          "406": {"$ref":"#/components/responses/NotAcceptable"},
+          "409": {"$ref":"#/components/responses/Conflict"},
+          "413": {"$ref":"#/components/responses/PayloadTooLarge"},
+          "415": {"$ref":"#/components/responses/UnsupportedMediaType"}
+        },
+        "security": [
+          {"sessionCookie":[],"csrfHeader":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin"
+      },
+      "delete": {
+        "operationId": "deleteAdminThemesById",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "Delete an uploaded theme",
+        "description": "Uploaded themes only: `409` for built-in and folder themes and for the active theme. `?uploadedCopy=true` deletes the uploaded theme that a folder theme with the same id hides (`404` when there is none).\n\n**Admin only** (role `admin`).",
+        "parameters": [
+          {"name":"id","in":"path","description":"Id of the theme.","required":true,"schema":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"}},
+          {"name":"uploadedCopy","in":"query","description":"`true`: delete the uploaded theme hidden by a folder theme with this id (`400` for other values).","schema":{"type":"string","enum":["true","false"]}}
+        ],
+        "responses": {
+          "204": {"description":"Deleted."},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "404": {"$ref":"#/components/responses/NotFound"},
+          "406": {"$ref":"#/components/responses/NotAcceptable"},
+          "409": {"$ref":"#/components/responses/Conflict"}
+        },
+        "security": [
+          {"sessionCookie":[],"csrfHeader":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin"
+      }
+    },
+    "/api/admin/themes/{id}/activate": {
+      "post": {
+        "operationId": "postAdminThemesByIdActivate",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "Activate a theme",
+        "description": "Makes it the theme of the public pages. A theme that fails WCAG 2.2 AA (with the accent override of the settings) is `409` with code `contrast_failures` (the failed checks in `meta.failures`) unless `acceptContrastFailures` is `true`; activating the active theme again with `true` confirms a failure nobody confirmed (`contrastUnconfirmed`). Written to the audit log.\n\n**Admin only** (role `admin`).",
+        "parameters": [
+          {"name":"id","in":"path","description":"Id of the theme.","required":true,"schema":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/vnd.api+json":{"schema":{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"themes"},"id":{"type":"string","description":"Must match the id in the URL."},"attributes":{"$ref":"#/components/schemas/ThemeActivateInput"}},"required":["type"]}},"required":["data"]},"example":{"data":{"type":"themes","attributes":{"acceptContrastFailures":false}}}}}
+        },
+        "responses": {
+          "200": {"description":"The activated theme with `css`. Attributes: `AdminTheme` (packages/shared/src/schemas.ts).","content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"themes"}}}}}]}}}},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "404": {"$ref":"#/components/responses/NotFound"},
+          "406": {"$ref":"#/components/responses/NotAcceptable"},
+          "409": {"$ref":"#/components/responses/Conflict"},
+          "413": {"$ref":"#/components/responses/PayloadTooLarge"},
+          "415": {"$ref":"#/components/responses/UnsupportedMediaType"}
+        },
+        "security": [
+          {"sessionCookie":[],"csrfHeader":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin"
+      }
+    },
+    "/api/admin/themes/{id}/export": {
+      "get": {
+        "operationId": "getAdminThemesByIdExport",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "Download a theme file",
+        "description": "The theme file as a download (`Content-Disposition: attachment; filename=\"<id>.json\"`, `Cache-Control: no-store`); not JSON:API.\n\n**Admin only** (role `admin`).",
+        "parameters": [
+          {"name":"id","in":"path","description":"Id of the theme.","required":true,"schema":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"}}
+        ],
+        "responses": {
+          "200": {"description":"The theme file.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ThemeFile"}}}},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "404": {"$ref":"#/components/responses/NotFound"}
+        },
+        "security": [
+          {"sessionCookie":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin",
+        "x-jsonapi": false
+      }
+    },
+    "/api/admin/themes/{id}/export-css": {
+      "get": {
+        "operationId": "getAdminThemesByIdExportCss",
+        "tags": [
+          "Admin: themes"
+        ],
+        "summary": "Download the extra CSS of a theme",
+        "description": "As a download (`Content-Disposition: attachment; filename=\"<id>.css\"`, `Cache-Control: no-store`); `404` for a theme without extra CSS. Not JSON:API.\n\n**Admin only** (role `admin`).",
+        "parameters": [
+          {"name":"id","in":"path","description":"Id of the theme.","required":true,"schema":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"}}
+        ],
+        "responses": {
+          "200": {"description":"The extra CSS.","content":{"text/css; charset=utf-8":{"schema":{"type":"string"}}}},
+          "400": {"$ref":"#/components/responses/BadRequest"},
+          "401": {"$ref":"#/components/responses/Unauthorized"},
+          "403": {"$ref":"#/components/responses/Forbidden"},
+          "404": {"$ref":"#/components/responses/NotFound"}
+        },
+        "security": [
+          {"sessionCookie":[]},
+          {"apiToken":[]}
+        ],
+        "x-required-role": "admin",
+        "x-jsonapi": false
+      }
+    },
     "/api/ingest/{sourceId}": {
       "post": {
         "operationId": "postIngestBySourceId",
@@ -5060,7 +5307,7 @@
           "description": {"default":"","type":"string","maxLength":500},
           "logoUrl": {"anyOf":[{"type":"string","maxLength":500},{"type":"null"}]},
           "faviconUrl": {"anyOf":[{"type":"string","maxLength":500},{"type":"null"}]},
-          "accentColor": {"default":"#7c6cf2","type":"string","pattern":"^#[0-9a-fA-F]{6}$"},
+          "accentColor": {"anyOf":[{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},{"type":"null"}]},
           "defaultLocale": {"default":"en","type":"string","enum":["en","de"]},
           "defaultTheme": {"default":"system","type":"string","enum":["system","dark","light"]},
           "footerLinks": {"default":[],"maxItems":10,"type":"array","items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":60},"url":{"type":"string","maxLength":500,"format":"uri"}},"required":["label","url"]}},
@@ -5214,6 +5461,58 @@
         "required": [
           "to"
         ]
+      },
+      "ThemeActivateInput": {
+        "type": "object",
+        "properties": {
+          "acceptContrastFailures": {"default":false,"type":"boolean"}
+        },
+        "additionalProperties": false
+      },
+      "ThemeFile": {
+        "type": "object",
+        "properties": {
+          "$schema": {"type":"string","maxLength":300},
+          "id": {"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"},
+          "name": {"type":"string","minLength":1,"maxLength":80},
+          "version": {"type":"number","const":1},
+          "author": {"type":"string","maxLength":120},
+          "description": {"type":"string","maxLength":500},
+          "light": {"type":"object","properties":{"background":{"type":"string","maxLength":64},"surface":{"type":"string","maxLength":64},"surfaceAlt":{"type":"string","maxLength":64},"border":{"type":"string","maxLength":64},"borderStrong":{"type":"string","maxLength":64},"text":{"type":"string","maxLength":64},"muted":{"type":"string","maxLength":64},"accent":{"type":"string","maxLength":64},"focus":{"type":"string","maxLength":64},"status":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64},"noData":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage","noData"],"additionalProperties":false},"statusText":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage"],"additionalProperties":false}},"required":["background","surface","surfaceAlt","border","borderStrong","text","muted","accent","status"],"additionalProperties":false},
+          "dark": {"type":"object","properties":{"background":{"type":"string","maxLength":64},"surface":{"type":"string","maxLength":64},"surfaceAlt":{"type":"string","maxLength":64},"border":{"type":"string","maxLength":64},"borderStrong":{"type":"string","maxLength":64},"text":{"type":"string","maxLength":64},"muted":{"type":"string","maxLength":64},"accent":{"type":"string","maxLength":64},"focus":{"type":"string","maxLength":64},"status":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64},"noData":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage","noData"],"additionalProperties":false},"statusText":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage"],"additionalProperties":false}},"required":["background","surface","surfaceAlt","border","borderStrong","text","muted","accent","status"],"additionalProperties":false},
+          "radius": {"type":"string","pattern":"^(?:0|(?:\\d(?:\\.\\d{1,3})?|1\\d(?:\\.\\d{1,3})?)rem|\\d{1,2}px)$"},
+          "fonts": {"type":"object","properties":{"sans":{"type":"string","maxLength":300},"mono":{"type":"string","maxLength":300}},"additionalProperties":false},
+          "density": {"type":"string","enum":["compact","comfortable","spacious"]}
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "light",
+          "dark"
+        ],
+        "additionalProperties": false
+      },
+      "ThemeImportInput": {
+        "type": "object",
+        "properties": {
+          "definition": {"type":"object","properties":{"$schema":{"type":"string","maxLength":300},"id":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"},"name":{"type":"string","minLength":1,"maxLength":80},"version":{"type":"number","const":1},"author":{"type":"string","maxLength":120},"description":{"type":"string","maxLength":500},"light":{"type":"object","properties":{"background":{"type":"string","maxLength":64},"surface":{"type":"string","maxLength":64},"surfaceAlt":{"type":"string","maxLength":64},"border":{"type":"string","maxLength":64},"borderStrong":{"type":"string","maxLength":64},"text":{"type":"string","maxLength":64},"muted":{"type":"string","maxLength":64},"accent":{"type":"string","maxLength":64},"focus":{"type":"string","maxLength":64},"status":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64},"noData":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage","noData"],"additionalProperties":false},"statusText":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage"],"additionalProperties":false}},"required":["background","surface","surfaceAlt","border","borderStrong","text","muted","accent","status"],"additionalProperties":false},"dark":{"type":"object","properties":{"background":{"type":"string","maxLength":64},"surface":{"type":"string","maxLength":64},"surfaceAlt":{"type":"string","maxLength":64},"border":{"type":"string","maxLength":64},"borderStrong":{"type":"string","maxLength":64},"text":{"type":"string","maxLength":64},"muted":{"type":"string","maxLength":64},"accent":{"type":"string","maxLength":64},"focus":{"type":"string","maxLength":64},"status":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64},"noData":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage","noData"],"additionalProperties":false},"statusText":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage"],"additionalProperties":false}},"required":["background","surface","surfaceAlt","border","borderStrong","text","muted","accent","status"],"additionalProperties":false},"radius":{"type":"string","pattern":"^(?:0|(?:\\d(?:\\.\\d{1,3})?|1\\d(?:\\.\\d{1,3})?)rem|\\d{1,2}px)$"},"fonts":{"type":"object","properties":{"sans":{"type":"string","maxLength":300},"mono":{"type":"string","maxLength":300}},"additionalProperties":false},"density":{"type":"string","enum":["compact","comfortable","spacious"]}},"required":["id","name","version","light","dark"],"additionalProperties":false},
+          "css": {"anyOf":[{"type":"string","maxLength":131072},{"type":"null"}]}
+        },
+        "required": [
+          "definition"
+        ],
+        "additionalProperties": false
+      },
+      "ThemeUpdateInputPartial": {
+        "type": "object",
+        "properties": {
+          "definition": {"type":"object","properties":{"$schema":{"type":"string","maxLength":300},"id":{"type":"string","minLength":1,"maxLength":48,"pattern":"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"},"name":{"type":"string","minLength":1,"maxLength":80},"version":{"type":"number","const":1},"author":{"type":"string","maxLength":120},"description":{"type":"string","maxLength":500},"light":{"type":"object","properties":{"background":{"type":"string","maxLength":64},"surface":{"type":"string","maxLength":64},"surfaceAlt":{"type":"string","maxLength":64},"border":{"type":"string","maxLength":64},"borderStrong":{"type":"string","maxLength":64},"text":{"type":"string","maxLength":64},"muted":{"type":"string","maxLength":64},"accent":{"type":"string","maxLength":64},"focus":{"type":"string","maxLength":64},"status":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64},"noData":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage","noData"],"additionalProperties":false},"statusText":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage"],"additionalProperties":false}},"required":["background","surface","surfaceAlt","border","borderStrong","text","muted","accent","status"],"additionalProperties":false},"dark":{"type":"object","properties":{"background":{"type":"string","maxLength":64},"surface":{"type":"string","maxLength":64},"surfaceAlt":{"type":"string","maxLength":64},"border":{"type":"string","maxLength":64},"borderStrong":{"type":"string","maxLength":64},"text":{"type":"string","maxLength":64},"muted":{"type":"string","maxLength":64},"accent":{"type":"string","maxLength":64},"focus":{"type":"string","maxLength":64},"status":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64},"noData":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage","noData"],"additionalProperties":false},"statusText":{"type":"object","properties":{"operational":{"type":"string","maxLength":64},"maintenance":{"type":"string","maxLength":64},"degraded":{"type":"string","maxLength":64},"partialOutage":{"type":"string","maxLength":64},"majorOutage":{"type":"string","maxLength":64}},"required":["operational","maintenance","degraded","partialOutage","majorOutage"],"additionalProperties":false}},"required":["background","surface","surfaceAlt","border","borderStrong","text","muted","accent","status"],"additionalProperties":false},"radius":{"type":"string","pattern":"^(?:0|(?:\\d(?:\\.\\d{1,3})?|1\\d(?:\\.\\d{1,3})?)rem|\\d{1,2}px)$"},"fonts":{"type":"object","properties":{"sans":{"type":"string","maxLength":300},"mono":{"type":"string","maxLength":300}},"additionalProperties":false},"density":{"type":"string","enum":["compact","comfortable","spacious"]}},"required":["id","name","version","light","dark"],"additionalProperties":false},
+          "css": {"anyOf":[{"type":"string","maxLength":131072},{"type":"null"}]},
+          "acceptContrastFailures": {"default":false,"type":"boolean"}
+        },
+        "additionalProperties": false,
+        "description": "ThemeUpdateInput with every attribute optional (partial update)."
       },
       "UserCreateInput": {
         "type": "object",

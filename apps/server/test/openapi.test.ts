@@ -97,6 +97,9 @@ describe('the OpenAPI document', () => {
     const paths = Object.keys(pub.paths);
     expect(paths).toContain('/api/public/status');
     expect(paths).toContain('/api/openapi.json');
+    // Content-hashed files clients fetch by URLs from the API: images and theme stylesheets.
+    expect(paths).toContain('/uploads/{file}');
+    expect(paths).toContain('/theme/{file}');
     expect(paths.filter((p) => /^\/api\/(admin|auth|ingest)/.test(p))).toEqual([]);
     expect(Object.keys(pub.components.securitySchemes).sort()).toEqual(['privatePageToken', 'subscriptionToken', 'subscriptionTokenQuery']);
     expect(Object.keys(pub.components.schemas)).not.toContain('LoginInput');
@@ -161,6 +164,14 @@ describe('the OpenAPI document', () => {
       'filter[location]',
       'filter[month]',
     ]);
+    const activate = full.paths['/api/admin/themes/{id}/activate']!.post as Record<string, any>;
+    expect(activate['x-required-role']).toBe('admin');
+    expect(activate.description).toContain('contrast_failures');
+    expect(Object.keys(activate.responses)).toContain('409');
+    // The theme file the routes check `definition` with, also for the download.
+    expect((full.components.schemas.ThemeImportInput as { required: string[] }).required).toEqual(['definition']);
+    const exported = full.paths['/api/admin/themes/{id}/export']!.get as Record<string, any>;
+    expect(exported.responses['200'].content['application/json'].schema).toEqual({ $ref: '#/components/schemas/ThemeFile' });
     // The attribute schemas are the zod schemas of packages/shared.
     expect((full.components.schemas.ServiceInput as { required: string[] }).required).toEqual(['name']);
     expect(full.components.schemas.ServiceInputPartial).not.toHaveProperty('required');

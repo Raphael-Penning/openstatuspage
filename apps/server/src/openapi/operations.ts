@@ -83,7 +83,16 @@ export type ResponseSpec =
   | { kind: 'noContent'; description: string }
   | { kind: 'redirect'; status: 302 | 303; description: string }
   /** Anything else (health, feeds, images, the OpenAPI document). */
-  | { kind: 'other'; contentTypes: string[]; description: string; schema?: Record<string, unknown>; example?: unknown; notModified?: boolean };
+  | {
+      kind: 'other';
+      contentTypes: string[];
+      description: string;
+      schema?: Record<string, unknown>;
+      /** Name of a zod schema (schemas.ts) the body follows, instead of `schema`. */
+      schemaName?: string;
+      example?: unknown;
+      notModified?: boolean;
+    };
 
 export interface Operation {
   method: Method;
@@ -122,7 +131,7 @@ export const TAGS = [
   { name: 'Private pages', description: 'Pages shared by a secret link. The token travels in the `X-Private-Page-Token` header, never in the URL. Every token problem is the same `404`; all requests of a client share one rate limit.' },
   { name: 'Email subscriptions', description: 'Double opt-in email subscriptions. Managing a subscription needs its manage token.' },
   { name: 'Webhook and SMS subscriptions', description: 'Subscriptions of visitors by webhook or SMS (confirmed with a code).' },
-  { name: 'Feeds and files', description: 'Formats other tools depend on: feeds and uploaded images. Not JSON:API; errors are JSON:API error documents.' },
+  { name: 'Feeds and files', description: 'Formats other tools depend on: feeds, uploaded images and the stylesheets of the active theme. Not JSON:API; errors are JSON:API error documents.' },
   { name: 'Meta', description: 'Health check and this API description.' },
   { name: 'Auth', description: 'Login, logout, session and single sign-on (OIDC).' },
   { name: 'Admin: overview and settings', description: 'Dashboard, settings, audit log and instance. Management API (session cookie or API token).' },
@@ -138,6 +147,7 @@ export const TAGS = [
   { name: 'Admin: private pages', description: 'Pages shared by a secret link.' },
   { name: 'Admin: SSO providers', description: 'OIDC identity providers of the management UI.' },
   { name: 'Admin: pages and images', description: 'Content pages and uploaded images.' },
+  { name: 'Admin: themes', description: 'Themes of the public pages (built-in, themes folder, uploaded): import, edit, activate and export (docs/themes.md).' },
   { name: 'Ingest', description: 'Push endpoints for monitoring systems. Native payloads, JSON:API responses.' },
 ] as const;
 
@@ -214,6 +224,7 @@ const PAGE_20 = { defaultSize: 20, maxSize: 100 };
 const PAGE_50 = { defaultSize: 50, maxSize: 100 };
 
 const IDENTIFIER = { idOrSlug: { ...ID, maxLength: 100, description: 'Id or slug of the service.' } };
+const THEME = { id: str({ minLength: 1, maxLength: 48, pattern: '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$', description: 'Id of the theme.' }) };
 const DAY = { date: str({ minLength: 1, maxLength: 32, description: 'UTC day, `YYYY-MM-DD`.', example: '2026-11-20' }) };
 
 /** Public page operations, also served for private pages with the token header. */
@@ -260,6 +271,8 @@ export const OPERATIONS: readonly Operation[] = [
     path: '/api/public/settings',
     tag: 'Public',
     summary: 'Page settings',
+    description:
+      'The page settings plus what the pages derive from the database (`PublicSiteExtras`, packages/shared/src/site-pages.ts): `pages` (published pages for the navigation and the footer), `logoSize` and `theme`, the active theme as `{ id, stylesheets }` with the same-origin stylesheet URLs `/theme/<hash>.css` (tokens first, then the extra CSS). `accentColor` is the accent in effect: the override of the settings, or the light accent of the active theme.',
     access: 'public',
     response: resource('settings', 'The singleton `settings/site`.', 'PublicPageSettings'),
   },
@@ -455,6 +468,19 @@ export const OPERATIONS: readonly Operation[] = [
     pathParams: { file: str({ pattern: '^[0-9a-f]{64}\\.(png|jpg|webp|ico)$', description: '`<sha256>.<ext>`.' }) },
     rateLimit: perMinute(600),
     response: { kind: 'other', contentTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/x-icon'], description: 'The image.', schema: { type: 'string', contentMediaType: 'application/octet-stream' }, notModified: true },
+  },
+  {
+    method: 'GET',
+    path: '/theme/:file',
+    tag: 'Feeds and files',
+    summary: 'A stylesheet of the active theme',
+    description:
+      'The tokens of the active theme as CSS custom properties, or its extra CSS; the URLs are in `theme.stylesheets` of `GET /api/public/settings`. Named by a hash of the content: cached for a year as immutable, with an `ETag` (`304` for `If-None-Match`) and `nosniff`. A preview stylesheet (a theme that is not active, `?theme=<id>` on a public page) is only answered to a signed-in admin (session cookie) on an `admin` or `all` instance, with `Cache-Control: private, no-store` and without `304`; anything else is `404`.',
+    access: 'public',
+    jsonapi: false,
+    pathParams: { file: str({ pattern: '^[0-9a-f]{20}\\.css$', description: '`<hash>.css`: the first 20 hex digits of the SHA-256 of the stylesheet.' }) },
+    rateLimit: perMinute(600),
+    response: { kind: 'other', contentTypes: ['text/css; charset=utf-8'], description: 'The stylesheet.', notModified: true },
   },
 
   // ---------------------------------------------------------------- Email subscriptions
@@ -1890,6 +1916,121 @@ export const OPERATIONS: readonly Operation[] = [
     pathParams: { id: id('Id of the upload.') },
     errors: [409],
     response: noContent('Deleted.'),
+  },
+
+  // ---------------------------------------------------------------- Admin: themes
+  {
+    method: 'GET',
+    path: '/api/admin/themes',
+    tag: 'Admin: themes',
+    summary: 'Themes',
+    description:
+      'Every theme: built-in first, then the themes folder (`THEMES_DIR`), then the uploaded ones by name; without `css`. `contrastFailures` lists the failed WCAG 2.2 AA checks with the current accent override; `contrastUnconfirmed` is `true` for the active theme when it fails and no admin confirmed it.',
+    access: 'admin',
+    response: list('themes', 'The themes.', 'AdminTheme'),
+  },
+  {
+    method: 'POST',
+    path: '/api/admin/themes',
+    tag: 'Admin: themes',
+    summary: 'Import a theme',
+    description:
+      'A theme file (`definition`) and its optional extra CSS (`css`, at most 64 KB). `400` with code `invalid_theme` for problems of the file (pointers below `/data/attributes/definition`) or `css_<problem>` for CSS that the filter refuses (`css_import`, `css_url`, `css_html`, ...); `409` when the id is taken by any source or 50 themes are stored already. The theme is not activated.',
+    access: 'admin',
+    request: body('themes', 'ThemeImportInput', {
+      example: {
+        data: {
+          type: 'themes',
+          attributes: {
+            definition: { id: 'ocean', name: 'Ocean', version: 1, light: { '...': '...' }, dark: { '...': '...' } },
+            css: 'header { border-bottom: 3px solid var(--accent); }\n',
+          },
+        },
+      },
+    }),
+    errors: [409],
+    response: created('themes', 'AdminTheme', 'The new theme with `css`, with a `Location` header.'),
+  },
+  {
+    method: 'GET',
+    path: '/api/admin/themes/:id',
+    tag: 'Admin: themes',
+    summary: 'A theme',
+    access: 'admin',
+    pathParams: THEME,
+    response: resource('themes', 'The theme with `css`.', 'AdminTheme'),
+  },
+  {
+    method: 'PATCH',
+    path: '/api/admin/themes/:id',
+    tag: 'Admin: themes',
+    summary: 'Change an uploaded theme',
+    description:
+      'Uploaded themes only (`409` for built-in and folder themes): a new `definition` (its id cannot change, `400`) and/or `css` (`null` removes it). Changing the active theme so that it fails WCAG 2.2 AA is `409` with code `contrast_failures` (the failed checks in `meta.failures`) unless `acceptContrastFailures` is `true`; the confirmation is written to the audit log.',
+    access: 'admin',
+    pathParams: THEME,
+    request: body('themes', 'ThemeUpdateInput', { partial: true }),
+    errors: [409],
+    response: resource('themes', 'The theme with `css`.', 'AdminTheme'),
+  },
+  {
+    method: 'DELETE',
+    path: '/api/admin/themes/:id',
+    tag: 'Admin: themes',
+    summary: 'Delete an uploaded theme',
+    description:
+      'Uploaded themes only: `409` for built-in and folder themes and for the active theme. `?uploadedCopy=true` deletes the uploaded theme that a folder theme with the same id hides (`404` when there is none).',
+    access: 'admin',
+    pathParams: THEME,
+    query: [
+      {
+        name: 'uploadedCopy',
+        schema: enumOf(['true', 'false']),
+        description: '`true`: delete the uploaded theme hidden by a folder theme with this id (`400` for other values).',
+      },
+    ],
+    errors: [409],
+    response: noContent('Deleted.'),
+  },
+  {
+    method: 'POST',
+    path: '/api/admin/themes/:id/activate',
+    tag: 'Admin: themes',
+    summary: 'Activate a theme',
+    description:
+      'Makes it the theme of the public pages. A theme that fails WCAG 2.2 AA (with the accent override of the settings) is `409` with code `contrast_failures` (the failed checks in `meta.failures`) unless `acceptContrastFailures` is `true`; activating the active theme again with `true` confirms a failure nobody confirmed (`contrastUnconfirmed`). Written to the audit log.',
+    access: 'admin',
+    pathParams: THEME,
+    request: body('themes', 'ThemeActivateInput', {
+      allowId: true,
+      example: { data: { type: 'themes', attributes: { acceptContrastFailures: false } } },
+    }),
+    errors: [409],
+    response: resource('themes', 'The activated theme with `css`.', 'AdminTheme'),
+  },
+  {
+    method: 'GET',
+    path: '/api/admin/themes/:id/export',
+    tag: 'Admin: themes',
+    summary: 'Download a theme file',
+    description: 'The theme file as a download (`Content-Disposition: attachment; filename="<id>.json"`, `Cache-Control: no-store`); not JSON:API.',
+    access: 'admin',
+    jsonapi: false,
+    pathParams: THEME,
+    errors: [400],
+    response: { kind: 'other', contentTypes: ['application/json'], description: 'The theme file.', schemaName: 'ThemeFile' },
+  },
+  {
+    method: 'GET',
+    path: '/api/admin/themes/:id/export-css',
+    tag: 'Admin: themes',
+    summary: 'Download the extra CSS of a theme',
+    description: 'As a download (`Content-Disposition: attachment; filename="<id>.css"`, `Cache-Control: no-store`); `404` for a theme without extra CSS. Not JSON:API.',
+    access: 'admin',
+    jsonapi: false,
+    pathParams: THEME,
+    errors: [400],
+    response: { kind: 'other', contentTypes: ['text/css; charset=utf-8'], description: 'The extra CSS.' },
   },
 
   // ---------------------------------------------------------------- Ingest

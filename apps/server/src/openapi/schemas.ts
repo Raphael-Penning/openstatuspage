@@ -40,6 +40,10 @@ import {
   SubscriptionConfirmInput,
   SubscriptionPreferencesInput,
   TestEmailInput,
+  ThemeActivateInput,
+  ThemeFile,
+  ThemeImportInput,
+  ThemeUpdateInput,
   UserCreateInput,
   UserUpdateInput,
   WebhookInput,
@@ -83,6 +87,12 @@ export const SCHEMAS: Record<string, z.ZodType> = {
   SubscriptionConfirmInput,
   SubscriptionPreferencesInput,
   TestEmailInput,
+  ThemeActivateInput,
+  ThemeFile,
+  // The routes take `definition` as unknown and check it with ThemeFile
+  // (themeFileIssues), so the document names ThemeFile for it.
+  ThemeImportInput: ThemeImportInput.extend({ definition: ThemeFile }),
+  ThemeUpdateInput: ThemeUpdateInput.extend({ definition: ThemeFile.optional() }),
   UserCreateInput,
   UserUpdateInput,
   WebhookInput,
