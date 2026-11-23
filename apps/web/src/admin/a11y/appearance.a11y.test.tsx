@@ -49,6 +49,7 @@ const entry = (definition: AdminTheme['definition'], patch: Partial<AdminTheme>)
   definition,
   cssBytes: 0,
   contrastFailures: themeContrastFailures(definition),
+  contrastUnconfirmed: false,
   updatedAt: null,
   ...patch,
 });
@@ -58,6 +59,13 @@ const themes: AdminTheme[] = [
   entry(BUILTIN_THEMES[2]!, { source: 'folder', updatedAt: '2026-01-01T00:00:00.000Z' }),
   entry(pale, { source: 'database', readOnly: false, cssBytes: 20, updatedAt: '2026-01-01T00:00:00.000Z' }),
 ];
+/** Pale is active, but nobody confirmed its failures (its file changed after the activation). */
+const unconfirmedThemes: AdminTheme[] = [
+  entry(BUILTIN_THEMES[0]!, {}),
+  themes[1]!,
+  { ...themes[2]!, active: true, contrastUnconfirmed: true },
+];
+let served = themes;
 
 const JSONAPI = { version: '1.1' };
 const one = (type: string, id: string, attributes: object) => ({ jsonapi: JSONAPI, data: { type, id, attributes } });
@@ -82,16 +90,16 @@ function respond(method: string, path: string, body: unknown): { status: number;
   }
   if (method === 'GET' && path === '/api/public/settings') return { status: 200, body: settingsDocument(settings) };
   if (method === 'GET' && path === '/api/admin/settings') return { status: 200, body: one('settings', 'site', { ...settings, accentColor: null, analyticsAvailable: false }) };
-  if (method === 'GET' && path === '/api/admin/themes') return { status: 200, body: many('themes', themes) };
+  if (method === 'GET' && path === '/api/admin/themes') return { status: 200, body: many('themes', served) };
   const single = /^\/api\/admin\/themes\/([^/]+)$/.exec(path);
   if (method === 'GET' && single) {
-    const theme = themes.find((x) => x.id === single[1])!;
+    const theme = served.find((x) => x.id === single[1])!;
     return { status: 200, body: one('themes', theme.id, { ...theme, css: theme.cssBytes ? '.osp-group{gap:1rem}' : null }) };
   }
   const activate = /^\/api\/admin\/themes\/([^/]+)\/activate$/.exec(path);
   if (method === 'POST' && activate) {
     requests.push({ method, path, body });
-    const theme = themes.find((x) => x.id === activate[1])!;
+    const theme = served.find((x) => x.id === activate[1])!;
     const accepted = (body as { data?: { attributes?: { acceptContrastFailures?: boolean } } })?.data?.attributes?.acceptContrastFailures;
     if (theme.contrastFailures.length > 0 && !accepted) {
       return {
@@ -164,6 +172,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  served = themes;
   act(() => root?.unmount());
   queryClient?.clear();
   root = null;
@@ -214,4 +223,24 @@ describe.each(['en', 'de'] as const)('Appearance (%s)', (lang) => {
     expect(requests[0]!.path).toBe('/api/admin/themes/pale/activate');
     expect(requests[0]!.body).toMatchObject({ data: { type: 'themes', attributes: { acceptContrastFailures: true } } });
   });
+
+  it(
+    'an active theme whose failures nobody confirmed is flagged and can be confirmed',
+    async () => {
+      requests.length = 0;
+      served = unconfirmedThemes;
+      const container = await render('/admin/appearance', lang);
+      const count = themes[2]!.contrastFailures.length;
+      expect(container.textContent).toContain(i18n.t('admin:appearance.unconfirmed', { name: 'Pale', count }));
+      expect(await axeViolations()).toEqual([]);
+      await click(byText('button', i18n.t('admin:appearance.review')));
+      expect(requests).toHaveLength(0);
+      expect(document.querySelector('dialog[open]')!.textContent).toContain(i18n.t('admin:appearance.failingTitle'));
+      await click(byText('dialog[open] button', i18n.t('admin:appearance.activateAnyway')));
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.path).toBe('/api/admin/themes/pale/activate');
+      expect(requests[0]!.body).toMatchObject({ data: { attributes: { acceptContrastFailures: true } } });
+    },
+    AXE_TIMEOUT_MS,
+  );
 });

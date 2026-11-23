@@ -108,6 +108,8 @@ export default function AppearancePage() {
     });
   };
 
+  const unconfirmed = themes.data?.find((theme) => theme.active && theme.contrastUnconfirmed) ?? null;
+
   const exportFile = async (theme: AdminTheme, kind: 'json' | 'css') => {
     setDownloadError(null);
     try {
@@ -132,6 +134,14 @@ export default function AppearancePage() {
         <p className="mb-4 rounded-lg bg-status-maintenance/10 px-3 py-2 text-sm">
           {t('appearance.accentOverride', { color: accentOverride })}
         </p>
+      )}
+      {unconfirmed && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-status-major-outage/10 px-3 py-2 text-sm">
+          <p>{t('appearance.unconfirmed', { name: unconfirmed.name, count: unconfirmed.contrastFailures.length })}</p>
+          <Button size="sm" onClick={() => askActivate(unconfirmed)} pending={activate.isPending && activate.variables?.theme.id === unconfirmed.id}>
+            {t('appearance.review')}
+          </Button>
+        </div>
       )}
       <div role="status" aria-live="polite">
         {downloadError && <p className="mb-4 rounded-lg bg-status-major-outage/10 px-3 py-2 text-sm text-status-major-outage-text">{downloadError}</p>}
