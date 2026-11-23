@@ -26,6 +26,7 @@ management area.
 - **Management UI**: incidents, maintenance, services, groups, locations, monitoring sources, users, branding, content pages and images
 - **Auth**: local users (admin / editor) and optional single sign-on with any number of OpenID Connect providers, managed in the management UI (or the `OIDC_*` variables for one)
 - **Databases**: SQLite (zero config) or PostgreSQL
+- **Themes**: four built-in themes (default, slate, forest, high contrast) and your own, as JSON token files with optional CSS, from a themes folder or uploaded in the admin; every colour pair is checked against WCAG 2.2 AA in light and dark mode, and the public page loads its theme as a same-origin stylesheet (see [themes](docs/themes.md))
 - **i18n**: English and German included
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe; a send-only Postfix with DKIM is bundled (Compose and install script), or any SMTP server; the admin UI shows the SPF, DKIM and DMARC records to publish
 - **Webhooks and SMS**: team webhooks for Discord, Slack, Microsoft Teams and generic JSON (HMAC-signed), SMS through a configurable HTTP provider (presets for Twilio, Vonage, seven.io and MessageBird) and on-call numbers; visitors can subscribe by webhook or SMS (confirmed with a code), with a monthly SMS budget and an SSRF-guarded outbound delivery queue
