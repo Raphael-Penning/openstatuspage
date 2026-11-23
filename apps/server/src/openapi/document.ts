@@ -440,7 +440,7 @@ const typedData = (document: string, data: Json): Json => ({
 
 const attributesNote = (name?: string) => (name ? ` Attributes: \`${name}\` (packages/shared/src/schemas.ts).` : '');
 
-function successResponses(response: ResponseSpec): Record<string, Json> {
+function successResponses(response: ResponseSpec, schemaName: (name: string, partial: boolean) => string): Record<string, Json> {
   switch (response.kind) {
     case 'resource': {
       const status = response.status ?? 200;
@@ -507,7 +507,10 @@ function successResponses(response: ResponseSpec): Record<string, Json> {
           content: Object.fromEntries(
             response.contentTypes.map((type) => [
               type,
-              { schema: response.schema ?? { type: 'string' }, ...(response.example !== undefined ? { example: response.example } : {}) },
+              {
+                schema: response.schemaName ? ref('schemas', schemaName(response.schemaName, false)) : (response.schema ?? { type: 'string' }),
+                ...(response.example !== undefined ? { example: response.example } : {}),
+              },
             ]),
           ),
         },
@@ -531,7 +534,7 @@ function describe(op: Operation): string | undefined {
 function operationObject(op: Operation, scope: OpenApiScope, schemaName: (name: string, partial: boolean) => string): Json {
   const params = parameters(op);
   const sec = security(op, scope);
-  const responses: Record<string, Json> = { ...successResponses(op.response) };
+  const responses: Record<string, Json> = { ...successResponses(op.response, schemaName) };
   for (const status of errorStatuses(op)) responses[String(status)] = ref('responses', ERRORS[status]!.name);
   const description = describe(op);
   return {
