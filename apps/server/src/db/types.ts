@@ -16,6 +16,8 @@ import type {
   IncidentStatus,
   MaintenanceStatus,
   MonitorSourceType,
+  OidcDefaultRole,
+  OidcRoleSyncMode,
   Region,
   ServiceKind,
   ServiceStatus,
@@ -39,9 +41,42 @@ export interface UsersTable {
   name: string;
   role: UserRole;
   password_hash: string | null;
+  /** Unused since 0016_oidc_providers (links are in user_oidc_identities); always null. */
   oidc_subject: string | null;
   created_at: string;
   updated_at: string;
+  last_login_at: string | null;
+}
+
+/** An OpenID Connect provider of the management login (0016_oidc_providers). */
+export interface OidcProvidersTable {
+  id: string;
+  name: string;
+  sort_order: number;
+  enabled: Bool;
+  issuer_url: string;
+  client_id: string;
+  /** SecretBox payload of the client secret; null for a public client. */
+  client_secret: string | null;
+  scopes: string;
+  auto_create_users: Bool;
+  /** JSON array of lower-case domains. */
+  allowed_domains: string;
+  role_claim: string;
+  /** JSON array of { value, role }. */
+  role_mappings: string;
+  default_role: OidcDefaultRole;
+  role_sync: OidcRoleSyncMode;
+  created_at: string;
+  updated_at: string;
+}
+
+/** An IdP identity (`sub` of a provider) linked to a user. `provider_id` may be `env`. */
+export interface UserOidcIdentitiesTable {
+  provider_id: string;
+  subject: string;
+  user_id: string;
+  created_at: string;
   last_login_at: string | null;
 }
 
@@ -449,6 +484,8 @@ export interface Database {
   settings: SettingsTable;
   users: UsersTable;
   sessions: SessionsTable;
+  oidc_providers: OidcProvidersTable;
+  user_oidc_identities: UserOidcIdentitiesTable;
   api_tokens: ApiTokensTable;
   locations: LocationsTable;
   service_groups: ServiceGroupsTable;
@@ -483,6 +520,7 @@ export interface Database {
 }
 
 export type User = Selectable<UsersTable>;
+export type OidcProviderRow = Selectable<OidcProvidersTable>;
 export type Service = Selectable<ServicesTable>;
 export type Location = Selectable<LocationsTable>;
 export type ServiceGroup = Selectable<ServiceGroupsTable>;
