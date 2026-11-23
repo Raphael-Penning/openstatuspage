@@ -477,6 +477,18 @@ setup_postgres() {
   case "$OS_FAMILY" in
     debian) pkg_install postgresql ;;
     rhel)
+      # RHEL 9 defaults to PostgreSQL 13, which lacks security_invoker views
+      # (docs/security-model.md): prefer a newer module stream when there is one.
+      if ! pkg_installed postgresql-server && command -v dnf > /dev/null 2>&1; then
+        local stream
+        for stream in 16 15; do
+          if dnf -q module list postgresql 2> /dev/null | grep -Eq "^postgresql +$stream( |$)"; then
+            log "Enabling the PostgreSQL $stream module stream"
+            dnf -y -q module enable "postgresql:$stream"
+            break
+          fi
+        done
+      fi
       pkg_install postgresql-server postgresql
       if [ ! -f /var/lib/pgsql/data/PG_VERSION ]; then postgresql-setup --initdb; fi
       ;;
@@ -489,6 +501,9 @@ setup_postgres() {
     [ "$i" = 30 ] && die "PostgreSQL does not answer"
     sleep 1
   done
+  if [ "$(as_postgres psql -XtAc 'SHOW server_version_num')" -lt 150000 ]; then
+    warn "PostgreSQL older than 15: the public role gets owner-rights views instead of security_invoker views (15 or newer is recommended, see docs/security-model.md)"
+  fi
   if [ "$(as_postgres psql -XtAc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'")" != 1 ]; then
     as_postgres createdb "$DB_NAME"
   fi
