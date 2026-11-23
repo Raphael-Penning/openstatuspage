@@ -22,6 +22,7 @@ Boolean variables accept `true`/`false`, `1`/`0` and `yes`/`no`.
 | `TRUST_PROXY` | `false` | Behind a reverse proxy (nginx, Traefik, Caddy, ...) client IPs (rate limiting, session metadata) and the protocol are taken from `X-Forwarded-*` headers. Set the number of proxies in front of the app (`1` for a single proxy; `true` means `1`) or a comma separated list of trusted proxy addresses/CIDRs (e.g. `10.0.0.0/8,127.0.0.1`). Entries further left in `X-Forwarded-For` are set by the client and are never trusted. |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`. |
 | `WEB_DIST_DIR` | – | Directory with the built web client. By default the server looks for `apps/web/dist`. |
+| `THEMES_DIR` | `themes` next to the SQLite database (`/data/themes` in the image); `./themes` with PostgreSQL | Folder with theme files (`<id>.json`, optional `<id>.css`), read once on start; invalid files are logged and skipped, a missing folder is no error. The Compose files set `/themes`, the Helm chart `/themes` (with `themes.enabled`), the systemd units `/etc/openstatuspage/themes`. In a split deployment the public and the admin instance need the same files. See [themes.md](themes.md). |
 
 The Docker image also sets `NODE_OPTIONS=--max-semi-space-size=1 --max-old-space-size=96`,
 `MALLOC_ARENA_MAX=2` and `UV_THREADPOOL_SIZE=2` and starts `node --max-opt=2`, which
