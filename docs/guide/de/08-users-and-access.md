@@ -48,59 +48,93 @@ hat; damit setzt du ein kompromittiertes Konto vom Server aus zurück.
 
 ## Single Sign-On (OIDC)
 
-Die Verwaltung unterstützt die Anmeldung über jeden OpenID-Connect-Anbieter,
-z. B. Keycloak, Authentik, Microsoft Entra ID, Okta oder Zitadel. Kurzfassung:
+Die Verwaltung unterstützt die Anmeldung über beliebig viele
+OpenID-Connect-Anbieter, z. B. Keycloak, Authentik, Microsoft Entra ID, Okta
+oder Zitadel. Jeder aktive Anbieter bekommt einen eigenen Button auf der
+Anmeldeseite; die Anmeldung per Passwort bleibt verfügbar, solange du sie nicht
+abschaltest.
 
-1. Registriere beim Identity Provider einen Client mit der Redirect-URI
-   `${BASE_URL}/api/auth/oidc/callback`, z. B.
-   `https://status.example.com/api/auth/oidc/callback`.
-2. Konfiguriere den Server:
+### Anbieter in der Verwaltung hinzufügen
 
-   ```bash
-   OIDC_ISSUER_URL=https://idp.example.com/realms/example
-   OIDC_CLIENT_ID=openstatuspage
-   OIDC_CLIENT_SECRET=<Client-Secret>
-   OIDC_ADMIN_GROUP=statuspage-admins
-   OIDC_EDITOR_GROUP=statuspage-editors
-   ```
+1. Öffne **Administration → Single Sign-On** und wähle **Anbieter
+   hinzufügen**. Trage einen Namen (steht auf dem Button), die Issuer-URL, die
+   Client-ID und das Client-Secret des Clients ein, den du beim Identity
+   Provider registriert hast. Nimm den Haken bei **Aktiv** vorerst heraus.
+2. **Konfiguration testen** prüft, ob der Server den Identity Provider
+   erreicht, und zeigt seine Endpunkte.
+3. Speichere. Der Dialog zeigt jetzt die **Redirect-URI** dieses Anbieters,
+   z. B. `https://status.example.com/api/auth/oidc/<Anbieter-ID>/callback`.
+   Trage sie beim Identity Provider ein und setze dann den Haken bei **Aktiv**.
 
-3. Neu starten. Die Anmeldeseite zeigt einen Button mit der Beschriftung aus
-   `OIDC_LABEL` (Standard „Single Sign-On“).
+Das Client-Secret wird verschlüsselt gespeichert und nie wieder angezeigt; lass
+das Feld beim Bearbeiten leer, um es zu behalten.
 
-Rollenzuordnung: Mitglieder von `OIDC_ADMIN_GROUP` werden Administratoren,
-Mitglieder von `OIDC_EDITOR_GROUP` Redakteure. Ist eine dieser Gruppen
-konfiguriert, wird die Rolle bei jeder Anmeldung abgeglichen. Ist
-`OIDC_EDITOR_GROUP` gesetzt, werden Benutzer ohne eine der Gruppen abgewiesen;
-ohne sie darf sich jedes Konto des Identity Providers, das zu einem Benutzer
-passt, als Redakteur anmelden. Die Gruppen stehen im Claim
-`OIDC_GROUPS_CLAIM` (Standard `groups`).
+**Benutzer und Rollen** eines Anbieters:
 
-Standardmäßig dürfen sich nur Benutzer anmelden, die es in OpenStatusPage
-schon gibt (bei der ersten Anmeldung über eine bestätigte E-Mail-Adresse
-zugeordnet). `OIDC_AUTO_CREATE_USERS=true` legt Benutzer bei der ersten
-Anmeldung an, aber nur, wenn der Identity Provider die E-Mail-Adresse als
-bestätigt markiert (`email_verified`); aktiviere das nur zusammen mit den
-Gruppen-Variablen, sonst wird jedes Konto des Identity Providers zum
-Redakteur.
+- **Benutzer bei der ersten Anmeldung anlegen**: standardmäßig aus, dann
+  dürfen sich nur Benutzer anmelden, die es in OpenStatusPage schon gibt (bei
+  der ersten Anmeldung über eine bestätigte E-Mail-Adresse zugeordnet). Ist es
+  an, werden Benutzer nur für E-Mail-Adressen angelegt, die der Identity
+  Provider als bestätigt markiert.
+- **Erlaubte E-Mail-Domains**: optional; nur bestätigte Adressen dieser
+  Domains können sich über diesen Anbieter anmelden.
+- **Rollen-Claim** und **Rollenzuordnung**: der Claim mit den Gruppen oder
+  Rollen (z. B. `groups`, `roles` oder `realm_access.roles`) und welche Werte
+  *Admin*, *Redakteur* oder *Kein Zugriff* gewähren. *Kein Zugriff* gewinnt
+  immer.
+- **Rolle ohne passenden Wert**: *Redakteur* oder *Kein Zugriff*.
+- **Rolle aktualisieren**: *bei jeder Anmeldung* (der Identity Provider
+  entscheidet) oder *nur beim Anlegen des Benutzers* (danach verwaltest du die
+  Rolle hier).
 
-Funktioniert SSO und ist ein SSO-Benutzer Administrator, kannst du die
-Anmeldung per Passwort mit `LOCAL_LOGIN_ENABLED=false` abschalten.
+Lass einen öffentlichen oder mandantenübergreifenden Identity Provider nie
+Benutzer anlegen ohne Rollenzuordnung, erlaubte Domains oder *Kein Zugriff* als
+Standardrolle: Jedes Konto, das er anmelden kann, würde Redakteur. Das Formular
+warnt dich in diesem Fall.
 
-Verliert jemand über die Gruppen die Administratorrolle, werden seine
-Administrator-API-Tokens widerrufen, genau wie bei einer Änderung in der
-Verwaltung. Der letzte Administrator wird so nie herabgestuft; stattdessen
-schreibt der Server eine Warnung ins Log.
+### Der Anbieter aus der Umgebung
+
+Der Anbieter, den du wie bisher über Umgebungsvariablen konfigurierst,
+funktioniert weiter und erscheint mit dem Hinweis **Aus der Umgebung** (nur
+lesbar). Seine Redirect-URI bleibt `${BASE_URL}/api/auth/oidc/callback`:
+
+```bash
+OIDC_ISSUER_URL=https://idp.example.com/realms/example
+OIDC_CLIENT_ID=openstatuspage
+OIDC_CLIENT_SECRET=<Client-Secret>
+OIDC_ADMIN_GROUP=statuspage-admins
+OIDC_EDITOR_GROUP=statuspage-editors
+```
+
+Mitglieder von `OIDC_ADMIN_GROUP` werden Administratoren, Mitglieder von
+`OIDC_EDITOR_GROUP` Redakteure. Ist `OIDC_EDITOR_GROUP` gesetzt, werden
+Benutzer ohne eine der Gruppen abgewiesen; ohne sie darf sich jedes Konto des
+Identity Providers, das zu einem Benutzer passt, als Redakteur anmelden.
+`OIDC_AUTO_CREATE_USERS=true` legt Benutzer bei der ersten Anmeldung an (nur mit
+bestätigter E-Mail-Adresse).
+
+### Rollen und Verknüpfung
+
+Wird die Rolle bei jeder Anmeldung aktualisiert und verliert jemand so die
+Administratorrolle, werden seine Administrator-API-Tokens widerrufen, genau wie
+bei einer Änderung in der Verwaltung. Der letzte Administrator wird so nie
+herabgestuft; stattdessen schreibt der Server eine Warnung ins Log.
+
+Ein Benutzer kann mit mehreren Anbietern verknüpft sein (eine Identität pro
+Anbieter). Funktioniert SSO und ist ein SSO-Benutzer Administrator, kannst du
+die Anmeldung per Passwort mit `LOCAL_LOGIN_ENABLED=false` abschalten.
 
 Offboarding: Der Identity Provider wird nur bei der Anmeldung gefragt. Wen du
 dort entfernst oder sperrst, der behält eine bestehende Sitzung bis spätestens
 `SESSION_MAX_AGE_HOURS`, und seine API-Tokens bleiben gültig. Ein verknüpfter
 Benutzer mit lokalem Passwort kann sich damit außerdem weiter anmelden, solange
-`LOCAL_LOGIN_ENABLED=false` nicht gesetzt ist. Wenn jemand geht, lösche den
+`LOCAL_LOGIN_ENABLED=false` nicht gesetzt ist, und wer mit mehreren Anbietern
+verknüpft ist, kann die anderen nutzen. Wenn jemand geht, lösche den
 Benutzer deshalb immer auch unter **Administration → Benutzer**: Das beendet
 alle Sitzungen und widerruft seine Tokens sofort.
 
-Hinweise zu einzelnen Anbietern, alle Variablen und die Fehlercodes auf der
-Anmeldeseite stehen in [`docs/oidc.md`](../../oidc.md) (Englisch).
+Hinweise zu einzelnen Anbietern, alle Einstellungen und Variablen und die
+Fehlercodes auf der Anmeldeseite stehen in [`docs/oidc.md`](../../oidc.md) (Englisch).
 
 ## API-Tokens
 

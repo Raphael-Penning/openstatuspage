@@ -49,56 +49,87 @@ to reset a compromised account from the server.
 
 ## Single sign-on (OIDC)
 
-The management UI supports login through any OpenID Connect provider, e.g.
-Keycloak, Authentik, Microsoft Entra ID, Okta or Zitadel. Short version:
+The management UI supports login through any number of OpenID Connect
+providers, e.g. Keycloak, Authentik, Microsoft Entra ID, Okta or Zitadel. Each
+enabled provider gets its own button on the login page; the password login
+stays available unless you disable it.
 
-1. Register a client at your identity provider with the redirect URI
-   `${BASE_URL}/api/auth/oidc/callback`, e.g.
-   `https://status.example.com/api/auth/oidc/callback`.
-2. Configure the server:
+### Adding a provider in the management UI
 
-   ```bash
-   OIDC_ISSUER_URL=https://idp.example.com/realms/example
-   OIDC_CLIENT_ID=openstatuspage
-   OIDC_CLIENT_SECRET=<client secret>
-   OIDC_ADMIN_GROUP=statuspage-admins
-   OIDC_EDITOR_GROUP=statuspage-editors
-   ```
+1. Open **Administration → Single sign-on** and choose **Add provider**. Enter
+   a name (shown on the button), the issuer URL, the client ID and the client
+   secret of the client you registered at the identity provider. Untick
+   **Enabled** for now.
+2. **Test configuration** checks that the server reaches the identity provider
+   and shows its endpoints.
+3. Save. The dialog now shows the **redirect URI** of this provider, e.g.
+   `https://status.example.com/api/auth/oidc/<provider id>/callback`. Register
+   it at the identity provider, then tick **Enabled**.
 
-3. Restart. The login page shows a button labelled with `OIDC_LABEL`
-   (default "Single Sign-On").
+The client secret is stored encrypted and never shown again; leave the field
+empty when editing to keep it.
 
-Role mapping: members of `OIDC_ADMIN_GROUP` become administrators, members of
-`OIDC_EDITOR_GROUP` editors. When one of these groups is configured, the role
-is synchronised on every login. When `OIDC_EDITOR_GROUP` is set, users in
-neither group are rejected; without it every account of the identity provider
-that matches a user may log in as editor. The groups are read from the claim
-`OIDC_GROUPS_CLAIM` (default `groups`).
+**Users and roles** of a provider:
 
-By default only users that already exist in OpenStatusPage may log in (matched
-by a verified email address on the first login). `OIDC_AUTO_CREATE_USERS=true`
-creates users on their first login, but only when the identity provider marks
-their email address as verified (`email_verified`); enable it only together
-with the group variables, otherwise every account of the identity provider
-becomes an editor.
+- **Create users on their first sign-in**: off by default, so only users that
+  already exist in OpenStatusPage can sign in (matched by a verified e-mail
+  address on the first login). When on, users are only created for e-mail
+  addresses the identity provider marks as verified.
+- **Allowed e-mail domains**: optional; only verified addresses of these
+  domains can sign in through this provider.
+- **Role claim** and **role mapping**: the claim with the groups or roles
+  (e.g. `groups`, `roles` or `realm_access.roles`) and which values grant
+  *Admin*, *Editor* or *No access*. *No access* always wins.
+- **Role without a matching value**: *Editor* or *No access*.
+- **Update the role**: *on every sign-in* (the identity provider decides) or
+  *only when the user is created* (afterwards you manage the role here).
 
-After SSO works and an SSO user is administrator, you can disable password
-logins with `LOCAL_LOGIN_ENABLED=false`.
+Never let a public or multi-tenant identity provider create users without a
+role mapping, allowed domains or *No access* as the default role: every account
+it can authenticate would become an editor. The form warns you in this case.
 
-Losing the administrator role through the groups revokes the user's
-administrator API tokens, just like a change in the management UI. The last
-administrator is never demoted this way; the server logs a warning instead.
+### The provider from the environment
+
+The provider configured with environment variables, as before, keeps working
+and is listed with the badge **From environment** (read-only). Its redirect
+URI stays `${BASE_URL}/api/auth/oidc/callback`:
+
+```bash
+OIDC_ISSUER_URL=https://idp.example.com/realms/example
+OIDC_CLIENT_ID=openstatuspage
+OIDC_CLIENT_SECRET=<client secret>
+OIDC_ADMIN_GROUP=statuspage-admins
+OIDC_EDITOR_GROUP=statuspage-editors
+```
+
+Members of `OIDC_ADMIN_GROUP` become administrators, members of
+`OIDC_EDITOR_GROUP` editors. When `OIDC_EDITOR_GROUP` is set, users in neither
+group are rejected; without it every account of the identity provider that
+matches a user may log in as editor. `OIDC_AUTO_CREATE_USERS=true` creates
+users on their first login (verified e-mail only).
+
+### Roles and linking
+
+When the role is updated on every sign-in, losing the administrator role
+revokes the user's administrator API tokens, just like a change in the
+management UI. The last administrator is never demoted this way; the server
+logs a warning instead.
+
+A user can be linked to several providers (one identity per provider). After
+SSO works and an SSO user is administrator, you can disable password logins
+with `LOCAL_LOGIN_ENABLED=false`.
 
 Offboarding: the identity provider is only asked at login. Someone you remove
 or disable there keeps an existing session until `SESSION_MAX_AGE_HOURS` at
 the latest, and API tokens they created stay valid. A linked user who still
 has a local password can also keep signing in with it unless
-`LOCAL_LOGIN_ENABLED=false`. So when someone leaves, always delete the user in
+`LOCAL_LOGIN_ENABLED=false`, and one linked to several providers can use the
+others. So when someone leaves, always delete the user in
 **Administration → Users** as well: that ends all sessions and revokes their
 tokens at once.
 
-Provider-specific notes, all variables and the error codes shown on the login
-page are documented in [`docs/oidc.md`](../../oidc.md).
+Provider-specific notes, all settings and variables and the error codes shown
+on the login page are documented in [`docs/oidc.md`](../../oidc.md).
 
 ## API tokens
 
