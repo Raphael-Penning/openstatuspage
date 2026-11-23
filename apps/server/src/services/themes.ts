@@ -226,6 +226,30 @@ export class ThemeService {
     return out;
   }
 
+  /** One uploaded theme by id, also when a built-in or folder theme hides it. */
+  async findStored(id: string): Promise<ThemeEntry | null> {
+    const row = await this.db.selectFrom('themes').selectAll().where('id', '=', id).executeTakeFirst();
+    return row ? this.fromRow(row) : null;
+  }
+
+  /** Ids of uploaded themes hidden by a built-in or folder theme with the same id. */
+  async shadowedIds(): Promise<string[]> {
+    const taken = new Set([...BUILTIN_THEMES.map((t) => t.id), ...this.folderThemes().keys()]);
+    const rows = await this.db.selectFrom('themes').select('id').orderBy('id').execute();
+    return rows.map((r) => r.id).filter((id) => taken.has(id));
+  }
+
+  /** Logs the hidden uploaded themes (on start of an instance with the management API). */
+  async logShadowed(): Promise<void> {
+    const ids = await this.shadowedIds();
+    if (ids.length > 0) {
+      this.log.warn(
+        { themes: ids },
+        'Uploaded themes are hidden by folder themes with the same id; delete them with DELETE /api/admin/themes/<id>?uploadedCopy=true',
+      );
+    }
+  }
+
   /** One theme by id (built-in before folder before database). */
   async find(id: string): Promise<ThemeEntry | null> {
     const theme = BUILTIN_THEMES.find((t) => t.id === id);

@@ -150,6 +150,15 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   app.decorate('ctx', ctx);
   // The themes folder is read on start, so problems with its files are logged right away.
   if (roleFeatures(config.APP_ROLE).publicWeb) ctx.themes.folderThemes();
+  if (roleFeatures(config.APP_ROLE).adminApi) {
+    app.addHook('onReady', async () => {
+      try {
+        await ctx.themes.logShadowed();
+      } catch (err) {
+        app.log.warn({ err }, 'Cannot check the uploaded themes against the themes folder');
+      }
+    });
+  }
   app.addHook('onClose', async () => {
     // Let work that runs after a response (e.g. subscribing) finish before the database goes away.
     // Running history imports would keep the process busy for minutes.

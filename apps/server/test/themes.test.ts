@@ -262,6 +262,37 @@ describe('theme management API', () => {
     expect((await t.app.ctx.themes.active()).unconfirmedContrastFailures).toBe(0);
   });
 
+  it('logs and deletes an uploaded theme that a later folder theme hides', async () => {
+    // Uploaded first; then a folder file with the same id appears.
+    const now = new Date().toISOString();
+    await t.db
+      .insertInto('themes')
+      .values({ id: 'folder-theme', name: 'Old upload', definition: JSON.stringify(custom('folder-theme')), css: null, created_by: null, created_at: now, updated_at: now })
+      .execute();
+    expect((await themes()).filter((x) => x.id === 'folder-theme').map((x) => x.source)).toEqual(['folder']);
+    expect(await t.app.ctx.themes.shadowedIds()).toEqual(['folder-theme']);
+    const logger = log();
+    await new ThemeService(t.db, dir, logger).logShadowed();
+    expect(logger.warn).toHaveBeenCalledWith({ themes: ['folder-theme'] }, expect.stringContaining('uploadedCopy=true'));
+
+    const refused = await admin.delete('/api/admin/themes/folder-theme');
+    expect(refused.statusCode).toBe(409);
+    expect(errors(refused)[0]!.detail).toContain('uploadedCopy=true');
+    expect((await admin.delete('/api/admin/themes/folder-theme?uploadedCopy=true')).statusCode).toBe(204);
+    expect(await t.db.selectFrom('themes').select('id').execute()).toEqual([]);
+    expect((await themes()).find((x) => x.id === 'folder-theme')?.source).toBe('folder');
+    expect((await admin.delete('/api/admin/themes/folder-theme?uploadedCopy=true')).statusCode).toBe(404);
+    expect((await admin.delete('/api/admin/themes/forest?uploadedCopy=true')).statusCode).toBe(404);
+    expect((await admin.delete('/api/admin/themes/folder-theme?uploadedCopy=yes')).statusCode).toBe(400);
+    const audit = await t.db.selectFrom('audit_log').select('details').where('action', '=', 'theme.delete').executeTakeFirstOrThrow();
+    expect(JSON.parse(audit.details!)).toMatchObject({ name: 'Theme folder-theme', uploadedCopy: true });
+
+    // An uploaded theme that is not hidden keeps the usual rules: the active one stays.
+    await admin.post('/api/admin/themes', doc('themes', { definition: custom('ocean') }));
+    await admin.post('/api/admin/themes/ocean/activate', doc('themes', {}));
+    expect((await admin.delete('/api/admin/themes/ocean?uploadedCopy=true')).statusCode).toBe(409);
+  });
+
   it('is for admins only', async () => {
     await createUser(t.db, { email: 'editor@example.com', role: 'editor' });
     const editor = client(t.app, { cookie: await login(t.app, 'editor@example.com') });

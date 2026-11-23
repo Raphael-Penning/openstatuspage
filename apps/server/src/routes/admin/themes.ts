@@ -5,7 +5,9 @@
  *   POST   /api/admin/themes                  import a theme file (`definition`) and its extra `css`
  *   GET    /api/admin/themes/:id              one theme, with its extra CSS
  *   PATCH  /api/admin/themes/:id              database themes only: new `definition` and/or `css`
- *   DELETE /api/admin/themes/:id              database themes only; not the active one (409)
+ *   DELETE /api/admin/themes/:id              database themes only; not the active one (409);
+ *                                             ?uploadedCopy=true deletes an uploaded theme that a
+ *                                             folder theme with the same id hides
  *   POST   /api/admin/themes/:id/activate     make it the theme of the public pages
  *   GET    /api/admin/themes/:id/export       the theme file (application/json, download)
  *   GET    /api/admin/themes/:id/export-css   its extra CSS (text/css, download; 404 without)
@@ -47,6 +49,7 @@ export const THEME_TYPE = 'themes';
 export const MAX_STORED_THEMES = 50;
 
 const ThemeParams = z.object({ id: zThemeId });
+const DeleteQuery = z.object({ uploadedCopy: z.enum(['true', 'false']).optional() });
 
 export function themeResource(theme: AdminTheme) {
   return resource(THEME_TYPE, theme.id, theme, { links: { self: `/api/admin/themes/${theme.id}` } });
@@ -217,8 +220,23 @@ function registerRoutes(app: FastifyInstance): void {
 
   app.delete('/api/admin/themes/:id', admin, async (req, reply) => {
     const id = idOf(req);
+    const uploadedCopy = parse(DeleteQuery, req.query).uploadedCopy === 'true';
+    // The uploaded theme that a folder theme with the same id hides. It is never
+    // the one shown (the folder theme wins); an uploaded theme that is not
+    // hidden takes the usual path below (not the active one).
+    if (uploadedCopy && (await themes.find(id))?.source !== 'database') {
+      const stored = await themes.findStored(id);
+      const deleted = await db.deleteFrom('themes').where('id', '=', id).executeTakeFirst();
+      if (Number(deleted.numDeletedRows) === 0) throw notFound('Uploaded theme');
+      themes.invalidate();
+      await auditRequest(db, req, 'theme.delete', 'theme', id, { ...(stored ? auditDetails(stored) : {}), uploadedCopy: true });
+      return noContent(reply);
+    }
     const entry = await get(id);
-    if (entry.source !== 'database') throw conflict('Built-in and folder themes cannot be deleted here');
+    if (entry.source !== 'database') {
+      const hidden = (await themes.findStored(id)) ? '; an uploaded theme with this id is hidden by it, delete that one with ?uploadedCopy=true' : '';
+      throw conflict(`Built-in and folder themes cannot be deleted here${hidden}`);
+    }
     if ((await themes.selection()).themeId === id) throw conflict('The active theme cannot be deleted; activate another theme first');
     await db.deleteFrom('themes').where('id', '=', id).execute();
     await auditRequest(db, req, 'theme.delete', 'theme', id, auditDetails(entry));
