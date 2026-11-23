@@ -38,12 +38,15 @@ import {
   incidentMail,
   manageMail,
   maintenanceMail,
+  stripTokenPlaceholders,
   testMail,
   type MailSite,
   type MaintenanceMailKind,
   type RenderedMail,
 } from '../mail/templates.js';
 import type { Worker } from '../worker.js';
+import type { ChannelEvent, ChannelEventType } from './channels/messages.js';
+import type { ChannelService } from './channels/service.js';
 import { loadIncident } from './incidents.js';
 import { loadMaintenance } from './maintenances.js';
 import { getSettings } from './settings.js';
@@ -114,11 +117,13 @@ function isUnrenderedAccountMail(row: OutboxRow): boolean {
 export class NotificationService {
   /** Current time; replaced in tests. */
   clock: () => Date = () => new Date();
+  /** Webhook and SMS channels: get every event that would send subscriber mails (set by createContext). */
+  channels?: ChannelService;
 
   constructor(
     private readonly db: DB,
     private readonly config: Config,
-    private readonly mailer: Mailer,
+    readonly mailer: Mailer,
     private readonly log: FastifyBaseLogger,
     private readonly worker?: Worker,
   ) {}
@@ -165,6 +170,16 @@ export class NotificationService {
     }
     // Send right away instead of waiting for the next tick (no-op without worker).
     if (this.worker?.has(DELIVERY_TASK)) void this.worker.runNow(DELIVERY_TASK);
+  }
+
+  /** Queues an event for the webhook and SMS channels; a failure there never stops the mails. */
+  private async publishToChannels(event: ChannelEvent, publicServiceIds: string[]): Promise<void> {
+    if (!this.channels) return;
+    try {
+      await this.channels.publish(event, publicServiceIds);
+    } catch (err) {
+      this.log.error({ err, event: event.type }, 'webhook and SMS notifications failed');
+    }
   }
 
   /** Site data for templates, or null when notifications are off (setting or no transport). */
@@ -229,12 +244,28 @@ export class NotificationService {
    * Call only when the editor asked for it (`notify`). Private incidents never notify.
    */
   async incidentPosted(incidentId: string, opts: { isNew: boolean }): Promise<number> {
-    const ctx = await this.site();
-    if (!ctx) return 0;
     const rec = await loadIncident(this.db, incidentId);
     if (!rec || rec.row.is_public !== 1) return 0;
     const latest = rec.updates[0];
     const services = rec.services.filter((s) => s.isPublic);
+    const status = latest?.status ?? rec.row.status;
+    await this.publishToChannels(
+      {
+        type: opts.isNew ? 'incident.created' : status === 'resolved' ? 'incident.resolved' : 'incident.updated',
+        occurredAt: this.clock().toISOString(),
+        incident: {
+          id: rec.row.id,
+          title: rec.row.title,
+          status,
+          impact: rec.row.impact,
+          services: services.map((s) => s.name),
+          message: stripTokenPlaceholders(latest?.message ?? ''),
+        },
+      },
+      services.map((s) => s.id),
+    );
+    const ctx = await this.site();
+    if (!ctx) return 0;
     return this.fanOut(
       'incident',
       services.map((s) => s.id),
@@ -266,14 +297,31 @@ export class NotificationService {
     kind: MaintenanceMailKind,
     opts: { requireStoredFlag?: boolean } = {},
   ): Promise<number> {
-    const ctx = await this.site();
-    if (!ctx) return 0;
     const rec = await loadMaintenance(this.db, maintenanceId);
     if (!rec || rec.row.is_public !== 1) return 0;
     if (opts.requireStoredFlag && rec.row.notify_subscribers !== 1) return 0;
     // Newest update matching the current status (automatic start+complete share one timestamp).
     const latest = rec.updates.find((u) => u.status === rec.row.status) ?? rec.updates[0];
     const services = rec.services.filter((s) => s.isPublic);
+    await this.publishToChannels(
+      {
+        type: maintenanceEventType(kind, rec.row.status),
+        occurredAt: this.clock().toISOString(),
+        maintenance: {
+          id: rec.row.id,
+          title: rec.row.title,
+          description: rec.row.description,
+          status: rec.row.status,
+          scheduledStart: rec.row.scheduled_start,
+          scheduledEnd: rec.row.scheduled_end,
+          services: services.map((s) => s.name),
+          message: kind === 'update' ? stripTokenPlaceholders(latest?.message ?? '') : '',
+        },
+      },
+      services.map((s) => s.id),
+    );
+    const ctx = await this.site();
+    if (!ctx) return 0;
     return this.fanOut(
       kind === 'reminder' ? 'maintenance_reminder' : 'maintenance',
       services.map((s) => s.id),
@@ -629,4 +677,14 @@ export function registerNotificationTasks(ctx: {
     const r = await notifications.purge();
     if (r.mails + r.subscribers > 0) log.info(r, 'old mails and unconfirmed subscriptions removed');
   });
+}
+
+/** The channel event of a maintenance mail kind and the current status. */
+export function maintenanceEventType(kind: MaintenanceMailKind, status: string): ChannelEventType {
+  if (kind === 'scheduled') return 'maintenance.scheduled';
+  if (kind === 'reminder') return 'maintenance.reminder';
+  if (status === 'in_progress') return 'maintenance.started';
+  if (status === 'completed') return 'maintenance.completed';
+  if (status === 'cancelled') return 'maintenance.cancelled';
+  return 'maintenance.updated';
 }

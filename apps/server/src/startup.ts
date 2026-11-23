@@ -19,6 +19,7 @@ import { registerBundleTasks } from './services/bundles.js';
 import { registerHistoryImportTasks } from './services/history-import.js';
 import { runMaintenanceTransitions } from './services/maintenance-scheduler.js';
 import { registerNotificationTasks } from './services/notifications.js';
+import { registerChannelTasks } from './services/channels/service.js';
 import { registerSessionCleanup } from './services/sessions.js';
 import { syncSubscriptionTokenHashes } from './services/subscriptions.js';
 
@@ -149,6 +150,7 @@ export async function startBackgroundTasks(ctx: AppContext): Promise<boolean> {
   });
   registerSessionCleanup(ctx);
   registerNotificationTasks(ctx);
+  registerChannelTasks(ctx);
   registerBundleTasks(ctx);
   registerHistoryImportTasks(ctx);
   await syncPollers(ctx);

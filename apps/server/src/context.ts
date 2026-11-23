@@ -8,6 +8,7 @@ import { BundleService } from './services/bundles.js';
 import { HistoryImportService } from './services/history-import.js';
 import { IngestService } from './services/ingest.js';
 import { NotificationService } from './services/notifications.js';
+import { ChannelService } from './services/channels/service.js';
 import { StatusEngine } from './services/status-engine.js';
 import { Worker } from './worker.js';
 
@@ -31,6 +32,8 @@ export interface AppContext {
   leases: TaskLeases | null;
   /** Mail transport (MAIL_TRANSPORT). */
   mailer: Mailer;
+  /** Webhook and SMS notifications (admin channels and subscribers) and their outbox. */
+  channels: ChannelService;
   /** Subscriber notifications and the mail outbox. */
   notifications: NotificationService;
 }
@@ -53,6 +56,10 @@ export function createContext(
   const mailer = options.mailer ?? createMailer(config, log);
   const secrets = new SecretBox(config.SECRET_KEY);
   const bundles = new BundleService(db, engine, secrets, config.BUNDLE_PUSH_STALE_SECONDS * 1000);
+  const notifications = new NotificationService(db, config, mailer, log, worker);
+  const channels = new ChannelService(db, config, secrets, log, worker);
+  notifications.channels = channels;
+  channels.notifications = notifications;
   return {
     config,
     db,
@@ -65,7 +72,8 @@ export function createContext(
     worker,
     leases,
     mailer,
-    notifications: new NotificationService(db, config, mailer, log, worker),
+    notifications,
+    channels,
   };
 }
 
