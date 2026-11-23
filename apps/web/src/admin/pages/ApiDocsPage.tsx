@@ -223,7 +223,14 @@ function OperationDetails({ doc, op }: { doc: OpenApiDocument; op: DocOperation 
         {rateLimit && (
           <>
             <dt className="font-medium">{t('apiDocs.rateLimit')}</dt>
-            <dd>{t('apiDocs.rateLimitValue', { max: rateLimit.max, per: rateLimit.per })}</dd>
+            <dd>
+              {t('apiDocs.rateLimitValue', {
+                max: rateLimit.max,
+                // x-rate-limit carries its window; the known one is translated, others are shown as sent.
+                window: rateLimit.window === '1 minute' ? t('apiDocs.minute') : rateLimit.window,
+                per: rateLimit.per,
+              })}
+            </dd>
           </>
         )}
       </dl>

@@ -167,6 +167,9 @@ describe.each(['en', 'de'] as const)('API documentation (%s)', (lang) => {
       expect(create.textContent).toContain(i18n.t('admin:apiDocs.adminOnly'));
       const upload = await open('postAdminUploads');
       expect(upload.textContent).toContain(i18n.t('admin:apiDocs.tryItUnavailable'));
+      expect(upload.textContent).toContain(
+        i18n.t('admin:apiDocs.rateLimitValue', { max: 30, window: i18n.t('admin:apiDocs.minute'), per: 'client IP address' }),
+      );
       const ingest = await open('postIngestBySourceId');
       // Scheme descriptions are visible text, not only a tooltip.
       expect(ingest.textContent).toContain('Ingest token of a monitoring source');
