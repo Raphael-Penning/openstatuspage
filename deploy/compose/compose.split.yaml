@@ -12,6 +12,13 @@
 # these networks. Both networks keep outbound access (SMTP, OIDC, monitoring
 # systems, the optional Umami server).
 #
+# Mail: "postfix" (profile "mail", COMPOSE_PROFILES=mail in .env) is a send-only
+# mail server with DKIM, reachable only from the admin and worker containers on
+# the internal "mail" network and never published. The public container only
+# queues mails, so it is not on that network. Another mail server: set SMTP_*
+# in .env and remove MAIL_DOMAIN and "mail" from COMPOSE_PROFILES. Details are
+# in compose.yaml and the guide.
+#
 # Setup (from a clone of the repository, the file needs deploy/postgres/):
 #
 #   cd deploy/compose
@@ -41,6 +48,13 @@ x-image: &image
   # (docs/architecture.md#memory).
   mem_reservation: 128m
   mem_limit: 256m
+
+# Mail settings of the admin and worker containers: SMTP_* from .env win;
+# without SMTP_HOST but with MAIL_DOMAIN they send through the postfix service.
+x-mail-env: &mail-env
+  SMTP_HOST: ${SMTP_HOST:-${MAIL_DOMAIN:+postfix}}
+  SMTP_FROM: ${SMTP_FROM:-${MAIL_DOMAIN:+Status <status@${MAIL_DOMAIN}>}}
+  MAIL_DKIM_DIR: ${MAIL_DOMAIN:+/mail-dkim}
 
 services:
   db:
@@ -89,8 +103,8 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-1}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Subscriptions are offered when mails are configured; the worker sends them.
-      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-}
-      SMTP_FROM: ${SMTP_FROM:-}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-${MAIL_DOMAIN:+smtp}}
+      SMTP_FROM: ${SMTP_FROM:-${MAIL_DOMAIN:+Status <status@${MAIL_DOMAIN}>}}
       # Optional Umami analytics: the public pages proxy its script and events.
       UMAMI_URL: ${UMAMI_URL:-}
       # Only the key of the subscription links, never SECRET_KEY (it decrypts the
@@ -113,10 +127,13 @@ services:
     <<: *image
     ports:
       - "${ADMIN_BIND:-127.0.0.1}:${ADMIN_HOST_PORT:-3001}:3000"
-    networks: [backend]
+    networks: [backend, mail]
     # The rest of .env reaches the admin instance (ADMIN_*, OIDC_*, SMTP_*, ...).
     env_file: .env
+    volumes:
+      - dkim-public:/mail-dkim:ro
     environment:
+      <<: *mail-env
       APP_ROLE: admin
       HOST: 0.0.0.0
       PORT: "3000"
@@ -136,7 +153,10 @@ services:
   worker:
     <<: *image
     env_file: .env
+    volumes:
+      - dkim-public:/mail-dkim:ro
     environment:
+      <<: *mail-env
       APP_ROLE: worker
       HOST: 0.0.0.0
       PORT: "3000"
@@ -153,11 +173,62 @@ services:
       # Start after the admin instance has migrated the schema.
       admin:
         condition: service_healthy
-    networks: [backend]
+    networks: [backend, mail]
+
+  # Send-only mail server (boky/postfix pinned by tag, rspamd signs with DKIM).
+  # The same service as in compose.yaml; see the comments there.
+  postfix:
+    image: boky/postfix:v5.2.1-alpine
+    profiles: [mail]
+    restart: unless-stopped
+    mem_limit: 256m
+    # No env_file: the mail server must not receive the application secrets.
+    environment:
+      ALLOWED_SENDER_DOMAINS: ${MAIL_DOMAIN:-}
+      POSTFIX_myhostname: ${MAIL_HOSTNAME:-${MAIL_DOMAIN:-localhost.localdomain}}
+      # Relay only for this container and the internal mail network (admin, worker).
+      POSTFIX_mynetworks: 127.0.0.0/8 ${MAIL_SUBNET:-172.30.251.0/28}
+      POSTFIX_smtpd_tls_security_level: none
+      DKIM_AUTOGENERATE: "true"
+      DKIM_SELECTOR: ${DKIM_SELECTOR:-mail}
+      RELAYHOST: ${MAIL_RELAYHOST:-}
+      RELAYHOST_USERNAME: ${MAIL_RELAYHOST_USERNAME:-}
+      RELAYHOST_PASSWORD: ${MAIL_RELAYHOST_PASSWORD:-}
+    volumes:
+      - dkim:/var/lib/rspamd/dkim
+      - dkim-public:/mail-dkim
+    configs:
+      - source: postfix-publish-dkim
+        target: /docker-init.d/50-publish-dkim.sh
+    networks: [mail, mail-out]
+
+configs:
+  # Copies the DKIM public keys (never the private ones) to the volume that the
+  # admin and worker containers read read-only.
+  postfix-publish-dkim:
+    content: |
+      set -eu
+      mkdir -p /mail-dkim
+      for f in /var/lib/rspamd/dkim/*.txt; do
+        [ -f "$$f" ] || continue
+        cp "$$f" /mail-dkim/
+        chmod 0644 "/mail-dkim/$$(basename "$$f")"
+      done
+      chmod 0755 /mail-dkim
 
 networks:
   public:
   backend:
+  # Admin and worker <-> postfix, without a route to the outside. Its own
+  # default subnet, so this file can run next to compose.yaml.
+  mail:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${MAIL_SUBNET:-172.30.251.0/28}
+  mail-out:
 
 volumes:
   pg:
+  dkim:
+  dkim-public:
