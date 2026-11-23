@@ -185,6 +185,16 @@ describe.each(['all', 'public'] as const)('discovery files (APP_ROLE=%s)', (role
     expect(res.body).toContain(`(${BASE_URL}/feed.rss)`);
     expect(res.body).toContain(`(${BASE_URL}/llms-full.txt)`);
     expect(res.body).toContain('with 2 public services');
+    // The API description is published by default.
+    expect(res.body).toContain(`- [API description](${BASE_URL}/api/openapi.json): `);
+  });
+
+  it('llms.txt leaves the API description out when the page does not publish it', async () => {
+    await (await adminClient(t, 'settings@example.com')).patch('/api/admin/settings', { publicApiDescription: false });
+    const res = await get('/llms.txt');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain('/api/openapi.json');
+    expect(res.body).toContain(`(${BASE_URL}/api/public/status)`);
   });
 
   it('llms-full.txt has the current status and public data only', async () => {

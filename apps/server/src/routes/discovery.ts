@@ -150,6 +150,8 @@ export interface LlmsInput {
   serviceCount: number;
   showLocations: boolean;
   emailSubscriptions: boolean;
+  /** The page publishes its API description (setting publicApiDescription); default false. */
+  apiDescription?: boolean;
   /** Published content pages (English title and description, the other language as fallback). */
   contentPages?: { path: string; title: string; description: string }[];
 }
@@ -183,6 +185,7 @@ export function renderLlms(i: LlmsInput): string {
     `- ${link('Summary', u('/api/public/summary'))}: Everything the overview page shows`,
     `- ${link('Services', u('/api/public/services'))}: Public services with status and uptime`,
     `- ${link('History', u('/api/public/history'))}: Incidents and maintenance, paginated with \`page[number]\`, filtered with \`filter[type]\`, \`filter[service]\`, \`filter[month]\``,
+    ...(i.apiDescription ? [`- ${link('API description', u('/api/openapi.json'))}: Machine-readable OpenAPI 3.1 description of this API (JSON)`] : []),
     '',
     '## Feeds',
     '',
@@ -307,6 +310,7 @@ export async function registerDiscoveryRoutes(app: FastifyInstance): Promise<voi
       serviceCount,
       showLocations: settings.showLocations,
       emailSubscriptions: await index.emailSubscriptions(settings),
+      apiDescription: settings.publicApiDescription,
       contentPages: content.map((p) => ({
         path: p.path,
         title: localizedText(p.title, 'en'),
