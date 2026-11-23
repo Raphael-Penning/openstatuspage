@@ -134,6 +134,10 @@ in heller und dunkler Darstellung.
   wird erst danach aktiviert; der Editor nennt die betroffenen Farbpaare, besser
   korrigierst du die Farben. Wird das aktive Theme so geändert, dass es
   durchfällt, fragt der Editor nach **Trotzdem speichern**.
+  Fällt das aktive Theme ohne Bestätigung durch (seine Datei im Ordner hat sich
+  vor einem Neustart geändert, oder die Akzentfarbe in den Einstellungen), nennt
+  es ein Hinweis oben auf der Seite, und **Prüfen** fragt nach derselben
+  Bestätigung; im Server-Log steht zusätzlich eine Warnung.
 - **Theme importieren** nimmt eine Theme-Datei (`<id>.json`) und optional ihr
   zusätzliches CSS (`<id>.css`). **Kopie anpassen** öffnet den Editor mit einer
   Kopie eines eingebauten Themes oder eines Themes aus dem Ordner; hochgeladene

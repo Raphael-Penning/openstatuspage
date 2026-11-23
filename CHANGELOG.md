@@ -155,9 +155,14 @@ breaking changes.
   editor with color inputs and a live contrast check.
 - A theme that fails WCAG 2.2 AA is only activated (or changed while active)
   after an explicit confirmation (`acceptContrastFailures`, written to the audit
-  log); the API answers `409 contrast_failures` otherwise.
+  log); the API answers `409 contrast_failures` otherwise. An active theme that
+  fails later without a confirmation (a folder file changed, or the accent
+  override) is logged once and flagged (`contrastUnconfirmed`, a notice on
+  Appearance) until an admin confirms it.
+- An uploaded theme hidden by a folder theme with the same id is logged on start
+  and can be deleted with `DELETE /api/admin/themes/<id>?uploadedCopy=true`.
 - Extra CSS of a theme is filtered: at most 64 KB, no `@import`, `url()` only to
-  `/uploads/` or relative paths, no `expression()`, `javascript:`, `image-set()`
+  `/uploads/` or relative paths without `..` or a query, no `expression()`, `javascript:`, `image-set()`
   or `<`. It is served as its own stylesheet.
 - Management API `/api/admin/themes` (list, import, edit, delete, activate,
   export) and `/theme/<hash>.css` (immutable, same origin).

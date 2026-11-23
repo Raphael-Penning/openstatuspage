@@ -26,7 +26,10 @@ management UI itself keeps its own look (only the accent follows the theme).
 
 Ids are unique across the sources. When ids collide, a built-in theme wins over
 a folder theme (the folder file is skipped and logged), and a folder theme wins
-over an uploaded one (the upload of a taken id is refused). Every theme can be
+over an uploaded one (the upload of a taken id is refused). An uploaded theme
+whose id a folder file takes later is hidden: instances with the management
+API log its id on start (`Uploaded themes are hidden by folder themes ...`),
+and `DELETE /api/admin/themes/<id>?uploadedCopy=true` removes it. Every theme can be
 downloaded as JSON (and its extra CSS as `.css`), also built-in and folder
 themes. If the active theme disappears (a folder file removed), the public
 pages fall back to `default` and the server logs a warning.
@@ -141,6 +144,15 @@ buttons. The checker is the same in the browser and on the server
   audit log with the number of accepted failures.
 - Editing the active theme so that it fails needs the same confirmation.
 - The accent colour override of the settings is part of the check.
+- The active theme can still end up failing without a confirmation: a folder
+  file changed before a restart, or an accent override set in the settings.
+  The public pages keep showing it (no silent switch of the theme), but the
+  server logs `The active theme fails WCAG 2.2 AA and no admin confirmed it`
+  (once per theme and tokens, the number of failures only), the API marks it
+  with `contrastUnconfirmed: true`, and **Settings > Appearance** names it
+  with a **Review** button. Confirming (activating it again with
+  `acceptContrastFailures: true`) clears the flag; so does fixing the theme or
+  the accent.
 
 Automated tests render the public pages under every built-in theme in light and
 dark with axe-core and check every built-in theme with the contrast checker.
@@ -271,11 +283,11 @@ Admin role only (session or API token). See [api.md](api.md#themes).
 
 | Method and path | |
 | --- | --- |
-| `GET /api/admin/themes` | Every theme: `source` (`builtin`, `folder`, `database`), `readOnly`, `active`, `definition`, `cssBytes`, `contrastFailures`. |
+| `GET /api/admin/themes` | Every theme: `source` (`builtin`, `folder`, `database`), `readOnly`, `active`, `definition`, `cssBytes`, `contrastFailures`, `contrastUnconfirmed`. |
 | `POST /api/admin/themes` | Import: `definition` (the theme file) and optional `css`. 409 for a taken id. |
 | `GET /api/admin/themes/{id}` | One theme with its `css`. |
 | `PATCH /api/admin/themes/{id}` | Uploaded themes: new `definition` (same id) and/or `css`; `acceptContrastFailures` when it is active and fails AA. |
-| `DELETE /api/admin/themes/{id}` | Uploaded themes that are not active. |
+| `DELETE /api/admin/themes/{id}` | Uploaded themes that are not active. `?uploadedCopy=true`: the uploaded theme that a folder theme with the same id hides. |
 | `POST /api/admin/themes/{id}/activate` | `acceptContrastFailures` (default `false`): 409 `contrast_failures` when the theme fails AA and it is not set. |
 | `GET /api/admin/themes/{id}/export`, `/export-css` | Downloads (`<id>.json`, `<id>.css`). |
 

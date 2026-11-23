@@ -4526,7 +4526,7 @@ Format, tokens, the contrast check and the CSS filter: [themes.md](themes.md).
 | POST | `/api/admin/themes` | import: `definition` (the theme file) and `css` (optional); `201`; `400` (code `invalid_theme` for the file, `css_<problem>` for the CSS: `css_import`, `css_url`, `css_html`, ...); `409` for an id that is taken by any source; at most 50 uploaded themes |
 | GET | `/api/admin/themes/:id` | the theme with `css` |
 | PATCH | `/api/admin/themes/:id` | uploaded themes only (`409` otherwise): `definition` (the id cannot change, `400`), `css` (`null` removes it), `acceptContrastFailures` |
-| DELETE | `/api/admin/themes/:id` | `204`; uploaded themes only; `409` for the active theme |
+| DELETE | `/api/admin/themes/:id` | `204`; uploaded themes only; `409` for the active theme. `?uploadedCopy=true` deletes the uploaded theme that a folder theme with the same id hides (`404` when there is none; `400` for a value other than `true` or `false`) |
 | POST | `/api/admin/themes/:id/activate` | `acceptContrastFailures` (default `false`); answers the theme |
 
 The downloads `GET /api/admin/themes/{id}/export` (`<id>.json`) and
@@ -4537,7 +4537,10 @@ Attributes: `name`, `author`, `description`, `source` (`builtin`, `folder`,
 `database`), `readOnly`, `active`, `definition` (the theme file),
 `css` (single theme only), `cssBytes`, `contrastFailures` (the failed WCAG 2.2
 AA checks with the current accent override: `mode`, `foreground`,
-`background`, `ratio`, `required`) and `updatedAt`.
+`background`, `ratio`, `required`), `contrastUnconfirmed` (`true` for the
+active theme when it fails AA and no admin confirmed it: its folder file or the
+accent override changed after the activation; activating it again with
+`acceptContrastFailures: true` confirms it) and `updatedAt`.
 
 Activating a theme that fails AA, or changing the active theme so that it
 fails, is refused unless `acceptContrastFailures` is `true`:

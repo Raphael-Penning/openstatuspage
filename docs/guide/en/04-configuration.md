@@ -128,6 +128,10 @@ the dark theme.
   problems asks for confirmation with **Activate anyway** and is only activated
   after it; the editor lists the failing color pairs, and it is better to fix
   the colors. Editing the active theme so that it fails asks for **Save anyway**.
+  If the active theme fails without a confirmation (its folder file changed
+  before a restart, or the accent color in the settings), a notice at the top
+  names it and **Review** asks for the same confirmation; the server log has a
+  warning too.
 - **Import theme** takes a theme file (`<id>.json`) and optionally its extra
   CSS (`<id>.css`). **Customize a copy** starts the editor with a copy of a
   built-in or folder theme; uploaded themes can be edited and deleted. The
