@@ -26,7 +26,9 @@ enthält `TRUST_PROXY=1` bereits. Änderungen übernimmst du mit
 `BASE_URL` wird verwendet für:
 
 - Links in RSS-/Atom-Feeds und in Benachrichtigungs-E-Mails,
-- die OIDC-Redirect-URI `${BASE_URL}/api/auth/oidc/callback`,
+- die OIDC-Redirect-URIs: `${BASE_URL}/api/auth/oidc/callback` für den Anbieter
+  aus der Umgebung, `${BASE_URL}/api/auth/oidc/<Anbieter-ID>/callback` für jeden
+  in der Verwaltung angelegten Anbieter,
 - die Ingest-URLs, die bei Monitoring-Quellen angezeigt werden,
 - das `Secure`-Flag der Cookies: Beginnt `BASE_URL` mit `https://`, wird das
   Sitzungs-Cookie nur über HTTPS gesendet.
