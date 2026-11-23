@@ -66,6 +66,7 @@ Optionen von `install`:
 | `--mode split` | Die [geteilte Installation](#geteilte-installation): Public, Admin und Worker als drei Dienste. |
 | `--admin-url URL`, `--public-database-url URL` | Admin-Domain und Anmeldung der eingeschränkten Public-Rolle für `--mode split` (mit `--with-postgres` nicht nötig). |
 | `--with-postfix --mail-domain example.com` | Ein lokales Postfix nur zum Versenden, mit DKIM, siehe [Mailserver](#mailserver). |
+| `--mail-hostname NAME`, `--mail-relayhost HOST`, `--dkim-selector NAME` | Nur mit `--with-postfix`: HELO-Name (Standard: die Mail-Domain), ein Smarthost wie `[smtp.example.com]:587` und der DKIM-Selector (Standard: `osp`). |
 | `--node MODUS` | `system`: Node.js 22 aus dem `PATH`; `bundled`: eine eigene Kopie in `/opt/openstatuspage/node` von nodejs.org (geprüft gegen deren `SHASUMS256.txt`). `auto` (Standard) nimmt ein passendes `node` aus dem `PATH` und installiert sonst die eigene Kopie. |
 | `--no-start` | Den Dienst weder aktivieren noch starten. |
 

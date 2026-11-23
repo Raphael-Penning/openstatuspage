@@ -64,6 +64,7 @@ Options of `install`:
 | `--mode split` | The [split deployment](#split-deployment): public, admin and worker as three services. |
 | `--admin-url URL`, `--public-database-url URL` | Admin domain and login of the restricted public role, for `--mode split` (not needed with `--with-postgres`). |
 | `--with-postfix --mail-domain example.com` | A local send-only Postfix with DKIM, see [mail server](#mail-server). |
+| `--mail-hostname NAME`, `--mail-relayhost HOST`, `--dkim-selector NAME` | Only with `--with-postfix`: HELO name (default: the mail domain), a smarthost such as `[smtp.example.com]:587`, and the DKIM selector (default `osp`). |
 | `--node MODE` | `system`: Node.js 22 from `PATH`; `bundled`: a private copy in `/opt/openstatuspage/node` from nodejs.org (checked against its `SHASUMS256.txt`). `auto` (default) uses a suitable `node` on `PATH` and installs the private copy otherwise. |
 | `--no-start` | Do not enable or start the service. |
 
