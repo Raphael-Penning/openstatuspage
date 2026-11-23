@@ -217,6 +217,26 @@ describe('resolveOidcUser', () => {
     expect(await resolveOidcUser(t.db, provider, claims)).toMatchObject({ ok: true, linked: false, user: { id: adminId } });
   });
 
+  it('resolves concurrent first logins of the same identity to one user', async () => {
+    const claims = { sub: 'abc', email: 'jane@example.com', email_verified: true, groups: ['statuspage-editors'] };
+    const results = await Promise.all([1, 2, 3].map(() => resolveOidcUser(t.db, config, claims)));
+    expect(results.every((r) => r.ok)).toBe(true);
+    const ids = new Set(results.map((r) => (r.ok ? r.user.id : '')));
+    expect(ids.size).toBe(1);
+    expect(await t.db.selectFrom('users').select('id').execute()).toHaveLength(1);
+    expect(await identities()).toHaveLength(1);
+  });
+
+  it('refuses a concurrent second identity for the same address instead of failing', async () => {
+    const results = await Promise.all(
+      ['a', 'b'].map((sub) =>
+        resolveOidcUser(t.db, config, { sub, email: 'jane@example.com', email_verified: true, groups: ['statuspage-editors'] }),
+      ),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: 'account_conflict' }]);
+  });
+
   it('creates users for a verified e-mail only', async () => {
     const claims = { sub: 'squatter', email: 'newhire@example.com', groups: ['statuspage-editors'] };
     for (const email_verified of [undefined, false, 'false']) {

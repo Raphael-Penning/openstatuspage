@@ -20,6 +20,7 @@ import type * as OidcLib from 'openid-client';
 import type { Config } from '../config.js';
 import type { DB } from '../db/index.js';
 import type { User } from '../db/types.js';
+import { isUniqueViolation } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { deleteUserSessions } from './sessions.js';
@@ -224,13 +225,37 @@ async function revokeAccess(db: DB, userId: string): Promise<void> {
  * - A denied role ends the sessions and revokes the API tokens of the linked
  *   user (they would otherwise keep their last role).
  * - With role mappings and sync on login, the role is written on every login.
+ * - Concurrent first logins (two tabs, a double click) that both try to link or
+ *   create run into the unique keys; the loser resolves again and finds what
+ *   the winner stored, or gets `account_conflict`.
  */
 export async function resolveOidcUser(
   db: DB,
-  provider: Pick<
-    OidcProvider,
-    'id' | 'autoCreateUsers' | 'linkByEmail' | 'allowedDomains' | 'roleClaim' | 'roleMappings' | 'defaultRole' | 'roleSync'
-  >,
+  provider: ResolveProvider,
+  claims: Claims,
+  log?: OidcLogger,
+): Promise<OidcUserResult> {
+  try {
+    return await resolveOnce(db, provider, claims, log);
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+  }
+  try {
+    return await resolveOnce(db, provider, claims, log);
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    return { ok: false, error: 'account_conflict' };
+  }
+}
+
+type ResolveProvider = Pick<
+  OidcProvider,
+  'id' | 'autoCreateUsers' | 'linkByEmail' | 'allowedDomains' | 'roleClaim' | 'roleMappings' | 'defaultRole' | 'roleSync'
+>;
+
+async function resolveOnce(
+  db: DB,
+  provider: ResolveProvider,
   claims: Claims,
   log?: OidcLogger,
 ): Promise<OidcUserResult> {
