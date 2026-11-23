@@ -18,6 +18,7 @@ import { useJsonApi, withInclude } from '../plugins/jsonapi.js';
 import { PrivatePageDocuments } from '../services/private-page-documents.js';
 import { createPrivatePages } from '../services/private-pages.js';
 import { PublicDocuments } from '../services/public-documents.js';
+import { channelOptions } from '../services/channels/settings.js';
 import { registerFeedRoutes } from './feeds.js';
 
 const IdOrSlugParams = z.object({ idOrSlug: z.string().min(1).max(100) });
@@ -41,7 +42,10 @@ const cacheHeaders =(scope: FastifyInstance) =>
   });
 
 export async function registerPublicRoutes(app: FastifyInstance): Promise<void> {
-  const docs = new PublicDocuments(app.ctx.db, app.ctx.mailer, { analytics: Boolean(app.ctx.config.UMAMI_URL) });
+  const docs = new PublicDocuments(app.ctx.db, app.ctx.mailer, {
+    analytics: Boolean(app.ctx.config.UMAMI_URL),
+    channels: () => channelOptions(app.ctx.db, app.ctx.config),
+  });
 
   // JSON:API routes.
   await app.register(async (scope) => {

@@ -8,7 +8,7 @@
 import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { axeViolations, installBrowserStubs, renderPublic, settle, type Rendered } from './harness';
-import { API_TODAY, API_YESTERDAY, PRIVATE_TOKEN, SUBSCRIPTION_TOKEN } from './fixtures';
+import { API_TODAY, API_YESTERDAY, CHANNEL_TOKEN, PRIVATE_TOKEN, SUBSCRIPTION_TOKEN } from './fixtures';
 
 // axe walks every node; the overview has hundreds of day links and needs
 // more than vitest's 5 s default on slow CI runners.
@@ -32,6 +32,14 @@ const PAGES: [name: string, path: string][] = [
   ['subscription confirm (query token)', `/subscription/confirm?id=sub-1&token=${SUBSCRIPTION_TOKEN}`],
   ['subscription unsubscribe step', `/subscription/manage?id=sub-1&token=${SUBSCRIPTION_TOKEN}&unsubscribe=1&confirmed=1`],
   ['subscribed', '/subscribe?sent=1'],
+  ['subscribe by webhook', '/subscribe/webhook'],
+  ['subscribe by SMS', '/subscribe/sms'],
+  ['subscribe by SMS (rate limited)', '/subscribe/sms?error=rate_limited'],
+  ['verify code', '/subscription/verify?ref=0123456789abcdefghij&channel=sms'],
+  ['verify code (wrong code)', '/subscription/verify?ref=0123456789abcdefghij&channel=webhook&error=code'],
+  ['channel manage', `/subscription/channel?id=ch-1&token=${CHANNEL_TOKEN}&confirmed=1`],
+  ['channel invalid link', '/subscription/channel'],
+  ['channel unsubscribed', '/subscription/channel?unsubscribed=1'],
   ['unsubscribed', '/subscription/manage?unsubscribed=1'],
   ['services filtered', '/services?q=api&status=operational'],
   ['unknown incident', '/incidents/missing'],

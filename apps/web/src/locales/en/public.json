@@ -366,6 +366,79 @@
     "back": "Back to the overview",
     "home": "Overview of this private status page"
   },
+  "channels": {
+    "seo": "Get notifications from {{site}} by webhook or SMS.",
+    "language": "Message language",
+    "sendCode": "Send confirmation code",
+    "unavailable": "This status page does not offer this kind of notification at the moment.",
+    "nav": {
+      "label": "Ways to get notified",
+      "email": "Email",
+      "webhook": "Webhook",
+      "sms": "SMS"
+    },
+    "kinds": {
+      "discord": "Discord",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "generic": "Other (JSON webhook)"
+    },
+    "webhook": {
+      "title": "Webhook notifications",
+      "subtitle": "Post incidents and maintenance to a chat channel or your own endpoint.",
+      "kind": "Where should we post?",
+      "url": "Webhook URL",
+      "help": {
+        "discord": "In Discord: Server settings > Integrations > Webhooks > New webhook > Copy webhook URL.",
+        "slack": "In Slack: create an app with \"Incoming Webhooks\" and copy the webhook URL of the channel.",
+        "teams": "In Microsoft Teams: Workflows > \"Post to a channel when a webhook request is received\", then copy the URL.",
+        "generic": "Any https endpoint. Messages are signed (X-OSP-Signature); the key is shown after confirming."
+      },
+      "privacy": "We send a message with a 6-digit code to this webhook; your subscription starts once you enter the code. The URL is stored encrypted and only used for these notifications. Every message contains a link to unsubscribe."
+    },
+    "sms": {
+      "title": "SMS notifications",
+      "subtitle": "Get a text message when we post incidents or maintenance.",
+      "phone": "Mobile number",
+      "countries": "International format with country code. Allowed: {{codes}}.",
+      "privacy": "We send an SMS with a 6-digit code to this number; your subscription starts once you enter the code. Your number is stored encrypted and only used for these notifications. Every SMS contains a short link to unsubscribe; you can also reply STOP where your provider supports it."
+    },
+    "verify": {
+      "title": "Enter your code",
+      "subtitleWebhook": "We posted a message with a 6-digit code to your webhook.",
+      "subtitleSms": "We sent an SMS with a 6-digit code to your number.",
+      "code": "Confirmation code",
+      "help": "The code is valid for 24 hours. Nothing arrived after a few minutes? Check the URL or number and subscribe again.",
+      "submit": "Confirm subscription"
+    },
+    "manage": {
+      "title": "Your notifications",
+      "subtitle": "Choose what you hear about, or unsubscribe.",
+      "confirmed": "Your subscription is confirmed. You can adjust it here at any time.",
+      "details": "Subscription",
+      "channel": "Channel",
+      "target": "Destination",
+      "status": "Status",
+      "active": "Active",
+      "pending": "Waiting for the confirmation code",
+      "signingSecret": "Signing key",
+      "signingHelp": "Check the X-OSP-Signature header of every message: v1= followed by the hex HMAC-SHA256 of \"<X-OSP-Timestamp>.<body>\" with this key.",
+      "unsubscribeDescription": "Stop all notifications to this destination. It is deleted from this status page.",
+      "unsubscribe": "Unsubscribe",
+      "unsubscribed": "You have been unsubscribed",
+      "unsubscribedDescription": "This destination will not receive any more notifications from us and has been deleted."
+    },
+    "errors": {
+      "url": "Enter a valid webhook URL starting with https://.",
+      "urlHost": "This is not a webhook URL of the chosen service. Copy the URL from its webhook settings.",
+      "urlInsecure": "The webhook URL must start with https://.",
+      "kind": "Choose where we should post.",
+      "phone": "Enter the number in international format, e.g. +49 151 2345678.",
+      "phoneCountry": "Numbers from this country cannot subscribe here.",
+      "code": "This code is wrong or has expired. Check it, or subscribe again to get a new one.",
+      "codeFormat": "Enter the 6 digits of the code."
+    }
+  },
   "page": {
     "loading": "Page",
     "notFound": "This page does not exist or is not published.",

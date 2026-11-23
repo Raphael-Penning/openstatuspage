@@ -17,6 +17,7 @@ import { registerRoutes } from './routes/index.js';
 import { sendTooManyRequests } from './ssr/busy.js';
 import type { RenderModule, SsrPages } from './ssr/pages.js';
 import { staticCacheControl, webAssetPolicy } from './web-assets.js';
+import { channelOptions } from './services/channels/settings.js';
 
 export interface BuildAppOptions {
   config: Config;
@@ -64,6 +65,8 @@ export function redactUrlTokens(url: string): string {
  * renderer could read as one (`/p/<token>/...`, `/P//<token>`, `/%70/<token>`,
  * `/p%2F<token>`, `/p\<token>`, `/x/../p/<token>`). Such a path is logged as the
  * client router sees it: "/P/abc/services/Web" → "/p/[REDACTED]/services/web".
+ * The manage token of a short channel subscription link (`/s/<id>/<token>`, any
+ * further segments too) is replaced the same way: "/s/id/abc" → "/s/id/[REDACTED]".
  */
 export function redactPrivatePagePath(url: string): string {
   const end = url.search(/[?#]/);
@@ -71,8 +74,9 @@ export function redactPrivatePagePath(url: string): string {
   // Escapes decoded one run at a time, so a malformed one elsewhere keeps no token in clear.
   const normalized = normalizePath(path.replace(/(?:%[0-9a-f]{2})+/gi, safeDecode));
   const parts = normalized.split('/');
-  if (parts[1] !== 'p' || !parts[2]) return url;
-  parts[2] = '[REDACTED]';
+  if (parts[1] === 's' && parts[3]) parts[3] = '[REDACTED]';
+  else if (parts[1] === 'p' && parts[2]) parts[2] = '[REDACTED]';
+  else return url;
   return parts.join('/') + (end === -1 ? '' : url.slice(end));
 }
 
@@ -140,7 +144,9 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
 
   if (onRoute) app.addHook('onRoute', onRoute);
 
-  const ctx: AppContext = createContext(config, db, app.log, { mailer });
+  // The webhook and SMS delivery code stays out of public instances (memory, see AppContext.channels).
+  const channelModule = config.APP_ROLE === 'public' ? null : await import('./services/channels/service.js');
+  const ctx: AppContext = createContext(config, db, app.log, { mailer, ChannelService: channelModule?.ChannelService });
   app.decorate('ctx', ctx);
   app.addHook('onClose', async () => {
     // Let work that runs after a response (e.g. subscribing) finish before the database goes away.
@@ -200,8 +206,12 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
         ssr = new SsrPages({
           webDir,
           baseUrl: config.PUBLIC_BASE_URL,
-          docs: new PublicDocuments(ctx.db, ctx.mailer, { analytics: Boolean(config.UMAMI_URL) }),
+          docs: new PublicDocuments(ctx.db, ctx.mailer, {
+            analytics: Boolean(config.UMAMI_URL),
+            channels: () => channelOptions(ctx.db, ctx.config),
+          }),
           subscription: (id, token) => forms.subscriptionDocument(app, id, token),
+          channelSubscription: (id, token) => forms.channelSubscriptionDocument(app, id, token),
           privatePages: new PrivatePageDocuments(createPrivatePages(ctx.db, config)),
           log: app.log,
           loadModule: ssrModule,

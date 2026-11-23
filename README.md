@@ -28,6 +28,7 @@ management area.
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe; a send-only Postfix with DKIM is bundled (Compose and install script), or any SMTP server; the admin UI shows the SPF, DKIM and DMARC records to publish
+- **Webhooks and SMS**: team webhooks for Discord, Slack, Microsoft Teams and generic JSON (HMAC-signed), SMS through a configurable HTTP provider (presets for Twilio, Vonage, seven.io and MessageBird) and on-call numbers; visitors can subscribe by webhook or SMS (confirmed with a code), with a monthly SMS budget and an SSRF-guarded outbound delivery queue
 - **Deployment**: Docker Compose (single instance or split), Kubernetes with the Helm chart, or without containers: systemd units, install script, `.deb`/`.rpm` packages and release tarballs (see [installation without containers](docs/guide/en/13-installation-without-containers.md))
 - **Works without JavaScript**: every public page is rendered on the server and works without scripts (filters, subscriptions, language and theme are links and forms); scripts only enhance it
 - **Search engines and AI agents**: unique titles, canonical and language links, JSON-LD, `robots.txt`, a sitemap index with page, incident and service sitemaps, and `llms.txt` (see the [public page guide](docs/guide/en/12-public-page.md))

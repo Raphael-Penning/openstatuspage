@@ -98,12 +98,13 @@ describe('a) a superuser migrates while PUBLIC may CREATE on public', () => {
     const owner = await connect(pgdb, 'admin');
     await prepareDatabase(owner, pgdb.config('admin'), newLog());
     // Like PostgreSQL 14, plus a direct grant to the public role on osp_public. Then the migration
-    // runs again (down to 0012 and up to the newest, the later migrations with it).
-    const migrator = new Migrator({ db: owner, provider: { getMigrations: async () => migrations } });
-    expect((await migrator.migrateTo('0012_definer_search_path')).error).toBeUndefined();
-    await sql.raw(`grant create on schema public to public; grant create on schema osp_public to ${pgdb.publicRole}`).execute(owner);
+    // runs again (the functions are replaced, so it is idempotent).
+    await sql
+      .raw(`grant create on schema public to public; grant create on schema osp_public to ${pgdb.publicRole}`)
+      .execute(owner);
     expect(await mayCreate(owner, pgdb.publicRole, 'public')).toBe(true);
-    await migrateToLatest(owner);
+    // Only 0013 runs again (later migrations stay applied).
+    await migrations['0013_schema_create_hardening']!.up(owner);
     expect(await holdsCreate(owner, 'public', 'public')).toBe(false);
     expect(await mayCreate(owner, pgdb.publicRole, 'public')).toBe(false);
     expect(await mayCreate(owner, pgdb.publicRole, 'osp_public')).toBe(false);

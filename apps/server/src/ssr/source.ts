@@ -29,10 +29,13 @@ type Builder = (req: DocumentRequest, id: string) => Promise<DataDocument>;
 
 /** Path of a subscription in the source: the manage token comes as the `token` query value (never over HTTP). */
 const SUBSCRIPTION_PREFIX = '/api/public/subscriptions/';
+const CHANNEL_SUBSCRIPTION_PREFIX = '/api/public/channel-subscriptions/';
 
 export interface SourceExtras {
   /** The subscription for its manage token (APP_ROLE with the public API). */
   subscription?: (id: string, token: string) => Promise<DataDocument>;
+  /** A webhook or SMS subscription for its manage token. */
+  channelSubscription?: (id: string, token: string) => Promise<DataDocument>;
   /** Private pages: the token comes as the `token` query value (over HTTP it is a header). */
   privatePages?: PrivatePageDocuments;
 }
@@ -106,6 +109,12 @@ export function publicDocumentSource(docs: PublicDocuments, extras: SourceExtras
         }
         const build = fixed[path];
         if (build) return await build(req);
+        if (path.startsWith(CHANNEL_SUBSCRIPTION_PREFIX) && extras.channelSubscription) {
+          const id = segment(path.slice(CHANNEL_SUBSCRIPTION_PREFIX.length), 64);
+          const token = query.token ?? '';
+          if (id === null || id.includes('/') || !token || token.length > 256) throw sourceError(404, 'Not found');
+          return await extras.channelSubscription(id, token);
+        }
         if (path.startsWith(SUBSCRIPTION_PREFIX) && extras.subscription) {
           const id = segment(path.slice(SUBSCRIPTION_PREFIX.length), 64);
           const token = query.token ?? '';

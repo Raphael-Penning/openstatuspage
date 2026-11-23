@@ -3,7 +3,8 @@
 Besucher der öffentlichen Seite können E-Mail-Benachrichtigungen zu
 öffentlichen Vorfällen und Wartungen abonnieren, entweder für alle Updates
 oder für ausgewählte Services. Abonnements sind aus, bis du einen Mailserver
-konfigurierst und sie aktivierst.
+konfigurierst und sie aktivierst. Webhooks und SMS funktionieren genauso und sind
+im Kapitel [Webhooks und SMS](14-webhooks-and-sms.md) beschrieben.
 
 ## Überblick
 

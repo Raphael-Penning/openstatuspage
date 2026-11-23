@@ -12,6 +12,7 @@ import { adminClient, createTestApp, data, seedChecks, type Client, type TestApp
 const NON_JSONAPI = [
   'GET /api/health',
   'GET /api/public/subscriptions/:id/unsubscribe',
+  'GET /s/:id/:token',
   'GET /api/auth/oidc/login',
   'GET /api/auth/oidc/callback',
   'GET /feed.rss',

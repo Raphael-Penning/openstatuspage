@@ -25,6 +25,7 @@
     "auditLog": "Audit-Log",
     "subscribers": "Abonnenten",
     "corrections": "Korrekturen",
+    "notifications": "Webhooks & SMS",
     "pages": "Seiten"
   },
   "userMenu": {
@@ -1029,7 +1030,8 @@
       "scope": "Abonniert",
       "language": "Sprache",
       "created": "Angemeldet",
-      "confirmed": "Bestätigt"
+      "confirmed": "Bestätigt",
+      "target": "Ziel"
     },
     "allUpdates": "Alle Updates",
     "empty": "Noch keine Abonnenten. Besucher können sich auf der öffentlichen Seite anmelden, sobald E-Mail-Abonnements aktiviert sind.",
@@ -1038,7 +1040,15 @@
     "deleteSubscriber": "{{email}} löschen",
     "deleteTitle": "Abonnent löschen",
     "deleteConfirm": "{{email}} löschen? Die Adresse erhält keine weiteren E-Mails, eingereihte E-Mails werden verworfen. Das kann nicht rückgängig gemacht werden.",
-    "deleted": "Abonnent gelöscht."
+    "deleted": "Abonnent gelöscht.",
+    "filterChannel": "Kanal",
+    "channels": {
+      "email": "E-Mail",
+      "webhook": "Webhook",
+      "sms": "SMS"
+    },
+    "emptyChannel": "Noch keine Abonnenten auf diesem Kanal.",
+    "toChannels": "Webhook- und SMS-Einstellungen"
   },
   "historyImport": {
     "title": "Historie-Import",
@@ -1172,6 +1182,142 @@
       "interrupted": "Der Import wurde unterbrochen (z. B. durch einen Neustart).",
       "expired": "Die Vorschau ist abgelaufen, ohne importiert zu werden.",
       "apply_failed": "Das Schreiben der Historie ist fehlgeschlagen: {{message}}"
+    }
+  },
+  "channels": {
+    "title": "Webhooks & SMS",
+    "description": "Benachrichtigungen zu Vorfällen und Wartungen an Chat-Kanäle, eigene Endpunkte und Telefone senden und festlegen, womit Besucher abonnieren dürfen.",
+    "saved": "Gespeichert.",
+    "enabled": "Aktiv",
+    "disabled": "Deaktiviert",
+    "testOk": "Test zugestellt ({{message}}).",
+    "testFailed": "Test fehlgeschlagen: {{message}}",
+    "kinds": {
+      "discord": "Discord",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "generic": "Generisches JSON"
+    },
+    "fields": {
+      "name": "Name",
+      "kind": "Typ",
+      "status": "Status",
+      "url": "Webhook-URL",
+      "headers": "Zusätzliche Header",
+      "allServices": "Alle Dienste",
+      "services": "Dienste",
+      "enabled": "Aktiv",
+      "allowHttp": "http:// erlauben (unverschlüsselt)",
+      "phone": "Telefonnummer"
+    },
+    "settings": {
+      "title": "Abonnements von Besuchern und Limits",
+      "webhookSubscriptions": "Besucher dürfen mit Discord-, Slack- und Teams-Webhooks abonnieren",
+      "webhookSubscriptionsHelp": "Nur die offiziellen Webhook-URLs dieser Dienste werden angenommen; jedes Abonnement wird mit einem Code bestätigt.",
+      "genericWebhookSubscriptions": "Besucher dürfen auch generische Webhooks nutzen (beliebige https-URL)",
+      "genericWebhookSubscriptionsHelp": "Standardmäßig aus. Der Server verbindet sich nur mit öffentlichen Adressen, aber dann kann jeder https-Endpunkt im Internet Nachrichten erhalten.",
+      "smsCallingCodes": "Länder für SMS-Abonnements (Ländervorwahlen)",
+      "smsCallingCodesHelp": "Durch Kommas getrennt, z. B. 49, 43, 41. Leer: Besucher können nicht per SMS abonnieren.",
+      "smsMonthlyBudget": "SMS pro Monat",
+      "smsMonthlyBudgetHelp": "Ist es erreicht, pausieren SMS an Besucher bis zum nächsten Monat und Admins erhalten eine E-Mail. Bereitschafts-SMS werden weiter versendet.",
+      "smsConfirmationsPerHour": "Bestätigungs-SMS pro Stunde",
+      "smsPerMinute": "SMS pro Minute",
+      "subscriberWebhooksPerMinute": "Webhook-Nachrichten an Besucher pro Minute",
+      "webhookHostPerMinute": "Webhook-Anfragen pro Ziel und Minute"
+    },
+    "webhooks": {
+      "title": "Team-Webhooks",
+      "description": "Jeder Webhook erhält dieselben Ereignisse wie die E-Mail-Abonnenten seiner Dienste. Nach 10 fehlgeschlagenen Zustellungen in Folge wird ein Webhook deaktiviert und die Admins erhalten eine E-Mail.",
+      "new": "Webhook hinzufügen",
+      "editTitle": "Webhook bearbeiten",
+      "empty": "Noch keine Webhooks.",
+      "created": "Webhook hinzugefügt.",
+      "deleted": "Webhook gelöscht.",
+      "lastDelivery": "Letzte Zustellung",
+      "testLabel": "Testnachricht an {{name}} senden",
+      "logLabel": "Zustellprotokoll von {{name}}",
+      "editLabel": "{{name}} bearbeiten",
+      "deleteLabel": "{{name}} löschen",
+      "deleteTitle": "Webhook löschen",
+      "deleteConfirm": "Den Webhook {{name}} löschen? Wartende Nachrichten werden verworfen.",
+      "rotate": "Neues Geheimnis",
+      "rotateTitle": "Neues Signaturgeheimnis erstellen",
+      "rotateConfirm": "Ein neues Signaturgeheimnis für {{name}} erstellen? Das alte gilt sofort nicht mehr.",
+      "rotated": "Neues Signaturgeheimnis erstellt.",
+      "secretTitle": "Signaturgeheimnis",
+      "secret": "Signaturgeheimnis",
+      "secretOnce": "Kopiere das Geheimnis jetzt: Es wird nur einmal angezeigt.",
+      "secretHelp": "Jede Anfrage enthält X-OSP-Timestamp und X-OSP-Signature: v1= gefolgt vom hexadezimalen HMAC-SHA256 von „<Zeitstempel>.<Body>“ mit diesem Geheimnis.",
+      "urlKeep": "Aktueller Host: {{host}}. Leer lassen, um die gespeicherte URL zu behalten.",
+      "urlHelp": {
+        "discord": "Servereinstellungen > Integrationen > Webhooks > Webhook-URL kopieren.",
+        "slack": "Die URL einer Slack-App mit Incoming Webhooks.",
+        "teams": "Die URL eines Teams-Workflows „In einem Kanal posten, wenn eine Webhook-Anforderung empfangen wird“.",
+        "generic": "Jeder https-Endpunkt; Nachrichten sind JSON (Version 1) und signiert."
+      },
+      "headersHelp": "Ein Header pro Zeile: „Name: Wert“. Werte werden verschlüsselt gespeichert.",
+      "headersKeep": "Gespeicherte Header: {{names}}. Leer lassen, um sie zu behalten, oder alle Header neu eingeben.",
+      "allowHttpHelp": "Nur für Endpunkte auf einem vertrauenswürdigen Netzwerkweg. Der Server verbindet sich nie mit privaten Adressen.",
+      "logTitle": "Zustellungen von {{name}}",
+      "logEmpty": "Noch keine Zustellungen.",
+      "retryFailed": "Fehlgeschlagene erneut senden",
+      "requeued_one": "{{count}} Zustellung erneut eingereiht.",
+      "requeued_other": "{{count}} Zustellungen erneut eingereiht."
+    },
+    "log": {
+      "time": "Zeit",
+      "event": "Ereignis",
+      "detail": "Antwort",
+      "sent": "Gesendet",
+      "failed": "Fehlgeschlagen",
+      "pending": "Wartend",
+      "attempts_one": "{{count}} Versuch",
+      "attempts_other": "{{count}} Versuche"
+    },
+    "sms": {
+      "title": "SMS-Anbieter",
+      "description": "SMS werden mit einer HTTP-Anfrage versendet, die aus dieser Vorlage entsteht. Wähle eine Vorlage oder beschreibe die Anfrage deines Anbieters.",
+      "budget": "{{sent}} von {{budget}} SMS in diesem Monat verbraucht.",
+      "budgetExhausted": "Budget verbraucht: SMS an Besucher pausiert",
+      "enabled": "SMS versenden",
+      "preset": "Vorlage",
+      "presetHelp": "Füllt die Felder unten aus; jedes Feld bleibt änderbar.",
+      "presets": {
+        "custom": "Eigene",
+        "twilio": "Twilio",
+        "vonage": "Vonage (Messages API)",
+        "seven": "seven.io",
+        "messagebird": "MessageBird (Bird)"
+      },
+      "method": "Methode",
+      "url": "URL",
+      "headersHelp": "Ein Header pro Zeile: „Name: Wert“. Für Zugangsdaten {{credentials}} verwenden.",
+      "bodyType": "Body",
+      "noBody": "Keiner",
+      "body": "Body-Vorlage",
+      "placeholders": "Platzhalter: {{list}}.",
+      "from": "Absender",
+      "successStatuses": "Statuscodes für Erfolg",
+      "username": "Zugangsdatum 1 (Konto / API-Key)",
+      "usernameHelp": "Twilio: Account SID, Vonage: API-Key.",
+      "password": "Zugangsdatum 2 (Token / Secret)",
+      "passwordHelp": "Twilio: Auth Token, Vonage: API Secret, seven.io: API-Key, MessageBird: Access Key.",
+      "credentialSet": "Verschlüsselt gespeichert. Leer lassen, um es zu behalten.",
+      "testTo": "Testnummer",
+      "test": "Test-SMS senden"
+    },
+    "recipients": {
+      "title": "Bereitschafts-SMS-Empfänger",
+      "description": "Interne Nummern, die bei jedem Vorfall- und Wartungsereignis ihrer Dienste eine SMS erhalten.",
+      "new": "Empfänger hinzufügen",
+      "editTitle": "Empfänger bearbeiten",
+      "empty": "Noch keine Bereitschafts-Empfänger.",
+      "deleted": "Empfänger gelöscht.",
+      "editLabel": "{{name}} bearbeiten",
+      "deleteLabel": "{{name}} löschen",
+      "deleteTitle": "Empfänger löschen",
+      "deleteConfirm": "Den Empfänger {{name}} löschen?",
+      "phoneHelp": "Internationales Format, z. B. +49 151 2345678."
     }
   },
   "version": "Version {{version}}",

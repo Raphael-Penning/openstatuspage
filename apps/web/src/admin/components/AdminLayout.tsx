@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import {
   FileText,
+  BellRing,
   Boxes,
   ChevronUp,
   Combine,
@@ -86,6 +87,7 @@ function useNavSections(): { title?: string; items: NavItem[] }[] {
         { to: '/admin/pages', label: t('nav.pages'), icon: FileText, adminOnly: true },
         { to: '/admin/users', label: t('nav.users'), icon: Users, adminOnly: true },
         { to: '/admin/subscribers', label: t('nav.subscribers'), icon: Mail, adminOnly: true },
+        { to: '/admin/notifications', label: t('nav.notifications'), icon: BellRing, adminOnly: true },
         { to: '/admin/api-tokens', label: t('nav.apiTokens'), icon: KeyRound, adminOnly: true },
         { to: '/admin/private-pages', label: t('nav.privatePages'), icon: LockKeyhole, adminOnly: true },
         { to: '/admin/audit-log', label: t('nav.auditLog'), icon: ScrollText, adminOnly: true },

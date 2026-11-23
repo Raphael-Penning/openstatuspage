@@ -35,7 +35,16 @@ import { SITEMAP_PAGE_SIZE, SiteIndex, type CurrentStatus, type SitemapKind, typ
  * still list a leaked link as a bare URL; the line would also tell everyone
  * where the private pages live.
  */
-export const DISALLOWED_PATHS = ['/api/public/subscriptions', '/api/', '/admin', '/subscription/', '/preferences/', '/pulse/'];
+export const DISALLOWED_PATHS = [
+  '/api/public/subscriptions',
+  '/api/public/channel-subscriptions',
+  '/api/',
+  '/admin',
+  '/subscription/',
+  '/s/',
+  '/preferences/',
+  '/pulse/',
+];
 
 /**
  * Exceptions inside the disallowed paths: the read-only public API that

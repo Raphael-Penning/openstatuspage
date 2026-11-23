@@ -149,6 +149,10 @@ export async function startBackgroundTasks(ctx: AppContext): Promise<boolean> {
   });
   registerSessionCleanup(ctx);
   registerNotificationTasks(ctx);
+  if (ctx.channels) {
+    const { registerChannelTasks } = await import('./services/channels/service.js');
+    registerChannelTasks({ ...ctx, channels: ctx.channels });
+  }
   registerBundleTasks(ctx);
   registerHistoryImportTasks(ctx);
   await syncPollers(ctx);

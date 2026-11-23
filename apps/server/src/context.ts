@@ -8,6 +8,7 @@ import { BundleService } from './services/bundles.js';
 import { HistoryImportService } from './services/history-import.js';
 import { IngestService } from './services/ingest.js';
 import { NotificationService } from './services/notifications.js';
+import type { ChannelService } from './services/channels/service.js';
 import { StatusEngine } from './services/status-engine.js';
 import { Worker } from './worker.js';
 
@@ -31,6 +32,13 @@ export interface AppContext {
   leases: TaskLeases | null;
   /** Mail transport (MAIL_TRANSPORT). */
   mailer: Mailer;
+  /**
+   * Webhook and SMS notifications (admin channels and subscribers) and their outbox.
+   * Null for APP_ROLE=public: it neither publishes nor delivers (its subscriptions
+   * queue their messages through the database functions), so it never loads the
+   * module (createApp imports it for the other roles).
+   */
+  channels: ChannelService | null;
   /** Subscriber notifications and the mail outbox. */
   notifications: NotificationService;
 }
@@ -38,6 +46,14 @@ export interface AppContext {
 export interface CreateContextOptions {
   /** Replaces the configured mail transport (tests). */
   mailer?: Mailer;
+  /** The ChannelService class, loaded on demand (none for APP_ROLE=public). */
+  ChannelService?: typeof ChannelService;
+}
+
+/** The channel service of an instance that has one (admin routes, worker tasks). */
+export function requireChannels(ctx: Pick<AppContext, 'channels'>): ChannelService {
+  if (!ctx.channels) throw new Error('Webhook and SMS channels are not loaded on this instance (APP_ROLE=public)');
+  return ctx.channels;
 }
 
 export function createContext(
@@ -53,6 +69,12 @@ export function createContext(
   const mailer = options.mailer ?? createMailer(config, log);
   const secrets = new SecretBox(config.SECRET_KEY);
   const bundles = new BundleService(db, engine, secrets, config.BUNDLE_PUSH_STALE_SECONDS * 1000);
+  const notifications = new NotificationService(db, config, mailer, log, worker);
+  const channels = options.ChannelService ? new options.ChannelService(db, config, secrets, log, worker) : null;
+  if (channels) {
+    notifications.channels = channels;
+    channels.notifications = notifications;
+  }
   return {
     config,
     db,
@@ -65,7 +87,8 @@ export function createContext(
     worker,
     leases,
     mailer,
-    notifications: new NotificationService(db, config, mailer, log, worker),
+    notifications,
+    channels,
   };
 }
 

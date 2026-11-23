@@ -19,6 +19,7 @@ It is also shown in the management UI under **Help**, in English or German.
 | Troubleshooting | [en](guide/en/10-troubleshooting.md) | [de](guide/de/10-troubleshooting.md) |
 | Security checklist | [en](guide/en/11-security-checklist.md) | [de](guide/de/11-security-checklist.md) |
 | Installation without containers | [en](guide/en/13-installation-without-containers.md) | [de](guide/de/13-installation-without-containers.md) |
+| Webhooks and SMS | [en](guide/en/14-webhooks-and-sms.md) | [de](guide/de/14-webhooks-and-sms.md) |
 
 ## Reference
 
@@ -26,7 +27,8 @@ It is also shown in the management UI under **Help**, in English or German.
 | --- | --- |
 | [configuration.md](configuration.md) | Every environment variable with defaults |
 | [notifications.md](notifications.md) | Email subscriptions: mail transport, delivery queue, stored data, deliverability, troubleshooting |
-| [api.md](api.md) | HTTP API: public, auth, admin and ingest endpoints |
+| [webhooks-and-sms.md](webhooks-and-sms.md) | Webhooks (Discord, Slack, Teams, generic JSON) and SMS: events, delivery, limits, SSRF guard, formats, signing, providers |
+| [api.md](api.md) | HTTP API: public, auth, admin, webhook and SMS subscription and ingest endpoints |
 | [adapters/](adapters/README.md) | Monitoring adapters: Icinga 2, Uptime Kuma, openITCockpit, generic webhook |
 | [oidc.md](oidc.md) | Single sign-on with OpenID Connect, role mapping, provider notes |
 | [architecture.md](architecture.md) | Code layout, privacy model, status model, database, worker |

@@ -69,10 +69,45 @@ breaking changes.
   against schema.org and Google's required fields in the tests.
 - **Public API**: `GET /api/public/pages/{slug}` returns the published content pages;
   the settings document gains `pages` (navigation and footer links) and `logoSize`.
-- Migration `0014_site_pages_uploads`.
 - An uploaded image that the logo, the favicon or a content page still uses is
   not deleted (`409` naming the references); `PATCH /api/admin/pages/:id`
   merges `title`, `description` and `body` per language.
+- **Webhook notifications.** Admins add team webhooks for Discord (embeds),
+  Slack (Block Kit), Microsoft Teams (Adaptive Cards for the Workflows webhook)
+  and generic JSON (versioned payload, HMAC-SHA256 signature with timestamp,
+  optional extra headers stored encrypted), for all or selected services. They
+  get the same events as the email subscribers, through a new outbox with
+  retries and backoff, have a test button and a delivery log, and are disabled
+  after 10 failed deliveries in a row with an email to the admins.
+- **SMS notifications.** A generic SMS provider (HTTP request template with
+  placeholders and presets for Twilio, Vonage, seven.io and MessageBird,
+  credentials stored encrypted), on-call SMS recipients with scope, a monthly
+  SMS budget that pauses public SMS and notifies the admins, and GSM-7 aware
+  one-segment texts.
+- **Webhook and SMS subscriptions for visitors**, with the same scope choice as
+  email, through the JSON:API (`/api/public/channel-subscriptions`) and plain
+  forms (`/subscribe/webhook`, `/subscribe/sms`, `/subscription/verify`,
+  `/subscription/channel`). A 6-digit code in the confirmation message
+  activates a subscription; every message carries a manage/unsubscribe link
+  (`/s/<id>/<token>`). Off by default: Discord, Slack and Teams need the
+  admin's switch (official hosts only), generic webhooks a second one, SMS an
+  allowlist of countries.
+- **SSRF guard for every outbound webhook and SMS request**: https only (http
+  only for admin webhooks that allow it), DNS resolved once and pinned, private,
+  loopback, link-local, CGNAT, multicast, metadata and IPv6 ULA ranges refused,
+  no redirects, strict timeouts and size limits; plus rate limits per client,
+  per destination (per webhook, per host for generic visitor webhooks; admin
+  webhooks and on-call SMS never wait behind visitors) and for all subscriber
+  webhooks and SMS.
+- Visitors' webhook and SMS subscriptions are removed automatically only when
+  the destination refused the last five messages (webhook `4xx`, a number the
+  SMS provider rejects); a used-up budget, provider or network errors never
+  remove anyone.
+- Admin page **Webhooks & SMS** and a channel switch on the subscriber list.
+- Migration `0014_site_pages_uploads`.
+- Migration `0015_notification_channels`: on PostgreSQL the restricted public
+  role writes webhook and SMS subscriptions only through new `SECURITY DEFINER`
+  functions in `osp_public` and cannot read any of the new tables.
 
 ### Changed
 
