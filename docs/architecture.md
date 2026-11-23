@@ -340,9 +340,12 @@ browser: main-public.tsx ─▶ hydrate.tsx: same language/theme/clock, hydrate(
   cache has one, is preferred); the page still works with JavaScript. A flood
   of distinct URLs cannot queue without bound: beyond 4 waiting pages see
   Overload above.
-- **Accent color.** The configured accent and its contrast-safe variants for
-  both themes go into a `<style>` in the head (`public/utils/accent.ts`), so the
-  page has its colors before (and without) hydration.
+- **Theme.** The active theme (tokens with the accent in effect and its
+  contrast-safe variants for light and dark, plus the theme's extra CSS) is
+  linked as same-origin stylesheets `/theme/<hash>.css` at the end of the head
+  (`services/themes.ts`, [themes.md](themes.md)), so the page has its colors
+  before (and without) hydration and nothing is inline. `?theme=<id>` renders a
+  preview for signed-in admins only, never cached.
 - **Build.** `pnpm --filter @openstatuspage/web build` runs `vite build` (the
   two client entries) and `vite build --ssr src/entry-server.tsx --outDir
   dist/.ssr`: one self-contained, minified, ASCII-only ES module with every
