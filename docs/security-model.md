@@ -426,15 +426,24 @@ internal service.
 
 The Compose files and the install script can run a send-only Postfix (see the
 [installation without containers](guide/en/13-installation-without-containers.md#mail-server)
-and the Compose files). It accepts mail only from the app, never from the internet:
+and the Compose files). It is never reachable from the internet, but it is
+not limited to the app either: **any process on the host** can submit mail
+through it, and that mail is DKIM-signed for `MAIL_DOMAIN`. Run it on a
+single-tenant host only, where every local user and process is trusted to send
+as the status domain; otherwise use an external mail server with its own login.
 
 - **Compose**: no published port. The `mail` network is `internal`, so it has no
   route outside; the server relays only for senders of `MAIL_DOMAIN` and from its
-  `mynetworks` subnet. There is no STARTTLS and no login on that internal hop. The
-  mail container gets none of the app's secrets (no `env_file`). The public
-  instance of the split deployment is not on the network.
+  `mynetworks` subnet. That subnet includes the Docker host itself (the network's
+  gateway address), so host processes can relay too; other containers cannot,
+  unless they join the `mail` network. There is no STARTTLS and no login on that
+  internal hop. The mail container gets none of the app's secrets (no
+  `env_file`). The public instance of the split deployment is not on the network.
 - **Install script**: Postfix listens on `127.0.0.1` only and relays for loopback
-  clients only.
+  clients only, and only for senders of `MAIL_DOMAIN`. Every local user can
+  connect to that port, so every local user can send as the domain. Only mail
+  received over SMTP is signed (no milter for the `sendmail` command), and only
+  root may use `sendmail`.
 - **DKIM**: the private key stays with Postfix (volume `dkim` in Compose,
   `/etc/opendkim/keys` on a host). Only the public key is copied to the directory
   the app reads (`MAIL_DKIM_DIR`, read-only). The app parses those files strictly,
