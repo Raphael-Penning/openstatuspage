@@ -70,6 +70,7 @@
       "missing_subject": "The identity provider did not send a user identifier.",
       "email_not_verified": "Your e-mail address is not verified by the identity provider.",
       "account_conflict": "This e-mail address is already linked to another identity.",
+      "account_not_linked": "An account with this e-mail address already exists but is not linked to this provider. Sign in another way, or ask an administrator.",
       "unknown": "Sign-in failed."
     }
   },
@@ -913,6 +914,7 @@
       "clientSecret": "Client secret",
       "scopes": "Scopes",
       "autoCreateUsers": "Create users on their first sign-in",
+      "linkByEmail": "Link existing accounts by e-mail",
       "allowedDomains": "Allowed e-mail domains",
       "roleClaim": "Role claim",
       "roleMappings": "Role mapping",
@@ -934,6 +936,7 @@
       "removeSecret": "Remove the stored secret (public client)",
       "scopes": "Space separated, must contain openid. Add the scope your identity provider needs for groups or roles.",
       "autoCreateUsers": "Only for e-mail addresses the identity provider marks as verified. Without it, only existing users can sign in.",
+      "linkByEmail": "Signs in to an existing account with the same e-mail address through this provider when the identity provider marks the address as verified. Off: existing accounts are only reached through an identity already linked.",
       "allowedDomains": "One domain per line, e.g. example.com. When set, only verified addresses of these domains can sign in. Subdomains are not included.",
       "roleClaim": "Claim that holds the groups or roles, e.g. groups, roles or realm_access.roles. Dots address nested claims.",
       "roleMappings": "Values of the role claim and what they grant. Values are compared case-insensitively; No access always wins.",
@@ -943,6 +946,7 @@
       "pkce": "Always on (S256)."
     },
     "autoCreateWarning": "Every account this identity provider can authenticate may create an account here. Restrict it with allowed domains, a role mapping or “No access” as the default role, and never use it with public or multi-tenant issuers.",
+    "linkByEmailWarning": "Whoever can make this identity provider send a verified address gets the account with that address here, including its role. Only turn it on for an identity provider that verifies addresses itself and where users cannot change them.",
     "issuerChangeWarning_one": "A new issuer URL is another identity provider: saving removes the link of {{count}} user account to this provider. The account stays.",
     "issuerChangeWarning_other": "A new issuer URL is another identity provider: saving removes the links of {{count}} user accounts to this provider. The accounts stay.",
     "issuerChangeSecret": "A new issuer URL needs a new client secret. Enter it, or remove the stored secret for a public client.",

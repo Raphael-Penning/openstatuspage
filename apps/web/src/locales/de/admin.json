@@ -70,6 +70,7 @@
       "missing_subject": "Der Identity Provider hat keine Benutzerkennung übermittelt.",
       "email_not_verified": "Deine E-Mail-Adresse ist beim Identity Provider nicht bestätigt.",
       "account_conflict": "Diese E-Mail-Adresse ist bereits mit einer anderen Identität verknüpft.",
+      "account_not_linked": "Ein Konto mit dieser E-Mail-Adresse gibt es bereits, es ist aber nicht mit diesem Anbieter verknüpft. Melde dich anders an oder wende dich an einen Administrator.",
       "unknown": "Die Anmeldung ist fehlgeschlagen."
     }
   },
@@ -913,6 +914,7 @@
       "clientSecret": "Client-Secret",
       "scopes": "Scopes",
       "autoCreateUsers": "Benutzer bei der ersten Anmeldung anlegen",
+      "linkByEmail": "Bestehende Konten per E-Mail verknüpfen",
       "allowedDomains": "Erlaubte E-Mail-Domains",
       "roleClaim": "Rollen-Claim",
       "roleMappings": "Rollenzuordnung",
@@ -934,6 +936,7 @@
       "removeSecret": "Gespeichertes Secret entfernen (öffentlicher Client)",
       "scopes": "Durch Leerzeichen getrennt, muss openid enthalten. Ergänze den Scope, den dein Identity Provider für Gruppen oder Rollen braucht.",
       "autoCreateUsers": "Nur für E-Mail-Adressen, die der Identity Provider als bestätigt markiert. Ohne diese Option können sich nur bestehende Benutzer anmelden.",
+      "linkByEmail": "Meldet ein bestehendes Konto mit derselben E-Mail-Adresse über diesen Anbieter an, wenn der Identity Provider die Adresse als bestätigt markiert. Aus: Bestehende Konten erreicht man nur über eine bereits verknüpfte Identität.",
       "allowedDomains": "Eine Domain pro Zeile, z. B. example.com. Wenn gesetzt, können sich nur bestätigte Adressen dieser Domains anmelden. Subdomains gehören nicht dazu.",
       "roleClaim": "Claim mit den Gruppen oder Rollen, z. B. groups, roles oder realm_access.roles. Punkte adressieren verschachtelte Claims.",
       "roleMappings": "Werte des Rollen-Claims und was sie gewähren. Groß- und Kleinschreibung zählt nicht; „Kein Zugriff“ gewinnt immer.",
@@ -943,6 +946,7 @@
       "pkce": "Immer aktiv (S256)."
     },
     "autoCreateWarning": "Jedes Konto, das dieser Identity Provider anmelden kann, darf hier ein Konto anlegen. Schränke das mit erlaubten Domains, einer Rollenzuordnung oder „Kein Zugriff“ als Standardrolle ein und nutze es nie mit öffentlichen oder mandantenübergreifenden Issuern.",
+    "linkByEmailWarning": "Wer diesen Identity Provider eine bestätigte Adresse senden lassen kann, bekommt hier das Konto mit dieser Adresse samt seiner Rolle. Schalte es nur für einen Identity Provider ein, der Adressen selbst bestätigt und bei dem Benutzer sie nicht ändern können.",
     "issuerChangeWarning_one": "Eine neue Issuer-URL ist ein anderer Identity Provider: Beim Speichern wird die Verknüpfung von {{count}} Benutzerkonto mit diesem Anbieter entfernt. Das Konto bleibt.",
     "issuerChangeWarning_other": "Eine neue Issuer-URL ist ein anderer Identity Provider: Beim Speichern werden die Verknüpfungen von {{count}} Benutzerkonten mit diesem Anbieter entfernt. Die Konten bleiben.",
     "issuerChangeSecret": "Eine neue Issuer-URL braucht ein neues Client-Secret. Gib es ein oder entferne das gespeicherte Secret für einen öffentlichen Client.",

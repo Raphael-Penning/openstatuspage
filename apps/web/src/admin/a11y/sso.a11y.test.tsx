@@ -81,6 +81,7 @@ const providers: AdminOidcProvider[] = [
     readOnly: false,
     issuerUrl: 'https://login.example.com',
     autoCreateUsers: true,
+    linkByEmail: true,
     allowedDomains: ['example.com'],
     roleClaim: 'realm_access.roles',
     roleMappings: [
@@ -269,6 +270,7 @@ describe.each(['en', 'de'] as const)('SSO (%s)', (lang) => {
       // Existing provider: mappings, stored secret, redirect URI and the auto-create warning.
       await click(byText('button', i18n.t('admin:sso.editLabel', { name: 'Example IdP' })));
       expect(document.querySelectorAll('dialog[open] select')).toHaveLength(4);
+      expect(document.querySelector('dialog[open]')?.textContent).toContain(i18n.t('admin:sso.linkByEmailWarning'));
       expect(await axeViolations()).toEqual([]);
       // A new issuer: the links are about to go, and the stored secret has to be replaced.
       await type(document.querySelector('dialog[open] input[type="url"]'), 'https://other.example.com');

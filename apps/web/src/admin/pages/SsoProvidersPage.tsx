@@ -219,6 +219,7 @@ function EnvProviderDialog({ provider, onClose }: { provider: AdminOidcProvider;
     [t('sso.fields.scopes'), provider.scopes],
     [t('sso.fields.pkce'), t('sso.help.pkce')],
     [t('sso.fields.autoCreateUsers'), provider.autoCreateUsers ? t('sso.yes') : t('sso.no')],
+    [t('sso.fields.linkByEmail'), provider.linkByEmail ? t('sso.yes') : t('sso.no')],
     [t('sso.fields.roleClaim'), provider.roleClaim],
     [
       t('sso.fields.roleMappings'),
@@ -267,6 +268,7 @@ interface FormValues {
   removeSecret: boolean;
   scopes: string;
   autoCreateUsers: boolean;
+  linkByEmail: boolean;
   allowedDomains: string;
   roleClaim: string;
   roleMappings: OidcRoleMapping[];
@@ -292,6 +294,7 @@ function ProviderDialog({ existing, onClose }: { existing: AdminOidcProvider | n
     removeSecret: false,
     scopes: existing?.scopes ?? 'openid email profile',
     autoCreateUsers: existing?.autoCreateUsers ?? false,
+    linkByEmail: existing?.linkByEmail ?? false,
     allowedDomains: (existing?.allowedDomains ?? []).join('\n'),
     roleClaim: existing?.roleClaim ?? 'groups',
     roleMappings: existing?.roleMappings ?? [],
@@ -323,6 +326,7 @@ function ProviderDialog({ existing, onClose }: { existing: AdminOidcProvider | n
       clientId: v.clientId.trim(),
       scopes: v.scopes.trim(),
       autoCreateUsers: v.autoCreateUsers,
+      linkByEmail: v.linkByEmail,
       allowedDomains: splitDomains(v.allowedDomains),
       roleClaim: v.roleClaim.trim(),
       roleMappings: v.roleMappings.map((m) => ({ value: m.value.trim(), role: m.role })),
@@ -472,6 +476,18 @@ function ProviderDialog({ existing, onClose }: { existing: AdminOidcProvider | n
             <p className="flex items-start gap-2 rounded-lg bg-status-degraded/10 px-3 py-2 text-sm text-status-degraded-text">
               <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
               {t('sso.autoCreateWarning')}
+            </p>
+          )}
+          <CheckboxField
+            label={t('sso.fields.linkByEmail')}
+            help={t('sso.help.linkByEmail')}
+            checked={v.linkByEmail}
+            onChecked={(x) => form.set('linkByEmail', x)}
+          />
+          {v.linkByEmail && (
+            <p className="flex items-start gap-2 rounded-lg bg-status-degraded/10 px-3 py-2 text-sm text-status-degraded-text">
+              <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+              {t('sso.linkByEmailWarning')}
             </p>
           )}
           <TextAreaField
