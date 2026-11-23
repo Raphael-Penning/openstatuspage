@@ -19,6 +19,11 @@ breaking changes.
 - The bundled mail server lets every process on the host send as
   `MAIL_DOMAIN` (the Docker host is on its network; with `install.sh` every
   local user reaches `127.0.0.1:25`). Use it on a single-tenant host only.
+- **Accent color.** The accent color of the settings becomes an optional
+  override of the theme's accent. Migration `0017_themes` removes it when it is
+  the old default `#7c6cf2` (the default theme has the same accent), so pages
+  look the same; any other accent is kept as override. `accentColor` of
+  `/api/admin/settings` may now be `null`.
 
 ### Added
 
@@ -137,7 +142,34 @@ breaking changes.
   role writes webhook and SMS subscriptions only through new `SECURITY DEFINER`
   functions in `osp_public` and cannot read any of the new tables.
 
+- **Themes** for the public page (docs/themes.md): JSON token files (colors for
+  light and dark, status colors, focus ring, corner radius, system font stacks,
+  density) plus optional extra CSS. Built-in themes `default`, `slate`, `forest`
+  and `high-contrast`, all WCAG 2.2 AA in light and dark; a themes folder
+  (`THEMES_DIR`, read on start; Compose mount, Helm `themes.*` values with a
+  ConfigMap, `/etc/openstatuspage/themes` without containers); themes uploaded in
+  the admin (stored in the database). Every theme can be exported as JSON.
+- **Administration → Appearance**: themes with source badges and contrast
+  results, a live preview in light and dark, a preview of the public page
+  (`?theme=<id>`, signed-in admins only), activation, import, export, and an
+  editor with color inputs and a live contrast check.
+- A theme that fails WCAG 2.2 AA is only activated (or changed while active)
+  after an explicit confirmation (`acceptContrastFailures`, written to the audit
+  log); the API answers `409 contrast_failures` otherwise.
+- Extra CSS of a theme is filtered: at most 64 KB, no `@import`, `url()` only to
+  `/uploads/` or relative paths, no `expression()`, `javascript:`, `image-set()`
+  or `<`. It is served as its own stylesheet.
+- Management API `/api/admin/themes` (list, import, edit, delete, activate,
+  export) and `/theme/<hash>.css` (immutable, same origin).
+- Migration `0017_themes`: on PostgreSQL the restricted public role reads only
+  the active theme, through the views `osp_public.active_theme` and
+  `osp_public.themes`.
+
 ### Changed
+
+- The public pages load the theme (accent included) as a hashed same-origin
+  stylesheet at the end of the head instead of an inline `<style>` element;
+  `/api/public/settings` carries `theme.stylesheets` and the accent in effect.
 
 - **Maintenance windows** are marked up as `Event` in the structured data (they were
   `Article`). Incident pages stay `Article`.
