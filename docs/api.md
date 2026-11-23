@@ -14,7 +14,7 @@ was a breaking change: there is no compatibility layer for the plain JSON format
 
 Contents: [Conventions](#conventions) · [Authentication](#authentication) ·
 [Endpoints outside JSON:API](#endpoints-outside-jsonapi) · [Public API](#public-api) ·
-[Email subscriptions](#email-subscriptions) · [Auth](#auth) · [Admin API](#admin-api) ·
+[Email subscriptions](#email-subscriptions) · [Webhook and SMS subscriptions](#webhook-and-sms-subscriptions) · [Auth](#auth) · [Admin API](#admin-api) ·
 [Ingest API](#ingest-api)
 
 ## Conventions
@@ -320,7 +320,8 @@ provided; duplicates get a numeric suffix, an explicit slug that is taken is `40
 - Every mutating admin call writes an audit log entry. Mutations through API tokens
   are audited with `userId = null` and `details.apiToken = <token name>`.
 - Rate limits (`429` `rate_limited`): login 10/min per IP, subscribe 5/min per IP (the API and the
-  HTML form `POST /subscribe` together),
+  HTML form `POST /subscribe` together), webhook and SMS subscribe 5/min per IP (shared with
+  the same limit), webhook and SMS confirm 10/min per IP,
   subscription token endpoints 30/min per IP, ingest 120/min per source.
 
 ```sh
@@ -412,6 +413,9 @@ outputs, IPs or counts. Responses may be cached (`Cache-Control: public, max-age
 - The summary attribute `emailSubscriptions` is `true` when email subscriptions are
   enabled in the settings and a mail transport is configured (the page then offers
   the subscribe form).
+- The summary attribute `channelSubscriptions` holds what visitors may subscribe with:
+  `webhookKinds` (`discord`, `slack`, `teams` and `generic` when allowed), `sms` and
+  `smsCallingCodes`. Nothing is offered by default (empty list, `false`).
 
 Examples:
 
@@ -973,6 +977,8 @@ X-Private-Page-Token: 4f4d3vd5pzpnr7ux3m7s7uzpotnfr5zj
 `/api/public/subscriptions`, no authentication. Double opt-in; see
 [notifications.md](notifications.md). Responses are sent with
 `Cache-Control: no-store`. Unknown ids and wrong tokens get the same `404`.
+Webhook and SMS subscriptions use their own resource, see
+[Webhook and SMS subscriptions](#webhook-and-sms-subscriptions).
 
 A subscription is a `subscriptions` resource (`PublicSubscription`): attributes
 `email`, `locale`, `allServices`, `confirmed`; the selected services are the
