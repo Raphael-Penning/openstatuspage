@@ -99,20 +99,27 @@ export async function storeUpload(db: DB, bytes: Buffer, filename: string | null
   return { upload: toAdminUpload(row), created: true };
 }
 
-/** An upload by its file name (`<sha256>.<ext>`) with its bytes; null when there is none. */
-export async function loadUploadFile(
-  db: DB,
-  file: string,
-): Promise<{ hash: string; contentType: string; data: Buffer } | null> {
+/**
+ * An upload by its file name (`<sha256>.<ext>`) without its bytes; null when
+ * there is none. Enough to answer a conditional request (304) without reading
+ * the blob.
+ */
+export async function findUploadFile(db: DB, file: string): Promise<{ hash: string; contentType: string } | null> {
   const parsed = parseUploadFile(file);
   if (!parsed) return null;
   const row = await db
     .selectFrom('uploads')
-    .select(['hash', 'extension', 'content_type', 'data'])
+    .select(['hash', 'extension', 'content_type'])
     .where('hash', '=', parsed.hash)
     .executeTakeFirst();
   if (!row || row.extension !== parsed.extension) return null;
-  return { hash: row.hash, contentType: row.content_type, data: Buffer.from(row.data) };
+  return { hash: row.hash, contentType: row.content_type };
+}
+
+/** The bytes of the upload with this hash; null when it is gone (deleted meanwhile). */
+export async function loadUploadData(db: DB, hash: string): Promise<Buffer | null> {
+  const row = await db.selectFrom('uploads').select('data').where('hash', '=', hash).executeTakeFirst();
+  return row ? Buffer.from(row.data) : null;
 }
 
 /** Sizes of the uploads at `paths` (`/uploads/<sha256>.<ext>`), by path; unknown ones are left out. */

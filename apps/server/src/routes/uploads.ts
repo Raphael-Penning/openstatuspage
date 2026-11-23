@@ -10,7 +10,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { notFound } from '../lib/errors.js';
-import { loadUploadFile } from '../services/uploads.js';
+import { findUploadFile, loadUploadData } from '../services/uploads.js';
 
 /** The answer of an upload loads, runs and frames nothing (also when opened directly). */
 export const UPLOAD_CSP = "default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'; frame-ancestors 'none'; sandbox";
@@ -22,7 +22,8 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
     '/uploads/:file',
     { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const file = await loadUploadFile(db, req.params.file);
+      // Metadata first: a conditional request is answered without reading the blob.
+      const file = await findUploadFile(db, req.params.file);
       if (!file) throw notFound('Upload');
       const etag = `"${file.hash}"`;
       reply
@@ -32,7 +33,9 @@ export async function registerUploadRoutes(app: FastifyInstance): Promise<void> 
         .header('Content-Security-Policy', UPLOAD_CSP)
         .header('X-Content-Type-Options', 'nosniff');
       if (req.headers['if-none-match'] === etag) return reply.status(304).send();
-      return reply.type(file.contentType).send(file.data);
+      const data = await loadUploadData(db, file.hash);
+      if (!data) throw notFound('Upload');
+      return reply.type(file.contentType).send(data);
     },
   );
 }

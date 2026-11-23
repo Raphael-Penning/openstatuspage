@@ -145,6 +145,11 @@ describe('uploads', () => {
     expect(file.rawPayload.equals(bytes)).toBe(true);
     const cached = await t.app.inject({ url: stored.url, headers: { 'if-none-match': `"${hash}"` } });
     expect(cached.statusCode).toBe(304);
+    expect(cached.rawPayload.length).toBe(0);
+    expect(cached.headers.etag).toBe(`"${hash}"`);
+    const stale = await t.app.inject({ url: stored.url, headers: { 'if-none-match': `"${'0'.repeat(64)}"` } });
+    expect(stale.statusCode).toBe(200);
+    expect(stale.rawPayload.equals(bytes)).toBe(true);
 
     // Wrong extension, unknown hash, other spellings: 404.
     for (const url of [`/uploads/${hash}.jpg`, `/uploads/${'0'.repeat(64)}.png`, `/uploads/${hash.toUpperCase()}.png`, `/uploads/${hash}.svg`]) {
