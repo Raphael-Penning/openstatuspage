@@ -4529,6 +4529,10 @@ Format, tokens, the contrast check and the CSS filter: [themes.md](themes.md).
 | DELETE | `/api/admin/themes/:id` | `204`; uploaded themes only; `409` for the active theme |
 | POST | `/api/admin/themes/:id/activate` | `acceptContrastFailures` (default `false`); answers the theme |
 
+The downloads `GET /api/admin/themes/{id}/export` (`<id>.json`) and
+`GET /api/admin/themes/{id}/export-css` (`<id>.css`, `404` without extra CSS)
+are listed with the other non-JSON:API endpoints above.
+
 Attributes: `name`, `author`, `description`, `source` (`builtin`, `folder`,
 `database`), `readOnly`, `active`, `definition` (the theme file),
 `css` (single theme only), `cssBytes`, `contrastFailures` (the failed WCAG 2.2
