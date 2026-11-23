@@ -107,7 +107,7 @@ services:
       # so the app needs no certificate exception.
       POSTFIX_smtpd_tls_security_level: none
       DKIM_AUTOGENERATE: "true"
-      DKIM_SELECTOR: ${DKIM_SELECTOR:-mail}
+      DKIM_SELECTOR: ${DKIM_SELECTOR:-osp}
       # Optional smarthost, e.g. [smtp.example.com]:587, when port 25 is blocked.
       RELAYHOST: ${MAIL_RELAYHOST:-}
       RELAYHOST_USERNAME: ${MAIL_RELAYHOST_USERNAME:-}
