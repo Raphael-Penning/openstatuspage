@@ -15,7 +15,9 @@ visitors and subscribers see:
 
 The management UI under `/admin` is **not** in scope (yet). It shares the design
 tokens and therefore benefits from the contrast fixes, but it is not audited or
-tested against WCAG.
+tested against WCAG. The one exception is the API documentation page
+(`/admin/api`), which is tested with axe in English and German (see the table
+below).
 
 This page lists how the requirements are met, what is checked automatically,
 what has to be checked by hand before a release, and the known limitations.
@@ -68,6 +70,7 @@ All of these run in the CI job **check** (`pnpm -r test`):
 | `apps/web/src/public/a11y/pages.a11y.test.tsx` | Renders every public page and state listed in `PAGES` (including the email, webhook and SMS subscription pages, error and "not found" states) in **light and dark theme** and in **English and German** in jsdom with a fake API and runs **axe-core** with all WCAG 2.0, 2.1 and 2.2 A/AA rules plus a few structural best practices (landmarks, heading order). Any violation fails the test. It also checks interactive states: the open subscribe menu (Escape returns focus), the uptime tooltip (keyboard, live region, Escape), the map with a selected location and pan controls, form errors (focus, `aria-invalid`, suggestion), the success message and focus after navigation. Private pages (`/p/<token>`: overview, service, day and a wrong link) are checked the same way, and that all their links stay below `/p/<token>`. |
 | `apps/web/src/ssr.test.tsx`, `apps/server/test/ssr-pages.test.ts` | Every public page is rendered on the server (`<html lang>`/`dir` of the visitor's language, content in the HTML, so it works without JavaScript) and hydrates without a single hydration warning in both languages, also a page that answers a form with errors; unknown pages answer 404. |
 | `apps/server/test/nojs-pages.test.ts`, `forms-subscriptions.test.ts`, `forms-preferences.test.ts` | Without JavaScript: every control of every public page is a link or a form with its action, method and field names, no button, field or tab stop needs a script; every form handler on success, invalid input (values, error summary, `aria-invalid`, `aria-describedby`), cross-site posts and rate limits. |
+| `apps/web/src/admin/a11y/api-docs.a11y.test.tsx` | Renders the API documentation page (`/admin/api`) with the real `docs/openapi.json` in English and German and runs **axe-core** with the WCAG 2.2 A/AA rules, with operations open, while filtering and around the *Try it* form. It also checks that a request from the page carries the CSRF header and that a changing request is sent only after the confirmation. |
 | `apps/web/src/tokens.test.ts` | Contrast of the design tokens in `styles.css` for both themes: text and muted text (4.5:1), status text (4.5:1), status fills, the no-data outline and field borders (3:1), accent text and focus color (4.5:1), and that the default accent variants match the runtime calculation. jsdom has no layout, so axe's `color-contrast` rule is disabled in the page tests and covered here instead. |
 | `apps/web/src/public/utils/color.test.ts` | The accent adjustment keeps any configured color readable on every background of both themes. |
 | `apps/web/src/public/utils/uptime.test.ts`, `shapes.test.ts` | Pointer-to-day mapping of the uptime bar, patterns per day, one distinct marker shape per status. |
