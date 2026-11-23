@@ -61,12 +61,12 @@ Optionen von `install`:
 | `--base-url URL` | Öffentliche URL der Statusseite (`BASE_URL`). |
 | `--version X.Y.Z` | Dieses Release statt des neuesten installieren. |
 | `--tarball DATEI` | Einen lokalen Tarball installieren; `SHA256SUMS` muss daneben liegen. |
-| `--with-postgres` | PostgreSQL aus der Distribution installieren, die Datenbank `openstatuspage` und die Rollen aus `deploy/postgres/roles.sql` mit erzeugten Passwörtern anlegen (nur für root lesbar in `/etc/openstatuspage/.database-passwords`), ihre Passwortanmeldung über das Loopback-Interface erlauben und `DATABASE_URL` darauf setzen. Ohne die Option wird SQLite in `/var/lib/openstatuspage` verwendet. |
+| `--with-postgres` | PostgreSQL aus der Distribution installieren, die Datenbank `openstatuspage` und die Rollen aus `deploy/postgres/roles.sql` mit erzeugten Passwörtern anlegen (nur für root lesbar in `/etc/openstatuspage/.database-passwords`), ihre Passwortanmeldung über das Loopback-Interface erlauben und `DATABASE_URL` darauf setzen. Unter RHEL 9 und seinen Nachbauten schaltet das Skript vorher den Modul-Stream `postgresql:16` (oder `:15`) ein, weil das voreingestellte PostgreSQL 13 für die Public-Rolle nur Views mit Eigentümerrechten bekommt ([Sicherheitsmodell](../../security-model.md)); ist der Server älter als 15, warnt es. Ohne die Option wird SQLite in `/var/lib/openstatuspage` verwendet. |
 | `--database-url URL` | Ein vorhandenes PostgreSQL verwenden (Anmeldung der App-Rolle). |
 | `--mode split` | Die [geteilte Installation](#geteilte-installation): Public, Admin und Worker als drei Dienste. |
 | `--admin-url URL`, `--public-database-url URL` | Admin-Domain und Anmeldung der eingeschränkten Public-Rolle für `--mode split` (mit `--with-postgres` nicht nötig). |
 | `--with-postfix --mail-domain example.com` | Ein lokales Postfix nur zum Versenden, mit DKIM, siehe [Mailserver](#mailserver). |
-| `--mail-hostname NAME`, `--mail-relayhost HOST`, `--dkim-selector NAME` | Nur mit `--with-postfix`: HELO-Name (Standard: die Mail-Domain), ein Smarthost wie `[smtp.example.com]:587` und der DKIM-Selector (Standard: `osp`). |
+| `--mail-hostname NAME`, `--mail-relayhost HOST`, `--dkim-selector NAME` | Nur mit `--with-postfix`: HELO-Name (Standard: die Mail-Domain), ein Smarthost wie `[smtp.example.com]:587`, der den Server ohne Anmeldung annimmt (über die IP-Adresse), und der DKIM-Selector (Standard: `osp`). |
 | `--node MODUS` | `system`: Node.js 22 aus dem `PATH`; `bundled`: eine eigene Kopie in `/opt/openstatuspage/node` von nodejs.org (geprüft gegen deren `SHASUMS256.txt`). `auto` (Standard) nimmt ein passendes `node` aus dem `PATH` und installiert sonst die eigene Kopie. |
 | `--no-start` | Den Dienst weder aktivieren noch starten. |
 
@@ -201,7 +201,7 @@ Release:
 ```bash
 scripts/build-bundle.sh 0.4.0-local.1          # schreibt dist/release/openstatuspage-0.4.0-local.1-linux-<arch>.tar.gz
 (cd dist/release && sha256sum -- *.tar.gz > SHA256SUMS)
-sudo bash scripts/install.sh install --tarball dist/release/openstatuspage-0.4.0-local.1-linux-x64.tar.gz
+sudo bash scripts/install.sh install --tarball dist/release/openstatuspage-0.4.0-local.1-linux-*.tar.gz
 ```
 
 Ohne das Skript startet `pnpm start` den Server aus `apps/server`; er liest
@@ -255,6 +255,24 @@ eine einzige `SMTP_*`-Einstellung. Der Mailserver
   wenn es sich mit einem Netz deines Hosts überschneidet) und nur für Absender
   aus `MAIL_DOMAIN`.
 
+Zu diesem Netz gehört auch der Docker-Host (über die Gateway-Adresse). Jeder
+Prozess auf dem Host kann also E-Mails als `MAIL_DOMAIN` senden, signiert mit
+dem Schlüssel. Nutze den mitgelieferten Server deshalb nur auf einem Host, den
+niemand sonst mitbenutzt; siehe das
+[Sicherheitsmodell](../../security-model.md#bundled-mail-server).
+
+**Eine bestehende Compose-Installation aktualisieren.** `compose.yaml` legt
+das Netz `mail` jetzt immer mit festem Subnetz an, auch ohne das Profil
+`mail`, und nutzt eingebettete `configs`. Bevor du mit der neuen Datei
+`docker compose up -d` ausführst:
+
+- prüfe `docker compose version`: nötig ist 2.23.1 oder neuer;
+- scheitert `up` mit `Pool overlaps with other one on this address space`
+  (der Bereich ist belegt, zum Beispiel durch ein zweites
+  OpenStatusPage-Projekt auf demselben Host), setze in der `.env` einen freien
+  Bereich, z. B. `MAIL_SUBNET=172.30.252.0/28`, für jedes Projekt einen
+  anderen.
+
 Ohne `MAIL_RELAYHOST` stellt er direkt bei den Servern der Empfänger zu. Das
 braucht ausgehenden Port 25 (bei vielen Cloud-Anbietern gesperrt), einen
 PTR-Eintrag für die Adresse des Hosts, der zu `MAIL_HOSTNAME` passt (Standard:
@@ -272,13 +290,22 @@ sudo bash install.sh install --with-postfix --mail-domain example.com
 
 installiert Postfix und OpenDKIM, nur auf `127.0.0.1` erreichbar
 (`inet_interfaces = loopback-only`, keine lokale Zustellung, Weiterleitung nur
-für `127.0.0.1`/`::1`), erzeugt den Schlüssel in
-`/etc/opendkim/keys/example.com/osp.private` und kopiert den öffentlichen
-Schlüssel nach `/etc/openstatuspage/dkim`. Es setzt `SMTP_HOST=127.0.0.1`,
-`SMTP_PORT=25`, `SMTP_FROM` und `MAIL_DKIM_DIR` in den Einstellungen. Ein schon
-vorher installiertes Postfix, Exim oder Sendmail übernimmt das Skript nicht;
-`--mail-relayhost` und `--mail-hostname` funktionieren wie die
-Compose-Variablen.
+für `127.0.0.1`/`::1` und nur für Absender aus der Mail-Domain), erzeugt den
+Schlüssel in `/etc/opendkim/keys/example.com/osp.private` und kopiert den
+öffentlichen Schlüssel nach `/etc/openstatuspage/dkim`. Es setzt
+`SMTP_HOST=127.0.0.1`, `SMTP_PORT=25`, `SMTP_FROM` und `MAIL_DKIM_DIR` in den
+Einstellungen. Ein schon vorher installiertes Postfix, Exim oder Sendmail
+übernimmt das Skript nicht; `--mail-hostname` funktioniert wie die
+Compose-Variable.
+
+Jeder lokale Benutzer kann sich mit `127.0.0.1:25` verbinden und als die
+Mail-Domain senden (nur root darf den Befehl `sendmail` nutzen, und signiert
+werden nur E-Mails, die über SMTP ankommen). Nutze es deshalb nur auf einem
+Host, den niemand sonst mitbenutzt. `--mail-relayhost` unterstützt nur
+Smarthosts, die den Server ohne Anmeldung annehmen, zum Beispiel über seine
+IP-Adresse; braucht dein Anbieter Benutzername und Passwort, setze stattdessen
+`SMTP_*` auf den Anbieter (siehe [anderer Mailserver](#anderer-mailserver))
+oder ergänze die SASL-Einstellungen in Postfix selbst.
 
 ### DNS-Einträge
 
@@ -288,7 +315,7 @@ mit Kopier-Button:
 
 | Eintrag | Name | Wert |
 | --- | --- | --- |
-| SPF | `example.com` | `v=spf1 ip4:<server-ipv4> ip6:<server-ipv6> -all`: setze die Adressen ein, von denen der Server sendet. Hat die Domain schon einen SPF-Eintrag, ergänze ihn; eine Domain darf nur einen haben. |
+| SPF | `example.com` | `v=spf1 ip4:<server-ipv4> ip6:<server-ipv6> -all`: setze die Adressen ein, von denen der Server sendet. Mit einem Smarthost (`MAIL_RELAYHOST`, `--mail-relayhost`) erlaube stattdessen den Anbieter, meist mit seinem `include:`, denn dessen Server stellen die E-Mails zu. Hat die Domain schon einen SPF-Eintrag, ergänze ihn; eine Domain darf nur einen haben. |
 | DKIM | `osp._domainkey.example.com` | `v=DKIM1; k=rsa; p=…` (der erzeugte Schlüssel) |
 | DMARC | `_dmarc.example.com` | `v=DMARC1; p=quarantine; adkim=s; aspf=s`. Beginne mit `p=none`, während du die Berichte prüfst, und verschärfe danach. |
 

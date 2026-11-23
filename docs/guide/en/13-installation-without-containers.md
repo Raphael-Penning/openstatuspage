@@ -59,12 +59,12 @@ Options of `install`:
 | `--base-url URL` | Public URL of the status page (`BASE_URL`). |
 | `--version X.Y.Z` | Install this release instead of the latest one. |
 | `--tarball FILE` | Install a local tarball; `SHA256SUMS` must be next to it. |
-| `--with-postgres` | Install PostgreSQL from the distribution, create the database `openstatuspage` and the roles of `deploy/postgres/roles.sql` with generated passwords (stored root-only in `/etc/openstatuspage/.database-passwords`), allow their password login on the loopback interface, and point `DATABASE_URL` at it. Without it, SQLite in `/var/lib/openstatuspage` is used. |
+| `--with-postgres` | Install PostgreSQL from the distribution, create the database `openstatuspage` and the roles of `deploy/postgres/roles.sql` with generated passwords (stored root-only in `/etc/openstatuspage/.database-passwords`), allow their password login on the loopback interface, and point `DATABASE_URL` at it. On RHEL 9 and its rebuilds the script enables the `postgresql:16` (or `:15`) module stream first, because the default PostgreSQL 13 only gets owner-rights views for the public role ([security model](../../security-model.md)); it warns when the server is older than 15. Without the option, SQLite in `/var/lib/openstatuspage` is used. |
 | `--database-url URL` | Use an existing PostgreSQL (login of the app role). |
 | `--mode split` | The [split deployment](#split-deployment): public, admin and worker as three services. |
 | `--admin-url URL`, `--public-database-url URL` | Admin domain and login of the restricted public role, for `--mode split` (not needed with `--with-postgres`). |
 | `--with-postfix --mail-domain example.com` | A local send-only Postfix with DKIM, see [mail server](#mail-server). |
-| `--mail-hostname NAME`, `--mail-relayhost HOST`, `--dkim-selector NAME` | Only with `--with-postfix`: HELO name (default: the mail domain), a smarthost such as `[smtp.example.com]:587`, and the DKIM selector (default `osp`). |
+| `--mail-hostname NAME`, `--mail-relayhost HOST`, `--dkim-selector NAME` | Only with `--with-postfix`: HELO name (default: the mail domain), a smarthost such as `[smtp.example.com]:587` that accepts the server without a login (by IP address), and the DKIM selector (default `osp`). |
 | `--node MODE` | `system`: Node.js 22 from `PATH`; `bundled`: a private copy in `/opt/openstatuspage/node` from nodejs.org (checked against its `SHASUMS256.txt`). `auto` (default) uses a suitable `node` on `PATH` and installs the private copy otherwise. |
 | `--no-start` | Do not enable or start the service. |
 
@@ -195,7 +195,7 @@ release:
 ```bash
 scripts/build-bundle.sh 0.4.0-local.1          # writes dist/release/openstatuspage-0.4.0-local.1-linux-<arch>.tar.gz
 (cd dist/release && sha256sum -- *.tar.gz > SHA256SUMS)
-sudo bash scripts/install.sh install --tarball dist/release/openstatuspage-0.4.0-local.1-linux-x64.tar.gz
+sudo bash scripts/install.sh install --tarball dist/release/openstatuspage-0.4.0-local.1-linux-*.tar.gz
 ```
 
 Without the script, `pnpm start` runs the server from `apps/server`; it reads
@@ -244,6 +244,21 @@ any `SMTP_*` setting. The mail server:
   the split; change it if it overlaps with a network of your host) and only
   for senders of `MAIL_DOMAIN`.
 
+That network includes the Docker host (its gateway address), so any process on
+the host can send mail as `MAIL_DOMAIN`, signed with its key. Use the bundled
+server on a single-tenant host only; see the
+[security model](../../security-model.md#bundled-mail-server).
+
+**Upgrading an existing Compose install.** `compose.yaml` now always creates
+the `mail` network with a fixed subnet, also without the `mail` profile, and
+uses inline `configs`. Before `docker compose up -d` with the new file:
+
+- check `docker compose version`: 2.23.1 or newer is needed;
+- if `up` fails with `Pool overlaps with other one on this address space`
+  (the range is in use, for example by a second OpenStatusPage project on the
+  same host), set a free range in `.env`, e.g. `MAIL_SUBNET=172.30.252.0/28`,
+  different for every project.
+
 Without `MAIL_RELAYHOST` it delivers directly to the recipients' servers. That
 needs outbound port 25 (blocked by many cloud providers), a PTR record for the
 host's address that matches `MAIL_HOSTNAME` (default: `MAIL_DOMAIN`), and the
@@ -259,12 +274,21 @@ sudo bash install.sh install --with-postfix --mail-domain example.com
 ```
 
 installs Postfix and OpenDKIM, listening on `127.0.0.1` only (`inet_interfaces
-= loopback-only`, no local delivery, relaying only for `127.0.0.1`/`::1`),
-generates the key in `/etc/opendkim/keys/example.com/osp.private` and copies the
-public key to `/etc/openstatuspage/dkim`. It sets `SMTP_HOST=127.0.0.1`,
-`SMTP_PORT=25`, `SMTP_FROM` and `MAIL_DKIM_DIR` in the settings. The script
-refuses to take over a Postfix, Exim or Sendmail that was installed before;
-`--mail-relayhost` and `--mail-hostname` work like the Compose variables.
+= loopback-only`, no local delivery, relaying only for `127.0.0.1`/`::1` and
+only for senders of the mail domain), generates the key in
+`/etc/opendkim/keys/example.com/osp.private` and copies the public key to
+`/etc/openstatuspage/dkim`. It sets `SMTP_HOST=127.0.0.1`, `SMTP_PORT=25`,
+`SMTP_FROM` and `MAIL_DKIM_DIR` in the settings. The script refuses to take over
+a Postfix, Exim or Sendmail that was installed before; `--mail-hostname` works
+like the Compose variable.
+
+Every local user can connect to `127.0.0.1:25` and send as the mail domain
+(only root may use the `sendmail` command, and only mail received over SMTP is
+signed), so use it on a single-tenant host only. `--mail-relayhost` supports
+only smarthosts that accept the server without a login, for example by its IP
+address; for a provider that needs a username and password, set `SMTP_*` to
+the provider instead (see [another mail server](#another-mail-server)) or add
+the SASL settings to Postfix yourself.
 
 ### DNS records
 
@@ -273,7 +297,7 @@ records to publish for the sender domain, each with a copy button:
 
 | Record | Name | Value |
 | --- | --- | --- |
-| SPF | `example.com` | `v=spf1 ip4:<server-ipv4> ip6:<server-ipv6> -all`: put in the addresses the server sends from. If the domain already has an SPF record, add them to it; a domain must have only one. |
+| SPF | `example.com` | `v=spf1 ip4:<server-ipv4> ip6:<server-ipv6> -all`: put in the addresses the server sends from. With a smarthost (`MAIL_RELAYHOST`, `--mail-relayhost`) authorise the provider instead, usually with its `include:`, because the provider's servers deliver the mail. If the domain already has an SPF record, add them to it; a domain must have only one. |
 | DKIM | `osp._domainkey.example.com` | `v=DKIM1; k=rsa; p=…` (the generated key) |
 | DMARC | `_dmarc.example.com` | `v=DMARC1; p=quarantine; adkim=s; aspf=s`. Start with `p=none` while you check the reports, then tighten it. |
 
