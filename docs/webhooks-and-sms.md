@@ -3,7 +3,7 @@
 Besides email ([notifications.md](notifications.md)), notifications go to
 webhooks (Discord, Slack, Microsoft Teams, generic JSON) and by SMS: to
 admin-configured destinations and, when the admin allows it, to visitors. The
-guide chapter [Webhooks and SMS](guide/en/13-webhooks-and-sms.md) explains the
+guide chapter [Webhooks and SMS](guide/en/14-webhooks-and-sms.md) explains the
 set-up; this page is the reference.
 
 ## Events

@@ -1,10 +1,10 @@
 /**
  * Mail delivery status on the settings page: transport, sender, subscriber
- * and queue counts, last delivery and error, plus "send test email" and
- * "retry failed". Rendered inside the settings form, so it uses no <form> of
+ * and queue counts, last delivery and error, the DNS records of the bundled
+ * mail server, plus "send test email" and "retry failed". Rendered inside the settings form, so it uses no <form> of
  * its own (Enter in the address field sends the test email instead of saving).
  */
-import { TestEmailInput, type MailTransportKind, type NotificationStatus } from '@openstatuspage/shared';
+import { TestEmailInput, type MailDnsRecords, type MailTransportKind, type NotificationStatus } from '@openstatuspage/shared';
 import { clsx } from 'clsx';
 import { CircleCheck, CircleX, Info, RotateCcw, Send, TriangleAlert } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
@@ -15,6 +15,7 @@ import { testResultMessage, type TestEmailResponse } from '../lib/notifications'
 import { useAdminMutation, useNotificationStatus } from '../lib/queries';
 import { useForm } from '../lib/useForm';
 import { useSession } from '../session';
+import { CopyField } from './CopyField';
 import { TextField } from './fields';
 import { useToast } from './Toast';
 import { Badge, Button, QueryState } from './ui';
@@ -154,6 +155,8 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
         </Fact>
       </dl>
 
+      <MailDnsRecordsSection dns={s.dns} />
+
       <div className="flex flex-col gap-3 border-t border-border pt-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
           <TextField
@@ -197,5 +200,26 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * SPF, DKIM and DMARC records for the bundled mail server (MAIL_DKIM_DIR), each
+ * with a copy button. Renders nothing without a bundled server (`dns` null).
+ */
+export function MailDnsRecordsSection({ dns }: { dns: MailDnsRecords | null }) {
+  const { t } = useTranslation('admin');
+  if (!dns) return null;
+  return (
+    <section aria-labelledby="mail-dns-title" className="flex flex-col gap-3 border-t border-border pt-4">
+      <h4 id="mail-dns-title" className="text-sm font-semibold">
+        {t('notifications.dnsTitle')}
+      </h4>
+      <p className="text-sm text-muted">{t('notifications.dnsIntro', { domain: dns.domain })}</p>
+      {dns.records.map((r) => (
+        <CopyField key={r.kind} label={t(`notifications.dnsKinds.${r.kind}`, { name: r.name })} value={r.value} />
+      ))}
+      <p className="text-sm text-muted">{t('notifications.dnsDmarcHint')}</p>
+    </section>
   );
 }

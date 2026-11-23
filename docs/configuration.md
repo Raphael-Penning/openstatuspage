@@ -188,12 +188,28 @@ for setup examples, deliverability and troubleshooting.
 | `SMTP_PASSWORD` | – | Password for SMTP authentication. |
 | `SMTP_FROM` | – | Sender, e.g. `Example Status <status@example.com>`. Required for `smtp` and `log`. |
 | `SMTP_TLS_REJECT_UNAUTHORIZED` | `true` | Verify the SMTP server certificate. Only set `false` for relays with self-signed certificates inside a trusted network. |
+| `MAIL_DKIM_DIR` | – | Directory with the DKIM **public** keys of the bundled mail server (`<domain>.<selector>.txt` in zone-file format, as written by `rspamadm dkim_keygen` or `opendkim-genkey`). The **Email delivery** panel then shows the SPF, DKIM and DMARC records to publish for the domain of `SMTP_FROM`. Set by the Compose files and `scripts/install.sh` when the bundled Postfix is used; mount it read-only, it must never contain private keys. |
+
+The bundled mail server (`postfix` service) is set up by the Compose files and
+`scripts/install.sh`, not by the app. These variables only steer that setup:
+
+| Variable | Default | Used by | Description |
+| --- | --- | --- | --- |
+| `COMPOSE_PROFILES` | – | Compose | `mail` starts the `postfix` service. |
+| `MAIL_DOMAIN` | – | Compose, `install.sh` (`--mail-domain`) | Sender domain of the bundled mail server: mails come from `status@MAIL_DOMAIN`. With Compose it also sets `SMTP_HOST=postfix`, `SMTP_FROM` and `MAIL_DKIM_DIR` unless those are set in `.env`. |
+| `MAIL_HOSTNAME` | `MAIL_DOMAIN` | Compose, `install.sh` (`--mail-hostname`) | Host name in the HELO greeting; should match the PTR record of the server's address. |
+| `MAIL_RELAYHOST` | – | Compose, `install.sh` (`--mail-relayhost`) | Smarthost to send through, e.g. `[smtp.example.com]:587`. Without it the server delivers directly to the recipients' servers. |
+| `MAIL_RELAYHOST_USERNAME`, `MAIL_RELAYHOST_PASSWORD` | – | Compose | Login of the smarthost (Compose only; `install.sh` does not set them). |
+| `MAIL_SUBNET` | `172.30.250.0/28` (split: `172.30.251.0/28`) | Compose | Subnet of the internal network between app and `postfix`. Change it when it overlaps with a network of the host. |
+| `DKIM_SELECTOR` | `osp` | Compose, `install.sh` (`--dkim-selector`) | DKIM selector: the DNS name is `<selector>._domainkey.<MAIL_DOMAIN>`. |
 
 With Docker Compose every variable goes into the `.env` next to `compose.yaml`
 (`deploy/compose/.env` in a clone); the whole file reaches the container and
-`docker compose up -d` applies changes. Only `DATABASE_URL`, `HOST` and `PORT`
-are set by `compose.yaml` itself (use `HOST_PORT` for the published address
-and port, default `127.0.0.1:3000`).
+`docker compose up -d` applies changes. `compose.yaml` itself sets `DATABASE_URL`,
+`SECRET_KEY`, `HOST` and `PORT`, and the mail variables `SMTP_HOST`, `SMTP_FROM`
+and `MAIL_DKIM_DIR` when `MAIL_DOMAIN` is set; a value in `.env` for the mail
+variables wins. Use `HOST_PORT` for the published address and port (default
+`127.0.0.1:3000`).
 
 `BASE_URL` must be the public URL of the status page: all links in emails use it.
 Confirmation and unsubscribe links are signed with `SUBSCRIPTION_TOKEN_KEY`
@@ -205,7 +221,7 @@ Webhooks (Discord, Slack, Microsoft Teams, generic JSON) and SMS are configured 
 the management UI under **Administration → Webhooks & SMS**, not with environment
 variables. See [webhooks-and-sms.md](webhooks-and-sms.md) for the
 events, formats, delivery and the SMS providers, and the
-[guide chapter](guide/en/13-webhooks-and-sms.md) for the set-up.
+[guide chapter](guide/en/14-webhooks-and-sms.md) for the set-up.
 
 - Admin secrets (webhook URLs, extra header values, generic signing secrets and SMS
   provider credentials) are encrypted with `SECRET_KEY`, like the monitoring

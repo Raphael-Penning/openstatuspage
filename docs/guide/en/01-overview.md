@@ -61,7 +61,7 @@ maintenance is in progress, its services show *Maintenance* on the public page.
 **Subscribers** receive emails about public incidents and maintenance, if you
 enable [email subscriptions](07-email-subscriptions.md). Webhooks (Discord, Slack,
 Teams, generic JSON) and SMS can get the same notifications, see
-[Webhooks and SMS](13-webhooks-and-sms.md).
+[Webhooks and SMS](14-webhooks-and-sms.md).
 
 ## How a service gets its status
 

@@ -65,7 +65,7 @@ Wartung läuft, zeigen ihre Services auf der öffentlichen Seite *Wartung*.
 **Abonnenten** bekommen E-Mails zu öffentlichen Vorfällen und Wartungen, wenn
 du [E-Mail-Abonnements](07-email-subscriptions.md) aktivierst. Webhooks (Discord,
 Slack, Teams, generisches JSON) und SMS können dieselben Benachrichtigungen
-erhalten, siehe [Webhooks und SMS](13-webhooks-and-sms.md).
+erhalten, siehe [Webhooks und SMS](14-webhooks-and-sms.md).
 
 ## Wie ein Service seinen Status bekommt
 

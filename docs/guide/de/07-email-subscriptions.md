@@ -4,7 +4,7 @@ Besucher der öffentlichen Seite können E-Mail-Benachrichtigungen zu
 öffentlichen Vorfällen und Wartungen abonnieren, entweder für alle Updates
 oder für ausgewählte Services. Abonnements sind aus, bis du einen Mailserver
 konfigurierst und sie aktivierst. Webhooks und SMS funktionieren genauso und sind
-im Kapitel [Webhooks und SMS](13-webhooks-and-sms.md) beschrieben.
+im Kapitel [Webhooks und SMS](14-webhooks-and-sms.md) beschrieben.
 
 ## Überblick
 
@@ -23,6 +23,12 @@ sind **und** eine Versandart (`smtp` oder `log`) konfiguriert ist. Aktivierst
 du Abonnements ohne Versandart, zeigt die Einstellungsseite eine Warnung.
 
 ## Mailserver
+
+Die Compose-Dateien und das Installationsskript können ein Postfix nur zum
+Versenden mitbringen, das mit DKIM signiert und keine der Variablen unten
+braucht; die Einstellungsseite zeigt dann die zu veröffentlichenden
+DNS-Einträge. Siehe [Mailserver](13-installation-without-containers.md#mailserver).
+Die Variablen unten wählen jeden anderen Server und haben immer Vorrang.
 
 | Variable | Standard | Beschreibung |
 | --- | --- | --- |
@@ -243,7 +249,8 @@ von `SMTP_FROM` gilt:
   Anbieter erlauben, z. B. `v=spf1 include:_spf.mail-provider.example -all`.
 - **DKIM**: Lass den Mailserver oder Anbieter ausgehende E-Mails signieren und
   veröffentliche den öffentlichen Schlüssel im DNS. OpenStatusPage signiert
-  selbst nicht.
+  selbst nicht; das mitgelieferte Postfix tut es, und die Einstellungsseite
+  zeigt seinen Eintrag.
 - **DMARC**: Veröffentliche eine Richtlinie, z. B.
   `_dmarc.example.com TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"`,
   und achte darauf, dass SPF oder DKIM zur Absender-Domain passen.

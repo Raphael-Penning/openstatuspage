@@ -50,8 +50,11 @@ Rules that apply to all variables:
 
 With Docker Compose every variable goes into `.env` next to `compose.yaml`;
 the whole file reaches the container, and `docker compose up -d` applies a
-change (see [Installation](02-installation.md#settings-in-env)). Only
-`DATABASE_URL` is set by `compose.yaml` itself. On Kubernetes put the
+change (see [Installation](02-installation.md#settings-in-env)). `compose.yaml`
+itself sets `DATABASE_URL`, `SECRET_KEY`, `HOST` and `PORT`, and the mail
+variables `SMTP_HOST`, `SMTP_FROM` and `MAIL_DKIM_DIR` when `MAIL_DOMAIN` is set
+(a value in `.env` wins). The variables of the bundled mail server are listed in
+[configuration](../../configuration.md#email-notifications). On Kubernetes put the
 variables into the secret `openstatuspage` or the `env:` list of
 `deployment.yaml`.
 

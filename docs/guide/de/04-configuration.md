@@ -53,7 +53,11 @@ Für alle Variablen gilt:
 Bei Docker Compose kommt jede Variable in `.env` neben `compose.yaml`; die
 ganze Datei landet im Container, und `docker compose up -d` übernimmt eine
 Änderung (siehe [Installation](02-installation.md#einstellungen-in-env)).
-Nur `DATABASE_URL` setzt `compose.yaml` selbst. Unter Kubernetes kommen die
+`compose.yaml` setzt selbst `DATABASE_URL`, `SECRET_KEY`, `HOST` und `PORT`
+sowie die Mail-Variablen `SMTP_HOST`, `SMTP_FROM` und `MAIL_DKIM_DIR`, wenn
+`MAIL_DOMAIN` gesetzt ist (ein Wert in `.env` gewinnt). Die Variablen des
+mitgelieferten Mailservers stehen in der
+[Konfigurationsreferenz](../../configuration.md#email-notifications). Unter Kubernetes kommen die
 Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 `deployment.yaml`.
 

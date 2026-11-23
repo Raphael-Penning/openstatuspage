@@ -158,6 +158,11 @@ const EnvSchema = z.object({
   SMTP_FROM: z.string().max(320).optional(),
   /** Verify the SMTP server certificate. Only disable for testing with self-signed certificates. */
   SMTP_TLS_REJECT_UNAUTHORIZED: bool.default(true),
+  /**
+   * Directory with the DKIM public keys of the bundled mail server (`<domain>.<selector>.txt`,
+   * read-only). The admin portal then shows the DNS records to publish (SPF, DKIM, DMARC).
+   */
+  MAIL_DKIM_DIR: z.string().max(4096).optional(),
 
   /**
    * Base URL of the Umami server (https://umami.is) for the analytics of the public

@@ -27,8 +27,9 @@ management area.
 - **Auth**: local users (admin / editor) and optional OIDC single sign-on
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
-- **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
+- **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe; a send-only Postfix with DKIM is bundled (Compose and install script), or any SMTP server; the admin UI shows the SPF, DKIM and DMARC records to publish
 - **Webhooks and SMS**: team webhooks for Discord, Slack, Microsoft Teams and generic JSON (HMAC-signed), SMS through a configurable HTTP provider (presets for Twilio, Vonage, seven.io and MessageBird) and on-call numbers; visitors can subscribe by webhook or SMS (confirmed with a code), with a monthly SMS budget and an SSRF-guarded outbound delivery queue
+- **Deployment**: Docker Compose (single instance or split), Kubernetes with the Helm chart, or without containers: systemd units, install script, `.deb`/`.rpm` packages and release tarballs (see [installation without containers](docs/guide/en/13-installation-without-containers.md))
 - **Works without JavaScript**: every public page is rendered on the server and works without scripts (filters, subscriptions, language and theme are links and forms); scripts only enhance it
 - **Search engines and AI agents**: unique titles, canonical and language links, JSON-LD, `robots.txt`, a sitemap index with page, incident and service sitemaps, and `llms.txt` (see the [public page guide](docs/guide/en/12-public-page.md))
 - **Content pages and images**: about, legal notice, privacy policy, accessibility statement and your own pages, written in Markdown per language (English, German) and rendered on the server; PNG, JPEG, WebP and ICO uploads for the logo, favicon and page images (see the [public page guide](docs/guide/en/12-public-page.md#content-pages-and-images))
@@ -47,7 +48,7 @@ curl -fsSLO https://github.com/Raphael-Penning/openstatuspage/releases/latest/do
 curl -fsSL -o .env https://github.com/Raphael-Penning/openstatuspage/releases/latest/download/env.example
 printf 'SECRET_KEY=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -hex 16)" >> .env
 chmod 600 .env
-# edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD (and HOST_PORT / TRUST_PROXY for your proxy)
+# edit .env: BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, MAIL_DOMAIN (and HOST_PORT / TRUST_PROXY for your proxy)
 docker compose up -d
 ```
 
@@ -57,8 +58,10 @@ open `BASE_URL/admin` and log in. With an `https://` `BASE_URL` the login
 cookie is Secure, so logging in over plain `http://<host>:3000` does not
 work; before the proxy is ready use `http://localhost:3000` on the host
 (e.g. through `ssh -L 3000:127.0.0.1:3000 <host>`). All settings,
-including mail and single sign-on, go into `.env`; keep a copy of
-`SECRET_KEY` and `POSTGRES_PASSWORD`. The downloaded files are pinned to
+including mail and single sign-on, go into `.env`. With `MAIL_DOMAIN` set, the
+bundled send-only Postfix sends the mails; publish the DNS records shown in
+**Settings → Email delivery**. Keep a copy of `SECRET_KEY` and
+`POSTGRES_PASSWORD`. The downloaded files are pinned to
 their release via `OSP_VERSION` in `.env`; change it deliberately to
 upgrade. Later commands are plain `docker compose ...` in that directory.
 
@@ -86,6 +89,9 @@ database role that can only read public data, see the
   integration, daily work, email subscriptions, backups, upgrades and a
   security checklist (also available in German and inside the management UI
   under **Help**)
+- [Installation without containers](docs/guide/en/13-installation-without-containers.md):
+  install script, packages and release tarballs for systemd, with optional
+  local PostgreSQL and Postfix
 - [Documentation index](docs/README.md): configuration, API, monitoring
   adapters, OIDC, architecture design and releasing
 - [HTTP API reference](docs/api.md): [JSON:API 1.1](https://jsonapi.org/format/1.1/)
