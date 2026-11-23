@@ -45,8 +45,8 @@ Open *Administration → Single sign-on* and choose *Add provider*.
 | Name | Shown on the login button. |
 | Button order | Buttons are sorted by this number (ascending), then by name. |
 | Enabled | Only enabled providers get a button; the routes of a disabled provider answer `oidc_unavailable`. |
-| Issuer URL | The issuer whose `/.well-known/openid-configuration` the server can reach. Must be `https://` in production (`NODE_ENV=production`); plain `http://` is only accepted for local test IdPs. No credentials, query or fragment. |
-| Client ID / Client secret | From the client registration. The secret is **write-only**: it is stored encrypted with `SECRET_KEY` (AES-256-GCM) and never shown again; leave the field empty to keep it, or tick *Remove the stored secret* for a public client. |
+| Issuer URL | The issuer whose `/.well-known/openid-configuration` the server can reach. Must be `https://` in production (`NODE_ENV=production`); plain `http://` is refused when `NODE_ENV=production` (the environment provider keeps accepting it, as in 0.3.x). No credentials, query or fragment. |
+| Client ID / Client secret | From the client registration. The secret is **write-only**: it is stored encrypted with `SECRET_KEY` (AES-256-GCM) and never shown again; leave the field empty to keep it, or tick *Remove the stored secret (public client)*. |
 | Scopes | Space separated, must contain `openid`. Add the scope your IdP needs for groups or roles. |
 | Create users on their first sign-in | Off by default. Only for e-mail addresses the IdP marks as verified (`email_verified: true`). |
 | Allowed e-mail domains | Optional, one per line. When set, only **verified** addresses of exactly these domains (no subdomains) may sign in through this provider, also users that are already linked (`domain_not_allowed`). |
@@ -69,7 +69,8 @@ URL, endpoints that are not https, no authorization code flow). It follows the
 rules of every request an admin can trigger: admins only, at most 10 tests per
 minute, a 10 second time limit, at most 256 KiB, no redirects followed, and
 messages without credentials or query strings. Only a plain `GET` is sent; the
-client id and secret never leave the server.
+client id and secret never leave the server. Like monitoring sources, the test
+also reaches hosts inside your network.
 
 Every change is written to the audit log (`oidc_provider.create`, `.update`,
 `.delete`) with the changed fields; the secret only as `set` or `removed`.
