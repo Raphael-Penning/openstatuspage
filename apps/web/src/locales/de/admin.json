@@ -995,7 +995,7 @@
     "requeued_one": "{{count}} E-Mail erneut eingereiht.",
     "requeued_other": "{{count}} E-Mails erneut eingereiht.",
     "dnsTitle": "DNS-Einträge für den mitgelieferten Mailserver",
-    "dnsIntro": "Veröffentliche diese TXT-Einträge für {{domain}}, damit empfangende Server die E-Mails annehmen. Ersetze die Platzhalter im SPF-Eintrag durch die öffentlichen Adressen, von denen der Server sendet (ohne IPv6 entfällt der ip6-Teil). Setze für diese Adressen auch einen PTR-Eintrag (Reverse DNS).",
+    "dnsIntro": "Veröffentliche diese TXT-Einträge für {{domain}}, damit empfangende Server die E-Mails annehmen. Ersetze die Platzhalter im SPF-Eintrag durch die öffentlichen Adressen, von denen der Server sendet (ohne IPv6 entfällt der ip6-Teil); hat die Domain schon einen SPF-Eintrag, ergänze ihn um diese Adressen, statt einen zweiten anzulegen. Setze für diese Adressen auch einen PTR-Eintrag (Reverse DNS).",
     "dnsDmarcHint": "Beginne mit p=none, während du die DMARC-Berichte prüfst, und verschärfe danach auf p=quarantine oder p=reject.",
     "dnsKinds": {
       "spf": "SPF ({{name}})",
