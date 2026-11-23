@@ -18,6 +18,9 @@ import { ThemeProvider } from '../../lib/theme';
 import { settingsDocument } from '../../public/a11y/documents';
 import { settings } from '../../public/a11y/fixtures';
 import { axeViolations, installBrowserStubs, settle } from '../../public/a11y/harness';
+import { guideFiles } from '../../help/guide';
+import { topicSlug } from '../../help/markdown';
+import { THEME_GUIDE_PATH } from '../pages/AppearancePage';
 import { adminRoutes } from '../routes';
 
 const AXE_TIMEOUT_MS = 30_000;
@@ -198,6 +201,9 @@ describe.each(['en', 'de'] as const)('Appearance (%s)', (lang) => {
       expect(container.textContent).toContain(i18n.t('admin:appearance.failsAA', { count: themes[2]!.contrastFailures.length }));
       // The public preview link carries ?theme=<id> (the server only honours it for signed-in admins).
       expect(container.querySelector('a[href="/?theme=forest"]')).toBeTruthy();
+      // The hint to the guide chapter on creating a theme (help area).
+      const guideLink = container.querySelector<HTMLAnchorElement>(`main a[href="${THEME_GUIDE_PATH}"]`);
+      expect(guideLink?.textContent?.trim()).toBe(i18n.t('admin:appearance.createGuide'));
       expect(await axeViolations()).toEqual([]);
 
       await click(byText('button', i18n.t('admin:appearance.previewLabel', { name: 'Forest' })));
@@ -213,6 +219,20 @@ describe.each(['en', 'de'] as const)('Appearance (%s)', (lang) => {
 
       await click(byText('button', i18n.t('admin:appearance.import')));
       expect(document.querySelector('dialog[open] input[type="file"]')).toBeTruthy();
+      expect(await axeViolations()).toEqual([]);
+    },
+    AXE_TIMEOUT_MS,
+  );
+
+  it(
+    'the theme guide hint opens the guide chapter in the help area',
+    async () => {
+      expect(guideFiles().map(topicSlug)).toContain(THEME_GUIDE_PATH.split('/').pop());
+      const container = await render('/admin/appearance', lang);
+      await click(container.querySelector(`main a[href="${THEME_GUIDE_PATH}"]`));
+      const title = lang === 'de' ? 'Ein Theme erstellen' : 'Creating a theme';
+      for (let i = 0; i < 300 && container.querySelector('main h1')?.textContent?.trim() !== title; i++) await settle();
+      expect(container.querySelector('main h1')?.textContent?.trim()).toBe(title);
       expect(await axeViolations()).toEqual([]);
     },
     AXE_TIMEOUT_MS,

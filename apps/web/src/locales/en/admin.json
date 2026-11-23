@@ -1566,6 +1566,7 @@
     "title": "Appearance",
     "description": "Themes of the public status page: colors, corners, fonts and spacing in light and dark mode. Built-in themes and the themes folder of the server are read-only; uploaded themes can be edited.",
     "import": "Import theme",
+    "createGuide": "How do I create a theme?",
     "accentOverride": "The accent color {{color}} of the settings replaces the accent of every theme. Remove it in the settings to use the theme's own accent.",
     "empty": "No themes.",
     "fields": {
