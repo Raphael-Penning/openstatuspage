@@ -159,11 +159,15 @@ How the jobs run:
   version and the SHA-256 of its tarball and `checksums.txt` are pinned in
   the job, like kubeconform) and builds `.deb` and `.rpm` for both
   architectures from the tarballs, then writes `SHA256SUMS`.
-- `install-test` starts a Debian 12 and a Rocky Linux 9 container with systemd
-  and runs `install.sh install` with the x64 tarball (Debian with
-  `--with-postgres`), checks the service and `/api/health`, reruns the install
-  (the settings must not change), runs `update` and `uninstall` (data must
-  stay), and finally installs, starts and removes the `.deb`/`.rpm`.
+- `install-test` starts Debian 12 and Rocky Linux 9 containers with systemd
+  and runs `install.sh install` with the x64 tarball in three variants: SQLite
+  on Debian, `--with-postgres --with-postfix` on Rocky, and `--mode split
+  --with-postgres --with-postfix` on Debian. It checks the services and
+  `/api/health`, the PostgreSQL version (15 or newer), the DKIM public key and
+  that Postfix refuses foreign senders, that the public user of the split
+  cannot read the main settings, reruns the install (the settings must not
+  change), runs `update` and `uninstall` (data must stay), and finally
+  installs, starts and removes the `.deb`/`.rpm` (Debian and Rocky entries).
 - Pull requests run `bundle` (x64 only), `packages` and `install-test` as a dry
   run with the version `<package.json version>-ci.<run number>`; pushes to
   `main` skip them. For a `v*` tag all three run for both architectures, and
