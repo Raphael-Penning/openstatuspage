@@ -111,6 +111,12 @@ function registerPageRoutes(app: FastifyInstance): void {
   app.patch('/api/admin/pages/:id', typed, async (req) => {
     const { id } = parse(IdParams, req.params);
     const current = await get(id);
+    const patch = { ...asObject(req.body) };
+    // Localized fields merge per language: {"title":{"en":"X"}} keeps the German title.
+    for (const key of ['title', 'description', 'body'] as const) {
+      const value = patch[key];
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) patch[key] = { ...current[key], ...value };
+    }
     const input = parse(SitePageInput, {
       slug: current.slug,
       title: current.title,
@@ -120,7 +126,7 @@ function registerPageRoutes(app: FastifyInstance): void {
       showInFooter: current.showInFooter,
       showInNav: current.showInNav,
       sortOrder: current.sortOrder,
-      ...asObject(req.body),
+      ...patch,
     });
     const system = current.systemKey !== null;
     try {

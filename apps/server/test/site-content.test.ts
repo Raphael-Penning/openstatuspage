@@ -70,6 +70,11 @@ describe('content pages (admin)', () => {
     const patched = await admin.patch(`/api/admin/pages/${page.id}`, { published: true, showInNav: true });
     expect(patched.statusCode, patched.body).toBe(200);
     expect(data<Any>(patched)).toMatchObject({ published: true, showInNav: true, title: { en: 'FAQ' } });
+    // Localized fields merge per language.
+    const oneLanguage = await admin.patch(`/api/admin/pages/${page.id}`, { title: { en: 'Questions' }, body: { de: '# Hallo' } });
+    expect(oneLanguage.statusCode, oneLanguage.body).toBe(200);
+    expect(data<Any>(oneLanguage)).toMatchObject({ title: { en: 'Questions', de: 'Häufige Fragen' }, body: { en: '# Hi', de: '# Hallo' } });
+    expect((await admin.patch(`/api/admin/pages/${page.id}`, { title: 'plain' })).statusCode).toBe(400);
 
     expect((await admin.delete(`/api/admin/pages/${page.id}`)).statusCode).toBe(204);
     const system = data<Any[]>(await admin.get('/api/admin/pages'))[0];
