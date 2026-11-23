@@ -293,6 +293,28 @@ describe('theme management API', () => {
     expect((await admin.delete('/api/admin/themes/ocean?uploadedCopy=true')).statusCode).toBe(409);
   });
 
+  it('finds the stylesheet of a theme another replica activated a moment ago', async () => {
+    const start = Date.now();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      const a = new ThemeService(t.db, dir, log());
+      const b = new ThemeService(t.db, dir, log());
+      await b.active();
+      // Replica A activates forest and renders a page with its stylesheet.
+      await t.db.updateTable('active_theme').set({ theme_id: 'forest' }).execute();
+      const [sheet] = (await a.publicInfo()).stylesheets;
+      const file = sheet!.split('/').pop()!;
+      // Replica B still has the old theme cached: a miss right away stays a miss (no database read per request)...
+      expect(await b.stylesheet(file)).toBeNull();
+      // ...but once its cache is a little older, a miss reads the active theme again.
+      now.mockReturnValue(start + 600);
+      expect((await b.stylesheet(file))?.css).toBe(themeTokensCss(BUILTIN_THEMES.find((x) => x.id === 'forest')!));
+      expect(await b.stylesheet('0123456789abcdef0123.css')).toBeNull();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('is for admins only', async () => {
     await createUser(t.db, { email: 'editor@example.com', role: 'editor' });
     const editor = client(t.app, { cookie: await login(t.app, 'editor@example.com') });

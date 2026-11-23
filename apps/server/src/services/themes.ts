@@ -77,6 +77,8 @@ interface Stylesheet {
 const MAX_FOLDER_FILES = 200;
 /** How long the active theme is reused before it is read again (ms). */
 const ACTIVE_TTL_MS = 5_000;
+/** A stylesheet miss reads the active theme again if it is older than this (ms). */
+const MISS_REFRESH_MS = 500;
 /** Stylesheets kept besides the active ones (recently rendered pages, previews). */
 const MAX_STYLESHEETS = 32;
 /** Hex digits of the content hash in a stylesheet URL. */
@@ -373,11 +375,22 @@ export class ThemeService {
     return { stylesheets: hashes.map(stylesheetUrl), hashes };
   }
 
-  /** The stylesheet for a file name (`<hash>.css`), after making sure the active theme's are known. */
+  /**
+   * The stylesheet for a file name (`<hash>.css`), after making sure the
+   * active theme's are known. On a miss the active theme is read again (at
+   * most every MISS_REFRESH_MS): another replica may have rendered a page
+   * with a theme activated a moment ago, before this one's cache expired.
+   */
   async stylesheet(file: string): Promise<Stylesheet | null> {
     const m = FILE_PATTERN.exec(file);
     if (!m) return null;
     await this.active();
+    const sheet = this.sheets.get(m[1]!);
+    if (sheet) return sheet;
+    if (this.cached && Date.now() - this.cached.at >= MISS_REFRESH_MS) {
+      this.invalidate();
+      await this.active();
+    }
     return this.sheets.get(m[1]!) ?? null;
   }
 }
