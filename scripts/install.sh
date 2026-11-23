@@ -544,6 +544,10 @@ setup_postfix() {
       ;;
   esac
 
+  # Every local process can reach 127.0.0.1:25, so relaying is limited to
+  # senders of MAIL_DOMAIN, only mail received over SMTP is signed (no milter
+  # for the sendmail command), and only root may use sendmail. The host must
+  # still be single-tenant: any local user can submit over SMTP.
   postconf -e \
     'inet_interfaces = loopback-only' \
     'mynetworks = 127.0.0.0/8 [::1]/128' \
@@ -554,13 +558,16 @@ setup_postfix() {
     'local_transport = error:local delivery is disabled' \
     'smtpd_relay_restrictions = permit_mynetworks, reject' \
     'smtpd_recipient_restrictions = permit_mynetworks, reject' \
+    "smtpd_sender_restrictions = check_sender_access inline:{ $MAIL_DOMAIN=OK }, reject" \
+    'authorized_submit_users = root' \
     'smtpd_tls_security_level = none' \
     'smtp_tls_security_level = may' \
     'disable_vrfy_command = yes' \
     'milter_protocol = 6' \
     'milter_default_action = accept' \
-    'smtpd_milters = inet:127.0.0.1:8891' \
-    'non_smtpd_milters = inet:127.0.0.1:8891'
+    'smtpd_milters = inet:127.0.0.1:8891'
+  # Older runs of this script also signed mail from the sendmail command.
+  postconf -X non_smtpd_milters
   [ -z "$MAIL_RELAYHOST" ] || postconf -e "relayhost = $MAIL_RELAYHOST"
 
   # DKIM key, generated once.
