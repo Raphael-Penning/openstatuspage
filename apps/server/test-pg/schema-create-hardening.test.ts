@@ -18,11 +18,20 @@ import { prepareDatabase } from '../src/startup.js';
 import { createTestDatabase, GRANT_ADVISORY_LOCKS, queryIn, SECRET_KEY, TOKEN_KEY, type PgTestDatabase } from './setup.js';
 
 const NOW = new Date().toISOString();
-const cleanups: (() => Promise<void>)[] = [];
+/**
+ * What the tests leave behind, by kind: connection pools are closed first,
+ * then the databases dropped, then the roles (a role that still owns a
+ * database cannot be dropped). Each kind in parallel: every DROP DATABASE
+ * waits for a checkpoint, and one after the other they took longer than the
+ * hook timeout on a slow CI runner while the other test files ran.
+ */
+const cleanups = { pools: [] as (() => Promise<void>)[], databases: [] as (() => Promise<void>)[], roles: [] as (() => Promise<void>)[] };
 
 afterAll(async () => {
-  for (const cleanup of cleanups.reverse()) await cleanup().catch(() => undefined);
-});
+  for (const kind of ['pools', 'databases', 'roles'] as const) {
+    await Promise.all(cleanups[kind].map((cleanup) => cleanup().catch(() => undefined)));
+  }
+}, 180_000);
 
 interface Log {
   info(obj: object, msg: string): void;
@@ -40,13 +49,13 @@ const asSuperuser = (pgdb: PgTestDatabase, text: string) => queryIn(process.env.
 
 async function testDatabase(): Promise<PgTestDatabase> {
   const pgdb = await createTestDatabase();
-  cleanups.push(() => pgdb.drop());
+  cleanups.databases.push(() => pgdb.drop());
   return pgdb;
 }
 
 async function connect(pgdb: PgTestDatabase, role: Config['APP_ROLE']): Promise<DB> {
   const db = await pgdb.connect(role);
-  cleanups.push(() => db.destroy());
+  cleanups.pools.push(() => db.destroy());
   return db;
 }
 
@@ -56,7 +65,7 @@ async function appRole(pgdb: PgTestDatabase, grants: string): Promise<{ name: st
   const password = randomBytes(12).toString('hex');
   await asSuperuser(pgdb, `create role ${name} login password '${password}'; ${grants.replaceAll('{role}', name)}`);
   await asSuperuser(pgdb, GRANT_ADVISORY_LOCKS(name));
-  cleanups.push(() => queryIn(process.env.PG_TEST_URL!, 'postgres', `drop role if exists ${name}`));
+  cleanups.roles.push(() => queryIn(process.env.PG_TEST_URL!, 'postgres', `drop role if exists ${name}`));
   const url = new URL(pgdb.ownerUrl);
   url.username = name;
   url.password = password;
@@ -120,7 +129,7 @@ describe('b) PostgreSQL 15+ layout: the owner of the database (not a superuser) 
     const pgdb = await testDatabase();
     const app = await appRole(pgdb, `alter database ${databaseOf(pgdb)} owner to {role}; grant create on schema public to public`);
     const db = await createDb(configFor(pgdb, app.url));
-    cleanups.push(() => db.destroy());
+    cleanups.pools.push(() => db.destroy());
     const log = newLog();
     await prepareDatabase(db, configFor(pgdb, app.url), log);
     expect(log.warnings).toEqual([]);
@@ -150,7 +159,7 @@ describe('c) an app role that may not revoke (the schema belongs to a superuser)
     for (const role of ['all', 'admin'] as const) {
       const config = configFor(pgdb, app.url, role);
       const db = await createDb(config);
-      cleanups.push(() => db.destroy());
+      cleanups.pools.push(() => db.destroy());
       const log = newLog();
       await prepareDatabase(db, config, log);
       expect(log.warnings).toEqual([expect.stringContaining(command)]);
@@ -197,7 +206,7 @@ describe('c) an app role that may not revoke (the schema belongs to a superuser)
     const app = await appRole(pgdb, `grant connect, create on database ${databaseOf(pgdb)} to {role}; grant create on schema public to public`);
     const config = configFor(pgdb, app.url);
     const db = await createDb(config);
-    cleanups.push(() => db.destroy());
+    cleanups.pools.push(() => db.destroy());
     const log = newLog();
     await prepareDatabase(db, config, log);
     const command = `GRANT CREATE ON SCHEMA public TO ${app.name}; REVOKE CREATE ON SCHEMA public FROM PUBLIC;`;
@@ -226,7 +235,7 @@ describe('c2) PostgreSQL 14 layout: the app role owns the database, a superuser 
     const asApp = (text: string) => queryIn(app.url, databaseOf(pgdb), text);
     const config = configFor(pgdb, app.url, 'admin');
     const first = await createDb(config);
-    cleanups.push(() => first.destroy());
+    cleanups.pools.push(() => first.destroy());
     await prepareDatabase(first, config, newLog());
     const command = `GRANT CREATE ON SCHEMA public TO ${app.name}; REVOKE CREATE ON SCHEMA public FROM PUBLIC;`;
     expect(await schemaCreateLeft(first, pgdb.publicRole)).toEqual([command]);
@@ -241,7 +250,7 @@ describe('c2) PostgreSQL 14 layout: the app role owns the database, a superuser 
     const dbs: DB[] = [];
     for (let i = 0; i < 6; i++) {
       const db = await createDb(configFor(pgdb, app.url, i % 2 === 0 ? 'admin' : 'worker'));
-      cleanups.push(() => db.destroy());
+      cleanups.pools.push(() => db.destroy());
       dbs.push(db);
     }
     const logs = dbs.map(() => newLog());
@@ -274,7 +283,7 @@ describe('c2) PostgreSQL 14 layout: the app role owns the database, a superuser 
     );
     const config = configFor(pgdb, app.url, 'admin');
     const db = await createDb(config);
-    cleanups.push(() => db.destroy());
+    cleanups.pools.push(() => db.destroy());
     await prepareDatabase(db, config, newLog());
     // Not a takeover (search_path pinned, the overload is never called), but an ambiguous call:
     // the reason the warning asks for the command instead of calling this harmless.
@@ -370,7 +379,7 @@ describe('e) fresh install', () => {
       LOG_LEVEL: 'silent',
     });
     const db = await createDb(config);
-    cleanups.push(() => db.destroy());
+    cleanups.pools.push(() => db.destroy());
     const log = newLog();
     await prepareDatabase(db, config, log);
     expect(log.warnings).toEqual([]);
