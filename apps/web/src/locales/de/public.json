@@ -365,5 +365,11 @@
     "notFound": "Diese private Statusseite gibt es nicht oder sie ist nicht mehr verfügbar.",
     "back": "Zurück zur Übersicht",
     "home": "Übersicht dieser privaten Statusseite"
+  },
+  "page": {
+    "loading": "Seite",
+    "notFound": "Diese Seite gibt es nicht oder sie ist nicht veröffentlicht.",
+    "updated": "Zuletzt aktualisiert:",
+    "table": "Tabelle (scrollbar)"
   }
 }

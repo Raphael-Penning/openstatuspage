@@ -365,5 +365,11 @@
     "notFound": "This private status page does not exist or is no longer available.",
     "back": "Back to the overview",
     "home": "Overview of this private status page"
+  },
+  "page": {
+    "loading": "Page",
+    "notFound": "This page does not exist or is not published.",
+    "updated": "Last updated:",
+    "table": "Table (scrollable)"
   }
 }
