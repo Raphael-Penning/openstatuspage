@@ -32,7 +32,14 @@ breaking changes.
   content pages as `AboutPage` / `WebPage`; incident articles get the logo as
   image and the affected services as `about`. Every JSON-LD object is checked
   against schema.org and Google's required fields in the tests.
+- **Public API**: `GET /api/public/pages/{slug}` returns the published content pages;
+  the settings document gains `pages` (navigation and footer links) and `logoSize`.
 - Migration `0014_site_pages_uploads`.
+
+### Changed
+
+- **Maintenance windows** are marked up as `Event` in the structured data (they were
+  `Article`). Incident pages stay `Article`.
 
 ## [0.3.1] - 2026-11-22
 
