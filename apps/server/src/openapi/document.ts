@@ -444,16 +444,18 @@ function successResponses(response: ResponseSpec): Record<string, Json> {
   switch (response.kind) {
     case 'resource': {
       const status = response.status ?? 200;
+      const content = {
+        [JSONAPI_MEDIA_TYPE]: {
+          schema: typedData('ResourceDocument', { type: 'object', properties: { type: { const: response.type } } }),
+          ...(response.example !== undefined ? { example: response.example } : {}),
+        },
+      };
       return {
+        ...(response.existing && status !== 200 ? { '200': { description: response.existing + attributesNote(response.attributes), content } } : {}),
         [String(status)]: {
           description: response.description + attributesNote(response.attributes),
           ...(status === 201 || status === 202 ? { headers: { Location: { description: 'URL of the resource.', schema: { type: 'string' } } } } : {}),
-          content: {
-            [JSONAPI_MEDIA_TYPE]: {
-              schema: typedData('ResourceDocument', { type: 'object', properties: { type: { const: response.type } } }),
-              ...(response.example !== undefined ? { example: response.example } : {}),
-            },
-          },
+          content,
         },
       };
     }

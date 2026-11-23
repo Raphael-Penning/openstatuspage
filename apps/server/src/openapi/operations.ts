@@ -66,7 +66,16 @@ export type RequestBody =
 
 export type ResponseSpec =
   /** A resource document (`data` is one resource). */
-  | { kind: 'resource'; type: string; status?: 200 | 201 | 202; description: string; attributes?: string; example?: unknown }
+  | {
+      kind: 'resource';
+      type: string;
+      status?: 200 | 201 | 202;
+      description: string;
+      attributes?: string;
+      example?: unknown;
+      /** A `201` that can also answer `200` (with this description), e.g. for bytes already stored. */
+      existing?: string;
+    }
   /** A collection document (`data` is an array). */
   | { kind: 'collection'; types: string[]; description: string; attributes?: string; example?: unknown }
   /** A meta-only document. */
@@ -1863,7 +1872,13 @@ export const OPERATIONS: readonly Operation[] = [
     request: { kind: 'binary', contentType: 'application/octet-stream', description: 'The image (PNG, JPEG, WebP or ICO), at most 1 MiB.' },
     rateLimit: perMinute(30),
     errors: [413, 415],
-    response: created('uploads', undefined, 'The new upload (`200` with the existing one for the same bytes).'),
+    response: {
+      kind: 'resource',
+      type: 'uploads',
+      status: 201,
+      description: 'The new upload, with a `Location` header.',
+      existing: 'The existing upload with the same bytes (nothing new is stored).',
+    },
   },
   {
     method: 'DELETE',

@@ -144,6 +144,10 @@ describe('the OpenAPI document', () => {
     const upload = full.paths['/api/admin/uploads']!.post as Record<string, any>;
     expect(Object.keys(upload.requestBody.content)).toEqual(['application/octet-stream']);
     expect(upload.responses['413']).toEqual({ $ref: '#/components/responses/PayloadTooLarge' });
+    // 201 for new bytes, 200 for bytes already stored; only the 201 carries a Location.
+    expect(Object.keys(upload.responses).slice(0, 2)).toEqual(['200', '201']);
+    expect(upload.responses['200'].headers).toBeUndefined();
+    expect(upload.responses['201'].headers.Location).toBeDefined();
     expect(upload['x-rate-limit']).toEqual({ max: 30, window: '1 minute', per: 'client IP address' });
     const login = full.paths['/api/auth/login']!.post as Record<string, any>;
     expect(login.responses['429']).toEqual({ $ref: '#/components/responses/TooManyRequests' });

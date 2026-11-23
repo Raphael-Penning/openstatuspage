@@ -4345,7 +4345,8 @@
           "content": {"application/octet-stream":{"schema":{"type":"string","contentMediaType":"application/octet-stream"}}}
         },
         "responses": {
-          "201": {"description":"The new upload (`200` with the existing one for the same bytes).","headers":{"Location":{"description":"URL of the resource.","schema":{"type":"string"}}},"content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"uploads"}}}}}]}}}},
+          "200": {"description":"The existing upload with the same bytes (nothing new is stored).","content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"uploads"}}}}}]}}}},
+          "201": {"description":"The new upload, with a `Location` header.","headers":{"Location":{"description":"URL of the resource.","schema":{"type":"string"}}},"content":{"application/vnd.api+json":{"schema":{"allOf":[{"$ref":"#/components/schemas/ResourceDocument"},{"type":"object","properties":{"data":{"type":"object","properties":{"type":{"const":"uploads"}}}}}]}}}},
           "400": {"$ref":"#/components/responses/BadRequest"},
           "401": {"$ref":"#/components/responses/Unauthorized"},
           "403": {"$ref":"#/components/responses/Forbidden"},
