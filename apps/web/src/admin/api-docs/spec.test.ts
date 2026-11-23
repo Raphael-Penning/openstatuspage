@@ -8,6 +8,7 @@ import {
   exampleOf,
   groupByTag,
   matchesQuery,
+  pathValueProblem,
   requestUrl,
   resolve,
   typeLabel,
@@ -62,6 +63,19 @@ describe('the API documentation helpers', () => {
     );
     expect(() => requestUrl('//evil.example.net/x', {}, {}, origin)).toThrow();
     expect(() => requestUrl('https://evil.example.net/x', {}, {}, origin)).toThrow();
+  });
+
+  it('refuse empty and dot path parameter values', () => {
+    expect(pathValueProblem('')).toBe('empty');
+    expect(pathValueProblem(undefined)).toBe('empty');
+    expect(pathValueProblem('.')).toBe('dot');
+    expect(pathValueProblem('..')).toBe('dot');
+    expect(pathValueProblem('...')).toBeNull();
+    expect(pathValueProblem('svc_1')).toBeNull();
+    for (const id of ['', '.', '..']) {
+      expect(() => requestUrl('/api/admin/incidents/{id}/updates', { id }, {}, origin)).toThrow();
+    }
+    expect(() => requestUrl('/api/admin/services/{id}', {}, {}, origin)).toThrow();
   });
 
   it('ask for tokens only where the session does not do', () => {

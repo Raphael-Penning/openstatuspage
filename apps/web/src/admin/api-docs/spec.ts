@@ -216,11 +216,26 @@ export function exampleBody(doc: OpenApiDocument, media: MediaType | undefined):
 }
 
 /**
+ * Why a path parameter value cannot be sent: empty, or `.`/`..` (the URL would
+ * point at another route after normalisation). Null when it is fine.
+ */
+export function pathValueProblem(value: string | undefined): 'empty' | 'dot' | null {
+  if (value === undefined || value === '') return 'empty';
+  if (value === '.' || value === '..') return 'dot';
+  return null;
+}
+
+/**
  * The URL of a request to this instance: path parameters filled in (encoded),
- * empty query values left out. Throws for a path that would leave the origin.
+ * empty query values left out. Throws for a path that would leave the origin
+ * and for path parameter values that pathValueProblem refuses.
  */
 export function requestUrl(path: string, pathValues: Record<string, string>, query: Record<string, string>, origin: string): string {
-  const filled = path.replace(/\{([^}]+)\}/g, (_m, name: string) => encodeURIComponent(pathValues[name] ?? ''));
+  const filled = path.replace(/\{([^}]+)\}/g, (_m, name: string) => {
+    const value = pathValues[name];
+    if (pathValueProblem(value)) throw new Error(`Invalid value for the path parameter ${name}`);
+    return encodeURIComponent(value!);
+  });
   const url = new URL(filled, origin);
   if (url.origin !== origin || !filled.startsWith('/') || filled.startsWith('//')) throw new Error('Only requests to this instance are allowed');
   for (const [name, value] of Object.entries(query)) if (value !== '') url.searchParams.append(name, value);
