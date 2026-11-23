@@ -361,12 +361,23 @@ export function slackPayload(m: ChannelMessage, ctx: RenderContext): unknown {
 
 // --- Microsoft Teams -----------------------------------------------------------------
 
+/**
+ * TextBlocks and FactSets render a markdown subset (emphasis, lists, links): its
+ * control characters are escaped with a backslash (CommonMark), so editor texts
+ * cannot add links or formatting.
+ */
+function teamsText(value: string): string {
+  return value.replace(/([\\*_~`[\]()#>+-])/g, '\\$1').replace(/^(\s*\d+)\./gm, '$1\\.');
+}
+
 export function teamsPayload(m: ChannelMessage, ctx: RenderContext): unknown {
   const t = texts(ctx.locale);
-  const body: unknown[] = [{ type: 'TextBlock', text: m.headline, weight: 'Bolder', size: 'Medium', wrap: true }];
-  if (m.text) body.push({ type: 'TextBlock', text: m.text, wrap: true });
-  if (m.fields.length > 0) body.push({ type: 'FactSet', facts: m.fields.map(([title, value]) => ({ title, value })) });
-  body.push({ type: 'TextBlock', text: ctx.siteName, isSubtle: true, size: 'Small', wrap: true });
+  const body: unknown[] = [{ type: 'TextBlock', text: teamsText(m.headline), weight: 'Bolder', size: 'Medium', wrap: true }];
+  if (m.text) body.push({ type: 'TextBlock', text: teamsText(m.text), wrap: true });
+  if (m.fields.length > 0) {
+    body.push({ type: 'FactSet', facts: m.fields.map(([title, value]) => ({ title: teamsText(title), value: teamsText(value) })) });
+  }
+  body.push({ type: 'TextBlock', text: teamsText(ctx.siteName), isSubtle: true, size: 'Small', wrap: true });
   const actions: unknown[] = [];
   if (m.url && m.urlLabel) actions.push({ type: 'Action.OpenUrl', title: m.urlLabel, url: m.url });
   if (ctx.manageUrl) actions.push({ type: 'Action.OpenUrl', title: t.manage, url: ctx.manageUrl });

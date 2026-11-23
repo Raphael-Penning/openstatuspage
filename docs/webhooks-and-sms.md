@@ -108,7 +108,9 @@ Every webhook and SMS provider request goes through one guard
 - **Microsoft Teams**: `{ "type": "message", "attachments": [ { "contentType":
   "application/vnd.microsoft.card.adaptive", "content": <Adaptive Card 1.4> } ] }`,
   the format the Teams **Workflows** trigger "When a Teams webhook request is
-  received" accepts. It answers `202 Accepted`. Office 365 connector URLs
+  received" accepts. It answers `202 Accepted`. Adaptive Cards render a
+  markdown subset; its control characters in editor text are escaped with a
+  backslash, so texts cannot add links or formatting. Office 365 connector URLs
   (`*.webhook.office.com`) are retired by Microsoft and not accepted for visitors.
 - **SMS**: one segment. Texts use GSM-7 where possible (typographic quotes,
   dashes and ellipses are replaced) and are shortened to 160 characters, or to 70

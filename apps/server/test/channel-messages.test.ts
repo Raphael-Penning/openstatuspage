@@ -113,6 +113,13 @@ describe('Microsoft Teams', () => {
       'https://status.example.com/s/abc/def',
     ]);
   });
+
+  it('escapes markdown in editor texts', () => {
+    const linked: ChannelEvent = { ...incident, incident: { ...incident.incident!, message: 'See [here](https://evil.example.com) *now*\n1. step' } };
+    const p = teamsPayload(eventMessage(linked, ctx), ctx) as { attachments: { content: { body: { text?: string }[] } }[] };
+    const texts = p.attachments[0]!.content.body.map((b) => b.text);
+    expect(texts[1]).toBe('See \\[here\\]\\(https://evil.example.com\\) \\*now\\*\n1\\. step');
+  });
 });
 
 describe('generic JSON', () => {
