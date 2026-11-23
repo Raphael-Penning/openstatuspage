@@ -110,21 +110,25 @@ abgeleitet. Die Vorlage zeigt beides.
 Jedes Theme wird im hellen und im dunklen Modus gegen **WCAG 2.2 AA** geprüft.
 Kurz gesagt:
 
-- Text (`text`, `muted`) braucht gegenüber Hintergrund, Karten- und
-  Einschubfarbe mindestens ein Kontrastverhältnis von **4,5 : 1**.
-- Bedienelemente und Statusfarben (`borderStrong`, `accent`, `focus`, die
-  Statusfarben) brauchen mindestens **3 : 1**.
+- Text (`text`, `muted`) und die Statustextfarben (`statusText.*`, falls
+  gesetzt) brauchen gegenüber Hintergrund, Karten- und Einschubfarbe mindestens
+  ein Kontrastverhältnis von **4,5 : 1**.
+- Bedienelemente und Statusflächen (`borderStrong`, `accent`, `focus`,
+  `status.*`) brauchen mindestens **3 : 1**.
+- Der Text auf gefüllten Akzent-Knöpfen braucht mindestens **4,5 : 1**. Er
+  erscheint als `accentButtonText auf accentButton`. Die Knopffarbe wird aus
+  `accent` abgeleitet, ändere also `accent`, um das zu beheben.
 - Dekorative Trennlinien (`border`) werden nicht geprüft.
 
 Der Editor zeigt den Kontrast live unter **Kontrast und Vorschau**. Ein
 fehlgeschlagenes Paar sieht so aus:
 
 ```text
-Hell: Nebentext auf Karten 2,4:1 (nötig 4,5:1)
+Hell: muted auf surface 2.40:1 (nötig 4.5:1)
 ```
 
-Das heißt: Im hellen Modus hat der Nebentext auf der Kartenfarbe ein
-Verhältnis von 2,4 zu 1, nötig sind aber mindestens 4,5 zu 1. Mach `muted`
+Das heißt: Im hellen Modus hat der Nebentext `muted` auf der Kartenfarbe
+`surface` ein Verhältnis von 2,40 zu 1, nötig sind aber mindestens 4,5 zu 1. Mach `muted`
 dunkler (oder `surface` heller) und prüfe erneut. Die Meldung nennt den Modus,
 den Vordergrund und den Hintergrund, du weißt also, welches Token du ändern
 musst.
