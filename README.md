@@ -28,6 +28,7 @@ management area.
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
+- **Webhooks and SMS**: team webhooks for Discord, Slack, Microsoft Teams and generic JSON (HMAC-signed), SMS through a configurable HTTP provider (presets for Twilio, Vonage, seven.io and MessageBird) and on-call numbers; visitors can subscribe by webhook or SMS (confirmed with a code), with a monthly SMS budget and an SSRF-guarded outbound delivery queue
 - **Works without JavaScript**: every public page is rendered on the server and works without scripts (filters, subscriptions, language and theme are links and forms); scripts only enhance it
 - **Search engines and AI agents**: unique titles, canonical and language links, JSON-LD, `robots.txt`, a sitemap index with page, incident and service sitemaps, and `llms.txt` (see the [public page guide](docs/guide/en/12-public-page.md))
 - **[JSON:API 1.1](docs/api.md) HTTP API and RSS/Atom feeds** (since 0.2.0; a breaking change for API clients of 0.1.x, see the [changelog](CHANGELOG.md))
