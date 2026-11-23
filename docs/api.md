@@ -390,7 +390,7 @@ error documents like everywhere else.
 | Method | Path | Response |
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes, once the database answers. Exists in every role; the role itself is only logged on start. |
-| GET | `/api/openapi.json` | The [OpenAPI 3.1 description](#openapi-description) (`application/json`, `ETag`): the public part for anonymous clients and public instances, the whole API for signed-in users and API tokens on `admin` and `all` instances. Not on worker instances. |
+| GET | `/api/openapi.json` | The [OpenAPI 3.1 description](#openapi-description) (`application/json`, `ETag`): the public part for anonymous clients and public instances, the whole API for signed-in users and API tokens on `admin` and `all` instances. `404` for the public part when the setting `publicApiDescription` is `false`. Not on worker instances. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 | GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/`, the short manage links `/s/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
