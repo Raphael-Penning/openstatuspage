@@ -4164,11 +4164,12 @@ Content-Type: application/vnd.api+json
 ```
 
 `dns` is null unless the bundled mail server is used (`MAIL_DKIM_DIR`, see
-[configuration.md](configuration.md#email-notifications)). Then it lists the records to publish
-for the domain of the sender: `{"domain": "example.com", "selector": "mail",
-"records": [{"kind": "spf" | "dkim" | "dmarc", "type": "TXT", "name": "...",
-"value": "..."}]}`. The SPF value contains the placeholders `<server-ipv4>` and
-`<server-ipv6>` for the addresses the mail server sends from.
+[configuration.md](configuration.md#email-notifications)) and a DKIM public key
+exists for the domain of the sender (`SMTP_FROM`). Then it lists the records to
+publish: `{"domain": "example.com", "selector": "osp", "records": [{"kind": "spf" |
+"dkim" | "dmarc", "type": "TXT", "name": "...", "value": "..."}]}`, for example the
+DKIM record `osp._domainkey.example.com`. The SPF value contains the placeholders
+`<server-ipv4>` and `<server-ipv6>` for the addresses the mail server sends from.
 
 </details>
 
