@@ -6,6 +6,8 @@ breaking changes.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-23
+
 ### Added
 
 - Starter template for your own theme in `contrib/themes/` (`starter.json`,
