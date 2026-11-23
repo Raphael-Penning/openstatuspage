@@ -107,21 +107,25 @@ The starter template shows both.
 
 Every theme is checked against **WCAG 2.2 AA** in both modes. In short:
 
-- Text (`text`, `muted`) must have a contrast of at least **4.5 : 1** against
-  the background, surface and inset colors.
-- Controls and status colors (`borderStrong`, `accent`, `focus`, the status
-  colors) must have at least **3 : 1**.
+- Text (`text`, `muted`) and the status text colors (`statusText.*`, if set)
+  must have a contrast of at least **4.5 : 1** against the background, surface
+  and inset colors.
+- Controls and status fills (`borderStrong`, `accent`, `focus`, `status.*`)
+  must have at least **3 : 1**.
+- The text on solid accent buttons must have at least **4.5 : 1**. It shows up
+  as `accentButtonText on accentButton`. The button color is derived from
+  `accent`, so change `accent` to fix it.
 - Decorative hairlines (`border`) are not checked.
 
 The editor shows the contrast live in **Contrast and preview**. A failing pair
 looks like this:
 
 ```text
-Light: muted on surface 2.4:1 (needs 4.5:1)
+Light: muted on surface 2.40:1 (needs 4.5:1)
 ```
 
 Read it as: in light mode, the `muted` text on the `surface` color has a ratio
-of 2.4 to 1, but at least 4.5 to 1 is needed. To fix it, make `muted` darker
+of 2.40 to 1, but at least 4.5 to 1 is needed. To fix it, make `muted` darker
 (or `surface` lighter) and check again. The message names the mode, the
 foreground and the background, so you know which token to change.
 
