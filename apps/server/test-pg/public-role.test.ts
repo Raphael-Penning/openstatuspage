@@ -524,6 +524,8 @@ describe('tables', () => {
     'history_import_intervals',
     'task_leases',
     'osp_public_roles',
+    'site_pages',
+    'uploads',
   ];
 
   it('without public data are not readable at all', async () => {
