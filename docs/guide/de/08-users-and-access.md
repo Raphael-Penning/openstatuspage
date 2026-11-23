@@ -67,15 +67,22 @@ abschaltest.
    Trage sie beim Identity Provider ein und setze dann den Haken bei **Aktiv**.
 
 Das Client-Secret wird verschlüsselt gespeichert und nie wieder angezeigt; lass
-das Feld beim Bearbeiten leer, um es zu behalten.
+das Feld beim Bearbeiten leer, um es zu behalten. Eine neue **Issuer-URL**
+braucht das Client-Secret erneut und entfernt die Verknüpfungen des Anbieters
+mit Benutzerkonten: Ein anderer Issuer ist ein anderer Identity Provider.
 
 **Benutzer und Rollen** eines Anbieters:
 
-- **Benutzer bei der ersten Anmeldung anlegen**: standardmäßig aus, dann
-  dürfen sich nur Benutzer anmelden, die es in OpenStatusPage schon gibt (bei
-  der ersten Anmeldung über eine bestätigte E-Mail-Adresse zugeordnet). Ist es
+- **Benutzer bei der ersten Anmeldung anlegen**: standardmäßig aus. Ist es
   an, werden Benutzer nur für E-Mail-Adressen angelegt, die der Identity
   Provider als bestätigt markiert.
+- **Bestehende Konten per E-Mail verknüpfen**: standardmäßig aus, dann
+  erreicht ein Anbieter nur Konten, die schon mit ihm verknüpft sind. Ist es
+  an, wird ein Benutzer, den es in OpenStatusPage schon gibt, bei der ersten
+  Anmeldung über eine bestätigte E-Mail-Adresse verknüpft und bekommt das
+  Konto samt Rolle. Schalte es nur für einen Identity Provider ein, der
+  Adressen selbst bestätigt und bei dem Benutzer sie nicht ändern können, oder
+  schalte es wieder aus, sobald alle verknüpft sind.
 - **Erlaubte E-Mail-Domains**: optional; nur bestätigte Adressen dieser
   Domains können sich über diesen Anbieter anmelden.
 - **Rollen-Claim** und **Rollenzuordnung**: der Claim mit den Gruppen oder
@@ -121,8 +128,14 @@ bei einer Änderung in der Verwaltung. Der letzte Administrator wird so nie
 herabgestuft; stattdessen schreibt der Server eine Warnung ins Log.
 
 Ein Benutzer kann mit mehreren Anbietern verknüpft sein (eine Identität pro
-Anbieter). Funktioniert SSO und ist ein SSO-Benutzer Administrator, kannst du
-die Anmeldung per Passwort mit `LOCAL_LOGIN_ENABLED=false` abschalten.
+Anbieter). Aktualisieren mehrere davon die Rolle bei jeder Anmeldung,
+entscheidet die letzte Anmeldung; ordne die Gruppen deshalb überall gleich zu.
+
+Funktioniert SSO und ist ein SSO-Benutzer Administrator, kannst du die
+Anmeldung per Passwort mit `LOCAL_LOGIN_ENABLED=false` abschalten. Den letzten
+aktiven Anbieter kannst du dann nicht mehr deaktivieren oder löschen. Geht ein
+Anbieter trotzdem kaputt, setze kurz `LOCAL_LOGIN_ENABLED=true`, melde dich
+mit Passwort an und repariere ihn.
 
 Offboarding: Der Identity Provider wird nur bei der Anmeldung gefragt. Wen du
 dort entfernst oder sperrst, der behält eine bestehende Sitzung bis spätestens

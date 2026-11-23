@@ -67,14 +67,20 @@ stays available unless you disable it.
    it at the identity provider, then tick **Enabled**.
 
 The client secret is stored encrypted and never shown again; leave the field
-empty when editing to keep it.
+empty when editing to keep it. A new **issuer URL** needs the client secret
+again and removes the provider's links to user accounts: another issuer is
+another identity provider.
 
 **Users and roles** of a provider:
 
-- **Create users on their first sign-in**: off by default, so only users that
-  already exist in OpenStatusPage can sign in (matched by a verified e-mail
-  address on the first login). When on, users are only created for e-mail
-  addresses the identity provider marks as verified.
+- **Create users on their first sign-in**: off by default. When on, users are
+  only created for e-mail addresses the identity provider marks as verified.
+- **Link existing accounts by e-mail**: off by default, so a provider only
+  reaches accounts already linked to it. When on, a user who already exists in
+  OpenStatusPage is linked on the first login through a verified e-mail
+  address, and gets the account with its role. Only turn it on for an
+  identity provider that verifies addresses itself and where users cannot
+  change them, or turn it off again once everybody is linked.
 - **Allowed e-mail domains**: optional; only verified addresses of these
   domains can sign in through this provider.
 - **Role claim** and **role mapping**: the claim with the groups or roles
@@ -115,9 +121,14 @@ revokes the user's administrator API tokens, just like a change in the
 management UI. The last administrator is never demoted this way; the server
 logs a warning instead.
 
-A user can be linked to several providers (one identity per provider). After
-SSO works and an SSO user is administrator, you can disable password logins
-with `LOCAL_LOGIN_ENABLED=false`.
+A user can be linked to several providers (one identity per provider). If
+several of them update the role on every sign-in, the last login decides, so
+map the groups the same way everywhere.
+
+After SSO works and an SSO user is administrator, you can disable password
+logins with `LOCAL_LOGIN_ENABLED=false`. The last enabled provider can then no
+longer be disabled or deleted. If a provider breaks anyway, set
+`LOCAL_LOGIN_ENABLED=true` for a moment, sign in with a password and fix it.
 
 Offboarding: the identity provider is only asked at login. Someone you remove
 or disable there keeps an existing session until `SESSION_MAX_AGE_HOURS` at
