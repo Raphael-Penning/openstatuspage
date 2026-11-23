@@ -96,6 +96,7 @@ services:
     image: boky/postfix:v5.2.1-alpine
     profiles: [mail]
     restart: unless-stopped
+    mem_limit: 256m
     # No env_file: the mail server must not receive the app's secrets.
     environment:
       ALLOWED_SENDER_DOMAINS: ${MAIL_DOMAIN:-}
@@ -106,6 +107,9 @@ services:
       # The mail network is internal (app and postfix only): no STARTTLS offer,
       # so the app needs no certificate exception.
       POSTFIX_smtpd_tls_security_level: none
+      # rspamd keeps the keys in the "dkim" volume; never fall back to OpenDKIM,
+      # whose keys would not be persisted.
+      DKIM_BACKEND: rspamd
       DKIM_AUTOGENERATE: "true"
       DKIM_SELECTOR: ${DKIM_SELECTOR:-osp}
       # Optional smarthost, e.g. [smtp.example.com]:587, when port 25 is blocked.
@@ -116,6 +120,12 @@ services:
       # The DKIM key pair, generated on first start. Back it up with the database.
       - dkim:/var/lib/rspamd/dkim
       - dkim-public:/mail-dkim
+    healthcheck:
+      test: ["CMD", "postfix", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     configs:
       - source: postfix-publish-dkim
         target: /docker-init.d/50-publish-dkim.sh

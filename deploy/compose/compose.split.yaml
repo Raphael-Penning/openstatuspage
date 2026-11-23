@@ -189,6 +189,9 @@ services:
       # Relay only for this container and the internal mail network (admin, worker).
       POSTFIX_mynetworks: 127.0.0.0/8 ${MAIL_SUBNET:-172.30.251.0/28}
       POSTFIX_smtpd_tls_security_level: none
+      # rspamd keeps the keys in the "dkim" volume; never fall back to OpenDKIM,
+      # whose keys would not be persisted.
+      DKIM_BACKEND: rspamd
       DKIM_AUTOGENERATE: "true"
       DKIM_SELECTOR: ${DKIM_SELECTOR:-osp}
       RELAYHOST: ${MAIL_RELAYHOST:-}
@@ -197,6 +200,12 @@ services:
     volumes:
       - dkim:/var/lib/rspamd/dkim
       - dkim-public:/mail-dkim
+    healthcheck:
+      test: ["CMD", "postfix", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     configs:
       - source: postfix-publish-dkim
         target: /docker-init.d/50-publish-dkim.sh
