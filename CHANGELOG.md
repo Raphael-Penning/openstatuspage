@@ -32,7 +32,13 @@ breaking changes.
   only for admin webhooks that allow it), DNS resolved once and pinned, private,
   loopback, link-local, CGNAT, multicast, metadata and IPv6 ULA ranges refused,
   no redirects, strict timeouts and size limits; plus rate limits per client,
-  per destination host and for all subscriber webhooks and SMS.
+  per destination (per webhook, per host for generic visitor webhooks; admin
+  webhooks and on-call SMS never wait behind visitors) and for all subscriber
+  webhooks and SMS.
+- Visitors' webhook and SMS subscriptions are removed automatically only when
+  the destination refused the last five messages (webhook `4xx`, a number the
+  SMS provider rejects); a used-up budget, provider or network errors never
+  remove anyone.
 - Admin page **Webhooks & SMS** and a channel switch on the subscriber list.
 - Migration `0015_notification_channels`: on PostgreSQL the restricted public
   role writes webhook and SMS subscriptions only through new `SECURITY DEFINER`
