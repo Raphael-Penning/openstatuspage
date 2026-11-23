@@ -350,7 +350,7 @@ are accepted only as PNG, JPEG, WebP or ICO, recognized by their magic bytes
 (never by the file name or the declared type), at most 1 MiB; SVG is refused
 because it can carry scripts, event handlers, foreign objects and external
 references. They are served with the type detected on upload,
-`X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, `Cache-Control:
+`X-Content-Type-Options: nosniff`, `Content-Disposition: inline; filename="<file>"`, `Cache-Control:
 public, max-age=31536000, immutable` (the name is the SHA-256 of the bytes) and
 `Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'none';
 script-src 'none'; frame-ancestors 'none'; sandbox`, so a file opened directly
