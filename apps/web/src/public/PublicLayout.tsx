@@ -7,6 +7,7 @@ import {
   FORM_PATHS,
   formatCopyright,
   RETURN_QUERY,
+  THEME_LINK_ATTR,
   localizedText,
   UMAMI_DISABLED_KEY,
   type PublicSitePageLink,
@@ -19,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Outlet, ScrollRestoration, useLocation } from 'react-router';
 import { LANGUAGES } from '../lib/languages';
 import { useAnalyticsOff, useSsr } from '../lib/ssr';
-import { ThemeProvider, useAccentColor, useTheme } from '../lib/theme';
+import { ThemeProvider, useTheme } from '../lib/theme';
 import { LANG_CHOSEN_KEY, LanguageSwitcher, ThemeSwitcher, TimeZoneToggle, useReturnPath } from './components/Controls';
 import { OutboundLink } from './components/OutboundLink';
 import { Skeleton } from './components/ui';
@@ -27,7 +28,6 @@ import { useLinkBase } from './hooks/links';
 import { PreferencesProvider, usePreferences } from './hooks/preferences';
 import { usePrivatePageToken } from './hooks/private-page';
 import { usePublicSettings, type PublicSiteSettings } from './hooks/queries';
-import { readableOnAll, solidAccent } from './utils/color';
 
 export function PublicLayout() {
   const { data: settings } = usePublicSettings();
@@ -63,28 +63,25 @@ function ThemeSync() {
   return null;
 }
 
-/** Accent color, favicon, document language and the page default language. */
+/** Theme stylesheets, favicon, document language and the page default language. */
 function PageEffects({ settings }: { settings: PublicSiteSettings | undefined }) {
   const { i18n } = useTranslation();
   const ssr = useSsr();
-  const { resolved } = useTheme();
-  useAccentColor(settings?.accentColor);
 
-  // Contrast-safe accent variants for text and solid buttons (any accent can be configured).
+  // The theme (tokens with the accent in effect, extra CSS) is a stylesheet the server links
+  // in a rendered page. A page rendered in the browser (no server rendering) adds it here.
+  const stylesheets = settings?.theme?.stylesheets;
   useEffect(() => {
-    const accent = settings?.accentColor;
-    if (!accent) return;
-    const root = document.documentElement;
-    // Accent text and focus rings appear on the page, card and inset backgrounds: readable on all of them.
-    const style = getComputedStyle(root);
-    const backgrounds = ['--bg', '--surface', '--surface-2']
-      .map((name) => style.getPropertyValue(name).trim())
-      .filter((v) => v !== '');
-    const solid = solidAccent(accent);
-    root.style.setProperty('--osp-accent-text', readableOnAll(accent, backgrounds.length > 0 ? backgrounds : ['#ffffff']));
-    root.style.setProperty('--osp-accent-solid', solid.background);
-    root.style.setProperty('--osp-accent-solid-fg', solid.foreground);
-  }, [settings?.accentColor, resolved]);
+    if (!stylesheets || document.querySelector(`link[${THEME_LINK_ATTR}]`)) return;
+    for (const href of stylesheets) {
+      if (!/^\/theme\/[0-9a-f]+\.css$/.test(href)) continue;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.setAttribute(THEME_LINK_ATTR, '');
+      document.head.appendChild(link);
+    }
+  }, [stylesheets]);
 
   useEffect(() => {
     const href = settings?.faviconUrl || '/favicon.svg';
