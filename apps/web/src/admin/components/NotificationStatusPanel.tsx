@@ -155,7 +155,7 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
         </Fact>
       </dl>
 
-      {s.dns && <DnsRecords dns={s.dns} />}
+      <MailDnsRecordsSection dns={s.dns} />
 
       <div className="flex flex-col gap-3 border-t border-border pt-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
@@ -203,9 +203,13 @@ function StatusDetails({ status: s, enabled }: { status: NotificationStatus; ena
   );
 }
 
-/** SPF, DKIM and DMARC records for the bundled mail server (MAIL_DKIM_DIR), each with a copy button. */
-function DnsRecords({ dns }: { dns: MailDnsRecords }) {
+/**
+ * SPF, DKIM and DMARC records for the bundled mail server (MAIL_DKIM_DIR), each
+ * with a copy button. Renders nothing without a bundled server (`dns` null).
+ */
+export function MailDnsRecordsSection({ dns }: { dns: MailDnsRecords | null }) {
   const { t } = useTranslation('admin');
+  if (!dns) return null;
   return (
     <section aria-labelledby="mail-dns-title" className="flex flex-col gap-3 border-t border-border pt-4">
       <h4 id="mail-dns-title" className="text-sm font-semibold">
