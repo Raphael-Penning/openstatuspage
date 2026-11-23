@@ -218,6 +218,12 @@ export const SettingsInput = z.object({
   brandUrl: zHttpUrl.nullish(),
   /** Show the "Powered by OpenStatusPage" line in the footer. */
   showPoweredBy: z.boolean().default(true),
+  /**
+   * Publish the API description: the "API" link in the footer, in llms.txt and in
+   * the page head, and GET /api/openapi.json for anonymous clients (its public
+   * part). Off: hidden, and the endpoint answers 404 unless a signed-in user asks.
+   */
+  publicApiDescription: z.boolean().default(true),
   /** Extra link in the header navigation ("What does the status mean?"); hidden without URL. */
   infoLinkUrl: zLinkTarget.nullish(),
   infoLinkLabel: zLinkLabel,
