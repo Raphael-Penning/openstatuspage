@@ -322,7 +322,7 @@ Every message goes through the `channel_outbox` table and the worker task
   sending.
 - Retries after 1, 5, 15 and 60 minutes, at most 5 attempts. `4xx` answers other
   than 408, 425 and 429 are final.
-- Rate limits (Webhooks & SMS > limits): webhook requests per destination host
+- Rate limits (**Administration → Webhooks & SMS**, section *Visitor subscriptions and limits*): webhook requests per destination host
   and minute, subscriber webhook messages per minute, SMS per minute and
   confirmation SMS per hour. A message over a limit waits a minute without
   losing an attempt. The limits are counted in memory by the instance that holds
@@ -356,7 +356,7 @@ Every webhook and SMS provider request goes through one guard
   `*.logic.azure.com/workflows/…/paths/invoke`,
   `*.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/…`),
   without a port. Generic subscriber webhooks need the admin setting
-  **generic webhooks** (off by default). The worker checks the destination
+  **Visitors may also use generic webhooks** (off by default). The worker checks the destination
   against these rules again before every delivery.
 - Errors stored in the delivery log and written to the server log never contain
   the URL's path or query, credentials or phone numbers (numbers in provider
