@@ -4,7 +4,8 @@ Besides email, OpenStatusPage can post incidents and maintenance to chat
 channels and your own endpoints (webhooks) and send them as text messages
 (SMS): to your team, and, if you allow it, to visitors who subscribe on the
 public page. Everything is configured in the management UI under
-**Administration > Webhooks & SMS**; nothing needs an environment variable.
+**Administration → Webhooks & SMS**. No extra environment variable is needed;
+the secrets are encrypted (see [Configuration](../../configuration.md#webhooks-and-sms)).
 
 Webhooks and SMS get the same events as the email subscribers: a new or updated
 public incident or maintenance when the editor leaves **Notify subscribers**
@@ -29,14 +30,15 @@ reminder. Private incidents and hidden services are never sent.
      You can add extra headers (for example an `Authorization` header); their
      values are stored encrypted.
 3. Choose **All services** or the services the webhook is for.
-4. Save and use the paper plane button to send a test message.
+4. Save, then send a test message with the test button in the row of the
+   webhook.
 
 The URL is write-only: the list only shows its host, because the path of
 Discord, Slack and Teams URLs is the secret. To change it, enter the whole URL
 again.
 
-The clock button opens the **delivery log** (time, event, status, HTTP status
-code or error, never the URL or the message). Failed deliveries are retried
+The **delivery log** button of the row opens the log of the deliveries (time,
+event, status, HTTP status code or error, never the URL or the message). Failed deliveries are retried
 after 1, 5, 15 and 60 minutes; a `4xx` answer (other than 408, 425 and 429) is
 not retried. After **10 failed deliveries in a row** a webhook is disabled, the
 reason is shown in the list and every admin gets an email (when a mail server
@@ -56,10 +58,10 @@ sender and the credentials:
 
 | Preset | Credential 1 | Credential 2 | Sender |
 | --- | --- | --- | --- |
-| Twilio | Account SID | Auth token | A Twilio number in international format, or a messaging service SID |
+| Twilio | Account SID | Auth token | A Twilio number in international format |
 | Vonage (Messages API) | API key | API secret | A number or an alphanumeric sender your account may use |
 | seven.io | – | API key | Number or name |
-| MessageBird | – | Access key | Number or name (up to 11 characters) |
+| MessageBird | – | Access key | Number or name |
 
 Credentials are stored encrypted and never shown again; leave the field empty to
 keep them. With **Custom** you describe the request yourself: method, URL,

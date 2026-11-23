@@ -3,8 +3,9 @@
 Neben E-Mail kann OpenStatusPage Vorfälle und Wartungen in Chat-Kanäle und an
 eigene Endpunkte senden (Webhooks) und als Kurznachricht verschicken (SMS): an
 dein Team und, wenn du es erlaubst, an Besucher, die sich auf der öffentlichen
-Seite anmelden. Alles stellst du in der Verwaltung unter **Administration >
-Webhooks & SMS** ein; keine Umgebungsvariable ist nötig.
+Seite anmelden. Alles stellst du in der Verwaltung unter **Administration →
+Webhooks & SMS** ein. Dafür ist keine zusätzliche Umgebungsvariable nötig; die
+Geheimnisse sind verschlüsselt (siehe [Konfiguration](../../configuration.md#webhooks-and-sms)).
 
 Webhooks und SMS erhalten dieselben Ereignisse wie die E-Mail-Abonnenten: ein
 neuer oder aktualisierter öffentlicher Vorfall oder eine Wartung, wenn
@@ -30,14 +31,16 @@ versteckte Dienste werden nie gesendet.
      Du kannst zusätzliche Header angeben (zum Beispiel `Authorization`); ihre
      Werte werden verschlüsselt gespeichert.
 3. Wähle **Alle Dienste** oder die Dienste, für die der Webhook gilt.
-4. Speichere und sende mit dem Papierflieger eine Testnachricht.
+4. Speichere und sende über die Testschaltfläche in der Zeile des Webhooks eine
+   Testnachricht.
 
 Die URL kann nur geschrieben werden: Die Liste zeigt nur den Host, denn der Pfad
 von Discord-, Slack- und Teams-URLs ist das Geheimnis. Um sie zu ändern, gib die
 ganze URL neu ein.
 
-Die Uhr öffnet das **Zustellprotokoll** (Zeit, Ereignis, Status, HTTP-Status
-oder Fehler, nie die URL oder die Nachricht). Fehlgeschlagene Zustellungen werden
+Die Schaltfläche **Zustellprotokoll** in der Zeile öffnet das Protokoll der
+Zustellungen (Zeit, Ereignis, Status, HTTP-Status oder Fehler, nie die URL oder
+die Nachricht). Fehlgeschlagene Zustellungen werden
 nach 1, 5, 15 und 60 Minuten wiederholt; eine `4xx`-Antwort (außer 408, 425 und
 429) wird nicht wiederholt. Nach **10 fehlgeschlagenen Zustellungen in Folge**
 wird ein Webhook deaktiviert, der Grund steht in der Liste und alle Admins
@@ -59,10 +62,10 @@ und Zugangsdaten ein:
 
 | Vorlage | Zugangsdatum 1 | Zugangsdatum 2 | Absender |
 | --- | --- | --- | --- |
-| Twilio | Account SID | Auth Token | Eine Twilio-Nummer im internationalen Format oder eine Messaging-Service-SID |
+| Twilio | Account SID | Auth Token | Eine Twilio-Nummer im internationalen Format |
 | Vonage (Messages API) | API-Key | API Secret | Eine Nummer oder ein alphanumerischer Absender deines Kontos |
 | seven.io | – | API-Key | Nummer oder Name |
-| MessageBird | – | Access Key | Nummer oder Name (bis 11 Zeichen) |
+| MessageBird | – | Access Key | Nummer oder Name |
 
 Zugangsdaten werden verschlüsselt gespeichert und nie wieder angezeigt; lass das
 Feld leer, um sie zu behalten. Mit **Eigene** beschreibst du die Anfrage selbst:
