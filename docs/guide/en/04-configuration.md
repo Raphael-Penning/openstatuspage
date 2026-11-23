@@ -125,8 +125,9 @@ the dark theme.
   the theme in a new tab; only you see it (signed-in admins), visitors keep
   the active theme.
 - **Activate** makes it the theme of the public page. A theme with contrast
-  problems shows the failing color pairs first and is only activated when you
-  confirm **Activate anyway**; better fix the colors.
+  problems asks for confirmation with **Activate anyway** and is only activated
+  after it; the editor lists the failing color pairs, and it is better to fix
+  the colors. Editing the active theme so that it fails asks for **Save anyway**.
 - **Import theme** takes a theme file (`<id>.json`) and optionally its extra
   CSS (`<id>.css`). **Customize a copy** starts the editor with a copy of a
   built-in or folder theme; uploaded themes can be edited and deleted. The
@@ -136,7 +137,7 @@ the dark theme.
   themes folder of another installation.
 
 Extra CSS is filtered: no `@import`, no images or fonts from other websites
-(only uploads of this instance), nothing that looks like HTML or a script. The
+(only uploads of this instance or relative paths of this site), nothing that looks like HTML or a script. The
 file format, every token and how to set up the themes folder for Docker
 Compose, Helm and an installation without containers are described in
 `docs/themes.md` in the repository.

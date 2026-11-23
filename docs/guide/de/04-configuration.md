@@ -130,9 +130,10 @@ in heller und dunkler Darstellung.
   echte Seite mit dem Theme in einem neuen Tab; nur du siehst sie (angemeldete
   Admins), Besucher behalten das aktive Theme.
 - **Aktivieren** macht es zum Theme der öffentlichen Seite. Ein Theme mit
-  Kontrastproblemen zeigt zuerst die betroffenen Farbpaare und wird nur
-  aktiviert, wenn du **Trotzdem aktivieren** bestätigst; besser korrigierst du
-  die Farben.
+  Kontrastproblemen verlangt eine Bestätigung mit **Trotzdem aktivieren** und
+  wird erst danach aktiviert; der Editor nennt die betroffenen Farbpaare, besser
+  korrigierst du die Farben. Wird das aktive Theme so geändert, dass es
+  durchfällt, fragt der Editor nach **Trotzdem speichern**.
 - **Theme importieren** nimmt eine Theme-Datei (`<id>.json`) und optional ihr
   zusätzliches CSS (`<id>.css`). **Kopie anpassen** öffnet den Editor mit einer
   Kopie eines eingebauten Themes oder eines Themes aus dem Ordner; hochgeladene
@@ -142,7 +143,7 @@ in heller und dunkler Darstellung.
   Themes-Ordner einer anderen Installation.
 
 Zusätzliches CSS wird gefiltert: kein `@import`, keine Bilder oder Schriften von
-anderen Websites (nur Uploads dieser Instanz), nichts, was nach HTML oder einem
+anderen Websites (nur Uploads dieser Instanz oder relative Pfade dieser Seite), nichts, was nach HTML oder einem
 Skript aussieht. Das Dateiformat, alle Tokens und die Einrichtung des
 Themes-Ordners für Docker Compose, Helm und eine Installation ohne Container
 beschreibt `docs/themes.md` im Repository.
