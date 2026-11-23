@@ -282,8 +282,6 @@ export interface SsrRenderResult {
   theme: ThemePreference;
   /** Dehydrated state, JSON escaped for embedding in `<script type="application/json">`. */
   state: string;
-  /** CSS for the page head (the configured accent color). */
-  css?: string;
   /** The analytics script tag of the page (see analyticsTag); omitted: none. */
   analytics?: AnalyticsTag;
 }

@@ -143,8 +143,9 @@ describe('public pages without JavaScript', () => {
     expect(body).toContain('<meta name="robots" content="noindex, follow" data-osp-head>');
     expect(plain).toContain(`<link rel="alternate" hreflang="de" href="${BASE_URL}/history?lang=de" data-osp-head>`);
     expect(plain).toContain(`<link rel="alternate" hreflang="x-default" href="${BASE_URL}/history" data-osp-head>`);
-    // The configured accent color is in the head, before the stylesheet.
-    expect(body).toMatch(/<style>html:root\{--accent:#7c6cf2;[^<]*<\/style>[\s\S]*rel="stylesheet"/);
+    // The theme (tokens, accent) is a same-origin stylesheet after the app's, never an inline style.
+    expect(body).toMatch(/rel="stylesheet"[\s\S]*<link rel="stylesheet" href="\/theme\/[0-9a-f]{20}\.css" data-osp-theme><\/head>/);
+    expect(body).not.toContain('<style');
   });
 
   it('header on personal pages: the language is a form post, the token is in no URL', async () => {

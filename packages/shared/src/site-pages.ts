@@ -15,6 +15,7 @@
  * or https URLs.
  */
 import { z } from 'zod';
+import type { PublicThemeInfo } from './themes.js';
 
 /** System pages; the key is also their slug and their path (`/<key>`). */
 export const SYSTEM_PAGE_KEYS = ['about', 'legal-notice', 'privacy', 'accessibility'] as const;
@@ -157,6 +158,8 @@ export interface PublicSiteExtras {
   pages?: PublicSitePageLink[];
   /** Size of the logo when it is an upload of this instance (width/height attributes). */
   logoSize?: ImageSize | null;
+  /** The active theme: its id and the stylesheets the pages load (docs/themes.md). */
+  theme?: PublicThemeInfo;
 }
 
 /** Upload paths in a text (`/uploads/<sha256>.<ext>`), each once. */
