@@ -178,8 +178,9 @@ Every endpoint, its parameters and the role it needs are listed under **API**
 in the management UI (next to **Help**), where you can also try requests with
 your session; requests that change data ask for a confirmation first. Code
 generators and API tools read the same description as OpenAPI 3.1 from
-`https://status.example.com/api/openapi.json` (send the token to get the
-whole API; without it you get the public part).
+`https://status.example.com/api/openapi.json`. On an instance with the
+management UI (`APP_ROLE` `admin` or `all`), a token or a signed-in session gets
+the whole API; without either you get only the public part.
 
 Tokens are revoked automatically when the user who created them is deleted;
 administrator tokens also when their creator loses the administrator role.

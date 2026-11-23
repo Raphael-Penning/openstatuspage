@@ -186,8 +186,9 @@ Alle Endpunkte, ihre Parameter und die nötige Rolle findest du unter **API** in
 der Verwaltung (neben **Hilfe**). Dort kannst du Anfragen auch mit deiner
 Sitzung ausprobieren; Anfragen, die Daten ändern, musst du vorher bestätigen.
 Codegeneratoren und API-Werkzeuge lesen dieselbe Beschreibung als OpenAPI 3.1
-unter `https://status.example.com/api/openapi.json` (mit Token bekommst du die
-ganze API, ohne nur den öffentlichen Teil).
+unter `https://status.example.com/api/openapi.json`. Auf einer Instanz mit
+Verwaltung (`APP_ROLE` `admin` oder `all`) bekommst du mit einem Token oder einer
+angemeldeten Sitzung die ganze API; ohne beides nur den öffentlichen Teil.
 
 Tokens werden automatisch widerrufen, wenn der Benutzer gelöscht wird, der sie
 angelegt hat; Administrator-Tokens auch dann, wenn dieser die
