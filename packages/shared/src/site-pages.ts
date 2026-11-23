@@ -15,7 +15,7 @@
  * or https URLs.
  */
 import { z } from 'zod';
-import type { PublicThemeInfo } from './themes.js';
+import type { PublicThemeInfo } from './ssr.js';
 
 /** System pages; the key is also their slug and their path (`/<key>`). */
 export const SYSTEM_PAGE_KEYS = ['about', 'legal-notice', 'privacy', 'accessibility'] as const;

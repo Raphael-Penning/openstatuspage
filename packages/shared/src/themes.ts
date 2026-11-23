@@ -24,10 +24,6 @@ export const THEME_CSS_MAX_BYTES = 64 * 1024;
 export const THEME_JSON_MAX_BYTES = 64 * 1024;
 /** Id of the built-in theme that is active until another one is chosen. */
 export const DEFAULT_THEME_ID = 'default';
-/** Query parameter of the theme preview on the public pages (signed-in admins only). */
-export const THEME_PREVIEW_QUERY = 'theme';
-/** Path prefix of the theme stylesheets (`/theme/<hash>.css`). */
-export const THEME_CSS_PREFIX = '/theme/';
 
 export const zThemeId = z
   .string()
@@ -448,13 +444,3 @@ export const ThemeActivateInput = z.strictObject({
   /** Activate although the theme fails WCAG 2.2 AA (default: refused). */
   acceptContrastFailures: z.boolean().default(false),
 });
-
-/** The theme part of the public settings: the stylesheets the pages load. */
-export interface PublicThemeInfo {
-  id: string;
-  /** Same-origin stylesheet URLs (`/theme/<hash>.css`): tokens, then the extra CSS. */
-  stylesheets: string[];
-}
-
-/** Data attribute of the theme stylesheet links (the browser adds them only when the server did not). */
-export const THEME_LINK_ATTR = 'data-osp-theme';

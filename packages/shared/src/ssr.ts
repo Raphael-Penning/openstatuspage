@@ -94,6 +94,23 @@ export function isPersonalPath(url: string): boolean {
   return path.startsWith('/subscription/') || path === '/p' || path.startsWith('/p/');
 }
 
+/**
+ * Themes (themes.ts; kept here, apart from the theme schemas, so the public
+ * client does not bundle them): the preview query parameter (signed-in admins
+ * only), the path prefix of the theme stylesheets and the attribute of their
+ * link elements (the browser adds them only when the server did not).
+ */
+export const THEME_PREVIEW_QUERY = 'theme';
+export const THEME_CSS_PREFIX = '/theme/';
+export const THEME_LINK_ATTR = 'data-osp-theme';
+
+/** The theme part of the public settings: the stylesheets the pages load. */
+export interface PublicThemeInfo {
+  id: string;
+  /** Same-origin stylesheet URLs (`/theme/<hash>.css`): tokens, then the extra CSS. */
+  stylesheets: string[];
+}
+
 /** Id of the non-executable JSON block with the dehydrated state (`<script type="application/json">`). */
 export const SSR_STATE_ID = 'osp-state';
 
