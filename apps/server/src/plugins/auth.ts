@@ -7,8 +7,10 @@
  * - CSRF: cookie-authenticated mutating requests must send
  *   `X-Requested-With: openstatuspage`. Bearer requests are exempt.
  *
- * Authentication is only resolved for `/api/admin/*` and `/api/auth/*`, so
- * public endpoints never touch the session tables.
+ * Authentication is only resolved for `/api/admin/*`, `/api/auth/*` and
+ * `/api/openapi.json` (the latter only where this plugin is registered, i.e.
+ * APP_ROLE admin or all), so other public endpoints never touch the session
+ * tables.
  */
 import type { UserRole } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
