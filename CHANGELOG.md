@@ -6,6 +6,20 @@ breaking changes.
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Docker Compose 2.23.1 or newer** is needed for the new `compose.yaml` and
+  `compose.split.yaml` (inline `configs`), also when the bundled mail server
+  stays off. Check `docker compose version` before `docker compose up -d`.
+- Both files now always create the internal `mail` network with a fixed subnet
+  (`172.30.250.0/28`, split `172.30.251.0/28`). If `up` fails with `Pool
+  overlaps with other one on this address space`, because the range is in use
+  or a second project runs on the same host, set a free range per project with
+  `MAIL_SUBNET` in `.env`.
+- The bundled mail server lets every process on the host send as
+  `MAIL_DOMAIN` (the Docker host is on its network; with `install.sh` every
+  local user reaches `127.0.0.1:25`). Use it on a single-tenant host only.
+
 ### Added
 
 - **Installation without containers.** Every release attaches
@@ -20,7 +34,8 @@ breaking changes.
   `compose.split.yaml` have a send-only `postfix` service (profile `mail`, on
   in a new `.env` with `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`) that signs
   with a DKIM key generated on first start, is never published and relays only
-  for the app on an internal network. `SMTP_*` still select any other server.
+  on an internal network (the app and the Docker host) for senders of
+  `MAIL_DOMAIN`. `SMTP_*` still select any other server.
   Existing `.env` files are not changed: to turn the bundled server on, add
   `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`.
 - **DNS records for the bundled mail server** in Settings → Email delivery and
