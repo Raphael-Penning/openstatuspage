@@ -37,8 +37,12 @@ Every public page describes itself:
   the `x-default` version. `?lang=` always shows that language, whatever the
   visitor chose before.
 - **Structured data (JSON-LD).** The overview describes the site and its
-  organization. Other pages have breadcrumbs. Incident and maintenance pages are
-  described as articles with their start and last update.
+  organization. Other pages have breadcrumbs. Incident pages are described as
+  articles with their start, last update and the affected services, maintenance
+  windows as events held online on the status page (start, end, cancelled or
+  not), service pages as services of your organization, and the content pages
+  as web pages (the about page as an about page). Pages that are not indexed
+  carry no structured data.
 - **Link previews.** Open Graph and Twitter card tags carry the site name, the
   title, the description and the logo (when you set one), so a shared link shows
   the right preview.
@@ -197,6 +201,37 @@ more comfortable. Without them:
 What needs JavaScript: the live update of the status every 60 seconds, the
 interactive map, the time zone switch and the closing of menus by a click outside
 or the Escape key.
+
+## Content pages and images
+
+Under *Administration → Pages* (admins only) you write the pages around the
+status itself, in Markdown and per language (English and German), with a
+preview:
+
+- **The four standard pages**: *About this page* at `/about`, the legal notice
+  at `/legal-notice`, the privacy policy at `/privacy` and the accessibility
+  statement at `/accessibility`. Each one is either an internal page written
+  here or, as long as you do not publish it, the external link from the
+  settings (*Legal links*, *Info link*), exactly as before.
+  Tick *Use the internal page* to publish it: the footer link (or, for the about
+  page, the info entry of the navigation) then leads to the internal page; the
+  label from the settings stays.
+- **Own pages** at `/pages/<slug>`, for example `/pages/faq`: shown in the
+  navigation and/or the footer, ordered by the *Order* number.
+
+A page without text in one language shows the text of the other language. The
+pages are rendered on the server (they work without JavaScript), have their own
+title, description (the one you enter, or the start of the text) and language
+versions (`?lang=de`), and published pages are listed in the sitemap and in
+`llms.txt`. HTML in the Markdown is not shown.
+
+**Images**: upload PNG, JPEG, WebP or ICO files of at most 1 MB on the same page
+(*Images*) or with *Upload logo* / *Upload favicon* in the settings. SVG is not
+accepted. Each image gets a fixed address like
+`https://status.example.com/uploads/9f86….png`; the database stores it, so every
+instance of a split deployment serves it. Insert one into a page with
+`![What the image shows](/uploads/9f86….png)`, always with a description for
+screen readers. An https URL for the logo or favicon keeps working as well.
 
 ## Private pages
 
