@@ -67,7 +67,8 @@ variables into the secret `openstatuspage` or the `env:` list of
 | Branding | Site name | Shown in the header, the browser title, feeds and email subjects. |
 | Branding | Description | Short text below the site name. |
 | Branding | Logo URL, Favicon URL | `https://` URLs or paths, or *Upload logo* / *Upload favicon* to store an image on this instance (PNG, JPEG, WebP or ICO, at most 1 MB, no SVG). |
-| Branding | Accent color | Color of buttons and highlights (hex, e.g. `#7c6cf2`); adjusted automatically for contrast, see [below](#accent-color-and-accessibility). |
+| Branding | Accent color override | Optional. Replaces the accent of the active theme (hex, e.g. `#7c6cf2`); empty: the theme's accent. Adjusted automatically for contrast, see [below](#accent-color-and-accessibility). |
+| Appearance | Administration → Appearance | The theme of the public page: colors, corners, fonts and spacing, see [Themes](#themes). |
 | Display | Default language | Used when the visitor's browser language is not available (English or German). |
 | Display | Default theme | System, light or dark; visitors can switch. |
 | Display | Support URL | Optional link to your support or contact page. |
@@ -110,6 +111,35 @@ maintenance texts in the language of most of your visitors.
 
 The language and theme of the management UI are personal settings in the user
 menu (bottom left).
+
+### Themes
+
+**Administration → Appearance** lists the themes of the public page with
+their source: *Built-in* (`OpenStatusPage`, the default, plus `Slate`,
+`Forest` and `High contrast`), *Themes folder* (files on the server, read on
+start) and *Uploaded*. All built-in themes meet WCAG 2.2 AA in the light and
+the dark theme.
+
+- **Preview** (eye) draws a sample of the public page with the theme, light
+  and dark side by side. **Preview the public page** opens the real page with
+  the theme in a new tab; only you see it (signed-in admins), visitors keep
+  the active theme.
+- **Activate** makes it the theme of the public page. A theme with contrast
+  problems shows the failing color pairs first and is only activated when you
+  confirm **Activate anyway**; better fix the colors.
+- **Import theme** takes a theme file (`<id>.json`) and optionally its extra
+  CSS (`<id>.css`). **Customize a copy** starts the editor with a copy of a
+  built-in or folder theme; uploaded themes can be edited and deleted. The
+  editor has a color picker for every token, checks the contrast while you
+  type and shows the preview.
+- The download button saves any theme as JSON, for example to put it into the
+  themes folder of another installation.
+
+Extra CSS is filtered: no `@import`, no images or fonts from other websites
+(only uploads of this instance), nothing that looks like HTML or a script. The
+file format, every token and how to set up the themes folder for Docker
+Compose, Helm and an installation without containers are described in
+`docs/themes.md` in the repository.
 
 ### Legal links and the info link
 
