@@ -1,0 +1,71 @@
+#!/bin/sh
+# Launcher of an OpenStatusPage installation without containers (release
+# tarball, .deb/.rpm package or scripts/install.sh). Installed as
+# /opt/openstatuspage/app/bin/openstatuspage; the systemd units call it.
+#
+#   openstatuspage serve [all|public|admin|worker]   run the server (systemd)
+#   openstatuspage migrate|seed|create-user [args]   run a CLI command
+#   openstatuspage version                           print the installed version
+#
+# CLI commands read /etc/openstatuspage/openstatuspage.env (or ENV_FILE), so run
+# them as the service user:
+#   sudo -u openstatuspage /opt/openstatuspage/app/bin/openstatuspage create-user ...
+#
+# Node.js 22 is required (the native modules are built for it): the runtime
+# that scripts/install.sh installs to /opt/openstatuspage/node, else "node"
+# from PATH.
+set -eu
+
+app_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
+node_bin="$app_dir/../node/bin/node"
+if [ ! -x "$node_bin" ]; then
+  node_bin=$(command -v node 2>/dev/null || true)
+fi
+if [ -z "$node_bin" ]; then
+  echo "openstatuspage: Node.js 22 not found (install it or rerun scripts/install.sh)" >&2
+  exit 1
+fi
+node_major=$("$node_bin" -p 'process.versions.node.split(".")[0]')
+if [ "$node_major" != 22 ]; then
+  echo "openstatuspage: Node.js 22 is required, found $("$node_bin" --version) at $node_bin" >&2
+  exit 1
+fi
+
+# The same runtime settings as the container image (docker/Dockerfile,
+# docs/architecture.md#memory). The environment file may override them.
+export NODE_ENV="${NODE_ENV:-production}"
+export WEB_DIST_DIR="${WEB_DIST_DIR:-$app_dir/web}"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-semi-space-size=1 --max-old-space-size=96}"
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+export UV_THREADPOOL_SIZE="${UV_THREADPOOL_SIZE:-2}"
+
+command="${1:-serve}"
+[ "$#" -gt 0 ] && shift
+case "$command" in
+  serve)
+    role="${1:-all}"
+    case "$role" in
+      all | public | admin | worker) ;;
+      *)
+        echo "openstatuspage: unknown role '$role' (all, public, admin or worker)" >&2
+        exit 2
+        ;;
+    esac
+    # The role comes from the unit, never from the environment file.
+    export APP_ROLE="$role"
+    exec "$node_bin" --max-opt=2 "$app_dir/server/dist/index.js"
+    ;;
+  migrate | seed | create-user)
+    if [ -z "${ENV_FILE:-}" ] && [ -r /etc/openstatuspage/openstatuspage.env ]; then
+      export ENV_FILE=/etc/openstatuspage/openstatuspage.env
+    fi
+    exec "$node_bin" "$app_dir/server/dist/cli/$command.js" "$@"
+    ;;
+  version | --version)
+    cat "$app_dir/VERSION"
+    ;;
+  *)
+    echo "usage: openstatuspage serve [all|public|admin|worker] | migrate | seed | create-user | version" >&2
+    exit 2
+    ;;
+esac
