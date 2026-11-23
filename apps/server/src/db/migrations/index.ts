@@ -12,6 +12,7 @@ import * as m0010 from './0010_poll_markers.js';
 import * as m0011 from './0011_full_sync_guard.js';
 import * as m0012 from './0012_definer_search_path.js';
 import * as m0013 from './0013_schema_create_hardening.js';
+import * as m0015 from './0015_notification_channels.js';
 
 /**
  * Migrations are registered statically so they survive bundling.
@@ -31,4 +32,6 @@ export const migrations: Record<string, Migration> = {
   '0011_full_sync_guard': m0011,
   '0012_definer_search_path': m0012,
   '0013_schema_create_hardening': m0013,
+  // 0014 is reserved for another branch.
+  '0015_notification_channels': m0015,
 };

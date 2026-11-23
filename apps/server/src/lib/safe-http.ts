@@ -211,8 +211,6 @@ export async function safeRequest(rawUrl: string, init: SafeRequestInit = {}, op
       lookup: pinnedLookup(pinned),
       // One connection per request: never reuse a socket of another (pinned) address.
       agent: false,
-      // No Happy Eyeballs: the lookup answers with one address anyway.
-      autoSelectFamily: false,
       timeout: timeoutMs,
     });
     // Overall deadline (connect, TLS, sending and reading), not only idle time.
