@@ -32,3 +32,5 @@ export const PRIVATE_PAGE_DOCUMENT: DocumentOptions = { type: 'private-pages', r
 export const OIDC_PROVIDER_DOCUMENT: DocumentOptions = { type: 'oidc-providers' };
 /** Discovery test of an issuer URL that is not saved yet. */
 export const OIDC_DISCOVERY_TEST_DOCUMENT: DocumentOptions = { type: 'oidc-discovery-tests' };
+/** Themes (import, edit, activate). */
+export const THEME_DOCUMENT: DocumentOptions = { type: 'themes' };

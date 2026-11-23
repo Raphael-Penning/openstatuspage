@@ -27,7 +27,8 @@
     "subscribers": "Subscribers",
     "corrections": "Corrections",
     "notifications": "Webhooks & SMS",
-    "pages": "Pages"
+    "pages": "Pages",
+    "appearance": "Appearance"
   },
   "userMenu": {
     "label": "Account and preferences",
@@ -1019,7 +1020,8 @@
       "notifications": "Email notifications",
       "correction": "Correction",
       "page": "Page",
-      "upload": "Image"
+      "upload": "Image",
+      "theme": "Theme"
     },
     "actions": {
       "auth_login": "Signed in",
@@ -1072,7 +1074,11 @@
       "notifications_retry_failed": "Failed emails requeued",
       "correction_create": "Correction created",
       "correction_update": "Correction edited",
-      "correction_delete": "Correction deleted"
+      "correction_delete": "Correction deleted",
+      "theme_create": "Theme imported",
+      "theme_update": "Theme edited",
+      "theme_delete": "Theme deleted",
+      "theme_activate": "Theme activated"
     }
   },
   "notify": {
@@ -1507,5 +1513,111 @@
     "url": "Address",
     "markdown": "Markdown",
     "altPlaceholder": "Description of the image"
+  },
+  "appearance": {
+    "title": "Appearance",
+    "description": "Themes of the public status page: colors, corners, fonts and spacing in light and dark mode. Built-in themes and the themes folder of the server are read-only; uploaded themes can be edited.",
+    "import": "Import theme",
+    "accentOverride": "The accent color {{color}} of the settings replaces the accent of every theme. Remove it in the settings to use the theme's own accent.",
+    "empty": "No themes.",
+    "fields": {
+      "name": "Name",
+      "source": "Source",
+      "contrast": "Contrast (WCAG 2.2 AA)",
+      "id": "ID",
+      "author": "Author",
+      "radius": "Corner radius",
+      "fontSans": "Text font stack",
+      "fontMono": "Monospace font stack",
+      "density": "Density",
+      "description": "Description",
+      "css": "Extra CSS"
+    },
+    "active": "Active",
+    "sources": {
+      "builtin": "Built-in",
+      "folder": "Themes folder",
+      "database": "Uploaded"
+    },
+    "passesAA": "Passes AA",
+    "failsAA_one": "{{count}} contrast problem",
+    "failsAA_other": "{{count}} contrast problems",
+    "activate": "Activate",
+    "activated": "“{{name}}” is now the theme of the public pages.",
+    "deleted": "Theme deleted.",
+    "failingTitle": "Theme fails WCAG 2.2 AA",
+    "failingMessage_one": "“{{name}}” fails {{count}} contrast check. Some text or controls of the public pages would be hard to read for many visitors. Activate it anyway?",
+    "failingMessage_other": "“{{name}}” fails {{count}} contrast checks. Some text or controls of the public pages would be hard to read for many visitors. Activate it anyway?",
+    "failingActiveMessage_one": "This theme is active and would fail {{count}} contrast check. Save it anyway?",
+    "failingActiveMessage_other": "This theme is active and would fail {{count}} contrast checks. Save it anyway?",
+    "activateAnyway": "Activate anyway",
+    "saveAnyway": "Save anyway",
+    "previewLabel": "Preview “{{name}}” here",
+    "previewPublicLabel": "Preview the public page with “{{name}}” (new tab, only for you)",
+    "exportLabel": "Download “{{name}}” as JSON",
+    "exportCssLabel": "Download the extra CSS of “{{name}}”",
+    "copyLabel": "Customize a copy of “{{name}}”",
+    "editLabel": "Edit “{{name}}”",
+    "deleteLabel": "Delete “{{name}}”",
+    "deleteTitle": "Delete theme",
+    "deleteConfirm": "Delete the theme “{{name}}”? Download it first if you want to keep it.",
+    "livePreview": "Preview: {{name}}",
+    "contrastLine": "{{mode}}: {{foreground}} on {{background}} {{ratio}}:1 (needs {{required}}:1)",
+    "modes": {
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "sample": {
+      "title": "All systems operational",
+      "muted": "Updated a minute ago"
+    },
+    "statuses": {
+      "operational": "Operational",
+      "maintenance": "Maintenance",
+      "degraded": "Degraded",
+      "partialOutage": "Partial outage",
+      "majorOutage": "Major outage",
+      "noData": "No data"
+    },
+    "tokens": {
+      "background": "Page background",
+      "surface": "Cards",
+      "surfaceAlt": "Insets",
+      "border": "Hairlines",
+      "borderStrong": "Field borders",
+      "text": "Text",
+      "muted": "Secondary text",
+      "accent": "Accent",
+      "focus": "Focus ring"
+    },
+    "statusFills": "Status colors (bars and dots)",
+    "statusTexts": "Status text colors",
+    "statusTextHelp": "Optional. Empty: derived from the status colors so they are readable on every background.",
+    "optional": "optional",
+    "pickColor": "Pick a color for “{{name}}”",
+    "copyName": "{{name}} (copy)",
+    "saved": "Theme saved.",
+    "editTitle": "Edit “{{name}}”",
+    "newTitle": "New theme",
+    "invalid": "The theme cannot be saved:",
+    "idHelp": "Lower-case letters, digits and hyphens. Cannot be changed later.",
+    "radiusHelp": "0, or a length up to 2rem or 32px, e.g. 0.5rem.",
+    "fontHelp": "Installed fonts only (nothing is downloaded), ending with a generic family, e.g. system-ui, sans-serif.",
+    "densities": {
+      "compact": "Compact",
+      "comfortable": "Comfortable",
+      "spacious": "Spacious"
+    },
+    "cssHelp": "Optional, at most 64 KB, served as its own stylesheet. Admins are trusted, but it is still filtered: no @import, url() only to /uploads/ or relative paths, no expression() or javascript:.",
+    "contrastTitle": "Contrast and preview",
+    "contrastPending": "Complete the colors to check the contrast.",
+    "contrastOk": "Every text, control and status color meets WCAG 2.2 AA in light and dark mode.",
+    "imported": "Theme “{{name}}” imported.",
+    "importNoFile": "Choose a theme file (.json).",
+    "importNotJson": "The theme file is not valid JSON.",
+    "importTitle": "Import theme",
+    "importHelp": "A theme file (<id>.json) and, optionally, its extra CSS (<id>.css). The token reference is in the documentation (docs/themes.md).",
+    "importJson": "Theme file (.json)",
+    "importCss": "Extra CSS (.css, optional)"
   }
 }
