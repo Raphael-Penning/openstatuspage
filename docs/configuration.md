@@ -32,8 +32,8 @@ keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large his
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** In production the published example values (the development fallback and the value in `deploy/kubernetes/secret.example.yaml`) are refused, here and for `SUBSCRIPTION_TOKEN_KEY`. Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
-| `SUBSCRIPTION_TOKEN_KEY` | `SECRET_KEY` | At least 32 characters. Key of the email subscription links (confirm, manage, unsubscribe). A split deployment sets its own value, the same on every instance, and gives the `public` instance only this key instead of `SECRET_KEY`. Changing it invalidates links in emails already sent; the admin and worker instances refresh the stored token hashes on their next start. |
+| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials, admin webhook URLs, extra header values and signing secrets, and SMS provider credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** In production the published example values (the development fallback and the value in `deploy/kubernetes/secret.example.yaml`) are refused, here and for `SUBSCRIPTION_TOKEN_KEY`. Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
+| `SUBSCRIPTION_TOKEN_KEY` | `SECRET_KEY` | At least 32 characters. Key of the email subscription links (confirm, manage, unsubscribe), of the webhook and SMS subscription links, and of the encrypted webhook URLs and phone numbers of visitors. A split deployment sets its own value, the same on every instance, and gives the `public` instance only this key instead of `SECRET_KEY`. Changing it invalidates links in emails already sent and makes the stored webhook URLs and phone numbers of visitors unreadable (these visitors have to subscribe again); the admin and worker instances refresh the stored token hashes on their next start. |
 | `SESSION_TTL_HOURS` | `168` (7 days) | Session lifetime. The expiry slides: active sessions are extended, idle ones expire after this many hours. Range 1–2160. |
 | `SESSION_MAX_AGE_HOURS` | `720` (30 days) | Absolute session lifetime, counted from the login. Active sessions are never extended past it, so everybody has to log in again (and SSO users pass the IdP checks again) at least this often. Range 1–8760, at least `SESSION_TTL_HOURS`; when unset and `SESSION_TTL_HOURS` is longer, that value is used. |
 
@@ -199,6 +199,29 @@ and port, default `127.0.0.1:3000`).
 Confirmation and unsubscribe links are signed with `SUBSCRIPTION_TOKEN_KEY`
 (default `SECRET_KEY`); changing it invalidates links in emails already sent.
 
+## Webhooks and SMS
+
+Webhooks (Discord, Slack, Microsoft Teams, generic JSON) and SMS are configured in
+the management UI under **Administration → Webhooks & SMS**, not with environment
+variables. See [notifications.md](notifications.md#webhooks-and-sms) for the
+events, formats, delivery and the SMS providers, and the
+[guide chapter](guide/en/13-webhooks-and-sms.md) for the set-up.
+
+- Admin secrets (webhook URLs, extra header values, generic signing secrets and SMS
+  provider credentials) are encrypted with `SECRET_KEY`, like the monitoring
+  credentials. Changing `SECRET_KEY` makes them unreadable; they then have to be
+  entered again.
+- Visitor webhook URLs and phone numbers are encrypted with a key derived from
+  `SUBSCRIPTION_TOKEN_KEY`. A split deployment therefore needs the same
+  `SUBSCRIPTION_TOKEN_KEY` on the `public` instance (which does not get `SECRET_KEY`)
+  and on the worker.
+- Messages are sent by the background task `channel-delivery`, so they need a
+  running worker (`WORKER_ENABLED=true` on one instance), like the email
+  notifications.
+- Every outgoing request goes through the SSRF guard: https only (http only for
+  admin webhooks that allow it), no private or loopback addresses, no redirects.
+  Nothing has to be configured for this.
+
 ## Search engines and AI agents
 
 Search engines and AI agents need no settings of their own. The only variable is
@@ -331,6 +354,13 @@ management UI (`/admin`) never loads the tracker.
 - `POST /api/public/subscriptions` and the form `POST /subscribe`: 5 requests per minute
   per client IP together; the other
   subscription endpoints 30 requests per minute per client IP.
+- Webhook and SMS subscriptions: `POST /api/public/channel-subscriptions`, `POST /subscribe/webhook`
+  and `POST /subscribe/sms` share the 5 requests per minute of the email subscribe limit;
+  `POST /api/public/channel-subscriptions/confirm` allows 10 requests per minute, the
+  verify form `POST /subscription/verify` 10 per minute; the manage endpoints and forms
+  (`/s/:id/:token`, `/subscription/channel`) 30 per minute per client IP. The delivery
+  limits (per destination host and minute, for visitor webhooks and SMS) are set under
+  **Visitor subscriptions and limits** in the admin UI.
 - Analytics proxy: `GET /pulse/p.js` 60 and `POST /pulse/api/send` 120 requests per
   minute per client IP (see [Analytics](#analytics)).
 
