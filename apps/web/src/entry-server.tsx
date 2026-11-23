@@ -38,7 +38,6 @@ import { absoluteUrl, HeadStore } from './public/head';
 import { isNotFound, publicQueries, type GetDocument } from './public/hooks/queries';
 import type { LoaderArgs, PublicRouteHandle } from './public/loaders';
 import { encodeQueries, type SsrState } from './public/ssr-state';
-import { accentCss } from './public/utils/accent';
 
 export type { SsrRenderInput, SsrRenderResult } from '@openstatuspage/shared';
 
@@ -195,7 +194,6 @@ export async function render(input: SsrRenderInput): Promise<SsrRenderResult> {
       dir: languageDir(lang),
       theme,
       state: scriptJson(state),
-      css: accentCss(settings.accentColor),
       ...(analytics ? { analytics } : {}),
     };
   } finally {

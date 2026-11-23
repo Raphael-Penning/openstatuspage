@@ -15,6 +15,7 @@ import * as m0013 from './0013_schema_create_hardening.js';
 import * as m0014 from './0014_site_pages_uploads.js';
 import * as m0015 from './0015_notification_channels.js';
 import * as m0016 from './0016_oidc_providers.js';
+import * as m0017 from './0017_themes.js';
 
 /**
  * Migrations are registered statically so they survive bundling.
@@ -37,4 +38,5 @@ export const migrations: Record<string, Migration> = {
   '0014_site_pages_uploads': m0014,
   '0015_notification_channels': m0015,
   '0016_oidc_providers': m0016,
+  '0017_themes': m0017,
 };

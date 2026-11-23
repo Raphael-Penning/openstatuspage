@@ -15,6 +15,10 @@ Conflicts=openstatuspage.service
 Type=simple
 User=openstatuspage-public
 Group=openstatuspage-public
+# Themes folder (docs/themes.md): this user cannot enter /etc/openstatuspage, so
+# /etc/openstatuspage/themes is bound read-only to /opt/openstatuspage/themes.
+Environment=THEMES_DIR=/opt/openstatuspage/themes
+BindReadOnlyPaths=-/etc/openstatuspage/themes:/opt/openstatuspage/themes
 EnvironmentFile=/etc/openstatuspage/public.env
 ExecStart=/opt/openstatuspage/app/bin/openstatuspage serve public
 WorkingDirectory=/opt/openstatuspage/app

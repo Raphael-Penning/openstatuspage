@@ -55,6 +55,7 @@ tests) and history imports. The public instance never connects to either.
 | Read the page settings (`settings` row `page`: site name, colors, which features are shown) | view |
 | Read the **published** content pages (about page, legal notice, privacy policy, accessibility statement, custom pages): slug, titles, descriptions and Markdown texts, placement | view `osp_public.site_pages` (migration `0014`) |
 | Read the uploaded images (logo, favicon, images of the content pages): hash, type, size in pixels and bytes | view `osp_public.uploads` (migration `0014`) |
+| Read the **active** theme of the public pages: its id and, when it was uploaded, its theme file and extra CSS | views `osp_public.active_theme` and `osp_public.themes` (migration `0017`) |
 | Read the applied schema version (`kysely_migration`) | view |
 | Subscribe an address (double opt-in) | `osp_public.subscribe(...)` |
 | Confirm, read, change and delete one subscription, **only with its token** | `osp_public.subscription_confirm/get/update/delete(...)` |
@@ -96,6 +97,13 @@ from `/api/`, `/admin` and the personal subscription links.
   only and without `created_by`, `uploads` without `created_by` and the original
   file name. Every upload is public by design: it is served at
   `/uploads/<sha256>.<ext>` without login.
+- **Read or change themes other than the active one.** The tables `themes`
+  and `active_theme` (migration `0017`) have the row level security of the
+  private tables and no privilege for the public role. It reads them only
+  through two views in `osp_public` with the owner's rights
+  (`security_barrier`): `active_theme` (which theme is active) and `themes`
+  with the active theme only, without `created_by`. Uploaded themes that are
+  not active stay invisible to it, and it cannot activate or change a theme.
 - **List private pages or their services.** It cannot read the private page
   tables, their token hashes or which hidden service is on which page. The
   `osp_public.private_page*` functions (migration `0009`, `SECURITY DEFINER`,
@@ -348,8 +356,12 @@ Every response has `X-Content-Type-Options: nosniff` and a `Referrer-Policy`
   No inline script runs: the state block and the JSON-LD of a rendered page are
   data blocks (`application/json`, `application/ld+json`), which `script-src`
   does not govern, and they are escaped so they cannot end their element. Inline
-  styles stay allowed (style attributes of the rendered markup, the accent color
-  in the head). Images may come from any HTTPS origin because the logo and
+  styles stay allowed (style attributes of the rendered markup); the page head
+  carries no `<style>` element: the theme of the public pages, accent included,
+  is a same-origin stylesheet (`/theme/<hash>.css`, [themes.md](themes.md)).
+  The extra CSS of a theme is written by admins but still filtered (no
+  `@import`, `url()` only to `/uploads/` or relative paths, no `expression()`,
+  `javascript:` or `<`) and only ever served as its own stylesheet. Images may come from any HTTPS origin because the logo and
   favicon of the settings may be URLs. zod runs without compiled parsers in the
   browser, so no `unsafe-eval` is needed. The optional Umami tracker is served
   from the page's own origin (`/pulse/p.js`) and sends to it (`/pulse/api/send`),

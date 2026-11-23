@@ -27,7 +27,8 @@
     "subscribers": "Abonnenten",
     "corrections": "Korrekturen",
     "notifications": "Webhooks & SMS",
-    "pages": "Seiten"
+    "pages": "Seiten",
+    "appearance": "Darstellung"
   },
   "userMenu": {
     "label": "Konto und Einstellungen",
@@ -705,7 +706,7 @@
       "description": "Beschreibung",
       "logoUrl": "Logo-URL",
       "faviconUrl": "Favicon-URL",
-      "accentColor": "Akzentfarbe",
+      "accentColor": "Akzentfarbe (ersetzt die des Themes)",
       "defaultLocale": "Standardsprache",
       "defaultTheme": "Standarddarstellung",
       "supportUrl": "Support-URL",
@@ -738,7 +739,7 @@
     },
     "supportUrlHelp": "Optionaler Link zu deiner Support- oder Kontaktseite.",
     "pickColor": "Akzentfarbe wählen",
-    "accentHelp": "Hex-Farbe wie #7c6cf2.",
+    "accentHelp": "Optional, eine Hex-Farbe wie #7c6cf2. Ersetzt den Akzent des aktiven Themes im hellen und dunklen Modus. Lass das Feld leer, um den Akzent des Themes zu verwenden (siehe Darstellung).",
     "preview": "Vorschau",
     "previewButton": "Abonnieren",
     "previewLink": "Verlauf ansehen",
@@ -1019,7 +1020,8 @@
       "notifications": "E-Mail-Benachrichtigungen",
       "correction": "Korrektur",
       "page": "Seite",
-      "upload": "Bild"
+      "upload": "Bild",
+      "theme": "Theme"
     },
     "actions": {
       "auth_login": "Angemeldet",
@@ -1072,7 +1074,11 @@
       "notifications_retry_failed": "Fehlgeschlagene E-Mails erneut eingeplant",
       "correction_create": "Korrektur erstellt",
       "correction_update": "Korrektur bearbeitet",
-      "correction_delete": "Korrektur gelöscht"
+      "correction_delete": "Korrektur gelöscht",
+      "theme_create": "Theme importiert",
+      "theme_update": "Theme bearbeitet",
+      "theme_delete": "Theme gelöscht",
+      "theme_activate": "Theme aktiviert"
     }
   },
   "notify": {
@@ -1507,5 +1513,114 @@
     "url": "Adresse",
     "markdown": "Markdown",
     "altPlaceholder": "Beschreibung des Bildes"
+  },
+  "appearance": {
+    "title": "Darstellung",
+    "description": "Themes der öffentlichen Statusseite: Farben, Ecken, Schriften und Abstände im hellen und dunklen Modus. Eingebaute Themes und der Themes-Ordner des Servers sind schreibgeschützt; hochgeladene Themes kannst du bearbeiten.",
+    "import": "Theme importieren",
+    "accentOverride": "Die Akzentfarbe {{color}} aus den Einstellungen ersetzt den Akzent jedes Themes. Entferne sie in den Einstellungen, um den Akzent des Themes zu verwenden.",
+    "empty": "Keine Themes.",
+    "fields": {
+      "name": "Name",
+      "source": "Quelle",
+      "contrast": "Kontrast (WCAG 2.2 AA)",
+      "id": "ID",
+      "author": "Autor",
+      "radius": "Eckenradius",
+      "fontSans": "Schriften für Text",
+      "fontMono": "Schriften für Festbreite",
+      "density": "Dichte",
+      "description": "Beschreibung",
+      "css": "Zusätzliches CSS"
+    },
+    "active": "Aktiv",
+    "sources": {
+      "builtin": "Eingebaut",
+      "folder": "Themes-Ordner",
+      "database": "Hochgeladen"
+    },
+    "passesAA": "Erfüllt AA",
+    "failsAA_one": "{{count}} Kontrastproblem",
+    "failsAA_other": "{{count}} Kontrastprobleme",
+    "activate": "Aktivieren",
+    "activated": "„{{name}}“ ist jetzt das Theme der öffentlichen Seiten.",
+    "deleted": "Theme gelöscht.",
+    "failingTitle": "Theme erfüllt WCAG 2.2 AA nicht",
+    "failingMessage_one": "„{{name}}“ besteht {{count}} Kontrastprüfung nicht. Manche Texte oder Bedienelemente der öffentlichen Seiten wären für viele Besucher schwer lesbar. Trotzdem aktivieren?",
+    "failingMessage_other": "„{{name}}“ besteht {{count}} Kontrastprüfungen nicht. Manche Texte oder Bedienelemente der öffentlichen Seiten wären für viele Besucher schwer lesbar. Trotzdem aktivieren?",
+    "failingActiveMessage_one": "Dieses Theme ist aktiv und würde {{count}} Kontrastprüfung nicht bestehen. Trotzdem speichern?",
+    "failingActiveMessage_other": "Dieses Theme ist aktiv und würde {{count}} Kontrastprüfungen nicht bestehen. Trotzdem speichern?",
+    "unconfirmed_one": "Das aktive Theme „{{name}}“ besteht {{count}} Kontrastprüfung nicht, und niemand hat das bestätigt: Seine Datei oder die Akzentfarbe hat sich nach der Aktivierung geändert. Prüfe und bestätige es oder aktiviere ein anderes Theme.",
+    "unconfirmed_other": "Das aktive Theme „{{name}}“ besteht {{count}} Kontrastprüfungen nicht, und niemand hat das bestätigt: Seine Datei oder die Akzentfarbe hat sich nach der Aktivierung geändert. Prüfe und bestätige es oder aktiviere ein anderes Theme.",
+    "review": "Prüfen",
+    "activateAnyway": "Trotzdem aktivieren",
+    "saveAnyway": "Trotzdem speichern",
+    "previewLabel": "Vorschau von „{{name}}“ hier anzeigen",
+    "previewPublicLabel": "Öffentliche Seite mit „{{name}}“ ansehen (neuer Tab, nur für dich)",
+    "exportLabel": "„{{name}}“ als JSON herunterladen",
+    "exportCssLabel": "Zusätzliches CSS von „{{name}}“ herunterladen",
+    "copyLabel": "Kopie von „{{name}}“ anpassen",
+    "editLabel": "„{{name}}“ bearbeiten",
+    "deleteLabel": "„{{name}}“ löschen",
+    "deleteTitle": "Theme löschen",
+    "deleteConfirm": "Theme „{{name}}“ löschen? Lade es vorher herunter, wenn du es behalten willst.",
+    "livePreview": "Vorschau: {{name}}",
+    "contrastLine": "{{mode}}: {{foreground}} auf {{background}} {{ratio}}:1 (nötig {{required}}:1)",
+    "modes": {
+      "light": "Hell",
+      "dark": "Dunkel"
+    },
+    "sample": {
+      "title": "Alle Systeme betriebsbereit",
+      "muted": "Vor einer Minute aktualisiert"
+    },
+    "statuses": {
+      "operational": "Betriebsbereit",
+      "maintenance": "Wartung",
+      "degraded": "Eingeschränkt",
+      "partialOutage": "Teilausfall",
+      "majorOutage": "Großer Ausfall",
+      "noData": "Keine Daten"
+    },
+    "tokens": {
+      "background": "Seitenhintergrund",
+      "surface": "Karten",
+      "surfaceAlt": "Einschübe",
+      "border": "Trennlinien",
+      "borderStrong": "Feldränder",
+      "text": "Text",
+      "muted": "Nebentext",
+      "accent": "Akzent",
+      "focus": "Fokusrahmen"
+    },
+    "statusFills": "Statusfarben (Balken und Punkte)",
+    "statusTexts": "Textfarben der Status",
+    "statusTextHelp": "Optional. Leer: aus den Statusfarben abgeleitet, sodass sie auf jedem Hintergrund lesbar sind.",
+    "optional": "optional",
+    "pickColor": "Farbe für „{{name}}“ wählen",
+    "copyName": "{{name}} (Kopie)",
+    "saved": "Theme gespeichert.",
+    "editTitle": "„{{name}}“ bearbeiten",
+    "newTitle": "Neues Theme",
+    "invalid": "Das Theme kann nicht gespeichert werden:",
+    "idHelp": "Kleinbuchstaben, Ziffern und Bindestriche. Lässt sich später nicht ändern.",
+    "radiusHelp": "0 oder eine Länge bis 2rem bzw. 32px, z. B. 0.5rem.",
+    "fontHelp": "Nur installierte Schriften (es wird nichts geladen), am Ende eine generische Familie, z. B. system-ui, sans-serif.",
+    "densities": {
+      "compact": "Kompakt",
+      "comfortable": "Normal",
+      "spacious": "Großzügig"
+    },
+    "cssHelp": "Optional, höchstens 64 KB, als eigenes Stylesheet ausgeliefert. Admins wird vertraut, es wird trotzdem gefiltert: kein @import, url() nur zu /uploads/ oder relativen Pfaden, kein expression() oder javascript:.",
+    "contrastTitle": "Kontrast und Vorschau",
+    "contrastPending": "Vervollständige die Farben, um den Kontrast zu prüfen.",
+    "contrastOk": "Alle Text-, Bedien- und Statusfarben erfüllen WCAG 2.2 AA im hellen und dunklen Modus.",
+    "imported": "Theme „{{name}}“ importiert.",
+    "importNoFile": "Wähle eine Theme-Datei (.json).",
+    "importNotJson": "Die Theme-Datei ist kein gültiges JSON.",
+    "importTitle": "Theme importieren",
+    "importHelp": "Eine Theme-Datei (<id>.json) und optional ihr zusätzliches CSS (<id>.css). Die Token-Referenz steht in der Dokumentation (docs/themes.md).",
+    "importJson": "Theme-Datei (.json)",
+    "importCss": "Zusätzliches CSS (.css, optional)"
   }
 }

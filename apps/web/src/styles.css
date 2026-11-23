@@ -14,7 +14,10 @@
 }
 
 /*
- * Design tokens. Components use the Tailwind utilities generated from
+ * Design tokens: the built-in default theme (packages/shared theme-builtins.ts;
+ * tokens.test.ts checks they match). The active theme of the public pages
+ * replaces them with its own stylesheet (/theme/<hash>.css, docs/themes.md).
+ * Components use the Tailwind utilities generated from
  * @theme below (bg-bg, bg-surface, text-fg, text-muted, border-border,
  * text-accent, bg-status-operational, ...), never raw hex values, so both
  * themes and the configurable accent color work everywhere.
@@ -57,6 +60,11 @@
   --status-degraded-text: #854d0e;
   --status-partial-outage-text: #9a3412;
   --status-major-outage-text: #b91c1c;
+
+  /* Corner radius (rounded-lg; the other sizes scale with it) and font stacks of the theme. */
+  --osp-radius: 0.5rem;
+  --osp-font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --osp-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   color-scheme: light;
 }
@@ -145,7 +153,15 @@
   --color-status-partial-outage-text: var(--status-partial-outage-text);
   --color-status-major-outage-text: var(--status-major-outage-text);
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: var(--osp-font-sans);
+  --font-mono: var(--osp-font-mono);
+
+  --radius-sm: calc(var(--osp-radius) * 0.5);
+  --radius-md: calc(var(--osp-radius) * 0.75);
+  --radius-lg: var(--osp-radius);
+  --radius-xl: calc(var(--osp-radius) * 1.5);
+  --radius-2xl: calc(var(--osp-radius) * 2);
+  --radius-3xl: calc(var(--osp-radius) * 3);
 }
 
 html,
@@ -331,7 +347,7 @@ html {
   border-radius: 0.5rem;
 }
 .page-prose code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--osp-font-mono);
   font-size: 0.875em;
 }
 .page-prose :not(pre) > code {

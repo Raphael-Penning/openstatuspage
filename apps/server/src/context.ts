@@ -10,6 +10,7 @@ import { IngestService } from './services/ingest.js';
 import { NotificationService } from './services/notifications.js';
 import type { ChannelService } from './services/channels/service.js';
 import { StatusEngine } from './services/status-engine.js';
+import { ThemeService, themesDir } from './services/themes.js';
 import { Worker } from './worker.js';
 
 /** Long-lived dependencies shared by routes, services and background tasks. */
@@ -41,6 +42,8 @@ export interface AppContext {
   channels: ChannelService | null;
   /** Subscriber notifications and the mail outbox. */
   notifications: NotificationService;
+  /** Themes of the public pages (built-in, THEMES_DIR, database) and their stylesheets. */
+  themes: ThemeService;
 }
 
 export interface CreateContextOptions {
@@ -89,6 +92,7 @@ export function createContext(
     mailer,
     notifications,
     channels,
+    themes: new ThemeService(db, themesDir(config), log),
   };
 }
 

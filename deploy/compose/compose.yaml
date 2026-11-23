@@ -63,10 +63,15 @@ services:
       SMTP_FROM: ${SMTP_FROM:-${MAIL_DOMAIN:+Status <status@${MAIL_DOMAIN}>}}
       # DKIM public keys of the bundled postfix, for the DNS records in the admin portal.
       MAIL_DKIM_DIR: ${MAIL_DOMAIN:+/mail-dkim}
+      # Themes folder (docs/themes.md), read on start; mount it below. A missing folder is fine.
+      THEMES_DIR: /themes
     volumes:
       - data:/data
       # Public keys only: the private keys stay in the postfix service.
       - dkim-public:/mail-dkim:ro
+      # Optional themes folder: <id>.json and <id>.css files in ./themes next to
+      # this file (docs/themes.md). Uncomment, then restart.
+      # - ./themes:/themes:ro
     networks: [default, mail]
     depends_on:
       db:

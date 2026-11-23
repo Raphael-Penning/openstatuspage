@@ -44,6 +44,7 @@ const cacheHeaders =(scope: FastifyInstance) =>
 export async function registerPublicRoutes(app: FastifyInstance): Promise<void> {
   const docs = new PublicDocuments(app.ctx.db, app.ctx.mailer, {
     analytics: Boolean(app.ctx.config.UMAMI_URL),
+    theme: () => app.ctx.themes.publicInfo(),
     channels: () => channelOptions(app.ctx.db, app.ctx.config),
   });
 

@@ -171,6 +171,8 @@ async function registerOverviewScope(app: FastifyInstance): Promise<void> {
     const current = await getSettings(db);
     const input = parse(SettingsInput, { ...current, ...(req.body as object) });
     const saved = await saveSettings(db, input);
+    // The accent override is part of the theme stylesheet.
+    app.ctx.themes.invalidate();
     await auditRequest(db, req, 'settings.update', 'settings', null, { siteName: input.siteName });
     return document(adminSettingsResource(saved, instance));
   });

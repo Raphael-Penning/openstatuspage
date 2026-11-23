@@ -1,0 +1,13 @@
+/*
+ * Extra CSS of the example theme "ocean" (docs/themes.md). Served as its own
+ * stylesheet after the app's; use the theme's custom properties, not colours.
+ * Allowed: url() to /uploads/... or a relative path. Not allowed: @import,
+ * other URLs, expression(), javascript:, anything that looks like HTML.
+ */
+header {
+  border-bottom: 3px solid var(--accent);
+}
+
+.osp-group > details > summary {
+  letter-spacing: 0.01em;
+}

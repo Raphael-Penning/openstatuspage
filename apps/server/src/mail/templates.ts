@@ -22,8 +22,8 @@ export interface RenderedMail {
 export interface MailSite {
   siteName: string;
   baseUrl: string;
-  /** Hex color for links and buttons. */
-  accentColor?: string;
+  /** Hex color for links and buttons: the accent override of the settings; none: the default accent. */
+  accentColor?: string | null;
 }
 
 interface MailLink {

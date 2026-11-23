@@ -70,7 +70,8 @@ Variablen in das Secret `openstatuspage` oder in die `env:`-Liste von
 | Branding | Seitenname | Erscheint im Kopf der Seite, im Browser-Titel, in Feeds und im Betreff von E-Mails. |
 | Branding | Beschreibung | Kurzer Text unter dem Seitennamen. |
 | Branding | Logo-URL, Favicon-URL | `https://`-URLs oder Pfade, oder *Logo hochladen* / *Favicon hochladen*, um ein Bild auf dieser Instanz zu speichern (PNG, JPEG, WebP oder ICO, höchstens 1 MB, kein SVG). |
-| Branding | Akzentfarbe | Farbe von Buttons und Hervorhebungen (Hex, z. B. `#7c6cf2`); wird für ausreichenden Kontrast automatisch angepasst, siehe [unten](#akzentfarbe-und-barrierefreiheit). |
+| Branding | Akzentfarbe (ersetzt die des Themes) | Optional. Ersetzt den Akzent des aktiven Themes (Hex, z. B. `#7c6cf2`); leer: der Akzent des Themes. Wird für ausreichenden Kontrast automatisch angepasst, siehe [unten](#akzentfarbe-und-barrierefreiheit). |
+| Darstellung | Administration → Darstellung | Das Theme der öffentlichen Seite: Farben, Ecken, Schriften und Abstände, siehe [Themes](#themes). |
 | Anzeige | Standardsprache | Gilt, wenn die Browsersprache des Besuchers nicht verfügbar ist (Englisch oder Deutsch). |
 | Anzeige | Standarddarstellung | System, hell oder dunkel; Besucher können umschalten. |
 | Anzeige | Support-URL | Optionaler Link zu deiner Support- oder Kontaktseite. |
@@ -115,6 +116,41 @@ Texte zu Vorfällen und Wartungen in der Sprache der meisten Besucher.
 
 Sprache und Darstellung der Verwaltung stellt jeder Benutzer selbst im
 Benutzermenü (unten links) ein.
+
+### Themes
+
+**Administration → Darstellung** listet die Themes der öffentlichen Seite mit
+ihrer Quelle: *Eingebaut* (`OpenStatusPage`, der Standard, dazu `Slate`,
+`Forest` und `High contrast`), *Themes-Ordner* (Dateien auf dem Server, beim
+Start gelesen) und *Hochgeladen*. Alle eingebauten Themes erfüllen WCAG 2.2 AA
+in heller und dunkler Darstellung.
+
+- **Vorschau** (Auge) zeigt ein Beispiel der öffentlichen Seite mit dem Theme,
+  hell und dunkel nebeneinander. **Öffentliche Seite ansehen** öffnet die
+  echte Seite mit dem Theme in einem neuen Tab; nur du siehst sie (angemeldete
+  Admins), Besucher behalten das aktive Theme.
+- **Aktivieren** macht es zum Theme der öffentlichen Seite. Ein Theme mit
+  Kontrastproblemen verlangt eine Bestätigung mit **Trotzdem aktivieren** und
+  wird erst danach aktiviert; der Editor nennt die betroffenen Farbpaare, besser
+  korrigierst du die Farben. Wird das aktive Theme so geändert, dass es
+  durchfällt, fragt der Editor nach **Trotzdem speichern**.
+  Fällt das aktive Theme ohne Bestätigung durch (seine Datei im Ordner hat sich
+  vor einem Neustart geändert, oder die Akzentfarbe in den Einstellungen), nennt
+  es ein Hinweis oben auf der Seite, und **Prüfen** fragt nach derselben
+  Bestätigung; im Server-Log steht zusätzlich eine Warnung.
+- **Theme importieren** nimmt eine Theme-Datei (`<id>.json`) und optional ihr
+  zusätzliches CSS (`<id>.css`). **Kopie anpassen** öffnet den Editor mit einer
+  Kopie eines eingebauten Themes oder eines Themes aus dem Ordner; hochgeladene
+  Themes kannst du bearbeiten und löschen. Der Editor hat für jedes Token eine
+  Farbauswahl, prüft den Kontrast beim Tippen und zeigt die Vorschau.
+- Mit dem Download-Knopf speicherst du jedes Theme als JSON, etwa für den
+  Themes-Ordner einer anderen Installation.
+
+Zusätzliches CSS wird gefiltert: kein `@import`, keine Bilder oder Schriften von
+anderen Websites (nur Uploads dieser Instanz oder relative Pfade dieser Seite), nichts, was nach HTML oder einem
+Skript aussieht. Das Dateiformat, alle Tokens und die Einrichtung des
+Themes-Ordners für Docker Compose, Helm und eine Installation ohne Container
+beschreibt `docs/themes.md` im Repository.
 
 ### Rechtliche Links und Info-Link
 

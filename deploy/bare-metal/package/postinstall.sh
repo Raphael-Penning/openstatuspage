@@ -11,6 +11,8 @@ env_file=/etc/openstatuspage/openstatuspage.env
 
 install -d -m 0750 -o root -g openstatuspage "$conf"
 install -d -m 0750 -o openstatuspage -g openstatuspage /var/lib/openstatuspage
+# Themes folder (docs/themes.md) and the mount point of the public instance.
+install -d -m 0755 -o root -g root "$conf/themes" /opt/openstatuspage/themes
 
 if [ ! -e "$env_file" ]; then
   key="$(head -c 48 /dev/urandom | base64 | tr -d '\n')"

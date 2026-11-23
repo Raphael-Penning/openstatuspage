@@ -177,11 +177,15 @@ export const SettingsInput = z.object({
   description: z.string().max(500).default(''),
   logoUrl: zHttpUrlOrPath.nullish(),
   faviconUrl: zHttpUrlOrPath.nullish(),
-  /** CSS color used as accent (hex). */
+  /**
+   * Accent override (hex): replaces the accent of the active theme in light and
+   * dark. Empty: the theme's own accent (docs/themes.md). The public settings
+   * answer the accent in effect here.
+   */
   accentColor: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/)
-    .default('#7c6cf2'),
+    .nullish(),
   defaultLocale: z.enum(['en', 'de']).default('en'),
   defaultTheme: z.enum(['system', 'dark', 'light']).default('system'),
   footerLinks: z.array(zFooterLink).max(10).default([]),

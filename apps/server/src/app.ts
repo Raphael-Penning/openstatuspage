@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath } from '@openstatuspage/shared';
+import { canonicalPath, hasDotSegments, isPersonalPath, normalizePath, THEME_PREVIEW_QUERY, zThemeId } from '@openstatuspage/shared';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type RouteOptions } from 'fastify';
 import type { Config } from './config.js';
 import { createContext, type AppContext } from './context.js';
@@ -148,6 +148,17 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
   const channelModule = config.APP_ROLE === 'public' ? null : await import('./services/channels/service.js');
   const ctx: AppContext = createContext(config, db, app.log, { mailer, ChannelService: channelModule?.ChannelService });
   app.decorate('ctx', ctx);
+  // The themes folder is read on start, so problems with its files are logged right away.
+  if (roleFeatures(config.APP_ROLE).publicWeb) ctx.themes.folderThemes();
+  if (roleFeatures(config.APP_ROLE).adminApi) {
+    app.addHook('onReady', async () => {
+      try {
+        await ctx.themes.logShadowed();
+      } catch (err) {
+        app.log.warn({ err }, 'Cannot check the uploaded themes against the themes folder');
+      }
+    });
+  }
   app.addHook('onClose', async () => {
     // Let work that runs after a response (e.g. subscribing) finish before the database goes away.
     // Running history imports would keep the process busy for minutes.
@@ -208,11 +219,25 @@ export async function buildApp({ config, db, serveWeb = true, mailer, logStream,
           baseUrl: config.PUBLIC_BASE_URL,
           docs: new PublicDocuments(ctx.db, ctx.mailer, {
             analytics: Boolean(config.UMAMI_URL),
+            theme: () => ctx.themes.publicInfo(),
             channels: () => channelOptions(ctx.db, ctx.config),
           }),
           subscription: (id, token) => forms.subscriptionDocument(app, id, token),
           channelSubscription: (id, token) => forms.channelSubscriptionDocument(app, id, token),
           privatePages: new PrivatePageDocuments(createPrivatePages(ctx.db, config)),
+          theme: {
+            stylesheets: async () => (await ctx.themes.active()).stylesheets,
+            // ?theme=<id>: a preview of any theme, for signed-in admins only (instances with sessions).
+            preview: roleFeatures(config.APP_ROLE).adminApi
+              ? async (req) => {
+                  const id = new URL(req.url, 'http://preview.invalid').searchParams.get(THEME_PREVIEW_QUERY);
+                  if (!id || !zThemeId.safeParse(id).success) return null;
+                  const { isAdminSession } = await import('./routes/themes.js');
+                  if (!(await isAdminSession(app, req))) return null;
+                  return ctx.themes.previewStylesheets(id);
+                }
+              : undefined,
+          },
           log: app.log,
           loadModule: ssrModule,
         });

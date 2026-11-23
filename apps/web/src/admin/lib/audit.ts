@@ -22,6 +22,7 @@ export const AUDIT_ENTITY_TYPES = [
   'upload',
   'subscriber',
   'notifications',
+  'theme',
 ] as const;
 
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];

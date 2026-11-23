@@ -612,6 +612,29 @@ export interface ChannelOutboxTable {
   sent_at: string | null;
 }
 
+/** Themes uploaded in the management UI (0017_themes); built-in and folder themes have no row. */
+export interface ThemesTable {
+  id: string;
+  name: string;
+  /** The theme file (JSON text, validated with ThemeFile). */
+  definition: string;
+  /** Extra CSS (filtered with checkExtraCss); null: none. */
+  css: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The active theme of the public pages (0017_themes): one row, slot `active`. */
+export interface ActiveThemeTable {
+  slot: string;
+  /** Id of a built-in, folder or database theme. */
+  theme_id: string;
+  /** 1 when an admin activated it although it fails WCAG 2.2 AA. */
+  contrast_accepted: number;
+  updated_at: string;
+}
+
 export interface Database {
   settings: SettingsTable;
   users: UsersTable;
@@ -658,6 +681,8 @@ export interface Database {
   channel_subscribers: ChannelSubscribersTable;
   channel_subscriber_services: ChannelSubscriberServicesTable;
   channel_outbox: ChannelOutboxTable;
+  themes: ThemesTable;
+  active_theme: ActiveThemeTable;
 }
 
 export type User = Selectable<UsersTable>;

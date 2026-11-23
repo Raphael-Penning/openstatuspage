@@ -228,6 +228,8 @@ ensure_dirs() {
   install -d -m 0755 -o root -g root "$PREFIX"
   install -d -m 0750 -o root -g "$APP_USER" "$CONF_DIR"
   install -d -m 0750 -o "$APP_USER" -g "$APP_USER" "$DATA_DIR"
+  # Themes folder (docs/themes.md) and the mount point of the public instance.
+  install -d -m 0755 -o root -g root "$CONF_DIR/themes" "$PREFIX/themes"
 }
 
 installed_by_package() {

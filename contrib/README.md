@@ -6,6 +6,7 @@ They only need **outbound HTTPS from the monitoring host to the status page**.
 | Directory | Contents | Documentation |
 | --- | --- | --- |
 | [`icinga2/`](icinga2/) | Notification script, `NotificationCommand` / `Notification` apply rule example, env file example | [docs/adapters/icinga2.md](../docs/adapters/icinga2.md) |
+| [`themes/`](themes/) | Example theme for the themes folder (`ocean.json`, `ocean.css`) | [docs/themes.md](../docs/themes.md) |
 | [`openitcockpit/`](openitcockpit/) | Nagios-style notification command (also works with Naemon/Nagios), env file example | [docs/adapters/openitcockpit.md](../docs/adapters/openitcockpit.md) |
 
 Uptime Kuma needs no script: it has a native webhook notification

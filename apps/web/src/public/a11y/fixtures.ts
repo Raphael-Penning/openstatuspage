@@ -405,6 +405,7 @@ export const siteSettings: PublicPageSettings & PublicSiteExtras = {
     { systemKey: null, slug: 'faq', path: '/pages/faq', title: sitePages[1]!.title, showInFooter: true, showInNav: true, sortOrder: 10 },
   ],
   logoSize: null,
+  theme: { id: 'default', stylesheets: ['/theme/0123456789abcdef0123.css'] },
 };
 
 export function respond(method: string, path: string, headers: Headers = new Headers()): { status: number; body: unknown } {
