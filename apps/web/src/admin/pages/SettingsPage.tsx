@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { LANGUAGES } from '../../lib/i18n';
 import { CheckboxField, FormErrorSummary, inputClass, SelectField, TextAreaField, TextField } from '../components/fields';
 import { NotificationStatusPanel } from '../components/NotificationStatusPanel';
+import { UploadButton } from '../components/UploadButton';
 import { Button, Card, IconButton, PageHeader, QueryState } from '../components/ui';
 import { moveId } from '../lib/ordering';
 import { useAdminMutation, useSettings } from '../lib/queries';
@@ -211,20 +212,28 @@ function SettingsForm({ settings }: { settings: AdminPageSettings }) {
             rows={2}
             maxLength={500}
           />
-          <TextField
-            label={t('settings.fields.logoUrl')}
-            value={v.logoUrl}
-            onValue={(x) => form.set('logoUrl', x)}
-            error={form.error('logoUrl')}
-            placeholder="https://www.example.com/logo.svg"
-          />
-          <TextField
-            label={t('settings.fields.faviconUrl')}
-            value={v.faviconUrl}
-            onValue={(x) => form.set('faviconUrl', x)}
-            error={form.error('faviconUrl')}
-            placeholder="https://www.example.com/favicon.ico"
-          />
+          {(['logoUrl', 'faviconUrl'] as const).map((field) => (
+            <div key={field} className="flex flex-col gap-2">
+              <TextField
+                label={t(`settings.fields.${field}`)}
+                value={v[field]}
+                onValue={(x) => form.set(field, x)}
+                error={form.error(field)}
+                placeholder={field === 'logoUrl' ? 'https://www.example.com/logo.png' : 'https://www.example.com/favicon.ico'}
+                help={t('settings.imageUrlHelp')}
+              />
+              <div className="flex items-center gap-3">
+                <UploadButton
+                  size="sm"
+                  label={t(field === 'logoUrl' ? 'settings.uploadLogo' : 'settings.uploadFavicon')}
+                  onUploaded={(u) => form.set(field, u.url)}
+                />
+                {v[field].startsWith('/uploads/') && (
+                  <img src={v[field]} alt="" className="h-8 w-auto max-w-32 rounded border border-border bg-bg object-contain" />
+                )}
+              </div>
+            </div>
+          ))}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="accent-hex" className="text-sm font-medium">
               {t('settings.fields.accentColor')}

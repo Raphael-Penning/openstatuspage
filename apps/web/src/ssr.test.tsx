@@ -49,6 +49,10 @@ const PAGES: [name: string, url: string, status: number][] = [
   ['services filtered', '/services?q=api&status=operational', 200],
   ['history page 2', '/history?type=all&service=&month=&page=2', 200],
   ['not found', '/does-not-exist', 404],
+  ['content page', '/accessibility', 200],
+  ['custom content page', '/pages/faq', 200],
+  ['unpublished content page', '/legal-notice', 404],
+  ['system page under /pages', '/pages/accessibility', 404],
 ];
 
 beforeAll(() => installBrowserStubs());
@@ -100,6 +104,21 @@ describe('server rendering', () => {
     expect(detail.head.canonical).toBe(`${BASE_URL}/incidents/inc-1`);
     const missing = await serverRender('/incidents/missing');
     expect(missing.head).toMatchObject({ status: 404, robots: 'noindex', canonical: null });
+  });
+
+  it('renders content pages completely on the server (no JavaScript needed), without raw HTML', async () => {
+    const page = await serverRender('/accessibility');
+    expect(page.html).toMatch(/<h1[^>]*>Accessibility statement<\/h1>/);
+    expect(page.html).toMatch(/<h2>Our commitment<\/h2>/);
+    expect(page.html).toMatch(/<img src="\/uploads\/a{64}\.png" alt="Diagram of the status page" loading="lazy" decoding="async" width="640" height="320"\/?>/);
+    expect(page.html).not.toContain('<script>alert(1)</script>');
+    expect(page.html).not.toContain('alert(1)');
+    expect(page.head.title).toBe(`Accessibility statement · ${settings.siteName}`);
+    // The footer and the navigation link the published pages.
+    expect(page.html).toContain('href="/pages/faq"');
+    const de = await serverRender('/pages/faq?lang=de');
+    expect(de.html).toMatch(/<h1[^>]*>Häufige Fragen<\/h1>/);
+    expect(de.html).toContain('Jede Minute.');
   });
 
   it('renders the uptime bars of every screen width, narrow ones by media query', async () => {

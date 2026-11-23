@@ -33,6 +33,17 @@ export async function hydratePublic(
   const queryClient = browserQueryClient();
   hydrate(queryClient, decodeQueries(state.queries));
   const router = createBrowserRouter(publicOnlyRoutes);
+  // Lazy routes of this page (the content pages) are loaded first: the markup to hydrate was
+  // rendered with them, and the router renders nothing until they are there.
+  if (!router.state.initialized) {
+    await new Promise<void>((resolve) => {
+      const stop = router.subscribe((next) => {
+        if (!next.initialized) return;
+        stop();
+        resolve();
+      });
+    });
+  }
   const heads = new HeadStore(applyHead);
 
   hydrateRoot(

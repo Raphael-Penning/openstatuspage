@@ -34,6 +34,7 @@ export function ServiceDetailPage() {
     // A service is reachable by id and by slug: the slug is canonical.
     canonical: path,
     breadcrumbs: data && path ? [{ name: t('nav.services'), path: '/services' }, { name: data.name, path }] : undefined,
+    service: data ? { name: data.name, ...(data.description ? { description: data.description } : {}) } : undefined,
   });
 
   if (isPending) {

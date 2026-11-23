@@ -4,6 +4,8 @@
  */
 import type {
   AdminApiToken,
+  AdminSitePage,
+  AdminUpload,
   AdminPrivatePage,
   AdminCheckBundle,
   AdminCorrection,
@@ -91,6 +93,9 @@ export const keys = {
   users: ['admin', 'users'] as const,
   tokens: ['admin', 'api-tokens'] as const,
   privatePages: ['admin', 'private-pages'] as const,
+  sitePages: ['admin', 'pages'] as const,
+  uploads: ['admin', 'uploads'] as const,
+  instance: ['admin', 'instance'] as const,
   audit: (page: number, entityType: string) => ['admin', 'audit-log', page, entityType] as const,
   subscribers: (query: SubscriberListQuery) => ['admin', 'subscribers', query] as const,
   notificationStatus: ['admin', 'notifications', 'status'] as const,
@@ -114,6 +119,28 @@ export function useSessionQuery() {
     queryFn: () => api.get<SessionInfo>('/api/auth/session'),
     retry: notRetryingClientErrors,
     staleTime: 60_000,
+  });
+}
+
+// --- Content ---------------------------------------------------------------------
+
+/** Content pages (system pages first). */
+export function useSitePages() {
+  return useQuery({ queryKey: keys.sitePages, queryFn: () => api.get<AdminSitePage[]>('/api/admin/pages') });
+}
+
+/** Uploaded images, newest first. */
+export function useUploads() {
+  return useQuery({ queryKey: keys.uploads, queryFn: () => api.get<AdminUpload[]>('/api/admin/uploads') });
+}
+
+/** Facts of this instance (the version). */
+export function useInstance() {
+  return useQuery({
+    queryKey: keys.instance,
+    queryFn: () => api.get<{ version: string }>('/api/admin/instance'),
+    staleTime: Infinity,
+    retry: notRetryingClientErrors,
   });
 }
 
