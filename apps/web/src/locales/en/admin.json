@@ -24,7 +24,8 @@
     "privatePages": "Private pages",
     "auditLog": "Audit log",
     "subscribers": "Subscribers",
-    "corrections": "Corrections"
+    "corrections": "Corrections",
+    "notifications": "Webhooks & SMS"
   },
   "userMenu": {
     "label": "Account and preferences",
@@ -1015,7 +1016,8 @@
       "scope": "Subscribed to",
       "language": "Language",
       "created": "Subscribed",
-      "confirmed": "Confirmed"
+      "confirmed": "Confirmed",
+      "target": "Destination"
     },
     "allUpdates": "All updates",
     "empty": "No subscribers yet. Visitors can subscribe on the public page once email subscriptions are enabled.",
@@ -1024,7 +1026,15 @@
     "deleteSubscriber": "Delete {{email}}",
     "deleteTitle": "Delete subscriber",
     "deleteConfirm": "Delete {{email}}? The address receives no further emails and queued emails are dropped. This cannot be undone.",
-    "deleted": "Subscriber deleted."
+    "deleted": "Subscriber deleted.",
+    "filterChannel": "Channel",
+    "channels": {
+      "email": "Email",
+      "webhook": "Webhook",
+      "sms": "SMS"
+    },
+    "emptyChannel": "No subscribers on this channel yet.",
+    "toChannels": "Webhook and SMS settings"
   },
   "historyImport": {
     "title": "History import",
@@ -1158,6 +1168,142 @@
       "interrupted": "The import was interrupted (e.g. by a restart).",
       "expired": "The preview expired without being imported.",
       "apply_failed": "Writing the history failed: {{message}}"
+    }
+  },
+  "channels": {
+    "title": "Webhooks & SMS",
+    "description": "Send incident and maintenance notifications to chat channels, your own endpoints and phones, and choose what visitors may subscribe with.",
+    "saved": "Saved.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "testOk": "Test delivered ({{message}}).",
+    "testFailed": "Test failed: {{message}}",
+    "kinds": {
+      "discord": "Discord",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "generic": "Generic JSON"
+    },
+    "fields": {
+      "name": "Name",
+      "kind": "Type",
+      "status": "Status",
+      "url": "Webhook URL",
+      "headers": "Extra headers",
+      "allServices": "All services",
+      "services": "Services",
+      "enabled": "Enabled",
+      "allowHttp": "Allow http:// (not encrypted)",
+      "phone": "Phone number"
+    },
+    "settings": {
+      "title": "Visitor subscriptions and limits",
+      "webhookSubscriptions": "Visitors may subscribe with Discord, Slack and Teams webhooks",
+      "webhookSubscriptionsHelp": "Only the official webhook URLs of these services are accepted; every subscription is confirmed with a code.",
+      "genericWebhookSubscriptions": "Visitors may also use generic webhooks (any https URL)",
+      "genericWebhookSubscriptionsHelp": "Off by default. The server only connects to public addresses, but any https endpoint on the internet can then receive messages.",
+      "smsCallingCodes": "Countries for SMS subscriptions (calling codes)",
+      "smsCallingCodesHelp": "Comma separated, e.g. 49, 43, 41. Empty: visitors cannot subscribe by SMS.",
+      "smsMonthlyBudget": "SMS per month",
+      "smsMonthlyBudgetHelp": "When reached, SMS to visitors pause until next month and admins get an email. On-call SMS still go out.",
+      "smsConfirmationsPerHour": "Confirmation SMS per hour",
+      "smsPerMinute": "SMS per minute",
+      "subscriberWebhooksPerMinute": "Visitor webhook messages per minute",
+      "webhookHostPerMinute": "Webhook requests per destination host and minute"
+    },
+    "webhooks": {
+      "title": "Team webhooks",
+      "description": "Every webhook gets the same events as the email subscribers of its services. After 10 failed deliveries in a row a webhook is disabled and the admins get an email.",
+      "new": "Add webhook",
+      "editTitle": "Edit webhook",
+      "empty": "No webhooks yet.",
+      "created": "Webhook added.",
+      "deleted": "Webhook deleted.",
+      "lastDelivery": "Last delivery",
+      "testLabel": "Send a test message to {{name}}",
+      "logLabel": "Delivery log of {{name}}",
+      "editLabel": "Edit {{name}}",
+      "deleteLabel": "Delete {{name}}",
+      "deleteTitle": "Delete webhook",
+      "deleteConfirm": "Delete the webhook {{name}}? Queued messages are dropped.",
+      "rotate": "New secret",
+      "rotateTitle": "Create a new signing secret",
+      "rotateConfirm": "Create a new signing secret for {{name}}? The old one stops working at once.",
+      "rotated": "New signing secret created.",
+      "secretTitle": "Signing secret",
+      "secret": "Signing secret",
+      "secretOnce": "Copy the secret now: it is shown only once.",
+      "secretHelp": "Every request carries X-OSP-Timestamp and X-OSP-Signature: v1= followed by the hex HMAC-SHA256 of \"<timestamp>.<body>\" with this secret.",
+      "urlKeep": "Current host: {{host}}. Leave empty to keep the stored URL.",
+      "urlHelp": {
+        "discord": "Server settings > Integrations > Webhooks > Copy webhook URL.",
+        "slack": "The URL of a Slack app with Incoming Webhooks.",
+        "teams": "The URL of a Teams workflow \"Post to a channel when a webhook request is received\".",
+        "generic": "Any https endpoint; messages are JSON (version 1) and signed."
+      },
+      "headersHelp": "One header per line: \"Name: value\". Values are stored encrypted.",
+      "headersKeep": "Stored headers: {{names}}. Leave empty to keep them, or enter all headers again.",
+      "allowHttpHelp": "Only for endpoints in a trusted network path. The server never connects to private addresses.",
+      "logTitle": "Deliveries of {{name}}",
+      "logEmpty": "No deliveries yet.",
+      "retryFailed": "Retry failed deliveries",
+      "requeued_one": "{{count}} delivery queued again.",
+      "requeued_other": "{{count}} deliveries queued again."
+    },
+    "log": {
+      "time": "Time",
+      "event": "Event",
+      "detail": "Answer",
+      "sent": "Sent",
+      "failed": "Failed",
+      "pending": "Pending",
+      "attempts_one": "{{count}} attempt",
+      "attempts_other": "{{count}} attempts"
+    },
+    "sms": {
+      "title": "SMS provider",
+      "description": "SMS are sent with one HTTP request built from this template. Choose a preset or describe the request of your provider.",
+      "budget": "{{sent}} of {{budget}} SMS used this month.",
+      "budgetExhausted": "Budget used up: SMS to visitors paused",
+      "enabled": "Send SMS",
+      "preset": "Preset",
+      "presetHelp": "Fills the template below; every field stays editable.",
+      "presets": {
+        "custom": "Custom",
+        "twilio": "Twilio",
+        "vonage": "Vonage (Messages API)",
+        "seven": "seven.io",
+        "messagebird": "MessageBird (Bird)"
+      },
+      "method": "Method",
+      "url": "URL",
+      "headersHelp": "One header per line: \"Name: value\". Use {{credentials}} for credentials.",
+      "bodyType": "Body",
+      "noBody": "None",
+      "body": "Body template",
+      "placeholders": "Placeholders: {{list}}.",
+      "from": "Sender",
+      "successStatuses": "Success status codes",
+      "username": "Credential 1 (account / API key)",
+      "usernameHelp": "Twilio: Account SID, Vonage: API key.",
+      "password": "Credential 2 (token / secret)",
+      "passwordHelp": "Twilio: auth token, Vonage: API secret, seven.io: API key, MessageBird: access key.",
+      "credentialSet": "Stored encrypted. Leave empty to keep it.",
+      "testTo": "Test number",
+      "test": "Send test SMS"
+    },
+    "recipients": {
+      "title": "On-call SMS recipients",
+      "description": "Internal numbers that get an SMS for every incident and maintenance event of their services.",
+      "new": "Add recipient",
+      "editTitle": "Edit recipient",
+      "empty": "No on-call recipients yet.",
+      "deleted": "Recipient deleted.",
+      "editLabel": "Edit {{name}}",
+      "deleteLabel": "Delete {{name}}",
+      "deleteTitle": "Delete recipient",
+      "deleteConfirm": "Delete the recipient {{name}}?",
+      "phoneHelp": "International format, e.g. +49 151 2345678."
     }
   }
 }
