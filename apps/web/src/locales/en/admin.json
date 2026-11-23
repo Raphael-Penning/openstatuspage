@@ -1232,7 +1232,7 @@
     "facts": "{{width}} × {{height}} px, {{size}} KB",
     "deleteLabel": "Delete {{name}}",
     "deleteTitle": "Delete image",
-    "deleteConfirm": "Delete the image \"{{name}}\"? Pages and settings that show it will show nothing there.",
+    "deleteConfirm": "Delete the image \"{{name}}\"? While the logo, the favicon or a page uses it, it is not deleted. Other texts that show it will show nothing there.",
     "deleted": "Image deleted.",
     "uploaded": "Image uploaded.",
     "tooLarge": "The image is larger than 1 MB.",

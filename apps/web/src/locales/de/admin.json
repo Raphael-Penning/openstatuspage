@@ -1232,7 +1232,7 @@
     "facts": "{{width}} × {{height}} px, {{size}} KB",
     "deleteLabel": "{{name}} löschen",
     "deleteTitle": "Bild löschen",
-    "deleteConfirm": "Das Bild „{{name}}“ löschen? Seiten und Einstellungen, die es zeigen, zeigen dort dann nichts.",
+    "deleteConfirm": "Das Bild „{{name}}“ löschen? Solange Logo, Favicon oder eine Seite es nutzen, wird es nicht gelöscht. Andere Texte, die es zeigen, zeigen dort dann nichts.",
     "deleted": "Bild gelöscht.",
     "uploaded": "Bild hochgeladen.",
     "tooLarge": "Das Bild ist größer als 1 MB.",
