@@ -72,6 +72,9 @@ Geh diese Liste vor dem Livegang und nach größeren Änderungen durch.
       gesetzt, `OIDC_AUTO_CREATE_USERS` ist nur zusammen mit ihnen aktiv, und
       der Issuer ist dein eigener Mandant, nie ein öffentlicher
       Multi-Tenant-Endpunkt.
+- [ ] In der Verwaltung angelegte SSO-Anbieter sind mit erlaubten E-Mail-Domains
+      oder mit *Kein Zugriff* als Standardrolle eingeschränkt, und *Benutzer bei
+      der ersten Anmeldung anlegen* bleibt aus, solange du es nicht brauchst.
 - [ ] `LOCAL_LOGIN_ENABLED=false` erwägen, sobald Single Sign-On für
       mindestens einen Administrator funktioniert.
 - [ ] API-Tokens haben die kleinste Rolle, die reicht, aussagekräftige Namen,

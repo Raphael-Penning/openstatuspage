@@ -27,7 +27,7 @@ The complete reference with every option lives in
 | `SESSION_TTL_HOURS` | `168` | Idle time after which a login session expires (sliding). |
 | `SESSION_MAX_AGE_HOURS` | `720` | Maximum session lifetime from the login, even for active sessions (at least `SESSION_TTL_HOURS`). |
 | `LOCAL_LOGIN_ENABLED` | `true` | `false` allows single sign-on only. |
-| `OIDC_*` | – | Single sign-on, see [Users and access](08-users-and-access.md#single-sign-on-oidc). |
+| `OIDC_*` | – | Single sign-on with the provider of the environment. Further providers are added under *Administration → Single sign-on*; see [Users and access](08-users-and-access.md#single-sign-on-oidc). |
 | `APP_ROLE` | `all` | `all`, or with PostgreSQL `public`, `admin` or `worker` to run the status page and the management side as separate instances. See [Split deployment](../../configuration.md#split-deployment). |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL login of the `public` instance. It can only read public data and manage subscriptions through checked functions. Create it with `deploy/postgres/roles.sql`; see [Security model](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` for `APP_ROLE=admin`) | Background jobs; on PostgreSQL several instances may run them (coordinated through the database). |
