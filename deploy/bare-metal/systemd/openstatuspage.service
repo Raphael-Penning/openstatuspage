@@ -13,6 +13,8 @@ Conflicts=openstatuspage-public.service openstatuspage-admin.service openstatusp
 Type=simple
 User=openstatuspage
 Group=openstatuspage
+# Themes folder (docs/themes.md); the settings file may set another one.
+Environment=THEMES_DIR=/etc/openstatuspage/themes
 EnvironmentFile=/etc/openstatuspage/openstatuspage.env
 ExecStart=/opt/openstatuspage/app/bin/openstatuspage serve all
 WorkingDirectory=/var/lib/openstatuspage
