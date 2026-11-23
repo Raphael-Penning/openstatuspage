@@ -21,9 +21,11 @@
 # Mail: the "postfix" service is a send-only mail server for the notification
 # mails (profile "mail", turned on by COMPOSE_PROFILES=mail in .env). It signs
 # with DKIM (key generated on first start), is never published on a host port
-# and relays only for the app container. To use another mail server instead,
-# set SMTP_HOST (and SMTP_*) in .env, remove MAIL_DOMAIN and remove "mail" from
-# COMPOSE_PROFILES. Needs Docker Compose 2.23.1 or newer (inline configs).
+# and relays only for the internal mail network: the app, and processes on the
+# Docker host (use it on a single-tenant host). To use another mail server
+# instead, set SMTP_HOST (and SMTP_*) in .env, remove MAIL_DOMAIN and remove
+# "mail" from COMPOSE_PROFILES. Needs Docker Compose 2.23.1 or newer (inline
+# configs), also without the mail profile.
 #
 # All settings live in .env next to this file; every option of the
 # configuration reference can be set there without editing this file.
@@ -88,9 +90,9 @@ services:
 
   # Send-only mail server for the notification mails: boky/postfix, a widely
   # used Postfix image (https://github.com/bokysan/docker-postfix), pinned by
-  # tag. Postfix relays only for the internal "mail" network (the app) and only
-  # for senders of MAIL_DOMAIN; rspamd signs with DKIM. Without MAIL_RELAYHOST it
-  # delivers directly to the recipients' servers: that needs outbound port 25,
+  # tag. Postfix relays only for the internal "mail" network (the app and the
+  # Docker host, its gateway) and only for senders of MAIL_DOMAIN; rspamd signs
+  # with DKIM. Without MAIL_RELAYHOST it delivers directly to the recipients' servers: that needs outbound port 25,
   # a PTR record and the DNS records shown in the admin portal.
   postfix:
     image: boky/postfix:v5.2.1-alpine
@@ -102,7 +104,8 @@ services:
       ALLOWED_SENDER_DOMAINS: ${MAIL_DOMAIN:-}
       # Host name used in HELO; should match the PTR record of the sending address.
       POSTFIX_myhostname: ${MAIL_HOSTNAME:-${MAIL_DOMAIN:-localhost.localdomain}}
-      # Relay only for this container and the internal mail network.
+      # Relay only for this container and the internal mail network (the app,
+      # and the Docker host through the network's gateway address).
       POSTFIX_mynetworks: 127.0.0.0/8 ${MAIL_SUBNET:-172.30.250.0/28}
       # The mail network is internal (app and postfix only): no STARTTLS offer,
       # so the app needs no certificate exception.
