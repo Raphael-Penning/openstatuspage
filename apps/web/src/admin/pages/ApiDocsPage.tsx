@@ -22,6 +22,7 @@ import {
   isMutating,
   matchesQuery,
   refName,
+  pathValueProblem,
   requestUrl,
   resolve,
   typeLabel,
@@ -474,6 +475,8 @@ function TryIt({ doc, op }: { doc: OpenApiDocument; op: DocOperation }) {
   const [body, setBody] = useState(() => exampleBody(doc, bodyType ? operation.requestBody?.content[bodyType] : undefined));
   const [confirmed, setConfirmed] = useState(false);
   const [confirmError, setConfirmError] = useState(false);
+  const [pathErrors, setPathErrors] = useState<Record<string, 'empty' | 'dot'>>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<TryResult | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -490,6 +493,24 @@ function TryIt({ doc, op }: { doc: OpenApiDocument; op: DocOperation }) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    // Path values are checked before anything is sent: an empty or dot value
+    // would turn the URL into another route (`/x//updates`, `/x/..`).
+    const problems: Record<string, 'empty' | 'dot'> = {};
+    for (const p of parameters) {
+      if (p.in !== 'path') continue;
+      const key = `path:${p.name}`;
+      const problem = pathValueProblem(values[key]);
+      if (problem) problems[key] = problem;
+    }
+    setPathErrors(problems);
+    const firstInvalid = Object.keys(problems)[0];
+    if (firstInvalid) {
+      const inputs = formRef.current?.querySelectorAll<HTMLInputElement>('input[data-param]') ?? [];
+      Array.from(inputs)
+        .find((input) => input.dataset.param === firstInvalid)
+        ?.focus();
+      return;
+    }
     if (mutating && !confirmed) {
       setConfirmError(true);
       confirmRef.current?.querySelector('input')?.focus();
@@ -539,7 +560,7 @@ function TryIt({ doc, op }: { doc: OpenApiDocument; op: DocOperation }) {
   };
 
   return (
-    <form className="flex flex-col gap-3 rounded-lg border border-border p-3" onSubmit={submit} noValidate>
+    <form ref={formRef} className="flex flex-col gap-3 rounded-lg border border-border p-3" onSubmit={submit} noValidate>
       <h3 className="text-sm font-semibold">
         {t('apiDocs.tryIt')}
       </h3>
@@ -550,17 +571,32 @@ function TryIt({ doc, op }: { doc: OpenApiDocument; op: DocOperation }) {
       )}
       {parameters.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">
-          {parameters.map((p) => (
-            <TextField
-              key={`${p.in}:${p.name}`}
-              label={`${p.name} (${p.in})`}
-              required={p.required}
-              value={values[`${p.in}:${p.name}`] ?? ''}
-              onValue={(v) => setValues((s) => ({ ...s, [`${p.in}:${p.name}`]: v }))}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          ))}
+          {parameters.map((p) => {
+            const key = `${p.in}:${p.name}`;
+            const problem = pathErrors[key];
+            return (
+              <TextField
+                key={key}
+                data-param={key}
+                label={`${p.name} (${p.in})`}
+                required={p.required || p.in === 'path'}
+                value={values[key] ?? ''}
+                onValue={(v) => {
+                  setValues((s) => ({ ...s, [key]: v }));
+                  if (problem && !pathValueProblem(v)) {
+                    setPathErrors((errors) => {
+                      const next = { ...errors };
+                      delete next[key];
+                      return next;
+                    });
+                  }
+                }}
+                error={problem ? t(problem === 'empty' ? 'apiDocs.pathValueEmpty' : 'apiDocs.pathValueDot', { name: p.name }) : undefined}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            );
+          })}
         </div>
       )}
       {credentials.map(({ scheme, definition }) => (

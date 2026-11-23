@@ -1543,6 +1543,8 @@
     "mutatingWarning": "This {{method}} request runs against this instance with your permissions and can change or delete data. Changes are written to the audit log.",
     "confirmMutating": "I understand that this request can change data on this instance.",
     "confirmRequired": "Confirm first that you want to send a request that can change data.",
+    "pathValueEmpty": "Enter a value for {{name}}.",
+    "pathValueDot": "{{name}} cannot be \".\" or \"..\".",
     "credential": "Token for {{name}}",
     "body": "Request body ({{type}})",
     "send": "Send request",

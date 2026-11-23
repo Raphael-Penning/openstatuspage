@@ -222,4 +222,31 @@ describe.each(['en', 'de'] as const)('API documentation (%s)', (lang) => {
     },
     AXE_TIMEOUT_MS,
   );
+
+  it(
+    'refuses empty and dot path values before sending',
+    async () => {
+      await render(lang);
+      const remove = await open('deleteAdminServicesById');
+      await click(remove.querySelector('input[type="checkbox"]'));
+      const input = remove.querySelector('input[data-param="path:id"]') as HTMLInputElement;
+      await submit(remove);
+      expect(sent.some((r) => r.method === 'DELETE')).toBe(false);
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+      expect(document.activeElement).toBe(input);
+      expect(remove.textContent).toContain(i18n.t('admin:apiDocs.pathValueEmpty', { name: 'id' }));
+      expect(await axeViolations()).toEqual([]);
+
+      await type(input, '..');
+      await submit(remove);
+      expect(sent.some((r) => r.method === 'DELETE')).toBe(false);
+      expect(remove.textContent).toContain(i18n.t('admin:apiDocs.pathValueDot', { name: 'id' }));
+
+      await type(input, 'svc-1');
+      expect(input.getAttribute('aria-invalid')).toBeNull();
+      await submit(remove);
+      expect(sent.find((r) => r.method === 'DELETE')?.url).toBe('/api/admin/services/svc-1');
+    },
+    AXE_TIMEOUT_MS,
+  );
 });

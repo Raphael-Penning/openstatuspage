@@ -1543,6 +1543,8 @@
     "mutatingWarning": "Diese {{method}}-Anfrage läuft mit deinen Rechten gegen diese Instanz und kann Daten ändern oder löschen. Änderungen landen im Audit-Log.",
     "confirmMutating": "Mir ist klar, dass diese Anfrage Daten dieser Instanz ändern kann.",
     "confirmRequired": "Bestätige zuerst, dass du eine Anfrage senden willst, die Daten ändern kann.",
+    "pathValueEmpty": "Gib einen Wert für {{name}} ein.",
+    "pathValueDot": "{{name}} darf nicht \".\" oder \"..\" sein.",
     "credential": "Token für {{name}}",
     "body": "Anfrage-Body ({{type}})",
     "send": "Anfrage senden",
