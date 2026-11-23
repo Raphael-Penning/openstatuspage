@@ -156,7 +156,7 @@ describe.each(['en', 'de'] as const)('API documentation (%s)', (lang) => {
       const operations = Object.values(openapi.paths).flatMap((item) => Object.keys(item));
       expect(container.querySelectorAll('main details')).toHaveLength(operations.length);
       expect(container.querySelectorAll('main section h2').length).toBe(openapi.tags.length);
-      expect(container.querySelector('a[href="/api/openapi.json"]')).not.toBeNull();
+      expect(container.querySelector('a[href="/api/openapi.json"]')?.getAttribute('download')).toBe('openapi.json');
       expect(await axeViolations()).toEqual([]);
 
       // A read, a JSON:API create with relationships and an upload (no "try it").
@@ -167,7 +167,13 @@ describe.each(['en', 'de'] as const)('API documentation (%s)', (lang) => {
       expect(create.textContent).toContain(i18n.t('admin:apiDocs.adminOnly'));
       const upload = await open('postAdminUploads');
       expect(upload.textContent).toContain(i18n.t('admin:apiDocs.tryItUnavailable'));
-      await open('postIngestBySourceId');
+      const ingest = await open('postIngestBySourceId');
+      // Scheme descriptions are visible text, not only a tooltip.
+      expect(ingest.textContent).toContain('Ingest token of a monitoring source');
+      expect(ingest.querySelector('[title]')).toBeNull();
+      // Optional credentials (`{}` among the alternatives).
+      const description = await open('getOpenapiJson');
+      expect(description.querySelector('dd')?.textContent?.startsWith(i18n.t('admin:apiDocs.credentialsOptional'))).toBe(true);
       expect(await axeViolations()).toEqual([]);
     },
     AXE_TIMEOUT_MS,

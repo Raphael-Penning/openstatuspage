@@ -1525,6 +1525,7 @@
     "or": "or",
     "credentials": "Credentials",
     "credentialsNone": "None (public)",
+    "credentialsOptional": "none",
     "rateLimit": "Rate limit",
     "rateLimitValue": "{{max}} requests per minute and {{per}}",
     "parameters": "Parameters",

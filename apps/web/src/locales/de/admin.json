@@ -1525,6 +1525,7 @@
     "or": "oder",
     "credentials": "Zugangsdaten",
     "credentialsNone": "Keine (öffentlich)",
+    "credentialsOptional": "keine",
     "rateLimit": "Ratenbegrenzung",
     "rateLimitValue": "{{max}} Anfragen pro Minute und {{per}}",
     "parameters": "Parameter",

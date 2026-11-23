@@ -254,22 +254,33 @@ function Credentials({ doc, operation }: { doc: OpenApiDocument; operation: Oper
   const role = operation['x-required-role'];
   const alternatives = operation.security ?? [];
   if (alternatives.length === 0) return <>{t('apiDocs.credentialsNone')}</>;
+  const schemes = doc.components?.securitySchemes ?? {};
+  const described = [...new Set(alternatives.flatMap((requirement) => Object.keys(requirement)))].filter((name) => schemes[name]?.description);
   return (
     <>
       {alternatives.map((requirement, i) => (
         <Fragment key={i}>
           {i > 0 && ` ${t('apiDocs.or')} `}
+          {/* `{}` among the alternatives: credentials are optional. */}
+          {Object.keys(requirement).length === 0 && t('apiDocs.credentialsOptional')}
           {Object.keys(requirement).map((name, j) => (
             <Fragment key={name}>
               {j > 0 && ' + '}
-              <code className="font-mono text-xs" title={doc.components?.securitySchemes?.[name]?.description}>
-                {schemeLabel(doc, name)}
-              </code>
+              <code className="font-mono text-xs">{schemeLabel(doc, name)}</code>
             </Fragment>
           ))}
         </Fragment>
       ))}
       {role && <span className="text-muted"> ({role === 'admin' ? t('apiDocs.adminOnly') : t('apiDocs.editor')})</span>}
+      {described.length > 0 && (
+        <ul className="mt-1 flex flex-col gap-0.5 text-xs text-muted">
+          {described.map((name) => (
+            <li key={name}>
+              <code className="font-mono">{schemeLabel(doc, name)}</code>: <InlineText text={schemes[name]!.description!} as="span" />
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }
