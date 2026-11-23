@@ -24,7 +24,7 @@ management area.
 - **Service composition**: build public services from internal checks with configurable aggregation rules
 - **Check bundles**: let several monitoring nodes (e.g. Uptime Kuma instances in different places) vote with weights on the state of one target
 - **Management UI**: incidents, maintenance, services, groups, locations, monitoring sources, users, branding
-- **Auth**: local users (admin / editor) and optional OIDC single sign-on
+- **Auth**: local users (admin / editor) and optional single sign-on with any number of OpenID Connect providers, managed in the management UI (or the `OIDC_*` variables for one)
 - **Databases**: SQLite (zero config) or PostgreSQL
 - **i18n**: English and German included
 - **Email notifications**: double opt-in subscriptions for all updates or selected services, maintenance reminders, one-click unsubscribe
