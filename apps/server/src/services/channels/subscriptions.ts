@@ -394,7 +394,19 @@ export async function confirmChannel(ctx: AppContext, reference: string, code: s
     const sub = await ctx.db.selectFrom('channel_subscribers').selectAll().where('target_hash', '=', reference).executeTakeFirst();
     const expired = !sub?.code_sent_at || sub.code_sent_at < new Date(now.getTime() - CODE_TTL_MS).toISOString();
     if (sub && sub.confirmed_at === null && sub.code_attempts < MAX_CODE_ATTEMPTS && !expired) {
-      if (/^\d{6}$/.test(code) && safeEqual(codeHash(sub.token_salt, code), sub.code_hash)) {
+      // Claim the attempt before comparing, in one statement: concurrent requests
+      // cannot all read the same count and get more than MAX_CODE_ATTEMPTS guesses
+      // (the database function locks the row instead). Bound to the code that was
+      // read, so a new code is not charged for guesses at the old one.
+      const claimed = await ctx.db
+        .updateTable('channel_subscribers')
+        .set((eb) => ({ code_attempts: eb('code_attempts', '+', 1) }))
+        .where('id', '=', sub.id)
+        .where('confirmed_at', 'is', null)
+        .where('code_hash', '=', sub.code_hash)
+        .where('code_attempts', '<', MAX_CODE_ATTEMPTS)
+        .executeTakeFirst();
+      if (Number(claimed.numUpdatedRows) === 1 && /^\d{6}$/.test(code) && safeEqual(codeHash(sub.token_salt, code), sub.code_hash)) {
         const nowIso = now.toISOString();
         const result = await ctx.db
           .updateTable('channel_subscribers')
@@ -403,12 +415,6 @@ export async function confirmChannel(ctx: AppContext, reference: string, code: s
           .where('confirmed_at', 'is', null)
           .executeTakeFirst();
         if (Number(result.numUpdatedRows) > 0) row = await rowOf(ctx.db, { ...sub, confirmed_at: nowIso });
-      } else {
-        await ctx.db
-          .updateTable('channel_subscribers')
-          .set((eb) => ({ code_attempts: eb('code_attempts', '+', 1) }))
-          .where('id', '=', sub.id)
-          .execute();
       }
     }
   }

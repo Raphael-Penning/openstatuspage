@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SafeRequestInit, SafeResponse } from '../src/lib/safe-http.js';
 import { MemoryMailer } from '../src/mail/mailer.js';
 import { AUTO_DISABLE_FAILURES } from '../src/services/channels/service.js';
-import { channelCode } from '../src/services/channels/subscriptions.js';
+import { channelCode, confirmChannel } from '../src/services/channels/subscriptions.js';
 import { adminClient, createTestApp, data, doc, errors, page, type Client, type TestApp } from './helpers.js';
 
 type Sent = { url: string; init: SafeRequestInit; options: { allowHttp?: boolean } };
@@ -313,6 +313,19 @@ describe('webhook subscriptions of visitors', () => {
     const wrong = code === '000000' ? '111111' : '000000';
     for (let i = 0; i < 5; i++) expect((await confirm(reference, wrong)).statusCode).toBe(404);
     expect((await confirm(reference, code)).statusCode).toBe(404);
+  });
+
+  it('count concurrent wrong codes against the five attempts', async () => {
+    await admin.patch('/api/admin/channel-settings', { webhookSubscriptions: true });
+    const { reference } = (await subscribe({ channel: 'webhook', webhookKind: 'slack', url: 'https://hooks.slack.com/services/T/B/Y' })).json().meta;
+    const code = await codeOf(reference);
+    const wrong = code === '000000' ? '111111' : '000000';
+    // Straight to the service: requests through inject run one after the other.
+    const answers = await Promise.allSettled(Array.from({ length: 8 }, () => confirmChannel(t.app.ctx, reference, wrong)));
+    expect(answers.every((a) => a.status === 'rejected')).toBe(true);
+    expect((await confirm(reference, code)).statusCode).toBe(404);
+    const row = await t.db.selectFrom('channel_subscribers').select('code_attempts').executeTakeFirstOrThrow();
+    expect(row.code_attempts).toBe(5);
   });
 
   it('sign generic subscriber webhooks with the secret shown on the manage page', async () => {
