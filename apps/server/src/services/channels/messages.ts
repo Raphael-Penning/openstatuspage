@@ -17,6 +17,8 @@
 import { createHmac } from 'node:crypto';
 import {
   fitSms,
+  gsm7Friendly,
+  smsLength,
   WEBHOOK_PAYLOAD_VERSION,
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
@@ -119,7 +121,9 @@ const TEXTS = {
       headline: 'Confirm your subscription',
       text: (site: string, code: string) =>
         `Your confirmation code for ${site} is ${code}. Enter it on the page where you subscribed; it is valid for 24 hours. If you did not ask for this, ignore this message: nothing more will be sent.`,
-      sms: (site: string, code: string) => `${site}: your code is ${code}. Not you? Ignore it or opt out:`,
+      // The code comes first: only the site name may be shortened (see confirmSms).
+      sms: (site: string, code: string) => `${code} is your code for ${site}. Not you? Ignore it or opt out:`,
+      smsNoSite: (code: string) => `${code} is your code. Not you? Ignore it or opt out:`,
     },
     manageMsg: {
       headline: 'Already subscribed',
@@ -169,7 +173,8 @@ const TEXTS = {
       headline: 'Bestätige dein Abonnement',
       text: (site: string, code: string) =>
         `Dein Bestätigungscode für ${site} ist ${code}. Gib ihn auf der Seite ein, auf der du das Abonnement gestartet hast; er gilt 24 Stunden. Falls du das nicht angefordert hast, ignoriere diese Nachricht: Es folgt nichts weiter.`,
-      sms: (site: string, code: string) => `${site}: Dein Code ist ${code}. Nicht du? Ignorieren oder abmelden:`,
+      sms: (site: string, code: string) => `${code} ist dein Code für ${site}. Nicht du? Ignorieren oder abmelden:`,
+      smsNoSite: (code: string) => `${code} ist dein Code. Nicht du? Ignorieren oder abmelden:`,
     },
     manageMsg: {
       headline: 'Bereits abonniert',
@@ -425,6 +430,35 @@ export function webhookBody(kind: WebhookKind, m: ChannelMessage, ctx: RenderCon
 
 // --- SMS -----------------------------------------------------------------------------
 
+/** Whether `text` (normalized like fitSms) and `suffix` fit one segment. */
+const fitsOneSegment = (text: string, suffix: string) =>
+  smsLength(`${gsm7Friendly(text).replace(/\s+/g, ' ').trim()}${suffix}`).segments <= 1;
+
+/**
+ * The confirmation SMS. The code and the link are never cut: only the site name
+ * is shortened, and dropped when even one character of it does not fit (a
+ * Cyrillic or CJK name turns the text into UCS-2 with 70 characters, which the
+ * link alone nearly fills). As a last resort the SMS is only "<code> <link>".
+ */
+function confirmSms(t: Texts, siteName: string, code: string, link: string): string {
+  const full = t.confirm.sms(siteName, code);
+  if (fitsOneSegment(full, link)) return fitSms(full, link);
+  const chars = [...siteName.trim()];
+  const withSite = (n: number) => t.confirm.sms(`${chars.slice(0, n).join('').trimEnd()}...`, code);
+  let lo = 0;
+  let hi = chars.length - 1;
+  // Longest prefix of the site name that fits.
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fitsOneSegment(withSite(mid), link)) lo = mid;
+    else hi = mid - 1;
+  }
+  if (lo > 0 && fitsOneSegment(withSite(lo), link)) return fitSms(withSite(lo), link);
+  const bare = t.confirm.smsNoSite(code);
+  if (fitsOneSegment(bare, link)) return fitSms(bare, link);
+  return `${code}${link}`;
+}
+
 /**
  * The SMS text of a message: one segment, the link (if any) never cut. Subscriber
  * SMS carry the short manage link; on-call SMS carry none.
@@ -432,7 +466,7 @@ export function webhookBody(kind: WebhookKind, m: ChannelMessage, ctx: RenderCon
 export function smsText(m: ChannelMessage, ctx: Pick<RenderContext, 'siteName' | 'locale'> & { shortUrl: string | null }): string {
   const t = texts(ctx.locale);
   const link = ctx.shortUrl ? ` ${ctx.shortUrl}` : '';
-  if (m.type === 'subscription.confirm') return fitSms(t.confirm.sms(ctx.siteName, m.code ?? ''), link);
+  if (m.type === 'subscription.confirm') return confirmSms(t, ctx.siteName, m.code ?? '', link);
   if (m.type === 'subscription.manage') return fitSms(t.manageMsg.sms(ctx.siteName), link);
   if (m.type === 'test') return fitSms(`${ctx.siteName}: ${m.headline}`, link);
   const status = m.fields[0]?.[1];

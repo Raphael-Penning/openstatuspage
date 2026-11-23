@@ -163,6 +163,22 @@ describe('SMS', () => {
     expect(text).toContain('654321');
     expect(text).toContain(ctx.manageUrl);
   });
+
+  it('never cuts the code or the link of the confirmation SMS', () => {
+    const link = 'https://status.example.com/s/abcdefghijkl/abcdefghijklmnopqrstuv';
+    for (const siteName of ['Статус сервисов', '服务状态页面', `Example Corporation ${'Holding '.repeat(12)}Ltd`.slice(0, 120)]) {
+      for (const locale of ['en', 'de'] as const) {
+        const text = smsText(confirmMessage({ siteName, locale }, '123456', 'now'), { siteName, locale, shortUrl: link });
+        expect(text, `${siteName} ${locale}`).toContain('123456');
+        expect(text.endsWith(` ${link}`), text).toBe(true);
+        expect(smsLength(text).segments, text).toBe(1);
+      }
+    }
+    // A short site name is kept whole.
+    expect(smsText(confirmMessage(ctx, '123456', 'now'), { ...ctx, shortUrl: link })).toBe(
+      `123456 is your code for Example Status. Not you? Ignore it or opt out: ${link}`,
+    );
+  });
 });
 
 describe('SMS provider templates', () => {
