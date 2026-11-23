@@ -6,8 +6,13 @@ breaking changes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-23
+
 ### Upgrading
 
+- Migrations `0014` to `0017` run on start like the earlier ones; no manual
+  step is needed on SQLite or PostgreSQL. Logins that are in progress during the
+  upgrade end with `invalid_state`; signing in again works.
 - **Docker Compose 2.23.1 or newer** is needed for the new `compose.yaml` and
   `compose.split.yaml` (inline `configs`), also when the bundled mail server
   stays off. Check `docker compose version` before `docker compose up -d`.
