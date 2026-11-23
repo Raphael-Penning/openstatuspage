@@ -560,6 +560,18 @@ connections at the proxy (below) matters more now. Zod must stay out of the
 public bundles (it once came in through a schema in `private-pages.ts` and
 grew the render bundle from 439 to 556 kB).
 
+Webhook and SMS subscriptions (measured the same way, with the image's runtime
+flags, against the build before them in alternation: two runs of this build,
+three of the one before): public 81.4 / 97.2–98.3 / 102.6–104.7 / 87.5–88.1 MB
+(after start / peak under load / burst / after load), kernel peak 105–106 MB,
+against 79.5–79.8 / 95.3–96.7 / 99.5–103.5 / 86.7–87.7 MB and 102.7–105.3 MB
+before. The new public routes, forms and pages cost about 1.5 MB after start
+and 2–3 MB at the peak; the delivery code (formats, SMS provider, outbound
+requests) is not loaded on public instances at all. In this run the build
+before also went above 100 MB under the burst (the table above has 95–97 MB),
+so compare the pairs, not with the table; the limit at the proxy (below)
+matters for both.
+
 Server-side rendering costs a public instance about 11 MB at the peak and 6 MB
 after load (the same build without the render bundle: 76 / 83 / 74 / 83 MB). The
 render bundle is imported on the first page request, so "after start" does not
