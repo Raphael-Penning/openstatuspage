@@ -155,14 +155,20 @@ Language models and agents find the page through these files, all generated:
 
 - **`/llms.txt`** is a short summary in the [llms.txt](https://llmstxt.org)
   format: your site name and description, the public pages with a short
-  explanation each, the JSON:API status endpoint and the feeds. It changes when
-  your settings or services change.
+  explanation each, the JSON:API status endpoint, the feeds and, while the API
+  description is published, the OpenAPI description. It changes when your
+  settings or services change.
 - **`/llms-full.txt`** is the current status as Markdown: the overall status,
   active incidents, scheduled maintenance and every public service. It is
   refreshed about every minute.
 - **`/api/public/status`** is the same status as a JSON:API document for
   programs, and **`/feed.rss`** and **`/feed.atom`** carry incidents and
   maintenance.
+- **`/api/openapi.json`** is the [OpenAPI 3.1](https://spec.openapis.org/oas/latest.html)
+  description of the public part of the API. The footer shows an **API** link to
+  it. Under *Copyright and attribution* in the settings, *Publish the API
+  description* hides the link and the file: visitors then get `404`, while
+  signed-in users still see the whole API under **API** in the management UI.
 
 The text of these files comes from your settings and your public incidents, and
 it is escaped so that an incident title cannot inject headings or links into

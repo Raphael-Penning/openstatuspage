@@ -167,7 +167,8 @@ erzeugt:
 - **`/llms.txt`** ist eine kurze Zusammenfassung im Format von
   [llms.txt](https://llmstxt.org): Name und Beschreibung deiner Seite, die
   öffentlichen Seiten mit je einer kurzen Erklärung, der JSON:API-Endpunkt für den
-  Status und die Feeds. Die Datei ändert sich, wenn sich deine Einstellungen oder
+  Status, die Feeds und, solange die API-Beschreibung veröffentlicht ist, die
+  OpenAPI-Beschreibung. Die Datei ändert sich, wenn sich deine Einstellungen oder
   Dienste ändern.
 - **`/llms-full.txt`** ist der aktuelle Status als Markdown: der Gesamtstatus, die
   aktiven Vorfälle, geplante Wartungen und jeder öffentliche Dienst. Sie wird etwa
@@ -175,6 +176,11 @@ erzeugt:
 - **`/api/public/status`** liefert denselben Status als JSON:API-Dokument für
   Programme. **`/feed.rss`** und **`/feed.atom`** enthalten Vorfälle und
   Wartungen.
+- **`/api/openapi.json`** ist die [OpenAPI-3.1](https://spec.openapis.org/oas/latest.html)-Beschreibung
+  des öffentlichen Teils der API. Die Fußzeile zeigt einen Link **API** dorthin.
+  Unter *Copyright und Hinweis* in den Einstellungen blendet *API-Beschreibung
+  veröffentlichen* den Link und die Datei aus: Besucher bekommen dann `404`, während
+  angemeldete Nutzer die ganze API weiterhin unter **API** in der Verwaltung sehen.
 
 Der Text dieser Dateien kommt aus deinen Einstellungen und deinen öffentlichen
 Vorfällen. Er wird so maskiert, dass ein Vorfall-Titel keine Überschriften oder
