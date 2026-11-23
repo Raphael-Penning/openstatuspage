@@ -343,6 +343,7 @@ error documents like everywhere else.
 | GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
 | GET | `/llms.txt`, `/llms-full.txt` | Summary of the status page for language models ([llmstxt.org](https://llmstxt.org)) and the current status as Markdown (`text/plain`). Roles `public` and `all`. |
+| GET | `/uploads/<sha256>.<ext>` | An uploaded image (`png`, `jpg`, `webp`, `ico`) with the type detected on upload, `Cache-Control: public, max-age=31536000, immutable`, an `ETag` (`304` for `If-None-Match`), `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` and a CSP that allows nothing. Roles `public`, `admin` and `all`. |
 | GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
 | GET | `/api/auth/oidc/callback` | `302` to `/admin` after login, or `/admin/login?error=<code>` |
 | GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | `303` to the manage page with the unsubscribe confirmation (never deletes) |
@@ -888,6 +889,54 @@ Content-Type: application/vnd.api+json
 
 </details>
 
+
+### Content pages
+
+Published content pages: the about page (`about`), the legal notice
+(`legal-notice`), the privacy policy (`privacy`), the accessibility statement
+(`accessibility`) and custom pages. Resource type `pages`. Unpublished pages
+answer `404`.
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| GET | `/api/public/pages/{slug}` | the page: `systemKey` (one of the four keys above, or null), `slug`, `path` (`/<key>` for the four system pages, `/pages/<slug>` for custom pages), `title`, `description` and `body` (Markdown) as `{ "en": "…", "de": "…" }` (an empty text means: show the other language), `images` (width and height of the uploaded images the texts show, by path), `createdAt`, `updatedAt` |
+
+The settings document (`GET /api/public/settings`) carries two derived
+read-only attributes besides the settings: `pages`, the published pages for the
+navigation and the footer (`systemKey`, `slug`, `path`, `title`,
+`showInFooter`, `showInNav`, `sortOrder`, no texts), and `logoSize`
+(`{ "width", "height" }` when `logoUrl` is an upload of this instance, else null).
+A published system page replaces the link of the settings: `legal-notice`,
+`privacy` and `accessibility` the footer links `imprintUrl`, `privacyUrl` and
+`accessibilityUrl`, `about` the navigation link `infoLinkUrl` (its label
+`infoLinkLabel` stays).
+
+```http
+GET /api/public/pages/legal-notice
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "pages",
+    "id": "5d1c…",
+    "attributes": {
+      "systemKey": "legal-notice",
+      "slug": "legal-notice",
+      "path": "/legal-notice",
+      "title": { "en": "Legal notice", "de": "Impressum" },
+      "description": { "en": "", "de": "" },
+      "body": { "en": "Example Ltd.\n\n1 Example Street", "de": "Beispiel GmbH\n\nBeispielstraße 1" },
+      "images": {},
+      "createdAt": "2026-11-20T09:00:00.000Z",
+      "updatedAt": "2026-11-21T10:00:00.000Z"
+    },
+    "links": { "self": "/api/public/pages/legal-notice" }
+  },
+  "links": { "self": "/api/public/pages/legal-notice" }
+}
+```
 
 ### Private pages
 
@@ -4253,6 +4302,62 @@ Content-Type: application/vnd.api+json
     "links": { "self": "/api/admin/private-pages/1b6f…" }
   },
   "links": { "self": "/api/admin/private-pages" }
+}
+```
+
+### Pages, images and instance (admin)
+
+Pages and images: role `admin`. The instance: every signed-in user (never
+anonymous clients).
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/admin/pages` | every page, the four system pages first; type `pages` |
+| POST | `/api/admin/pages` | a custom page, input `SitePageInput`; `409` when the slug is taken (also by a system page) |
+| GET | `/api/admin/pages/:id` | |
+| PATCH | `/api/admin/pages/:id` | partial update; a system page keeps its slug, path and placement |
+| DELETE | `/api/admin/pages/:id` | `204`; `409` for a system page (unpublish it instead) |
+| GET | `/api/admin/uploads` | uploaded images, newest first; type `uploads` |
+| POST | `/api/admin/uploads?fileName=<name>` | the image bytes as `application/octet-stream` (no JSON:API document); `201` with the upload, `200` with the existing one for the same bytes, `413` above 1 MiB, `415` for anything but PNG, JPEG, WebP or ICO (by magic bytes; SVG is refused) or another `Content-Type` |
+| DELETE | `/api/admin/uploads/:id` | `204` |
+| GET | `/api/admin/instance` | `instances/current` with `version` (the server package version) |
+
+- `SitePageInput`: `slug` (lower case letters, digits, single dashes, at most 64),
+  `title`, `description` (single lines, at most 120 and 300 characters) and `body`
+  (Markdown, at most 50,000 characters) as `{ "en", "de" }`, a title in at least
+  one language; `published`, `showInFooter`, `showInNav`, `sortOrder` (0 to 10,000).
+- An upload: `url` (`/uploads/<sha256>.<ext>`, usable as `logoUrl`, `faviconUrl` and
+  in Markdown), `contentType`, `size` (bytes), `width`, `height`, `filename`
+  (display only), `createdAt`.
+- Audit log: `page.create`, `.update`, `.delete` (slug); `upload.create`,
+  `.delete` (URL and size).
+
+```http
+POST /api/admin/uploads?fileName=logo.png
+Content-Type: application/octet-stream
+X-Requested-With: openstatuspage
+
+<the bytes of the PNG>
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "uploads",
+    "id": "0b8e…",
+    "attributes": {
+      "url": "/uploads/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08.png",
+      "contentType": "image/png",
+      "size": 18342,
+      "width": 320,
+      "height": 64,
+      "filename": "logo.png",
+      "createdAt": "2026-11-20T09:00:00.000Z"
+    },
+    "links": { "self": "/api/admin/uploads/0b8e…" }
+  },
+  "links": { "self": "/api/admin/uploads?fileName=logo.png" }
 }
 ```
 
