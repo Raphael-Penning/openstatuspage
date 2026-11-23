@@ -232,6 +232,8 @@ accepted. Each image gets a fixed address like
 instance of a split deployment serves it. Insert one into a page with
 `![What the image shows](/uploads/9f86….png)`, always with a description for
 screen readers. An https URL for the logo or favicon keeps working as well.
+An image that the logo, the favicon or a page still uses cannot be deleted;
+remove it there first.
 
 ## Private pages
 

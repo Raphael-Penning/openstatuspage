@@ -248,7 +248,8 @@ wie `https://status.example.com/uploads/9f86….png`; die Datenbank speichert es
 deshalb liefert es jede Instanz einer geteilten Installation aus. Füge eins mit
 `![Was das Bild zeigt](/uploads/9f86….png)` in eine Seite ein, immer mit einer
 Beschreibung für Screenreader. Eine https-URL für Logo oder Favicon funktioniert
-weiterhin.
+weiterhin. Ein Bild, das Logo, Favicon oder eine Seite noch nutzt, kannst du
+nicht löschen; entferne es dort zuerst.
 
 ## Private Seiten
 

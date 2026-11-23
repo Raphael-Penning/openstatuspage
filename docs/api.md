@@ -4320,7 +4320,7 @@ anonymous clients).
 | DELETE | `/api/admin/pages/:id` | `204`; `409` for a system page (unpublish it instead) |
 | GET | `/api/admin/uploads` | uploaded images, newest first; type `uploads` |
 | POST | `/api/admin/uploads?fileName=<name>` | the image bytes as `application/octet-stream` (no JSON:API document); `201` with the upload, `200` with the existing one for the same bytes, `413` above 1 MiB, `415` for anything but PNG, JPEG, WebP or ICO (by magic bytes; SVG is refused) or another `Content-Type` |
-| DELETE | `/api/admin/uploads/:id` | `204` |
+| DELETE | `/api/admin/uploads/:id` | `204`; `409` while the logo, the favicon or a content page (by its Markdown) uses the image; the detail names them |
 | GET | `/api/admin/instance` | `instances/current` with `version` (the server package version) |
 
 - `SitePageInput`: `slug` (lower case letters, digits, single dashes, at most 64),
