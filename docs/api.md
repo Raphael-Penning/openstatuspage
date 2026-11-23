@@ -340,7 +340,7 @@ error documents like everywhere else.
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes, once the database answers. Exists in every role; the role itself is only logged on start. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
-| GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
+| GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/`, the short manage links `/s/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
 | GET | `/llms.txt`, `/llms-full.txt` | Summary of the status page for language models ([llmstxt.org](https://llmstxt.org)) and the current status as Markdown (`text/plain`). Roles `public` and `all`. |
 | GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
