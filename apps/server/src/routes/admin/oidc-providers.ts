@@ -4,7 +4,8 @@
  *   GET    /api/admin/oidc-providers              the environment provider (read-only) and the stored ones
  *   POST   /api/admin/oidc-providers
  *   GET    /api/admin/oidc-providers/:id
- *   PATCH  /api/admin/oidc-providers/:id          partial update; `clientSecret` null removes the secret
+ *   PATCH  /api/admin/oidc-providers/:id          partial update; `clientSecret` null removes the secret;
+ *                                                 a new issuer needs a new secret and unlinks the users
  *   DELETE /api/admin/oidc-providers/:id          also removes the identities linked through it
  *   POST   /api/admin/oidc-providers/test         discovery test of an issuer URL (not stored)
  *   POST   /api/admin/oidc-providers/:id/test     discovery test of a provider
@@ -183,33 +184,47 @@ function registerRoutes(app: FastifyInstance): void {
       roleSync: current.roleSync,
       ...body,
     });
-    if (input.issuerUrl !== current.issuerUrl) assertIssuerAllowed(config, input.issuerUrl);
     const secret = Object.hasOwn(body, 'clientSecret') ? (input.clientSecret ?? null) : undefined;
-    await db
-      .updateTable('oidc_providers')
-      .set({
-        name: input.name,
-        sort_order: input.sortOrder,
-        enabled: input.enabled ? 1 : 0,
-        issuer_url: input.issuerUrl,
-        client_id: input.clientId,
-        ...(secret !== undefined ? { client_secret: secret ? secrets.encrypt(secret) : null } : {}),
-        scopes: input.scopes,
-        auto_create_users: input.autoCreateUsers ? 1 : 0,
-        allowed_domains: JSON.stringify([...new Set(input.allowedDomains)]),
-        role_claim: input.roleClaim,
-        role_mappings: JSON.stringify(input.roleMappings),
-        default_role: input.defaultRole,
-        role_sync: input.roleSync,
-        updated_at: nowIso(),
-      })
-      .where('id', '=', id)
-      .execute();
+    // Another issuer is another identity provider: the stored secret must not reach its
+    // token endpoint, and the sub values of the old one mean nothing there (a sub is only
+    // unique per issuer), so its links to user accounts are removed.
+    const issuerChanged = input.issuerUrl !== current.issuerUrl;
+    if (issuerChanged) {
+      assertIssuerAllowed(config, input.issuerUrl);
+      if (current.hasClientSecret && secret === undefined) {
+        const message = 'A new issuer URL needs a new client secret (or null for a public client)';
+        throw badRequest(message, [{ code: 'secret_required', path: ['clientSecret'], message }]);
+      }
+    }
+    await db.transaction().execute(async (trx) => {
+      if (issuerChanged) await trx.deleteFrom('user_oidc_identities').where('provider_id', '=', id).execute();
+      await trx
+        .updateTable('oidc_providers')
+        .set({
+          name: input.name,
+          sort_order: input.sortOrder,
+          enabled: input.enabled ? 1 : 0,
+          issuer_url: input.issuerUrl,
+          client_id: input.clientId,
+          ...(secret !== undefined ? { client_secret: secret ? secrets.encrypt(secret) : null } : {}),
+          scopes: input.scopes,
+          auto_create_users: input.autoCreateUsers ? 1 : 0,
+          allowed_domains: JSON.stringify([...new Set(input.allowedDomains)]),
+          role_claim: input.roleClaim,
+          role_mappings: JSON.stringify(input.roleMappings),
+          default_role: input.defaultRole,
+          role_sync: input.roleSync,
+          updated_at: nowIso(),
+        })
+        .where('id', '=', id)
+        .execute();
+    });
     const provider = await get(id);
     await auditRequest(db, req, 'oidc_provider.update', 'oidc_provider', id, {
       ...auditDetails(provider),
       fields: changedFields(current, provider, secret),
       ...(secret !== undefined ? { clientSecret: secret ? 'set' : 'removed' } : {}),
+      ...(issuerChanged ? { previousIssuerUrl: current.issuerUrl, unlinkedUsers: current.linkedUsers } : {}),
     });
     return document(oidcProviderResource(provider), { links: { self: selfLink(req) } });
   });

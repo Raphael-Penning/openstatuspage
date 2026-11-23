@@ -18,6 +18,7 @@ import {
   createUser,
   data,
   doc,
+  errors,
   login,
   page,
   type Client,
@@ -193,6 +194,48 @@ describe('admin API', () => {
     expect(JSON.parse(audit[2]!.details!)).toMatchObject({ fields: ['clientSecret'], clientSecret: 'set' });
     expect(JSON.parse(audit[3]!.details!)).toMatchObject({ clientSecret: 'removed' });
     expect(JSON.stringify(audit)).not.toContain('another-secret');
+  });
+
+  it('needs a new secret for a new issuer and unlinks the users of the old one', async () => {
+    const provider = await createProvider();
+    const userId = await createUser(t.db, { email: 'jane@example.com', role: 'admin' });
+    await t.db
+      .insertInto('user_oidc_identities')
+      .values({ provider_id: provider.id, subject: 'jane', user_id: userId, created_at: new Date().toISOString(), last_login_at: null })
+      .execute();
+    const url = `/api/admin/oidc-providers/${provider.id}`;
+    const stored = async () =>
+      (await t.db.selectFrom('oidc_providers').select(['issuer_url', 'client_secret']).where('id', '=', provider.id).executeTakeFirstOrThrow());
+    const before = await stored();
+
+    // The stored secret never travels to another issuer.
+    const moved = await admin.patch(url, { issuerUrl: 'https://attacker.example.com' });
+    expect(moved.statusCode).toBe(400);
+    expect(errors(moved)[0]).toMatchObject({ code: 'secret_required', source: { pointer: '/data/attributes/clientSecret' } });
+    expect(await stored()).toEqual(before);
+    expect(data<Any>(await admin.get(url)).linkedUsers).toBe(1);
+
+    // Other changes keep secret and links.
+    expect((await admin.patch(url, { clientId: 'other-client' })).statusCode).toBe(200);
+    expect(data<Any>(await admin.get(url)).linkedUsers).toBe(1);
+
+    const ok = await admin.patch(url, { issuerUrl: 'https://idp2.example.com', clientSecret: 'a-new-secret' });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(data<Any>(ok)).toMatchObject({ issuerUrl: 'https://idp2.example.com', hasClientSecret: true, linkedUsers: 0 });
+    expect(new SecretBox(t.config.SECRET_KEY).decrypt((await stored()).client_secret!)).toBe('a-new-secret');
+    expect(await t.db.selectFrom('user_oidc_identities').select('subject').execute()).toEqual([]);
+    expect(await t.db.selectFrom('users').select('id').where('id', '=', userId).execute()).toHaveLength(1);
+
+    // Without a stored secret (public client) no secret is needed.
+    await admin.patch(url, { clientSecret: null });
+    expect((await admin.patch(url, { issuerUrl: 'https://idp3.example.com' })).statusCode).toBe(200);
+
+    const audit = (await auditOf()).filter((a) => JSON.parse(a.details!).previousIssuerUrl);
+    expect(audit.map((a) => JSON.parse(a.details!))).toMatchObject([
+      { previousIssuerUrl: issuer, issuerUrl: 'https://idp2.example.com', unlinkedUsers: 1, clientSecret: 'set' },
+      { previousIssuerUrl: 'https://idp2.example.com', issuerUrl: 'https://idp3.example.com', unlinkedUsers: 0 },
+    ]);
+    expect(JSON.stringify(await auditOf())).not.toContain('a-new-secret');
   });
 
   it('lists the environment provider first and read-only', async () => {
