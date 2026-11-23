@@ -1,5 +1,6 @@
 /**
- * Content pages of the public status page (docs/configuration.md#pages):
+ * Content pages of the public status page (docs/guide/en/12-public-page.md,
+ * "Content pages and images"; API: docs/api.md):
  *
  * - four system pages with fixed paths: the about page (/about), the legal
  *   notice (/legal-notice, "Impressum"), the privacy policy (/privacy) and the
