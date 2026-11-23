@@ -66,14 +66,8 @@ export type OidcRoleMapping = z.infer<typeof OidcRoleMapping>;
 export const zIssuerUrl = z
   .url({ protocol: /^https?$/ })
   .max(500)
-  .refine((value) => {
-    try {
-      const url = new URL(value);
-      return !url.username && !url.password && !url.search && !url.hash;
-    } catch {
-      return false;
-    }
-  }, 'The issuer URL must not contain credentials, a query or a fragment');
+  // No userinfo (no "@" before the path), no query, no fragment.
+  .regex(/^https?:\/\/[^/?#@\s]+(?:\/[^?#\s]*)?$/i, 'The issuer URL must not contain credentials, a query or a fragment');
 
 /** Claim path: a claim name, dots address nested claims (`realm_access.roles`). */
 const zClaimPath = z
