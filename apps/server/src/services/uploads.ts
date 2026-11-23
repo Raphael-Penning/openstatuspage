@@ -153,6 +153,7 @@ export async function uploadReferences(
   db: DB,
   url: string,
   settings: { logoUrl?: string | null; faviconUrl?: string | null },
+  folderThemes: Iterable<{ id: string; css: string | null }> = [],
 ): Promise<string[]> {
   const refs: string[] = [];
   const uses = (value: string | null | undefined) => !!value && value.endsWith(url);
@@ -169,5 +170,9 @@ export async function uploadReferences(
   // Extra CSS of uploaded themes (url(/uploads/...)).
   const themes = await db.selectFrom('themes').select('id').where('css', 'like', `%${url}%`).orderBy('id').execute();
   refs.push(...themes.map((t) => `theme ${t.id}`));
+  // Extra CSS of the themes folder (THEMES_DIR).
+  for (const theme of folderThemes) {
+    if (theme.css?.includes(url)) refs.push(`theme ${theme.id} (themes folder)`);
+  }
   return refs;
 }

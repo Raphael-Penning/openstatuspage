@@ -276,6 +276,16 @@ describe('theme management API', () => {
     const { uploadReferences } = await import('../src/services/uploads.js');
     expect(await uploadReferences(t.db, `/uploads/${hash}.png`, {})).toEqual(['theme ocean']);
   });
+
+  it('keeps an upload that the CSS of a folder theme uses', async () => {
+    const url = `/uploads/${hash}.png`;
+    writeFileSync(join(dir, 'pictured.json'), JSON.stringify(custom('pictured')));
+    writeFileSync(join(dir, 'pictured.css'), `header{background:url(${url})}`);
+    const { uploadReferences } = await import('../src/services/uploads.js');
+    const folder = loadThemeFolder(dir, log());
+    expect(await uploadReferences(t.db, url, {}, folder.values())).toEqual(['theme pictured (themes folder)']);
+    expect(await uploadReferences(t.db, `/uploads/${'d'.repeat(64)}.png`, {}, folder.values())).toEqual([]);
+  });
 });
 
 describe('theme stylesheets and server-rendered pages', () => {
