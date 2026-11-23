@@ -136,6 +136,19 @@ breaking changes.
 - Migration `0015_notification_channels`: on PostgreSQL the restricted public
   role writes webhook and SMS subscriptions only through new `SECURITY DEFINER`
   functions in `osp_public` and cannot read any of the new tables.
+- **OpenAPI 3.1 description of the HTTP API** at `GET /api/openapi.json` and
+  in the repository as `docs/openapi.json`. It is generated from the zod
+  schemas the server validates with and from a declaration of every route
+  (JSON:API envelopes, parameters, status codes, rate limits, security
+  schemes, required role as `x-required-role`); `pnpm openapi:generate`
+  rewrites the file, and the tests fail when it is out of date or a route is
+  missing. Anonymous clients and `APP_ROLE=public` instances get only the
+  public part; signed-in users and API tokens on `admin` and `all` instances
+  get the whole API. Answers carry an `ETag` (`304` for `If-None-Match`).
+- **API documentation in the management UI** (*API*, next to *Help*, for every
+  signed-in user): the endpoints by topic with a filter, parameters, schemas
+  and examples, and *Try it* for requests to the own instance with the
+  current session. Requests that change data need an explicit confirmation.
 
 ### Changed
 
