@@ -557,6 +557,16 @@ setup_postfix() {
         log "OpenDKIM is in EPEL: enabling it"
         pkg_install epel-release
       fi
+      # EPEL's OpenDKIM needs libmemcached.so.11 from CodeReady Builder (CRB).
+      if ! dnf -q repolist --enabled 2> /dev/null | grep -Eiq '(^| )(crb|codeready-builder)'; then
+        log "OpenDKIM needs CodeReady Builder (CRB): enabling it"
+        if command -v crb > /dev/null 2>&1; then
+          crb enable
+        else
+          pkg_install dnf-plugins-core
+          dnf config-manager --set-enabled crb
+        fi
+      fi
       pkg_install postfix opendkim opendkim-tools
       ;;
   esac
