@@ -3,6 +3,8 @@
 Visitors of the public page can subscribe to email notifications about public
 incidents and maintenance, either for all updates or for selected services.
 Subscriptions are off until you configure a mail server and enable them.
+Webhooks and SMS work the same way and are described in
+[Webhooks and SMS](13-webhooks-and-sms.md).
 
 ## Overview
 
