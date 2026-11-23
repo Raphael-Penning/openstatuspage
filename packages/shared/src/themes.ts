@@ -329,7 +329,12 @@ function decodeEscapes(css: string): string {
   });
 }
 
-/** Whether a url() target stays on this site: /uploads/…, a relative path or a fragment. */
+/**
+ * Whether a url() target stays on this site: /uploads/…, a relative path or a
+ * fragment. Relative paths resolve against /theme/, so `..` segments and query
+ * strings are refused: they could make visitors' browsers request any path of
+ * the site with their cookies.
+ */
 export function isAllowedCssUrl(target: string): boolean {
   const t = target.trim();
   if (t === '' || t.length > 512) return false;
@@ -338,7 +343,8 @@ export function isAllowedCssUrl(target: string): boolean {
   if (t.includes('//')) return false;
   if (t.startsWith('/')) return /^\/uploads\/[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(t);
   // Relative: no scheme (a colon before the first slash would be one).
-  return !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(t) && !t.includes(':') && /^[A-Za-z0-9._~\-/]+(?:[?#][A-Za-z0-9._~\-=&]*)?$/.test(t);
+  if (!/^[A-Za-z0-9._~\-/]+(?:#[A-Za-z0-9._~-]*)?$/.test(t)) return false;
+  return !t.split('#')[0]!.split('/').includes('..');
 }
 
 /** The targets of every url() in decoded, comment-free CSS. */

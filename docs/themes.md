@@ -154,7 +154,9 @@ depth and so a copied snippet cannot track visitors:
 - at most 64 KB;
 - no `@import`;
 - `url()` only to `/uploads/...` (images uploaded in the admin) or to a relative
-  path on the same site; no other host, no `//host`, no `data:`;
+  path on the same site without `..` segments and query strings (the stylesheet
+  is served from `/theme/`, so a relative path cannot reach other routes); no
+  other host, no `//host`, no `data:`;
 - no `expression()`, `javascript:` / `vbscript:`, `behavior`, `-moz-binding`,
   `image-set()` or `src()` (they can load URLs without `url()`);
 - no `<` and no `-->` anywhere, also not in comments (nothing that looks like

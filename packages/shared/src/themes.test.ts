@@ -195,7 +195,9 @@ describe('extra CSS filter', () => {
     expect(isAllowedCssUrl(`/uploads/${hash}.webp`)).toBe(true);
     expect(isAllowedCssUrl('img/a.png')).toBe(true);
     expect(isAllowedCssUrl('#clip')).toBe(true);
-    for (const bad of ['', '/favicon.svg', 'https://example.com/a.png', 'HTTP://x', '//x/y', 'a\\b', 'mailto:x', 'a b', '/uploads//x']) {
+    expect(isAllowedCssUrl('./img/a.svg#icon')).toBe(true);
+    expect(isAllowedCssUrl('img/..a.png')).toBe(true);
+    for (const bad of ['', '/favicon.svg', 'https://example.com/a.png', 'HTTP://x', '//x/y', 'a\\b', 'mailto:x', 'a b', '/uploads//x', '../api/admin/session', 'img/../../subscription', '..', 'a/..', 'img/a.png?x=1', '?x', '.%2e/x']) {
       expect(isAllowedCssUrl(bad), bad).toBe(false);
     }
   });
