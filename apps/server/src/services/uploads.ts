@@ -166,5 +166,8 @@ export async function uploadReferences(
     .orderBy('slug')
     .execute();
   refs.push(...pages.map((p) => `page ${p.slug}`));
+  // Extra CSS of uploaded themes (url(/uploads/...)).
+  const themes = await db.selectFrom('themes').select('id').where('css', 'like', `%${url}%`).orderBy('id').execute();
+  refs.push(...themes.map((t) => `theme ${t.id}`));
   return refs;
 }

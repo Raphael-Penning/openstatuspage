@@ -27,6 +27,9 @@ const NON_JSONAPI = [
   'GET /llms.txt',
   'GET /llms-full.txt',
   'GET /uploads/:file',
+  'GET /theme/:file',
+  'GET /api/admin/themes/:id/export',
+  'GET /api/admin/themes/:id/export-css',
 ];
 
 /** Non-JSON:API routes whose successful answer is plain JSON. */
