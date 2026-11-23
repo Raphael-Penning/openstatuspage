@@ -778,6 +778,7 @@ describe('admin endpoints', () => {
       queue: { pending: 0, failed: 0 },
       lastSentAt: null,
       lastError: null,
+      dns: null,
     });
 
     const ok = await admin.post('/api/admin/notifications/test', { to: 'ops@example.com' });

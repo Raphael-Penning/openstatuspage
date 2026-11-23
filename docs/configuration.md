@@ -188,6 +188,7 @@ for setup examples, deliverability and troubleshooting.
 | `SMTP_PASSWORD` | – | Password for SMTP authentication. |
 | `SMTP_FROM` | – | Sender, e.g. `Example Status <status@example.com>`. Required for `smtp` and `log`. |
 | `SMTP_TLS_REJECT_UNAUTHORIZED` | `true` | Verify the SMTP server certificate. Only set `false` for relays with self-signed certificates inside a trusted network. |
+| `MAIL_DKIM_DIR` | – | Directory with the DKIM **public** keys of the bundled mail server (`<domain>.<selector>.txt` in zone-file format, as written by `rspamadm dkim_keygen` or `opendkim-genkey`). The **Email delivery** panel then shows the SPF, DKIM and DMARC records to publish for the domain of `SMTP_FROM`. Set by the Compose files and `scripts/install.sh` when the bundled Postfix is used; mount it read-only, it must never contain private keys. |
 
 With Docker Compose every variable goes into the `.env` next to `compose.yaml`
 (`deploy/compose/.env` in a clone); the whole file reaches the container and

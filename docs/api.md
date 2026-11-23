@@ -4154,13 +4154,21 @@ Content-Type: application/vnd.api+json
     "attributes": {
       "transport": "smtp", "configured": true, "from": "Example Status <status@example.com>",
       "subscriptionsEnabled": true, "subscribers": {"confirmed": 1, "pending": 0},
-      "queue": {"pending": 1, "failed": 0}, "lastSentAt": null, "lastError": null
+      "queue": {"pending": 1, "failed": 0}, "lastSentAt": null, "lastError": null,
+      "dns": null
     },
     "links": {"self": "/api/admin/notifications/status"}
   },
   "links": {"self": "/api/admin/notifications/status"}
 }
 ```
+
+`dns` is null unless the bundled mail server is used (`MAIL_DKIM_DIR`, see
+[configuration.md](configuration.md#email-notifications)). Then it lists the records to publish
+for the domain of the sender: `{"domain": "example.com", "selector": "mail",
+"records": [{"kind": "spf" | "dkim" | "dmarc", "type": "TXT", "name": "...",
+"value": "..."}]}`. The SPF value contains the placeholders `<server-ipv4>` and
+`<server-ipv6>` for the addresses the mail server sends from.
 
 </details>
 
