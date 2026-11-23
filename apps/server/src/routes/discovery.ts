@@ -16,7 +16,7 @@
  * URLs are absolute with the effective PUBLIC_BASE_URL; the data is public data only
  * (services/site-index.ts). Not JSON:API: these are fixed formats for crawlers.
  */
-import { overallStatus, type IncidentImpact, type IncidentStatus, type MaintenanceStatus, type PublicIncident, type PublicMaintenance, type PublicService, type ServiceStatus } from '@openstatuspage/shared';
+import { localizedText, overallStatus, type IncidentImpact, type IncidentStatus, type MaintenanceStatus, type PublicIncident, type PublicMaintenance, type PublicService, type ServiceStatus } from '@openstatuspage/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { notFound } from '../lib/errors.js';
 import { escapeXml } from '../lib/xml.js';
@@ -141,6 +141,8 @@ export interface LlmsInput {
   serviceCount: number;
   showLocations: boolean;
   emailSubscriptions: boolean;
+  /** Published content pages (English title and description, the other language as fallback). */
+  contentPages?: { path: string; title: string; description: string }[];
 }
 
 export function renderLlms(i: LlmsInput): string {
@@ -162,6 +164,7 @@ export function renderLlms(i: LlmsInput): string {
     `- ${link('History', u('/history'))}: Past incidents and maintenance windows, newest first`,
     ...(i.showLocations ? [`- ${link('Locations', u('/locations'))}: Status by location`] : []),
     ...(i.emailSubscriptions ? [`- ${link('Email notifications', u('/subscribe'))}: Subscribe to incident and maintenance emails`] : []),
+    ...(i.contentPages ?? []).map((p) => `- ${link(p.title, u(p.path))}${p.description.trim() ? `: ${inline(p.description)}` : ''}`),
     '',
     '## API',
     '',
@@ -287,7 +290,7 @@ export async function registerDiscoveryRoutes(app: FastifyInstance): Promise<voi
   }
 
   app.get('/llms.txt', async (_req, reply) => {
-    const [settings, serviceCount] = await Promise.all([index.settings(), index.count('services')]);
+    const [settings, serviceCount, content] = await Promise.all([index.settings(), index.count('services'), index.contentPages()]);
     const body = renderLlms({
       baseUrl,
       siteName: settings.siteName,
@@ -295,6 +298,11 @@ export async function registerDiscoveryRoutes(app: FastifyInstance): Promise<voi
       serviceCount,
       showLocations: settings.showLocations,
       emailSubscriptions: await index.emailSubscriptions(settings),
+      contentPages: content.map((p) => ({
+        path: p.path,
+        title: localizedText(p.title, 'en'),
+        description: localizedText(p.description, 'en'),
+      })),
     });
     return send(reply, TEXT, CACHE.llms, body);
   });
