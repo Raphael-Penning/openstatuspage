@@ -11,7 +11,7 @@
  *   POST   /api/admin/uploads              the image bytes as `application/octet-stream`
  *                                          (?fileName= for display), at most 1 MiB;
  *                                          PNG, JPEG, WebP or ICO by their magic bytes
- *   DELETE /api/admin/uploads/:id
+ *   DELETE /api/admin/uploads/:id          409 while the logo, the favicon or a content page uses it
  *
  *   GET    /api/admin/instance             facts of this instance for the management UI (the version)
  *
@@ -29,7 +29,8 @@ import { appVersion } from '../../lib/version.js';
 import { owningUserId } from '../../plugins/auth.js';
 import { useJsonApi } from '../../plugins/jsonapi.js';
 import { loadAdminSitePages } from '../../services/site-pages.js';
-import { cleanFilename, loadAdminUploads, storeUpload } from '../../services/uploads.js';
+import { getSettings } from '../../services/settings.js';
+import { cleanFilename, loadAdminUploads, storeUpload, uploadReferences } from '../../services/uploads.js';
 import { admin, auditRequest, editor } from './util.js';
 
 export const CONTENT_TYPES = { page: 'pages', upload: 'uploads', instance: 'instances' } as const;
@@ -192,6 +193,9 @@ function registerUploadAdminRoutes(app: FastifyInstance): void {
     const { id } = parse(IdParams, req.params);
     const [upload] = await loadAdminUploads(db, id);
     if (!upload) throw notFound('Upload');
+    // An image still in use is not deleted: the logo or the page would break silently.
+    const usedBy = await uploadReferences(db, upload.url, await getSettings(db));
+    if (usedBy.length > 0) throw conflict(`The image is in use (${usedBy.join(', ')}); remove it there first`);
     await db.deleteFrom('uploads').where('id', '=', id).execute();
     await auditRequest(db, req, 'upload.delete', 'upload', id, { url: upload.url });
     return noContent(reply);

@@ -192,6 +192,16 @@ describe('uploads', () => {
     await admin.patch(`/api/admin/pages/${pages[0].id}`, { published: true, body: { en: `![Logo](${stored.url})`, de: '' } });
     expect(data<Any>(await t.app.inject('/api/public/pages/about')).images).toEqual({ [stored.url]: { width: 200, height: 50 } });
 
+    // In use by the logo, the favicon and the about page: not deleted.
+    const inUse = await admin.delete(`/api/admin/uploads/${stored.id}`);
+    expect(inUse.statusCode).toBe(409);
+    expect(errors(inUse)[0]?.detail).toContain('logo, favicon, page about');
+    await admin.patch('/api/admin/settings', { logoUrl: null, faviconUrl: `https://status.example.com${stored.url}` });
+    expect(errors(await admin.delete(`/api/admin/uploads/${stored.id}`))[0]?.detail).toContain('(favicon, page about)');
+    await admin.patch('/api/admin/settings', { faviconUrl: null });
+    expect((await admin.delete(`/api/admin/uploads/${stored.id}`)).statusCode).toBe(409);
+    await admin.patch(`/api/admin/pages/${pages[0].id}`, { body: { en: 'No image', de: '' } });
+
     expect((await admin.delete(`/api/admin/uploads/${stored.id}`)).statusCode).toBe(204);
     expect((await t.app.inject(stored.url)).statusCode).toBe(404);
   });

@@ -142,3 +142,29 @@ export async function uploadSizes(db: DB, paths: string[]): Promise<Record<strin
   }
   return out;
 }
+
+/**
+ * What still shows the upload at `url` (`/uploads/<sha256>.<ext>`): the logo
+ * and the favicon of the settings (relative or absolute URL) and the content
+ * pages whose Markdown links it, as `logo`, `favicon` and `page <slug>`.
+ * Other texts (incident updates, descriptions) are not checked.
+ */
+export async function uploadReferences(
+  db: DB,
+  url: string,
+  settings: { logoUrl?: string | null; faviconUrl?: string | null },
+): Promise<string[]> {
+  const refs: string[] = [];
+  const uses = (value: string | null | undefined) => !!value && value.endsWith(url);
+  if (uses(settings.logoUrl)) refs.push('logo');
+  if (uses(settings.faviconUrl)) refs.push('favicon');
+  // The URL is hex, a dot and an extension: no LIKE wildcards to escape.
+  const pages = await db
+    .selectFrom('site_pages')
+    .select('slug')
+    .where((eb) => eb.or([eb('body_en', 'like', `%${url}%`), eb('body_de', 'like', `%${url}%`)]))
+    .orderBy('slug')
+    .execute();
+  refs.push(...pages.map((p) => `page ${p.slug}`));
+  return refs;
+}
