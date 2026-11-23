@@ -65,8 +65,9 @@ redirect URI to the IdP, then enable it.
 before saving) and shows the issuer and the authorization, token, userinfo,
 JWKS and end session endpoints, or why it failed (unreachable, HTTP error,
 redirect, not a discovery document, an issuer that differs from the configured
-URL (compared like the login does: the case of the host and the slash of an
-empty path do not count, a trailing slash after a path does), endpoints that are not https, no authorization code flow). It follows the
+URL, endpoints that are not https, no authorization code flow). The issuers are
+compared like the login compares them: the case of the host and the slash of an
+empty path do not count, a trailing slash after a path does. It follows the
 rules of every request an admin can trigger: admins only, at most 10 tests per
 minute, a 10 second time limit, at most 256 KiB, no redirects followed, and
 messages without credentials or query strings. Only a plain `GET` is sent; the
@@ -76,6 +77,22 @@ also reaches hosts inside your network.
 Every change is written to the audit log (`oidc_provider.create`, `.update`,
 `.delete`) with the changed fields; the secret only as `set` or `removed`.
 Deleting a provider removes its links to user accounts (not the accounts).
+
+**Changing the issuer URL** makes the provider another identity provider, so
+saving it
+
+- needs a **new client secret** in the same change (or *Remove the stored
+  secret* for a public client): the stored secret is never sent to the token
+  endpoint of another issuer, so whoever can edit providers cannot redirect it
+  to a host of their own and read it there;
+- **removes the provider's links to user accounts**: a `sub` is only unique per
+  issuer, and the new issuer must not sign in as the users linked through the
+  old one. The users link again on their next login like new ones (see
+  [Account linking](#account-linking)). The dialog shows how many links go.
+
+The audit entry names the previous issuer and the number of removed links
+(`previousIssuerUrl`, `unlinkedUsers`). A new client ID alone keeps the secret
+and the links.
 
 Up to 50 providers can be stored.
 

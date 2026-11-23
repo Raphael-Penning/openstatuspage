@@ -4282,7 +4282,7 @@ without `clientSecret`, plus `hasClientSecret`, `source` (`database` or
 | GET | `/api/admin/oidc-providers` | the provider of the environment (id `env`, read-only) first, then by `sortOrder` and name |
 | POST | `/api/admin/oidc-providers` | `201`; at most 50 providers (`409`) |
 | GET | `/api/admin/oidc-providers/:id` | |
-| PATCH | `/api/admin/oidc-providers/:id` | partial update; `409` for `env` |
+| PATCH | `/api/admin/oidc-providers/:id` | partial update; a new `issuerUrl` needs `clientSecret` in the same request when a secret is stored (`400`, code `secret_required`) and removes the links of users to this provider; `409` for `env` |
 | DELETE | `/api/admin/oidc-providers/:id` | `204`; also removes the links of users to this provider; `409` for `env` |
 | POST | `/api/admin/oidc-providers/test` | discovery test of an issuer that is not saved: request type `oidc-discovery-tests` with `issuerUrl` |
 | POST | `/api/admin/oidc-providers/:id/test` | discovery test of a provider (also `env`) |
@@ -4297,7 +4297,8 @@ without `clientSecret`, plus `hasClientSecret`, `source` (`database` or
   `200` also when the discovery failed (`ok: false`). At most 10 tests per minute;
   no redirects are followed, 10 s time limit, 256 KiB answer limit.
 - Audit log: `oidc_provider.create`, `.update` (with the changed `fields`;
-  the secret as `clientSecret: "set" | "removed"`), `.delete`.
+  the secret as `clientSecret: "set" | "removed"`; after a new issuer also
+  `previousIssuerUrl` and `unlinkedUsers`), `.delete`.
 
 ```http
 POST /api/admin/oidc-providers
