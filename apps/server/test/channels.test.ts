@@ -332,6 +332,39 @@ describe('webhook subscriptions of visitors', () => {
     expect(sent.length).toBe(1);
   });
 
+  it('are removed after five deliveries the webhook refused', async () => {
+    await admin.patch('/api/admin/channel-settings', { webhookSubscriptions: true });
+    const { reference } = (await subscribe({ channel: 'webhook', webhookKind: 'discord', url: discord })).json().meta;
+    await deliver();
+    expect((await confirm(reference, await codeOf(reference))).statusCode).toBe(200);
+    answer = 404;
+    for (let i = 0; i < 4; i++) {
+      await incident([serviceA]);
+      await deliver();
+    }
+    expect(await t.db.selectFrom('channel_subscribers').select('id').execute()).toHaveLength(1);
+    await incident([serviceA]);
+    await deliver();
+    expect(await t.db.selectFrom('channel_subscribers').select('id').execute()).toEqual([]);
+  });
+
+  it('are kept when deliveries fail on this side', async () => {
+    await admin.patch('/api/admin/channel-settings', { webhookSubscriptions: true });
+    const { reference } = (await subscribe({ channel: 'webhook', webhookKind: 'discord', url: discord })).json().meta;
+    await deliver();
+    await confirm(reference, await codeOf(reference));
+    // The server's own network (or the SSRF guard) refuses: not the destination's fault.
+    t.app.ctx.channels.request = async () => {
+      throw Object.assign(new Error('address not allowed'), { code: 'address' });
+    };
+    for (let i = 0; i < 6; i++) {
+      await incident([serviceA]);
+      await deliver();
+    }
+    expect(await t.db.selectFrom('channel_outbox').select('id').where('status', '=', 'failed').execute()).toHaveLength(6);
+    expect(await t.db.selectFrom('channel_subscribers').select('id').execute()).toHaveLength(1);
+  });
+
   it('share the per-client subscribe limit with the email subscriptions', async () => {
     await admin.patch('/api/admin/channel-settings', { webhookSubscriptions: true });
     const codes: number[] = [];
@@ -391,11 +424,64 @@ describe('SMS subscriptions of visitors', () => {
     const before = sent.length;
     await deliver();
     expect(sent.length).toBe(before);
-    const failed = await t.db.selectFrom('channel_outbox').select(['last_error']).where('status', '=', 'failed').execute();
-    expect(failed.map((f) => f.last_error)).toContain('Monthly SMS budget used up');
+    // Nothing is queued for the subscriber once the budget is used up.
+    const queued = await t.db.selectFrom('channel_outbox').select('id').where('event', '=', 'incident.created').execute();
+    expect(queued).toEqual([]);
     const notice = await t.db.selectFrom('email_outbox').select('subject').where('kind', '=', 'admin_notice').execute();
     expect(notice).toEqual([{ subject: 'Monthly SMS budget used up' }]);
     expect((await subscribe({ channel: 'sms', phone: '+491512345670' })).statusCode).toBe(404);
+  });
+
+  it('keep their subscribers while the budget is used up', async () => {
+    answer = 201;
+    await enableSms({ smsMonthlyBudget: 2 });
+    const { reference } = (await subscribe({ channel: 'sms', phone: '+491512345678' })).json().meta;
+    await deliver();
+    await confirm(reference, await codeOf(reference));
+    await admin.post('/api/admin/sms-provider/test', { to: '+491512345679' });
+    for (let i = 0; i < 7; i++) {
+      await incident([serviceA]);
+      await deliver();
+    }
+    expect(await t.db.selectFrom('channel_subscribers').select('id').execute()).toHaveLength(1);
+  });
+
+  it('keep their subscribers when the provider refuses the credentials', async () => {
+    answer = 201;
+    await enableSms();
+    const { reference } = (await subscribe({ channel: 'sms', phone: '+491512345678' })).json().meta;
+    await deliver();
+    await confirm(reference, await codeOf(reference));
+    answer = 401;
+    for (let i = 0; i < 6; i++) {
+      await incident([serviceA]);
+      await deliver();
+    }
+    expect(await t.db.selectFrom('channel_outbox').select('id').where('status_code', '=', 401).execute()).toHaveLength(6);
+    expect(await t.db.selectFrom('channel_subscribers').select('id').execute()).toHaveLength(1);
+  });
+
+  it('remove a number the provider keeps rejecting while others are sent', async () => {
+    answer = 201;
+    await enableSms();
+    const subscribed: string[] = [];
+    for (const phone of ['+491512345678', '+491512345600']) {
+      const { reference } = (await subscribe({ channel: 'sms', phone })).json().meta;
+      await deliver();
+      await confirm(reference, await codeOf(reference));
+      subscribed.push(phone.slice(1));
+    }
+    t.app.ctx.channels.request = async (url, init = {}): Promise<SafeResponse> => {
+      sent.push({ url, init, options: {} });
+      const rejected = (bodyOf({ url, init, options: {} }) as { recipients: string[] }).recipients[0] === subscribed[0];
+      return { status: rejected ? 422 : 201, body: '', address: '203.0.113.1' };
+    };
+    for (let i = 0; i < 5; i++) {
+      await incident([serviceA]);
+      await deliver();
+    }
+    const left = await t.db.selectFrom('channel_subscribers').select('target_hint').execute();
+    expect(left).toHaveLength(1);
   });
 });
 

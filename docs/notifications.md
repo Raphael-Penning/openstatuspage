@@ -330,7 +330,14 @@ Every message goes through the `channel_outbox` table and the worker task
 - An admin webhook is disabled after 10 failed requests in a row; the admins get
   an email (when a mail transport is configured), and the audit log records
   `webhook.auto_disable`.
-- A subscriber whose last 5 messages all failed is removed.
+- A subscriber is removed when the destination refused its last 5 messages:
+  a webhook answered `4xx` (other than 408, 425 and 429, for example `404` or
+  `410` for a deleted webhook), or the SMS provider rejected the number (`400`,
+  `410` or `422`) while it accepted other SMS in the same time. Failures with a
+  cause on the server's side never count: the SMS budget, the channel settings,
+  a changed key, a refused or unreachable address, network errors, `5xx`
+  answers and provider answers such as `401`, `403` or `404` (wrong
+  credentials or URL). A sent message in between starts the count again.
 - Sent rows lose their payload; all rows are deleted after 40 days (the monthly
   SMS budget counts the rows of the current month).
 
@@ -456,12 +463,15 @@ check your account before relying on them):
 
 Budget and pause: SMS that are sent or pending in the current calendar month
 (UTC) count against **SMS per month**. When the budget is reached, public SMS
-pause: SMS to visitors are not sent (the delivery log says "Monthly SMS budget
-used up"), new SMS subscriptions are refused, and the admins get one email per
-month. On-call SMS still go out. Public SMS subscriptions are off until the
+pause: SMS to visitors are no longer queued, new SMS subscriptions are refused,
+and the admins get one email per month. Right before sending a subscriber SMS
+the worker checks the budget again, counting only the SMS sent so far (the
+message itself is still pending); a subscriber SMS queued before the budget ran
+out but over it when its turn comes is not sent (status "failed", "Monthly SMS
+budget used up"). Neither counts as a failure of the subscriber. On-call SMS still go out. Public SMS subscriptions are off until the
 admin lists the allowed countries (calling codes); the list is empty by default.
 
 STOP: OpenStatusPage receives no SMS. Opt-out replies such as `STOP` are handled
 by the provider (Twilio blocks further messages to the number, others offer
-opt-out lists); the following sends fail, and after 5 failed messages the
-subscription is removed. Every subscriber SMS carries the unsubscribe link.
+opt-out lists); the following sends fail, and after 5 messages the provider
+rejected (`400`, `410` or `422`) the subscription is removed. Every subscriber SMS carries the unsubscribe link.

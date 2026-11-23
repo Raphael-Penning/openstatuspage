@@ -20,12 +20,18 @@
  * Failures: an admin webhook is disabled after AUTO_DISABLE_FAILURES failed
  * requests in a row, and the admins get a notice (mail to every admin when a
  * mail transport is configured, the audit log and the server log). A subscriber
- * whose last SUBSCRIBER_FAILURE_LIMIT messages all failed is removed (a deleted
- * webhook, a number that replied STOP at the provider).
+ * whose last SUBSCRIBER_FAILURE_LIMIT messages were all refused by the
+ * destination itself is removed (a deleted webhook, a number the provider
+ * rejects); see checkSubscriber. Failures with a cause on this side (budget,
+ * settings, provider configuration, network, 5xx) never count.
  *
- * SMS budget: once the SMS accepted this month reach ChannelSettings.smsMonthlyBudget,
- * subscriber SMS are not sent (public SMS pauses, also for new sign-ups) and the
- * admins get one notice per month; on-call SMS still go out.
+ * SMS budget: once the SMS of this month reach ChannelSettings.smsMonthlyBudget,
+ * subscriber SMS are not queued or sent (public SMS pauses, also for new
+ * sign-ups) and the admins get one notice per month; on-call SMS still go out.
+ * Two counts on purpose: the sign-up page and publish() count sent plus pending
+ * SMS (smsUsedThisMonth: what is already promised), the worker right before a
+ * send counts only sent ones (smsSentThisMonth: the row being sent is pending
+ * itself, and rows queued before the budget ran out may still go out up to it).
  *
  * The delivery log of admin webhooks is their outbox rows (event, status, status
  * code, a short error without URL or secrets). Sent rows lose their payload; all
@@ -58,7 +64,15 @@ import {
   type ChannelMessage,
   type RenderContext,
 } from './messages.js';
-import { claimBudgetNotice, getChannelSettings, getSmsProvider, monthStart, readCredentials, subscriberWebhookKinds } from './settings.js';
+import {
+  claimBudgetNotice,
+  getChannelSettings,
+  getSmsProvider,
+  monthStart,
+  readCredentials,
+  smsUsedThisMonth,
+  subscriberWebhookKinds,
+} from './settings.js';
 import { retryableStatus, sendSms } from './sms.js';
 import {
   channelCode,
@@ -151,6 +165,22 @@ interface Site {
 }
 
 const isSubscriptionMessage = (event: string) => event === 'subscription.confirm' || event === 'subscription.manage';
+
+/** Webhook answers that are not the destination's verdict on itself (timeouts, rate limits). */
+const TRANSIENT_4XX = [408, 425, 429];
+/**
+ * SMS provider answers that reject the number (invalid, unreachable, opted out):
+ * 400 Bad Request (Twilio), 410 Gone, 422 Unprocessable (Vonage, MessageBird).
+ * 401, 403 and 404 point at the provider settings and never count.
+ */
+const SMS_NUMBER_REJECTED = [400, 410, 422];
+
+/** Whether a failed delivery was the destination's fault (see checkSubscriber). */
+export function destinationFault(channel: 'webhook' | 'sms', statusCode: number | null): boolean {
+  if (statusCode === null) return false;
+  if (channel === 'sms') return SMS_NUMBER_REJECTED.includes(statusCode);
+  return statusCode >= 400 && statusCode < 500 && !TRANSIENT_4XX.includes(statusCode);
+}
 
 export class ChannelService {
   /** Current time; replaced in tests. */
@@ -246,7 +276,9 @@ export class ChannelService {
           .execute()
       : [];
     const kinds = subscriberWebhookKinds(settings);
-    const smsOpen = provider.enabled && settings.smsCallingCodes.length > 0;
+    // Subscriber SMS are not queued once the budget is used up (they would only fail).
+    const smsConfigured = provider.enabled && settings.smsCallingCodes.length > 0;
+    const smsOpen = smsConfigured && (await smsUsedThisMonth(this.db, this.clock())) < settings.smsMonthlyBudget;
     const subscribers = await this.db
       .selectFrom('channel_subscribers')
       .select(['id', 'channel', 'webhook_kind'])
@@ -275,6 +307,7 @@ export class ChannelService {
         .filter((s) => (s.channel === 'webhook' ? s.webhook_kind !== null && kinds.includes(s.webhook_kind) : smsOpen))
         .map((s) => ({ channel: s.channel, recipientType: 'subscriber' as const, recipientId: s.id, event: event.type, payload })),
     ];
+    if (smsConfigured && !smsOpen && subscribers.some((s) => s.channel === 'sms')) await this.budgetNotice(settings.smsMonthlyBudget);
     await this.enqueue(rows);
     if (rows.length > 0) this.log.info({ event: event.type, recipients: rows.length }, 'webhook and SMS notifications queued');
     return rows.length;
@@ -525,7 +558,9 @@ export class ChannelService {
         { outboxId: row.id, channel: row.channel, recipient: row.recipient_type, event: row.event, attempts, failed, error: sent.message },
         'channel delivery failed',
       );
-      if (failed && row.recipient_type === 'subscriber' && row.recipient_id) await this.checkSubscriber(row.recipient_id);
+      if (failed && row.recipient_type === 'subscriber' && row.recipient_id && destinationFault(row.channel, sent.statusCode)) {
+        await this.checkSubscriber(row.recipient_id, row.channel);
+      }
     }
     if (row.recipient_type === 'admin_webhook' && row.recipient_id) await this.trackWebhook(row.recipient_id, sent, atIso);
   }
@@ -569,19 +604,49 @@ export class ChannelService {
     );
   }
 
-  /** Removes a subscriber whose last SUBSCRIBER_FAILURE_LIMIT messages all failed. */
-  private async checkSubscriber(id: string): Promise<void> {
+  /**
+   * Removes a subscriber whose last SUBSCRIBER_FAILURE_LIMIT deliveries the
+   * destination refused (destinationFault: a 4xx of the webhook, a provider
+   * answer rejecting the number). Sent rows count against removal; failures
+   * caused on this side (no status code: budget, settings, decryption, refused
+   * or unreachable address, network; 5xx; provider configuration errors) are
+   * ignored. For SMS the provider must also have accepted another SMS since the
+   * first of these failures, so a broken provider template never removes anyone.
+   */
+  private async checkSubscriber(id: string, channel: 'webhook' | 'sms'): Promise<void> {
     const last = await this.db
       .selectFrom('channel_outbox')
-      .select('status')
+      .select(['status', 'status_code', 'last_attempt_at'])
       .where('recipient_type', '=', 'subscriber')
       .where('recipient_id', '=', id)
-      .where('status', '!=', 'pending')
+      .where((eb) =>
+        eb.or([
+          eb('status', '=', 'sent'),
+          eb.and([
+            eb('status', '=', 'failed'),
+            channel === 'sms'
+              ? eb('status_code', 'in', SMS_NUMBER_REJECTED)
+              : eb.and([eb('status_code', '>=', 400), eb('status_code', '<', 500), eb('status_code', 'not in', TRANSIENT_4XX)]),
+          ]),
+        ]),
+      )
       .orderBy('created_at', 'desc')
       .limit(SUBSCRIBER_FAILURE_LIMIT)
       .execute();
     if (last.length < SUBSCRIBER_FAILURE_LIMIT || last.some((r) => r.status !== 'failed')) return;
-    if (await deleteChannelSubscriber(this.db, id)) this.log.info({ subscriberId: id }, 'subscriber removed after repeated failed deliveries');
+    if (channel === 'sms') {
+      const since = last.map((r) => r.last_attempt_at ?? '').sort()[0] ?? '';
+      const providerWorks = await this.db
+        .selectFrom('channel_outbox')
+        .select('id')
+        .where('channel', '=', 'sms')
+        .where('status', '=', 'sent')
+        .where('sent_at', '>=', since)
+        .limit(1)
+        .executeTakeFirst();
+      if (!providerWorks) return;
+    }
+    if (await deleteChannelSubscriber(this.db, id)) this.log.info({ subscriberId: id }, 'subscriber removed after repeated refused deliveries');
   }
 
   private async budgetNotice(budget: number): Promise<void> {

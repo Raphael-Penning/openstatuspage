@@ -108,14 +108,17 @@ kurzen Link zum Verwalten oder Beenden. Alles funktioniert ohne JavaScript.
 
 Abonnenten aller Kanäle findest du unter **Abonnenten** (Kanal oben umschalten).
 Unbestätigte Abonnements werden nach 7 Tagen gelöscht, und ein Abonnent, dessen
-letzte fünf Nachrichten alle fehlgeschlagen sind, wird automatisch entfernt.
+Ziel die letzten fünf Nachrichten abgelehnt hat (ein gelöschter Webhook, eine
+Nummer, die dein Anbieter ablehnt), wird automatisch entfernt. Probleme auf
+deiner Seite, etwa ein verbrauchtes Budget, falsche Zugangsdaten des Anbieters
+oder ein Netzwerkausfall, entfernen nie Abonnenten.
 
 ### STOP-Antworten
 
 OpenStatusPage empfängt keine SMS. Antworten wie `STOP` verarbeitet dein
 Anbieter: Twilio etwa sperrt weitere Nachrichten an eine Nummer, die mit `STOP`
 geantwortet hat. Diese Sendungen schlagen dann fehl, und nach fünf
-fehlgeschlagenen Nachrichten wird das Abonnement entfernt. Jede SMS enthält
+abgelehnten Nachrichten wird das Abonnement entfernt. Jede SMS enthält
 außerdem den Abmeldelink.
 
 ## Generische Webhooks prüfen

@@ -102,14 +102,17 @@ subscription. Everything works without JavaScript.
 
 Subscribers of every channel are listed under **Subscribers** (switch the
 channel at the top). Unconfirmed subscriptions are removed after 7 days, and a
-subscriber whose last five messages all failed is removed automatically.
+subscriber whose destination refused the last five messages (a deleted webhook,
+a number your provider rejects) is removed automatically. Problems on your side,
+such as a used-up budget, wrong provider credentials or a network outage, never
+remove subscribers.
 
 ### STOP replies
 
 OpenStatusPage does not receive SMS. Replies such as `STOP` are handled by your
 provider: Twilio, for example, blocks further messages to a number that replied
-`STOP`. Those sends then fail, and after five failed messages the subscription
-is removed. Every SMS also carries the unsubscribe link.
+`STOP`. Those sends then fail, and after five rejected messages the
+subscription is removed. Every SMS also carries the unsubscribe link.
 
 ## Verifying generic webhooks
 
