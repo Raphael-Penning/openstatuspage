@@ -737,11 +737,17 @@ cmd_update() {
   ensure_tools
   local old
   old="$(cat "$APP_DIR/VERSION" 2> /dev/null || printf unknown)"
+  if [ -z "$TARBALL" ]; then
+    resolve_version
+    # Reinstalling the same release would replace app.previous with a copy of
+    # it, and rollback could no longer return to the release before.
+    if [ "$VERSION" = "$old" ]; then
+      log "OpenStatusPage $VERSION is already installed (Node.js updates: $0 node)"
+      return 0
+    fi
+  fi
   ensure_node
   get_bundle
-  if [ "$VERSION" = "$old" ] && [ -z "$TARBALL" ]; then
-    log "OpenStatusPage $VERSION is already installed"
-  fi
   install_app
   install_units
   restart_active || die "the new release does not answer; '$0 rollback' returns to $old (database migrations are not undone)"
