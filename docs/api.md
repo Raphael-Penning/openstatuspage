@@ -4453,11 +4453,11 @@ without `clientSecret`, plus `hasClientSecret`, `source` (`database` or
 | GET | `/api/admin/oidc-providers/:id` | |
 | PATCH | `/api/admin/oidc-providers/:id` | partial update; a new `issuerUrl` needs `clientSecret` in the same request when a secret is stored (`400`, code `secret_required`) and removes the links of users to this provider; `409` for `env` |
 | DELETE | `/api/admin/oidc-providers/:id` | `204`; also removes the links of users to this provider; `409` for `env` |
+| POST | `/api/admin/oidc-providers/test` | discovery test of an issuer that is not saved: request type `oidc-discovery-tests` with `issuerUrl` |
+| POST | `/api/admin/oidc-providers/:id/test` | discovery test of a provider (also `env`) |
 
 With `LOCAL_LOGIN_ENABLED=false` and no environment provider, disabling
 (`enabled: false`) or deleting the last enabled provider answers `409`.
-| POST | `/api/admin/oidc-providers/test` | discovery test of an issuer that is not saved: request type `oidc-discovery-tests` with `issuerUrl` |
-| POST | `/api/admin/oidc-providers/:id/test` | discovery test of a provider (also `env`) |
 
 - `clientSecret` is write-only: a string sets it (stored encrypted with
   SecretBox), `null` removes it (public client), leaving it out keeps it. It is
