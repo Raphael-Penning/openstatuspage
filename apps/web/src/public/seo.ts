@@ -256,15 +256,23 @@ export function webPageLd(site: SiteInfo, page: WebPageInput): Record<string, un
   };
 }
 
+/**
+ * Characters of Markdown markdownText reads. A meta description is cut to
+ * DESCRIPTION_MAX anyway; reading only the start keeps the cost of a render
+ * bounded for long or unbalanced bodies (up to 50,000 characters).
+ */
+export const MARKDOWN_TEXT_SCAN_MAX = 2000;
+
 /** Plain text of Markdown for a meta description: no markup, no image or link targets. */
 export function markdownText(markdown: string): string {
   return markdown
+    .slice(0, MARKDOWN_TEXT_SCAN_MAX)
     .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/!\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g, ' ')
+    .replace(/\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g, '$1')
     .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '')
     .replace(/[*_`~|]+/g, '')
-    .replace(/<[^>]*>/g, ' ')
+    .replace(/<[^>\n]{0,200}>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

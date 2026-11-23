@@ -362,6 +362,16 @@ describe('seo helpers', () => {
     );
   });
 
+  it('markdownText stays fast on long and unbalanced Markdown', () => {
+    for (const body of ['['.repeat(50_000), '<'.repeat(50_000), '!['.repeat(25_000), '[a]('.repeat(12_500)]) {
+      const start = performance.now();
+      const text = markdownText(body);
+      expect(performance.now() - start).toBeLessThan(100);
+      expect(text.length).toBeLessThanOrEqual(2000);
+    }
+    expect(markdownText(`Intro words\n\n${'x '.repeat(30_000)}`).startsWith('Intro words x x')).toBe(true);
+  });
+
   it('builds language URLs and breadcrumbs', () => {
     expect(withLang('/a', 'de')).toBe('/a?lang=de');
     expect(withLang('/a', null)).toBe('/a');
