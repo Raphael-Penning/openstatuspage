@@ -1,7 +1,7 @@
 /**
  * Walks every registered route and checks that JSON responses are JSON:API
  * documents. The only routes outside JSON:API are the documented non-JSON:API
- * endpoints (health check, feeds, crawler files, OIDC and the unsubscribe redirect).
+ * endpoints (health check, OpenAPI description, feeds, crawler files, OIDC and the unsubscribe redirect).
  */
 import { JSONAPI_MEDIA_TYPE } from '@openstatuspage/shared';
 import type { HTTPMethods, LightMyRequestResponse, RouteOptions } from 'fastify';
@@ -11,6 +11,7 @@ import { adminClient, createTestApp, data, seedChecks, type Client, type TestApp
 /** Routes that are not JSON:API on purpose (see docs/api.md). */
 const NON_JSONAPI = [
   'GET /api/health',
+  'GET /api/openapi.json',
   'GET /api/public/subscriptions/:id/unsubscribe',
   'GET /s/:id/:token',
   'GET /api/auth/oidc/login',
@@ -30,7 +31,7 @@ const NON_JSONAPI = [
 ];
 
 /** Non-JSON:API routes whose successful answer is plain JSON. */
-const PLAIN_JSON = new Set(['GET /api/health']);
+const PLAIN_JSON = new Set(['GET /api/health', 'GET /api/openapi.json']);
 
 /** Requests that end the admin session run last. */
 const LAST = new Set(['POST /api/auth/logout']);

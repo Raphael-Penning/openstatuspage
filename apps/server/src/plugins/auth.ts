@@ -48,9 +48,18 @@ export const CSRF_VALUE = 'openstatuspage';
 const ROLE_RANK: Record<UserRole, number> = { editor: 1, admin: 2 };
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** Routes that resolve the session or API token (route paths, see registerAuth). */
+/**
+ * Routes that resolve the session or API token (route paths, see registerAuth).
+ * /api/openapi.json describes the whole API to signed-in users (routes/openapi.ts).
+ */
 export function isAuthenticatedPath(route: string): boolean {
-  return route.startsWith('/api/admin/') || route.startsWith('/api/auth/') || route === '/api/admin' || route === '/api/auth';
+  return (
+    route.startsWith('/api/admin/') ||
+    route.startsWith('/api/auth/') ||
+    route === '/api/admin' ||
+    route === '/api/auth' ||
+    route === '/api/openapi.json'
+  );
 }
 
 export function hasRole(user: Pick<AuthUser, 'role'>, role: UserRole): boolean {

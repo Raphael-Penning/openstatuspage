@@ -14,6 +14,7 @@ export const RATE_LIMIT_KEYS = 1000;
  * receives the shared context via `app.ctx`.
  *
  *   /api/health          liveness / readiness
+ *   /api/openapi.json    OpenAPI description (public part, or all of it for signed-in users)
  *   /api/public/*        public read API (no auth, only public data)
  *   /api/public/subscriptions/*  email subscriptions (double opt-in, token based)
  *   /api/auth/*          login, logout, session, OIDC
@@ -52,6 +53,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     await app.ctx.db.selectFrom('settings').select('key').limit(1).execute();
     return { status: 'ok' };
   });
+
+  // The OpenAPI description: the public part, or the whole API for signed-in users (openapi.ts).
+  if (features.publicApi || features.adminApi) {
+    const { registerOpenApiRoute } = await import('./openapi.js');
+    await registerOpenApiRoute(app);
+  }
 
   if (features.publicApi) {
     const [{ registerPublicRoutes }, { registerSubscriptionRoutes }, { registerUploadRoutes }, { registerChannelSubscriptionRoutes }] = await Promise.all([
