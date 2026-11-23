@@ -351,9 +351,10 @@ export class NotificationService {
    * windows created inside the reminder period are not reminded (the announcement is recent).
    */
   async sendDueReminders(now = new Date()): Promise<number> {
-    const ctx = await this.site();
-    if (!ctx || ctx.reminderHours <= 0) return 0;
-    const periodMs = ctx.reminderHours * HOUR_MS;
+    // Reminders also go to the webhook and SMS channels: they do not depend on email being set up.
+    const reminderHours = (await getSettings(this.db)).maintenanceReminderHours;
+    if (reminderHours <= 0) return 0;
+    const periodMs = reminderHours * HOUR_MS;
     const nowIso = now.toISOString();
     const horizon = new Date(now.getTime() + periodMs).toISOString();
     const due = await this.db
