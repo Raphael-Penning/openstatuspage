@@ -8,7 +8,15 @@ import { hashPassword } from '../../lib/password.js';
 import { nowIso } from '../../lib/time.js';
 import { actorUserId, owningUserId, startSession } from '../../plugins/auth.js';
 import { newApiToken } from '../../services/sessions.js';
-import { changeUserRole, deleteUser, insertApiToken, revokeUserCredentials, toAdminUser } from '../../services/users.js';
+import {
+  changeUserRole,
+  deleteUser,
+  insertApiToken,
+  linkedUserIds,
+  revokeUserCredentials,
+  toAdminUser,
+  toAdminUserWithLinks,
+} from '../../services/users.js';
 import { collection, created, document, noContent, selfLink } from '../../lib/jsonapi.js';
 import { useJsonApi } from '../../plugins/jsonapi.js';
 import { apiTokenResource, AUTH_TYPES, userResource } from '../../serializers/auth-users.js';
@@ -39,7 +47,8 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
 
   app.get('/api/admin/users', admin, async (req) => {
     const rows = await db.selectFrom('users').selectAll().orderBy('name').orderBy('email').execute();
-    return collection(req, rows.map((r) => userResource(toAdminUser(r))));
+    const linked = await linkedUserIds(db);
+    return collection(req, rows.map((r) => userResource(toAdminUser(r, linked.has(r.id)))));
   });
 
   app.post('/api/admin/users', usersRoute, async (req, reply) => {
@@ -63,11 +72,11 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
       })
       .execute();
     await auditRequest(db, req, 'user.create', 'user', id, { email, role: input.role });
-    return created(reply, document(userResource(toAdminUser(await getUser(id)))), `/api/admin/users/${id}`);
+    return created(reply, document(userResource(await toAdminUserWithLinks(db, await getUser(id)))), `/api/admin/users/${id}`);
   });
 
   app.get('/api/admin/users/:id', admin, async (req) =>
-    document(userResource(toAdminUser(await getUser(parse(IdParams, req.params).id))), { links: { self: selfLink(req) } }),
+    document(userResource(await toAdminUserWithLinks(db, await getUser(parse(IdParams, req.params).id))), { links: { self: selfLink(req) } }),
   );
 
   app.patch('/api/admin/users/:id', usersRoute, async (req, reply) => {
@@ -111,7 +120,7 @@ async function registerUserScope(app: FastifyInstance): Promise<void> {
       fields: Object.keys(input).filter((k) => k !== 'password'),
       ...(passwordChanged ? { passwordChanged: true } : {}),
     });
-    return document(userResource(toAdminUser(await getUser(id))));
+    return document(userResource(await toAdminUserWithLinks(db, await getUser(id))));
   });
 
   app.delete('/api/admin/users/:id', admin, async (req, reply) => {

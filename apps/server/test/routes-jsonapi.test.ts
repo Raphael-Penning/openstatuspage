@@ -15,6 +15,8 @@ const NON_JSONAPI = [
   'GET /s/:id/:token',
   'GET /api/auth/oidc/login',
   'GET /api/auth/oidc/callback',
+  'GET /api/auth/oidc/:provider/login',
+  'GET /api/auth/oidc/:provider/callback',
   'GET /feed.rss',
   'GET /feed.atom',
   'GET /robots.txt',

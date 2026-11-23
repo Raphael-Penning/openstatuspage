@@ -17,6 +17,7 @@ export const AUDIT_ENTITY_TYPES = [
   'user',
   'api_token',
   'private_page',
+  'oidc_provider',
   'page',
   'upload',
   'subscriber',

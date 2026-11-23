@@ -29,7 +29,7 @@ wichtigsten Variablen:
 | `SESSION_TTL_HOURS` | `168` | Inaktivität, nach der eine Anmeldung abläuft (gleitend). |
 | `SESSION_MAX_AGE_HOURS` | `720` | Maximale Dauer einer Anmeldung ab dem Login, auch bei Aktivität (mindestens `SESSION_TTL_HOURS`). |
 | `LOCAL_LOGIN_ENABLED` | `true` | `false` erlaubt nur noch Single Sign-On. |
-| `OIDC_*` | – | Single Sign-On, siehe [Benutzer und Zugriff](08-users-and-access.md#single-sign-on-oidc). |
+| `OIDC_*` | – | Single Sign-On mit dem Anbieter aus der Umgebung. Weitere Anbieter legst du unter *Administration → Single Sign-On* an; siehe [Benutzer und Zugriff](08-users-and-access.md#single-sign-on-oidc). |
 | `APP_ROLE` | `all` | `all`, oder mit PostgreSQL `public`, `admin` bzw. `worker`, wenn du Statusseite und Verwaltung als getrennte Instanzen betreibst. Siehe [Getrennter Betrieb](../../configuration.md#split-deployment). |
 | `DB_PUBLIC_ROLE` | `osp_public` | PostgreSQL-Login der `public`-Instanz. Sie darf nur öffentliche Daten lesen und Abonnements über geprüfte Funktionen verwalten. Lege die Rolle mit `deploy/postgres/roles.sql` an; siehe [Sicherheitsmodell](../../security-model.md). |
 | `WORKER_ENABLED` | `true` (`false` bei `APP_ROLE=admin`) | Hintergrundaufgaben; mit PostgreSQL dürfen mehrere Instanzen sie ausführen (Abstimmung über die Datenbank). |

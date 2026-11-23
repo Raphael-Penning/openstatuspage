@@ -142,7 +142,9 @@ des Proxys und damit ein Rate Limit. Setze `TRUST_PROXY` (siehe
 Die Codes (`oidc_unavailable`, `forbidden`, `no_account`,
 `email_not_verified`, ...) erklärt [`docs/oidc.md`](../../oidc.md). Die
 häufigsten Ursachen: Die Redirect-URI beim Identity Provider stimmt nicht
-exakt mit `${BASE_URL}/api/auth/oidc/callback` überein, die Issuer-URL ist vom
+exakt mit der Redirect-URI des Anbieters überein (nach dem Speichern in der
+Verwaltung angezeigt; für den Anbieter aus der Umgebung
+`${BASE_URL}/api/auth/oidc/callback`), die Issuer-URL ist vom
 Server aus nicht erreichbar, oder im Token fehlt der Gruppen-Claim.
 
 ## Monitoring

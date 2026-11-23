@@ -25,7 +25,9 @@ contains `TRUST_PROXY=1`. Apply changes with `docker compose up -d`.
 `BASE_URL` is used for:
 
 - links in RSS/Atom feeds and in notification emails,
-- the OIDC redirect URI `${BASE_URL}/api/auth/oidc/callback`,
+- the OIDC redirect URIs: `${BASE_URL}/api/auth/oidc/callback` for the provider
+  of the environment, `${BASE_URL}/api/auth/oidc/<provider id>/callback` for each
+  provider added in the management UI,
 - the ingest URLs shown for monitoring sources,
 - the `Secure` flag of cookies: when `BASE_URL` starts with `https://`, the
   session cookie is only sent over HTTPS.

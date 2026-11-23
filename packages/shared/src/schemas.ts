@@ -6,6 +6,7 @@
  * endpoint list.
  */
 import { z } from 'zod';
+import type { OidcLoginProvider } from './oidc-providers.js';
 import { SUBSCRIPTION_LOCALES, type SubscriptionLocale } from './subscriptions.js';
 import type { ChannelOptions } from './channel-schemas.js';
 import {
@@ -281,6 +282,7 @@ export interface AdminUser {
   name: string;
   role: UserRole;
   hasPassword: boolean;
+  /** Linked to at least one SSO identity. */
   oidcLinked: boolean;
   createdAt: string;
   lastLoginAt: string | null;
@@ -288,14 +290,18 @@ export interface AdminUser {
 
 export interface SessionInfo {
   user: AdminUser;
-  /** Whether OIDC login is configured (controls the SSO button). */
+  /** Whether an SSO provider is enabled. */
   oidcEnabled: boolean;
 }
 
 export interface AuthConfig {
+  /** At least one SSO provider is enabled. */
   oidcEnabled: boolean;
+  /** Label of the provider from the environment (OIDC_LABEL); kept for older clients. */
   oidcLabel: string;
   localLoginEnabled: boolean;
+  /** One login button per enabled provider, in button order. */
+  oidcProviders: OidcLoginProvider[];
 }
 
 export const ApiTokenCreateInput = z.object({

@@ -134,7 +134,9 @@ and its rate limit. Set `TRUST_PROXY` (see
 The codes (`oidc_unavailable`, `forbidden`, `no_account`,
 `email_not_verified`, ...) are explained in [`docs/oidc.md`](../../oidc.md).
 The most common causes: the redirect URI at the identity provider does not
-exactly match `${BASE_URL}/api/auth/oidc/callback`, the issuer URL is not
+exactly match the redirect URI of the provider (shown after saving it in the
+management UI; `${BASE_URL}/api/auth/oidc/callback` for the environment provider),
+the issuer URL is not
 reachable from the server, or the groups claim is missing in the token.
 
 ## Monitoring

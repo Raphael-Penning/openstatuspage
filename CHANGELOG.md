@@ -104,6 +104,34 @@ breaking changes.
   SMS provider rejects); a used-up budget, provider or network errors never
   remove anyone.
 - Admin page **Webhooks & SMS** and a channel switch on the subscriber list.
+- **Several SSO providers, managed in the management UI** (*Administration →
+  Single sign-on*, admins only). Each OpenID Connect provider has a name,
+  button order, enabled flag, issuer URL, client id, a write-only client
+  secret stored encrypted with `SECRET_KEY`, scopes (PKCE S256 always on),
+  auto creation of users (verified e-mail only), optional allowed e-mail
+  domains and a role mapping: a claim path (`groups`, `roles`,
+  `realm_access.roles`, ...) whose values grant admin, editor or no access,
+  a default role (editor or no access) and whether the role is updated on
+  every login or only at creation. A *Test configuration* button runs the
+  discovery and shows the endpoints. Changes are written to the audit log
+  (`oidc_provider.*`, never the secret). API: `/api/admin/oidc-providers`.
+- The login page shows one button per enabled provider. Every provider has its
+  own login and callback route (`/api/auth/oidc/<id>/login|callback`), and the
+  login state is bound to the provider: a login started at one provider cannot
+  be completed at another. `/api/auth/config` lists them in `oidcProviders`.
+- Users are linked by `sub` per provider and can be linked to several
+  providers. `create-user --unlink-oidc` removes every link.
+- Providers of the management UI link an existing account through its verified
+  e-mail address only with *Link existing accounts by e-mail* (`linkByEmail`,
+  off by default); otherwise the login is refused with `account_not_linked`.
+  The environment provider keeps linking by e-mail as in 0.3.x.
+- A new issuer URL of a provider needs its client secret again and removes the
+  provider's links to user accounts (audited with `previousIssuerUrl` and
+  `unlinkedUsers`).
+- With `LOCAL_LOGIN_ENABLED=false` and no environment provider, the last
+  enabled provider cannot be disabled or deleted (`409`).
+- Role changes made by the SSO role sync are written to the audit log
+  (`user.update` with `previousRole` and the provider).
 - Migration `0014_site_pages_uploads`.
 - Migration `0015_notification_channels`: on PostgreSQL the restricted public
   role writes webhook and SMS subscriptions only through new `SECURITY DEFINER`
@@ -113,6 +141,11 @@ breaking changes.
 
 - **Maintenance windows** are marked up as `Event` in the structured data (they were
   `Article`). Incident pages stay `Article`.
+- The provider of the `OIDC_*` environment variables keeps its routes, redirect
+  URI and role rules and is listed read-only in the management UI (it is not
+  copied into the database). Migration `0016_oidc_providers` moves the existing
+  links (`users.oidc_subject`) to it.
+- The mobile top bar of the management UI is a `header` landmark.
 
 ## [0.3.1] - 2026-11-22
 

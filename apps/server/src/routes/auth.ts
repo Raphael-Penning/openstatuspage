@@ -5,8 +5,9 @@
  * is the singleton resource `sessions/current` with the user included). The
  * OIDC routes are browser redirects and stay plain.
  */
-import { ChangePasswordInput, LoginInput, type AuthConfig, type SessionInfo } from '@openstatuspage/shared';
-import type { FastifyInstance } from 'fastify';
+import { ChangePasswordInput, ENV_OIDC_PROVIDER_ID, LoginInput, type AuthConfig, type SessionInfo } from '@openstatuspage/shared';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { assertCsrf, requireSession, startSession } from '../plugins/auth.js';
 import { badRequest, forbidden, HttpError, notFound, unauthorized } from '../lib/errors.js';
 import { parse } from '../lib/http.js';
@@ -14,20 +15,19 @@ import { hashPassword, verifyPassword } from '../lib/password.js';
 import { nowIso } from '../lib/time.js';
 import { audit } from '../services/audit.js';
 import {
+  OIDC_COOKIE_PATH,
   OIDC_STATE_COOKIE,
   OIDC_STATE_TTL_SECONDS,
-  OidcClient,
   parseLoginState,
   resolveOidcUser,
 } from '../services/oidc.js';
+import { OidcProviderRegistry } from '../services/oidc-providers.js';
 import { deleteSession, deleteUserSessions, SESSION_COOKIE } from '../services/sessions.js';
 import { LoginThrottle } from '../services/login-throttle.js';
-import { toAdminUser } from '../services/users.js';
+import { toAdminUserWithLinks } from '../services/users.js';
 import { document, Included, noContent } from '../lib/jsonapi.js';
 import { useJsonApi } from '../plugins/jsonapi.js';
 import { AUTH_TYPES, authConfigResource, sessionResource } from '../serializers/auth-users.js';
-
-const OIDC_COOKIE_PATH = '/api/auth/oidc';
 
 /** Hash used to keep the login timing similar when the user does not exist. */
 let dummyHash: Promise<string> | null = null;
@@ -39,14 +39,14 @@ function getDummyHash(): Promise<string> {
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   const { ctx } = app;
   const { config, db } = ctx;
-  const oidc = config.oidcEnabled ? new OidcClient(config) : null;
+  const oidc = new OidcProviderRegistry({ config, db, secrets: ctx.secrets, log: app.log });
   // Per account, on top of the per-client rate limit of the route (see login-throttle.ts).
   const throttle = new LoginThrottle();
 
   async function sessionInfo(userId: string): Promise<SessionInfo> {
     const user = await db.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirst();
     if (!user) throw unauthorized();
-    return { user: toAdminUser(user), oidcEnabled: config.oidcEnabled };
+    return { user: await toAdminUserWithLinks(db, user), oidcEnabled: await oidc.hasLoginProviders() };
   }
 
   /** Session document: `sessions/current` with the user in `included`. */
@@ -60,10 +60,12 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     useJsonApi(scope);
 
     scope.get('/api/auth/config', async () => {
+      const oidcProviders = await oidc.loginProviders();
       const authConfig: AuthConfig = {
-        oidcEnabled: config.oidcEnabled,
+        oidcEnabled: oidcProviders.length > 0,
         oidcLabel: config.OIDC_LABEL,
         localLoginEnabled: config.LOCAL_LOGIN_ENABLED,
+        oidcProviders,
       };
       return document(authConfigResource(authConfig), { links: { self: '/api/auth/config' } });
     });
@@ -133,68 +135,114 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // --- OIDC -------------------------------------------------------------------
+  // Every provider has its own login and callback route; the environment provider
+  // keeps the routes of 0.3.x (/api/auth/oidc/login and /api/auth/oidc/callback).
 
-  app.get(
-    '/api/auth/oidc/login',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
-    async (req, reply) => {
-      if (!oidc) throw notFound('OIDC login');
-      try {
-        const { url, state } = await oidc.startLogin();
-        reply.setCookie(OIDC_STATE_COOKIE, JSON.stringify(state), {
-          path: OIDC_COOKIE_PATH,
-          httpOnly: true,
-          sameSite: 'lax',
-          secure: config.BASE_URL.startsWith('https://'),
-          signed: true,
-          maxAge: OIDC_STATE_TTL_SECONDS,
-        });
-        return reply.redirect(url, 302);
-      } catch (err) {
-        req.log.error({ err }, 'OIDC login could not be started');
-        return reply.redirect('/admin/login?error=oidc_unavailable', 302);
-      }
-    },
-  );
+  const loginFail = (reply: FastifyReply, code: string) =>
+    reply.redirect(`/admin/login?error=${encodeURIComponent(code)}`, 302);
 
-  app.get(
-    '/api/auth/oidc/callback',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
-    async (req, reply) => {
-      if (!oidc) throw notFound('OIDC login');
-      const fail = (code: string) => reply.redirect(`/admin/login?error=${encodeURIComponent(code)}`, 302);
+  async function startOidcLogin(req: FastifyRequest, reply: FastifyReply, providerId: string) {
+    const provider = await oidc.get(providerId);
+    if (!provider) return loginFail(reply, 'oidc_unavailable');
+    try {
+      const { url, state } = await oidc.client(provider).startLogin();
+      reply.setCookie(OIDC_STATE_COOKIE, JSON.stringify(state), {
+        path: OIDC_COOKIE_PATH,
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.BASE_URL.startsWith('https://'),
+        signed: true,
+        maxAge: OIDC_STATE_TTL_SECONDS,
+      });
+      return reply.redirect(url, 302);
+    } catch (err) {
+      req.log.error({ err, provider: providerId }, 'OIDC login could not be started');
+      return loginFail(reply, 'oidc_unavailable');
+    }
+  }
 
-      const raw = req.cookies[OIDC_STATE_COOKIE];
-      reply.clearCookie(OIDC_STATE_COOKIE, { path: OIDC_COOKIE_PATH });
-      const unsigned = raw ? req.unsignCookie(raw) : null;
-      const state = unsigned?.valid ? parseLoginState(unsigned.value) : null;
-      if (!state) return fail('invalid_state');
+  async function finishOidcLogin(req: FastifyRequest, reply: FastifyReply, providerId: string) {
+    const raw = req.cookies[OIDC_STATE_COOKIE];
+    reply.clearCookie(OIDC_STATE_COOKIE, { path: OIDC_COOKIE_PATH });
+    const unsigned = raw ? req.unsignCookie(raw) : null;
+    // The state names its provider: a login started at another provider is rejected here.
+    const state = unsigned?.valid ? parseLoginState(unsigned.value, providerId) : null;
+    if (!state) return loginFail(reply, 'invalid_state');
 
-      const query = req.query as Record<string, unknown>;
-      if (typeof query.error === 'string') return fail('idp_error');
+    const query = req.query as Record<string, unknown>;
+    if (typeof query.error === 'string') return loginFail(reply, 'idp_error');
 
-      let claims;
-      try {
-        claims = await oidc.finishLogin(new URL(req.url, config.BASE_URL), state);
-      } catch (err) {
-        req.log.warn({ err }, 'OIDC callback failed');
-        return fail('oidc_failed');
-      }
+    const provider = await oidc.get(providerId);
+    if (!provider) return loginFail(reply, 'oidc_unavailable');
 
-      const result = await resolveOidcUser(db, config, claims, req.log);
-      if (!result.ok) {
-        req.log.info({ reason: result.error }, 'OIDC login rejected');
-        return fail(result.error);
-      }
-      await startSession(ctx, req, reply, result.user.id);
+    let claims;
+    try {
+      claims = await oidc.client(provider).finishLogin(new URL(req.url, config.BASE_URL), state);
+    } catch (err) {
+      req.log.warn({ err, provider: providerId }, 'OIDC callback failed');
+      return loginFail(reply, 'oidc_failed');
+    }
+
+    const result = await resolveOidcUser(db, provider, claims, req.log);
+    if (!result.ok) {
+      req.log.info({ reason: result.error, provider: providerId }, 'OIDC login rejected');
+      return loginFail(reply, result.error);
+    }
+    await startSession(ctx, req, reply, result.user.id);
+    await audit(db, {
+      userId: result.user.id,
+      action: result.created ? 'user.create' : 'auth.login',
+      entityType: 'user',
+      entityId: result.user.id,
+      details: { method: 'oidc', provider: provider.id, providerName: provider.label, ...(result.linked ? { linked: true } : {}) },
+    });
+    if (result.roleChange) {
+      // Role sync: traceable like a change in the management UI, with the provider that made it.
       await audit(db, {
         userId: result.user.id,
-        action: result.created ? 'user.create' : 'auth.login',
+        action: 'user.update',
         entityType: 'user',
         entityId: result.user.id,
-        details: { method: 'oidc' },
+        details: {
+          fields: ['role'],
+          role: result.roleChange.to,
+          previousRole: result.roleChange.from,
+          method: 'oidc',
+          provider: provider.id,
+          providerName: provider.label,
+        },
       });
-      return reply.redirect('/admin', 302);
-    },
-  );
+    }
+    return reply.redirect('/admin', 302);
+  }
+
+  const oidcRateLimit = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
+  const ProviderParams = z.object({ provider: z.uuid() });
+  /** Provider of a `/:provider/...` route; the environment provider has its own routes. */
+  const providerParam = (req: FastifyRequest): string | null => {
+    const parsed = ProviderParams.safeParse(req.params);
+    return parsed.success ? parsed.data.provider : null;
+  };
+
+  app.get('/api/auth/oidc/login', oidcRateLimit, (req, reply) => {
+    if (!config.oidcEnabled) throw notFound('OIDC login');
+    return startOidcLogin(req, reply, ENV_OIDC_PROVIDER_ID);
+  });
+
+  app.get('/api/auth/oidc/callback', oidcRateLimit, (req, reply) => {
+    if (!config.oidcEnabled) throw notFound('OIDC login');
+    return finishOidcLogin(req, reply, ENV_OIDC_PROVIDER_ID);
+  });
+
+  app.get('/api/auth/oidc/:provider/login', oidcRateLimit, (req, reply) => {
+    const id = providerParam(req);
+    if (!id) throw notFound('OIDC provider');
+    return startOidcLogin(req, reply, id);
+  });
+
+  app.get('/api/auth/oidc/:provider/callback', oidcRateLimit, (req, reply) => {
+    const id = providerParam(req);
+    if (!id) throw notFound('OIDC provider');
+    return finishOidcLogin(req, reply, id);
+  });
 }

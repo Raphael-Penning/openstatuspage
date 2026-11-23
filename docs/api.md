@@ -346,8 +346,10 @@ error documents like everywhere else.
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
 | GET | `/llms.txt`, `/llms-full.txt` | Summary of the status page for language models ([llmstxt.org](https://llmstxt.org)) and the current status as Markdown (`text/plain`). Roles `public` and `all`. |
 | GET | `/uploads/<sha256>.<ext>` | An uploaded image (`png`, `jpg`, `webp`, `ico`) with the type detected on upload, `Cache-Control: public, max-age=31536000, immutable`, an `ETag` (`304` for `If-None-Match`), `Content-Disposition: inline; filename="<file>"` (the name of the URL), `X-Content-Type-Options: nosniff` and a CSP that allows nothing. Roles `public`, `admin` and `all`. |
-| GET | `/api/auth/oidc/login` | `302` to the identity provider (PKCE, state and nonce in a signed short-lived cookie) |
-| GET | `/api/auth/oidc/callback` | `302` to `/admin` after login, or `/admin/login?error=<code>` |
+| GET | `/api/auth/oidc/login` | Provider of the `OIDC_*` environment variables: `302` to the identity provider (PKCE, state, nonce and the provider id in a signed short-lived cookie) |
+| GET | `/api/auth/oidc/callback` | Provider of the environment: `302` to `/admin` after login, or `/admin/login?error=<code>` |
+| GET | `/api/auth/oidc/:providerId/login` | The same for a provider of the management UI (`404` for an id that is not a UUID, `302` with `error=oidc_unavailable` for an unknown or disabled one) |
+| GET | `/api/auth/oidc/:providerId/callback` | The same; only accepts a login state started at this provider (`error=invalid_state` otherwise) |
 | GET | `/api/public/subscriptions/:id/unsubscribe?token=<manageToken>` | `303` to the manage page with the unsubscribe confirmation (never deletes) |
 | GET | `/s/:id/:token` | Short manage link of webhook and SMS messages: `303` to `/subscription/channel?id=…&token=…` (never deletes) |
 | POST/GET | `/subscribe`, `/subscription/*`, `/preferences/*` | HTML form handlers of the public pages, see [HTML forms](#html-forms) |
@@ -1376,7 +1378,14 @@ Content-Type: application/vnd.api+json
   "jsonapi": {"version": "1.1"},
   "data": {
     "type": "auth-configs", "id": "current",
-    "attributes": {"oidcEnabled": false, "oidcLabel": "Single Sign-On", "localLoginEnabled": true},
+    "attributes": {
+      "oidcEnabled": true, "oidcLabel": "Single Sign-On", "localLoginEnabled": true,
+      "oidcProviders": [
+        {"id": "env", "label": "Single Sign-On", "loginPath": "/api/auth/oidc/login"},
+        {"id": "1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b", "label": "Example IdP",
+         "loginPath": "/api/auth/oidc/1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b/login"}
+      ]
+    },
     "links": {"self": "/api/auth/config"}
   },
   "links": {"self": "/api/auth/config"}
@@ -4421,6 +4430,81 @@ Content-Type: application/vnd.api+json
     "links": { "self": "/api/admin/private-pages/1b6f…" }
   },
   "links": { "self": "/api/admin/private-pages" }
+}
+```
+
+### SSO providers (admin)
+
+Role `admin`. Resource type `oidc-providers`: the OpenID Connect providers of the
+login page (see [oidc.md](oidc.md)). Answers are `Cache-Control: no-store`.
+Input: `OidcProviderInput` (`name`, `sortOrder`, `enabled`, `issuerUrl`,
+`clientId`, `clientSecret`, `scopes`, `autoCreateUsers`, `linkByEmail` (default
+`false`), `allowedDomains`,
+`roleClaim`, `roleMappings` of `{ value, role: admin | editor | deny }`,
+`defaultRole: editor | deny`, `roleSync: login | create`). Attributes: the input
+without `clientSecret`, plus `hasClientSecret`, `source` (`database` or
+`environment`), `readOnly`, `callbackUrl` (redirect URI to register at the IdP),
+`loginPath`, `linkedUsers`, `createdAt`, `updatedAt`.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/admin/oidc-providers` | the provider of the environment (id `env`, read-only) first, then by `sortOrder` and name |
+| POST | `/api/admin/oidc-providers` | `201`; at most 50 providers (`409`) |
+| GET | `/api/admin/oidc-providers/:id` | |
+| PATCH | `/api/admin/oidc-providers/:id` | partial update; a new `issuerUrl` needs `clientSecret` in the same request when a secret is stored (`400`, code `secret_required`) and removes the links of users to this provider; `409` for `env` |
+| DELETE | `/api/admin/oidc-providers/:id` | `204`; also removes the links of users to this provider; `409` for `env` |
+| POST | `/api/admin/oidc-providers/test` | discovery test of an issuer that is not saved: request type `oidc-discovery-tests` with `issuerUrl` |
+| POST | `/api/admin/oidc-providers/:id/test` | discovery test of a provider (also `env`) |
+
+With `LOCAL_LOGIN_ENABLED=false` and no environment provider, disabling
+(`enabled: false`) or deleting the last enabled provider answers `409`.
+
+- `clientSecret` is write-only: a string sets it (stored encrypted with
+  SecretBox), `null` removes it (public client), leaving it out keeps it. It is
+  never part of an answer or the audit log.
+- `issuerUrl`: http(s) without credentials, query or fragment; `https` only when
+  `NODE_ENV=production` (`400`).
+- The tests answer a meta document `{ ok, message, issuer, authorizationEndpoint,
+  tokenEndpoint, userinfoEndpoint, jwksUri, endSessionEndpoint, warnings }` with
+  `200` also when the discovery failed (`ok: false`). At most 10 tests per minute;
+  no redirects are followed, 10 s time limit, 256 KiB answer limit.
+- Audit log: `oidc_provider.create`, `.update` (with the changed `fields`;
+  the secret as `clientSecret: "set" | "removed"`; after a new issuer also
+  `previousIssuerUrl` and `unlinkedUsers`), `.delete`.
+
+```http
+POST /api/admin/oidc-providers
+Content-Type: application/vnd.api+json
+
+{ "data": { "type": "oidc-providers", "attributes": {
+  "name": "Example IdP", "issuerUrl": "https://idp.example.com/realms/example",
+  "clientId": "openstatuspage", "clientSecret": "<client secret>",
+  "roleClaim": "realm_access.roles",
+  "roleMappings": [{ "value": "statuspage-admins", "role": "admin" }, { "value": "contractors", "role": "deny" }],
+  "defaultRole": "editor" } } }
+```
+
+```json
+{
+  "jsonapi": { "version": "1.1" },
+  "data": {
+    "type": "oidc-providers",
+    "id": "1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b",
+    "attributes": {
+      "name": "Example IdP", "sortOrder": 0, "enabled": true, "source": "database", "readOnly": false,
+      "issuerUrl": "https://idp.example.com/realms/example", "clientId": "openstatuspage",
+      "hasClientSecret": true, "scopes": "openid email profile", "autoCreateUsers": false, "linkByEmail": false,
+      "allowedDomains": [], "roleClaim": "realm_access.roles",
+      "roleMappings": [{ "value": "statuspage-admins", "role": "admin" }, { "value": "contractors", "role": "deny" }],
+      "defaultRole": "editor", "roleSync": "login",
+      "callbackUrl": "https://status.example.com/api/auth/oidc/1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b/callback",
+      "loginPath": "/api/auth/oidc/1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b/login",
+      "linkedUsers": 0,
+      "createdAt": "2026-11-23T09:00:00.000Z", "updatedAt": "2026-11-23T09:00:00.000Z"
+    },
+    "links": { "self": "/api/admin/oidc-providers/1b4e28ba-2fa1-4d3b-a3f5-ef19b5a7633b" }
+  },
+  "links": { "self": "/api/admin/oidc-providers" }
 }
 ```
 

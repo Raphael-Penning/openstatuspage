@@ -8,17 +8,30 @@ import { hashPassword } from '../lib/password.js';
 import { nowIso } from '../lib/time.js';
 import { deleteUserSessions } from './sessions.js';
 
-export function toAdminUser(u: User): AdminUser {
+/** `linked`: the user has at least one SSO identity (see linkedUserIds). */
+export function toAdminUser(u: User, linked: boolean): AdminUser {
   return {
     id: u.id,
     email: u.email,
     name: u.name,
     role: u.role,
     hasPassword: u.password_hash !== null,
-    oidcLinked: u.oidc_subject !== null,
+    oidcLinked: linked,
     createdAt: u.created_at,
     lastLoginAt: u.last_login_at,
   };
+}
+
+/** Ids of the users (of `userIds`, or all) linked to at least one SSO identity. */
+export async function linkedUserIds(db: Kysely<Database>, userIds?: string[]): Promise<Set<string>> {
+  if (userIds && userIds.length === 0) return new Set();
+  let query = db.selectFrom('user_oidc_identities').select('user_id').distinct();
+  if (userIds) query = query.where('user_id', 'in', userIds);
+  return new Set((await query.execute()).map((r) => r.user_id));
+}
+
+export async function toAdminUserWithLinks(db: Kysely<Database>, u: User): Promise<AdminUser> {
+  return toAdminUser(u, (await linkedUserIds(db, [u.id])).has(u.id));
 }
 
 /**
@@ -146,16 +159,15 @@ export async function createOrResetLocalUser(
   const email = input.email.trim().toLowerCase();
   const password_hash = await hashPassword(input.password);
   const now = nowIso();
-  const existing = await db.selectFrom('users').select(['id', 'oidc_subject']).where('email', '=', email).executeTakeFirst();
+  const existing = await db.selectFrom('users').select(['id']).where('email', '=', email).executeTakeFirst();
   if (existing) {
-    if (existing.oidc_subject && !options.unlinkOidc) return { ok: false, error: 'oidc_linked' };
+    const linked = (await linkedUserIds(db, [existing.id])).has(existing.id);
+    if (linked && !options.unlinkOidc) return { ok: false, error: 'oidc_linked' };
     // Role first: a refused demotion leaves the account untouched.
     if ((await changeUserRole(db, existing.id, input.role)) === 'last_admin') return { ok: false, error: 'last_admin' };
-    await db
-      .updateTable('users')
-      .set({ password_hash, ...(existing.oidc_subject ? { oidc_subject: null } : {}), updated_at: now })
-      .where('id', '=', existing.id)
-      .execute();
+    await db.updateTable('users').set({ password_hash, updated_at: now }).where('id', '=', existing.id).execute();
+    // Every SSO identity of every provider.
+    if (linked) await db.deleteFrom('user_oidc_identities').where('user_id', '=', existing.id).execute();
     await revokeUserCredentials(db, existing.id);
     return { ok: true, created: false };
   }

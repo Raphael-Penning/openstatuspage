@@ -272,7 +272,13 @@ describe('login / logout / session', () => {
   it('exposes the auth configuration', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/auth/config' });
     expect(res.json().data).toMatchObject({ type: 'auth-configs', id: 'current' });
-    expect(data(res)).toEqual({ id: 'current', oidcEnabled: false, oidcLabel: 'Single Sign-On', localLoginEnabled: true });
+    expect(data(res)).toEqual({
+      id: 'current',
+      oidcEnabled: false,
+      oidcLabel: 'Single Sign-On',
+      localLoginEnabled: true,
+      oidcProviders: [],
+    });
     const oidc = await t.app.inject({ method: 'GET', url: '/api/auth/oidc/login' });
     expect(oidc.statusCode).toBe(404);
   });
@@ -539,16 +545,25 @@ describe('create-user reset', () => {
 
   it('refuses accounts linked to an SSO identity unless the link is removed', async () => {
     const id = await createUser(t.db, { email: 'newhire@example.com', role: 'editor', password: null });
-    await t.db.updateTable('users').set({ oidc_subject: 'idp-subject' }).where('id', '=', id).execute();
+    // Linked to two providers: the environment one and one from the admin UI.
+    for (const provider_id of ['env', '00000000-0000-4000-8000-000000000001']) {
+      await t.db
+        .insertInto('user_oidc_identities')
+        .values({ provider_id, subject: 'idp-subject', user_id: id, created_at: new Date().toISOString(), last_login_at: null })
+        .execute();
+    }
+    const identities = () => t.db.selectFrom('user_oidc_identities').select('provider_id').where('user_id', '=', id).execute();
     const input = { email: 'newhire@example.com', password: 'a-new-long-password', role: 'admin' as const, name: 'X' };
 
     expect(await createOrResetLocalUser(t.db, input)).toEqual({ ok: false, error: 'oidc_linked' });
     const unchanged = await t.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
-    expect(unchanged).toMatchObject({ role: 'editor', password_hash: null, oidc_subject: 'idp-subject' });
+    expect(unchanged).toMatchObject({ role: 'editor', password_hash: null });
+    expect(await identities()).toHaveLength(2);
 
     expect(await createOrResetLocalUser(t.db, input, { unlinkOidc: true })).toEqual({ ok: true, created: false });
     const reset = await t.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirstOrThrow();
-    expect(reset).toMatchObject({ role: 'admin', oidc_subject: null });
+    expect(reset).toMatchObject({ role: 'admin' });
+    expect(await identities()).toEqual([]);
     await login(t.app, 'newhire@example.com', 'a-new-long-password');
   });
 

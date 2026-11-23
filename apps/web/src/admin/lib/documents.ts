@@ -28,3 +28,7 @@ export const MAINTENANCE_UPDATE_DOCUMENT: DocumentOptions = { type: 'maintenance
 export const CORRECTION_DOCUMENT: DocumentOptions = { type: 'corrections', relationships: { serviceIds: 'services' } };
 /** Services of a private page are a relationship (in display order). */
 export const PRIVATE_PAGE_DOCUMENT: DocumentOptions = { type: 'private-pages', relationships: { serviceIds: 'services' } };
+/** SSO providers: the client secret is write-only (`clientSecret` null removes it). */
+export const OIDC_PROVIDER_DOCUMENT: DocumentOptions = { type: 'oidc-providers' };
+/** Discovery test of an issuer URL that is not saved yet. */
+export const OIDC_DISCOVERY_TEST_DOCUMENT: DocumentOptions = { type: 'oidc-discovery-tests' };

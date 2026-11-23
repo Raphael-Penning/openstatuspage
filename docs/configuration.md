@@ -32,7 +32,7 @@ keep an instance below about 100 MB. Override `NODE_OPTIONS` to give a large his
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials, admin webhook URLs, extra header values and signing secrets, and SMS provider credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** In production the published example values (the development fallback and the value in `deploy/kubernetes/secret.example.yaml`) are refused, here and for `SUBSCRIPTION_TOKEN_KEY`. Changing it makes stored monitoring credentials unreadable (they have to be re-entered). |
+| `SECRET_KEY` | – (development fallback) | At least 32 characters, e.g. `openssl rand -base64 48`. Encrypts monitoring credentials, the client secrets of SSO providers, admin webhook URLs, extra header values and signing secrets, and SMS provider credentials at rest (AES-256-GCM) and signs cookies. **Required unless `NODE_ENV` is `development` or `test`, or `APP_ROLE=public` with `SUBSCRIPTION_TOKEN_KEY`.** In production the published example values (the development fallback and the value in `deploy/kubernetes/secret.example.yaml`) are refused, here and for `SUBSCRIPTION_TOKEN_KEY`. Changing it makes stored monitoring credentials and SSO client secrets unreadable (they have to be re-entered; an SSO provider whose secret cannot be read answers `oidc_unavailable`). |
 | `SUBSCRIPTION_TOKEN_KEY` | `SECRET_KEY` | At least 32 characters. Key of the email subscription links (confirm, manage, unsubscribe), of the webhook and SMS subscription links, and of the encrypted webhook URLs and phone numbers of visitors. A split deployment sets its own value, the same on every instance, and gives the `public` instance only this key instead of `SECRET_KEY`. Changing it invalidates links in emails already sent and makes the stored webhook URLs and phone numbers of visitors unreadable (these visitors have to subscribe again); the admin and worker instances refresh the stored token hashes on their next start. |
 | `SESSION_TTL_HOURS` | `168` (7 days) | Session lifetime. The expiry slides: active sessions are extended, idle ones expire after this many hours. Range 1–2160. |
 | `SESSION_MAX_AGE_HOURS` | `720` (30 days) | Absolute session lifetime, counted from the login. Active sessions are never extended past it, so everybody has to log in again (and SSO users pass the IdP checks again) at least this often. Range 1–8760, at least `SESSION_TTL_HOURS`; when unset and `SESSION_TTL_HOURS` is longer, that value is used. |
@@ -65,7 +65,7 @@ as an argument.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `LOCAL_LOGIN_ENABLED` | `true` | Allow e-mail/password login. Set to `false` for OIDC-only setups (make sure an OIDC user can become admin first). |
-| `OIDC_ISSUER_URL` | – | Issuer URL of the OpenID Connect provider. OIDC is enabled when this and `OIDC_CLIENT_ID` are set. |
+| `OIDC_ISSUER_URL` | – | Issuer URL of the OpenID Connect provider. OIDC is enabled when this and `OIDC_CLIENT_ID` are set, on the `all` and `admin` roles. |
 | `OIDC_CLIENT_ID` | – | Client ID registered at the IdP. |
 | `OIDC_CLIENT_SECRET` | – | Client secret. Leave empty for public clients (PKCE only). |
 | `OIDC_SCOPES` | `openid email profile` | Requested scopes. Add e.g. `groups` if your IdP needs a scope for the groups claim. |
@@ -76,6 +76,11 @@ as an argument.
 | `OIDC_AUTO_CREATE_USERS` | `false` | Create a local user on the first OIDC login. When `false`, users must be created by an admin first. Only enable it together with `OIDC_ADMIN_GROUP`/`OIDC_EDITOR_GROUP`, otherwise every account of the IdP becomes an editor (the server logs a warning). |
 
 See [oidc.md](oidc.md) for IdP setup and the role mapping rules.
+
+The `OIDC_*` variables configure one provider. Further providers (any number)
+are managed in the management UI under *Administration → Single sign-on*; their
+client secrets are stored encrypted with `SECRET_KEY`. The provider of the
+environment is listed there read-only and keeps working unchanged.
 
 ## Deployment role
 
@@ -366,7 +371,10 @@ management UI (`/admin`) never loads the tracker.
   most 1 minute (`429` with `Retry-After`). Each attempt counts before its password
   is checked, so attempts sent at the same moment do not get past the limit. A
   success or 15 minutes without failure resets the count.
-- `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`: 30 requests per minute per client IP.
+- `GET /api/auth/oidc/login` and `/api/auth/oidc/callback`, and the same routes of each provider
+  (`/api/auth/oidc/<id>/login` and `/callback`): 30 requests per minute per client IP.
+- `POST /api/admin/oidc-providers/test` and `POST /api/admin/oidc-providers/<id>/test`
+  (*Test configuration*): 10 requests per minute.
 - `POST /api/public/subscriptions` and the form `POST /subscribe`: 5 requests per minute
   per client IP together; the other
   subscription endpoints 30 requests per minute per client IP.

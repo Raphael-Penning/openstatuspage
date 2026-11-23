@@ -64,6 +64,9 @@ Go through this list before going live and after larger changes.
 - [ ] With single sign-on: `OIDC_ADMIN_GROUP` / `OIDC_EDITOR_GROUP` are set,
       `OIDC_AUTO_CREATE_USERS` is only enabled together with them, and the
       issuer is your own tenant, never a public multi-tenant endpoint.
+- [ ] SSO providers added in the management UI are restricted with allowed
+      e-mail domains or with *No access* as the default role, and *Create users
+      on their first sign-in* stays off unless you need it.
 - [ ] Consider `LOCAL_LOGIN_ENABLED=false` once single sign-on works for at
       least one administrator.
 - [ ] API tokens have the smallest role that works, descriptive names, and

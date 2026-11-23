@@ -83,7 +83,8 @@ from `/api/`, `/admin` and the personal subscription links.
   `email_outbox`, `monitor_sources`, `monitor_checks`, `monitor_check_history`,
   `service_checks`, `check_bundles`, `check_bundle_members`, `history_imports`,
   `history_import_intervals`, `task_leases`, `private_pages`,
-  `private_page_services`, `notification_webhooks`, `notification_webhook_services`,
+  `private_page_services`, `oidc_providers`, `user_oidc_identities`,
+  `notification_webhooks`, `notification_webhook_services`,
   `sms_recipients`, `sms_recipient_services`, `channel_subscribers`,
   `channel_subscriber_services`, `channel_outbox` and the role registry
   `osp_public_roles`, nor on the settings rows `channels` and `sms_provider`.
@@ -292,7 +293,8 @@ All instances need the same `SUBSCRIPTION_TOKEN_KEY`: the public instance
 derives the token hashes of new subscriptions and the manage token it returns on
 confirmation from it, the worker the tokens in the mails. The public instance
 gets **only** this key, not `SECRET_KEY` (which encrypts the monitoring
-credentials and signs the OIDC state cookie of the admin instance); it logs a
+credentials and the SSO client secrets, and signs the OIDC state cookie of the admin
+instance); it logs a
 warning when it gets `SECRET_KEY` anyway. When the token key changes, the admin
 and worker instances refresh the stored hashes on their next start (existing
 mail links stop working).
@@ -442,7 +444,11 @@ account) or obtains an API token.
   the proxy never follows redirects and forwards events only for that website
   ID. An admin account therefore cannot make the public instance request
   internal hosts (no SSRF through the settings). Admin-chosen URLs (logo,
-  links) are only ever loaded by visitors' browsers.
+  links) are only ever loaded by visitors' browsers. On the admin instance an
+  admin does choose URLs the server requests: monitoring sources and the
+  issuers of SSO providers (discovery at login and *Test configuration*). Only
+  admins can set them; the test has a time and size limit, follows no
+  redirects and reports no credentials or query strings.
 - **Guessing and keeping access is harder**: failed logins are throttled per
   account as well as per client IP, so rotating source addresses or forged
   `X-Forwarded-For` headers do not multiply the attempts. An attempt is counted
@@ -450,7 +456,15 @@ account) or obtains an API token.
   the same limit, and failures for unknown e-mail addresses cannot push an
   existing account out of the bounded counter. SSO creates or links
   an account only for an e-mail address the identity provider marks as
-  verified. An admin resetting a user's password revokes that user's API tokens
+  verified, and an SSO login only completes at the provider it started at
+  (the login state names the provider, every provider has its own redirect
+  URI). A provider added in the management UI links an existing account by
+  e-mail only when it is configured to, so a weak IdP cannot take over
+  accounts (admins included) it was never linked to. Client secrets of SSO
+  providers are stored encrypted with `SECRET_KEY` and never returned by the
+  API, and a provider pointed at another issuer needs its secret again, so the
+  stored one cannot be redirected to a host an attacker controls; the links of
+  the old issuer are removed with it. An admin resetting a user's password revokes that user's API tokens
   and sessions, a user changing their own password ends all their sessions
   and gets a fresh session cookie, and a new login replaces the session cookie it was sent with, so a
   stolen password or session does not outlive the reset.

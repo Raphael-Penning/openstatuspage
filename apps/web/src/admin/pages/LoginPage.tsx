@@ -1,4 +1,4 @@
-import { LoginInput, type SessionInfo } from '@openstatuspage/shared';
+import { LoginInput, OIDC_LOGIN_ERRORS, type SessionInfo } from '@openstatuspage/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { KeyRound } from 'lucide-react';
 import { type FormEvent } from 'react';
@@ -12,18 +12,7 @@ import { keys, useAuthConfig, useSessionQuery } from '../lib/queries';
 import { useForm } from '../lib/useForm';
 import { safeNext, useBranding } from '../session';
 
-const KNOWN_ERRORS = [
-  'oidc_unavailable',
-  'invalid_state',
-  'idp_error',
-  'oidc_failed',
-  'forbidden',
-  'no_account',
-  'missing_email',
-  'missing_subject',
-  'email_not_verified',
-  'account_conflict',
-];
+const KNOWN_ERRORS: readonly string[] = OIDC_LOGIN_ERRORS;
 
 export default function LoginPage() {
   const { t } = useTranslation('admin');
@@ -36,6 +25,7 @@ export default function LoginPage() {
   const next = safeNext(params.get('next'));
   const errorCode = params.get('error');
   const form = useForm({ email: '', password: '' });
+  const ssoProviders = config.data?.oidcProviders ?? [];
 
   const login = useMutation({
     mutationFn: (body: LoginInput) => api.post<SessionInfo>('/api/auth/login', body, { type: 'sessions' }),
@@ -112,9 +102,9 @@ export default function LoginPage() {
                   </Button>
                 </form>
               )}
-              {config.data?.oidcEnabled && (
+              {ssoProviders.length > 0 && (
                 <>
-                  {config.data.localLoginEnabled && (
+                  {config.data?.localLoginEnabled && (
                     <div className="flex items-center gap-3 text-xs text-muted">
                       <span className="h-px flex-1 bg-border" />
                       {t('login.or')}
@@ -122,13 +112,19 @@ export default function LoginPage() {
                     </div>
                   )}
                   {/* Full page navigation: the server redirects to the identity provider. */}
-                  <a href="/api/auth/oidc/login" className={buttonClass('secondary', 'md', 'w-full')}>
-                    <KeyRound aria-hidden className="size-4" />
-                    {t('login.sso', { label: config.data.oidcLabel })}
-                  </a>
+                  <ul className="flex flex-col gap-2" aria-label={t('login.ssoProviders')}>
+                    {ssoProviders.map((provider) => (
+                      <li key={provider.id}>
+                        <a href={provider.loginPath} className={buttonClass('secondary', 'md', 'w-full')}>
+                          <KeyRound aria-hidden className="size-4" />
+                          {t('login.sso', { label: provider.label })}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
                 </>
               )}
-              {config.data && !config.data.localLoginEnabled && !config.data.oidcEnabled && (
+              {config.data && !config.data.localLoginEnabled && ssoProviders.length === 0 && (
                 <p className="text-sm text-muted">{t('login.noMethods')}</p>
               )}
             </div>
