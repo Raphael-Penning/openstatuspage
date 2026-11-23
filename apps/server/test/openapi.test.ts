@@ -130,6 +130,11 @@ describe('the OpenAPI document', () => {
     expect(full.paths['/api/public/subscriptions/{id}']!.get!.security).toEqual([{ subscriptionToken: [] }]);
   });
 
+  it('marks the optional credentials of the API description only in the full scope', () => {
+    expect(full.paths['/api/openapi.json']!.get!.security).toEqual([{}, { sessionCookie: [] }, { apiToken: [] }]);
+    expect(pub.paths['/api/openapi.json']!.get!.security).toBeUndefined();
+  });
+
   it('documents JSON:API envelopes, errors and rate limits', () => {
     const create = full.paths['/api/admin/services']!.post as Record<string, any>;
     expect(Object.keys(create.requestBody.content)).toEqual([JSONAPI_MEDIA_TYPE]);

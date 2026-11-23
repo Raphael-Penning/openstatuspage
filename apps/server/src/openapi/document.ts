@@ -309,11 +309,13 @@ const SECURITY_SCHEMES: Record<string, Json> = {
   },
 };
 
-function security(op: Operation): Json[] | undefined {
+function security(op: Operation, scope: OpenApiScope): Json[] | undefined {
   const mutating = MUTATING.has(op.method);
   const session = mutating ? { sessionCookie: [], csrfHeader: [] } : { sessionCookie: [] };
   switch (op.access) {
     case 'public':
+      // Optional credentials: `{}` allows anonymous requests.
+      return op.optionalAuth && scope === 'full' ? [{}, session, { apiToken: [] }] : undefined;
     case 'anonymous':
       return undefined;
     case 'subscriptionToken':
@@ -524,9 +526,9 @@ function describe(op: Operation): string | undefined {
   return notes.length ? notes.join('\n\n') : undefined;
 }
 
-function operationObject(op: Operation, schemaName: (name: string, partial: boolean) => string): Json {
+function operationObject(op: Operation, scope: OpenApiScope, schemaName: (name: string, partial: boolean) => string): Json {
   const params = parameters(op);
-  const sec = security(op);
+  const sec = security(op, scope);
   const responses: Record<string, Json> = { ...successResponses(op.response) };
   for (const status of errorStatuses(op)) responses[String(status)] = ref('responses', ERRORS[status]!.name);
   const description = describe(op);
@@ -590,12 +592,12 @@ export function buildOpenApiDocument(scope: OpenApiScope = 'full'): OpenApiDocum
   const paths: Record<string, Record<string, Json>> = {};
   for (const op of operations) {
     const path = openApiPath(op.path);
-    (paths[path] ??= {})[op.method.toLowerCase()] = operationObject(op, schemaName);
+    (paths[path] ??= {})[op.method.toLowerCase()] = operationObject(op, scope, schemaName);
   }
 
   const usedTags = new Set(operations.map((op) => op.tag));
   const usedStatuses = new Set(operations.flatMap(errorStatuses));
-  const usedSchemes = new Set(operations.flatMap((op) => (security(op) ?? []).flatMap((s) => Object.keys(s))));
+  const usedSchemes = new Set(operations.flatMap((op) => (security(op, scope) ?? []).flatMap((s) => Object.keys(s))));
 
   const doc: OpenApiDocument = {
     openapi: '3.1.1',

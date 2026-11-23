@@ -128,6 +128,11 @@
           "200": {"description":"The OpenAPI document, with an `ETag`.","headers":{"ETag":{"description":"Validator for `If-None-Match`.","schema":{"type":"string"}}},"content":{"application/json":{"schema":{"type":"object","required":["openapi","info","paths"]}}}},
           "304": {"description":"Not modified (`If-None-Match` matched the `ETag`)."}
         },
+        "security": [
+          {},
+          {"sessionCookie":[]},
+          {"apiToken":[]}
+        ],
         "x-jsonapi": false
       }
     },

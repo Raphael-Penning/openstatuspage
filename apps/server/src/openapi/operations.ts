@@ -84,6 +84,12 @@ export interface Operation {
   summary: string;
   description?: string;
   access: Access;
+  /**
+   * `public` operations whose answer depends on optional credentials: on an
+   * `admin` or `all` instance a session cookie or API token changes it. Only
+   * stated in the full document (public instances never resolve credentials).
+   */
+  optionalAuth?: boolean;
   /** A JSON:API route (content negotiation, `include`/`sort` checks); default true. */
   jsonapi?: boolean;
   request?: RequestBody;
@@ -228,6 +234,7 @@ export const OPERATIONS: readonly Operation[] = [
     description:
       'Anonymous requests and instances with `APP_ROLE=public` get the public part (public read API, private pages, subscriptions, feeds and images). A signed-in user or an API token on an `admin` or `all` instance gets the whole API. Revalidate with `If-None-Match`.',
     access: 'public',
+    optionalAuth: true,
     jsonapi: false,
     response: {
       kind: 'other',
