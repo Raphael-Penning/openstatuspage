@@ -397,7 +397,7 @@ export function AdminLayout() {
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface px-3 lg:hidden">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface px-3 lg:hidden">
         <button
           type="button"
           onClick={() => setDrawer(true)}
@@ -408,7 +408,7 @@ export function AdminLayout() {
           <Menu aria-hidden className="size-5" />
         </button>
         <span className="text-sm font-semibold">{t('title')}</span>
-      </div>
+      </header>
       {drawer && (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label={t('nav.label')}>
           <button type="button" aria-label={t('nav.close')} className="absolute inset-0 bg-black/50" onClick={() => setDrawer(false)} />
