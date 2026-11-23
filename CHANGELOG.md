@@ -6,6 +6,27 @@ breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Installation without containers.** Every release attaches
+  `openstatuspage-<version>-linux-x64.tar.gz` and `…-linux-arm64.tar.gz`, `.deb`
+  and `.rpm` packages, `install.sh` and `SHA256SUMS`. `install.sh` installs a
+  checksum-verified release with hardened systemd units (one instance or the
+  split deployment, whose public instance runs as its own user), generates
+  `SECRET_KEY`, can set up a local PostgreSQL with the roles of `roles.sql` and
+  a send-only Postfix with OpenDKIM, and has `update`, `rollback` and
+  `uninstall` (keeps data). Guide: installation without containers.
+- **Bundled mail server in Docker Compose.** `compose.yaml` and
+  `compose.split.yaml` have a send-only `postfix` service (profile `mail`, on
+  in a new `.env` with `COMPOSE_PROFILES=mail` and `MAIL_DOMAIN`) that signs
+  with a DKIM key generated on first start, is never published and relays only
+  for the app on an internal network. `SMTP_*` still select any other server.
+- **DNS records for the bundled mail server** in Settings → Email delivery and
+  in `GET /api/admin/notifications/status` (`dns`): SPF, DKIM and DMARC for the
+  sender domain, read from the public keys in the new `MAIL_DKIM_DIR`.
+- Caddy and nginx templates in `deploy/proxy/` for one instance and the split
+  deployment.
+
 ## [0.3.1] - 2026-11-22
 
 ### Upgrading
