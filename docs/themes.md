@@ -46,7 +46,7 @@ Contents:
 | --- | --- | --- | --- |
 | Built-in | Built-in | no (copy it) | `default` (the original look), `slate`, `forest`, `high-contrast`; all pass WCAG 2.2 AA in light and dark ([packages/shared/src/theme-builtins.ts](../packages/shared/src/theme-builtins.ts)). |
 | Themes folder | Themes folder | no (copy it) | `THEMES_DIR`, read once on start. `<id>.json` and an optional `<id>.css` with the same name. Invalid files are logged (`Theme file skipped: ...`) and skipped. |
-| Upload | Uploaded | yes | **Import theme** in the admin (a `.json` and optionally a `.css`), or **Customize a copy** of any theme. Stored in the database (table `themes`, migration 0017). |
+| Upload | Uploaded | yes | **Import theme** in the admin (a `.json` and optionally a `.css`), or **Customize a copy** of a built-in or folder theme. Stored in the database (table `themes`, migration 0017). |
 
 Ids are unique across the sources. When ids collide, a built-in theme wins over
 a folder theme (the folder file is skipped and logged), and a folder theme wins
