@@ -1,0 +1,54 @@
+# nfpm configuration of the .deb and .rpm packages (scripts/build-packages.sh
+# fills in @VERSION@, @ARCH@ and @BUNDLE@, the extracted release tarball).
+# The packages contain exactly the tarball, installed to /opt/openstatuspage/app,
+# plus the systemd units. The maintainer scripts create the users, directories
+# and settings; they never enable or start a service and never overwrite
+# settings or data.
+name: openstatuspage
+arch: "@ARCH@"
+platform: linux
+version: "@VERSION@"
+version_schema: semver
+section: web
+priority: optional
+maintainer: OpenStatusPage <noreply@example.com>
+vendor: OpenStatusPage
+homepage: https://github.com/Raphael-Penning/openstatuspage
+license: AGPL-3.0-only
+description: |-
+  Self-hosted status page that keeps your infrastructure private.
+  Status page, admin portal and background worker as systemd services
+  (Node.js 22 required, not bundled).
+
+overrides:
+  deb:
+    depends:
+      - adduser | passwd
+    recommends:
+      - nodejs (>= 22)
+  rpm:
+    depends:
+      - shadow-utils
+    recommends:
+      - nodejs >= 22
+
+contents:
+  - src: "@BUNDLE@"
+    dst: /opt/openstatuspage/app
+    type: tree
+  - src: "@BUNDLE@/share/systemd/openstatuspage.service"
+    dst: /usr/lib/systemd/system/openstatuspage.service
+  - src: "@BUNDLE@/share/systemd/openstatuspage-public.service"
+    dst: /usr/lib/systemd/system/openstatuspage-public.service
+  - src: "@BUNDLE@/share/systemd/openstatuspage-admin.service"
+    dst: /usr/lib/systemd/system/openstatuspage-admin.service
+  - src: "@BUNDLE@/share/systemd/openstatuspage-worker.service"
+    dst: /usr/lib/systemd/system/openstatuspage-worker.service
+  - src: "@BUNDLE@/share/systemd/openstatuspage-split.target"
+    dst: /usr/lib/systemd/system/openstatuspage-split.target
+
+scripts:
+  preinstall: "@SCRIPTS@/preinstall.sh"
+  postinstall: "@SCRIPTS@/postinstall.sh"
+  preremove: "@SCRIPTS@/preremove.sh"
+  postremove: "@SCRIPTS@/postremove.sh"
