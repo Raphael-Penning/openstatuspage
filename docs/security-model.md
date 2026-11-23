@@ -78,7 +78,8 @@ from `/api/`, `/admin` and the personal subscription links.
   `email_outbox`, `monitor_sources`, `monitor_checks`, `monitor_check_history`,
   `service_checks`, `check_bundles`, `check_bundle_members`, `history_imports`,
   `history_import_intervals`, `task_leases`, `private_pages`,
-  `private_page_services` and the role registry `osp_public_roles`.
+  `private_page_services`, `oidc_providers`, `user_oidc_identities` and the role
+  registry `osp_public_roles`.
 - **List private pages or their services.** It cannot read the private page
   tables, their token hashes or which hidden service is on which page. The
   `osp_public.private_page*` functions (migration `0009`, `SECURITY DEFINER`,
