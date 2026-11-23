@@ -35,6 +35,9 @@ breaking changes.
 - **Public API**: `GET /api/public/pages/{slug}` returns the published content pages;
   the settings document gains `pages` (navigation and footer links) and `logoSize`.
 - Migration `0014_site_pages_uploads`.
+- An uploaded image that the logo, the favicon or a content page still uses is
+  not deleted (`409` naming the references); `PATCH /api/admin/pages/:id`
+  merges `title`, `description` and `body` per language.
 
 ### Changed
 
