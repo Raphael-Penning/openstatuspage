@@ -72,7 +72,7 @@ const toValues = (s: PublicPageSettings): Values => ({
   description: s.description,
   logoUrl: s.logoUrl ?? '',
   faviconUrl: s.faviconUrl ?? '',
-  accentColor: s.accentColor,
+  accentColor: s.accentColor ?? '',
   defaultLocale: s.defaultLocale,
   defaultTheme: s.defaultTheme,
   footerLinks: s.footerLinks.map((l) => ({ ...l, key: nextKey() })),
@@ -106,6 +106,8 @@ const toValues = (s: PublicPageSettings): Values => ({
 });
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
+/** The accent of the built-in default theme (shown while no override is set). */
+const DEFAULT_ACCENT = '#7c6cf2';
 
 export default function SettingsPage() {
   const { t } = useTranslation('admin');
@@ -143,7 +145,7 @@ function SettingsForm({ settings }: { settings: AdminPageSettings }) {
       description: v.description.trim(),
       logoUrl: empty(v.logoUrl),
       faviconUrl: empty(v.faviconUrl),
-      accentColor: v.accentColor.trim(),
+      accentColor: empty(v.accentColor),
       defaultLocale: v.defaultLocale,
       defaultTheme: v.defaultTheme,
       footerLinks: v.footerLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })),
@@ -180,7 +182,7 @@ function SettingsForm({ settings }: { settings: AdminPageSettings }) {
 
   const links = v.footerLinks;
   const setLinks = (next: FooterLinkRow[]) => form.set('footerLinks', next);
-  const previewColor = HEX.test(v.accentColor) ? v.accentColor : settings.accentColor;
+  const previewColor = HEX.test(v.accentColor) ? v.accentColor : (settings.accentColor ?? DEFAULT_ACCENT);
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-6">
