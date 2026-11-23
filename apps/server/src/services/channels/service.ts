@@ -85,6 +85,8 @@ export const CHANNEL_RETENTION_MS = 40 * 86400_000;
 const RATE_LIMIT_WAIT_MS = 60_000;
 const CLAIM_MS = 10 * 60_000;
 const INSERT_CHUNK = 100;
+/** Headers an admin's extra headers never set. */
+const RESERVED_HEADERS = new Set(['host', 'content-length', 'transfer-encoding', 'connection', 'content-type', 'te', 'upgrade', 'keep-alive', 'proxy-authorization', 'expect']);
 
 export interface QueuedMessage {
   channel: 'webhook' | 'sms';
@@ -305,7 +307,11 @@ export class ChannelService {
   ): { headers: Record<string, string>; body: string } {
     const body = webhookBody(kind, message, ctx);
     const headers: Record<string, string> = {};
-    for (const h of extraHeaders) headers[h.name.toLowerCase()] = h.value;
+    for (const h of extraHeaders) {
+      const name = h.name.toLowerCase();
+      // Hop-by-hop and framing headers are the transport's; X-OSP-* and Content-Type are set below.
+      if (!RESERVED_HEADERS.has(name) && !name.startsWith('x-osp-')) headers[name] = h.value;
+    }
     headers['content-type'] = 'application/json';
     if (kind === 'generic') {
       headers['x-osp-event'] = message.type;
