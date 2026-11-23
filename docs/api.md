@@ -4270,7 +4270,8 @@ Content-Type: application/vnd.api+json
 Role `admin`. Resource type `oidc-providers`: the OpenID Connect providers of the
 login page (see [oidc.md](oidc.md)). Answers are `Cache-Control: no-store`.
 Input: `OidcProviderInput` (`name`, `sortOrder`, `enabled`, `issuerUrl`,
-`clientId`, `clientSecret`, `scopes`, `autoCreateUsers`, `allowedDomains`,
+`clientId`, `clientSecret`, `scopes`, `autoCreateUsers`, `linkByEmail` (default
+`false`), `allowedDomains`,
 `roleClaim`, `roleMappings` of `{ value, role: admin | editor | deny }`,
 `defaultRole: editor | deny`, `roleSync: login | create`). Attributes: the input
 without `clientSecret`, plus `hasClientSecret`, `source` (`database` or
@@ -4284,6 +4285,9 @@ without `clientSecret`, plus `hasClientSecret`, `source` (`database` or
 | GET | `/api/admin/oidc-providers/:id` | |
 | PATCH | `/api/admin/oidc-providers/:id` | partial update; a new `issuerUrl` needs `clientSecret` in the same request when a secret is stored (`400`, code `secret_required`) and removes the links of users to this provider; `409` for `env` |
 | DELETE | `/api/admin/oidc-providers/:id` | `204`; also removes the links of users to this provider; `409` for `env` |
+
+With `LOCAL_LOGIN_ENABLED=false` and no environment provider, disabling
+(`enabled: false`) or deleting the last enabled provider answers `409`.
 | POST | `/api/admin/oidc-providers/test` | discovery test of an issuer that is not saved: request type `oidc-discovery-tests` with `issuerUrl` |
 | POST | `/api/admin/oidc-providers/:id/test` | discovery test of a provider (also `env`) |
 
@@ -4321,7 +4325,7 @@ Content-Type: application/vnd.api+json
     "attributes": {
       "name": "Example IdP", "sortOrder": 0, "enabled": true, "source": "database", "readOnly": false,
       "issuerUrl": "https://idp.example.com/realms/example", "clientId": "openstatuspage",
-      "hasClientSecret": true, "scopes": "openid email profile", "autoCreateUsers": false,
+      "hasClientSecret": true, "scopes": "openid email profile", "autoCreateUsers": false, "linkByEmail": false,
       "allowedDomains": [], "roleClaim": "realm_access.roles",
       "roleMappings": [{ "value": "statuspage-admins", "role": "admin" }, { "value": "contractors", "role": "deny" }],
       "defaultRole": "editor", "roleSync": "login",

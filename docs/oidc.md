@@ -14,6 +14,17 @@ There are two ways to configure a provider:
 Local password login stays available next to SSO unless
 `LOCAL_LOGIN_ENABLED=false`.
 
+### Without password login
+
+With `LOCAL_LOGIN_ENABLED=false` and no environment provider, the providers of
+the management UI are the only way in. The last enabled one can then be
+neither disabled nor deleted (`409`). A provider that is enabled but broken (a
+wrong issuer URL or secret, an IdP that is gone, a changed `SECRET_KEY`) still
+locks everybody out. To recover, set `LOCAL_LOGIN_ENABLED=true` temporarily,
+restart, sign in with a password (if no admin has one, the `create-user`
+command creates an admin with a password), fix the provider, then turn the
+password login off again.
+
 ## How it works
 
 1. The login page shows one button per enabled provider ("Sign in with
@@ -49,6 +60,7 @@ Open *Administration → Single sign-on* and choose *Add provider*.
 | Client ID / Client secret | From the client registration. The secret is **write-only**: it is stored encrypted with `SECRET_KEY` (AES-256-GCM) and never shown again; leave the field empty to keep it, or tick *Remove the stored secret (public client)*. |
 | Scopes | Space separated, must contain `openid`. Add the scope your IdP needs for groups or roles. |
 | Create users on their first sign-in | Off by default. Only for e-mail addresses the IdP marks as verified (`email_verified: true`). |
+| Link existing accounts by e-mail | Off by default. Signs an existing account with the same verified address in through this provider and links it, see [Account linking](#account-linking). Off: existing accounts are only reached through an identity already linked to them. |
 | Allowed e-mail domains | Optional, one per line. When set, only **verified** addresses of exactly these domains (no subdomains) may sign in through this provider, also users that are already linked (`domain_not_allowed`). |
 | Role claim | Claim with the groups or roles, see [Role mapping](#role-mapping). |
 | Role mapping | Claim values and what they grant: *Admin*, *Editor* or *No access*. |
@@ -125,12 +137,13 @@ It translates to the provider settings like this:
 | `OIDC_ADMIN_GROUP` | Mapping *value → Admin* |
 | `OIDC_EDITOR_GROUP` | Mapping *value → Editor*; with it the default is *No access*, without it *Editor* |
 | `OIDC_AUTO_CREATE_USERS` | Create users on their first sign-in |
-| – | Update the role: on every sign-in; no allowed domains |
+| – | Update the role: on every sign-in; link existing accounts by e-mail: on; no allowed domains |
 
 To move it into the management UI, add a provider there with the same issuer
 and client, register its new redirect URI at the IdP, and remove the `OIDC_*`
 variables. Users linked to the environment provider link again on their next
-login through a verified e-mail address.
+login through a verified e-mail address, so turn on *Link existing accounts by
+e-mail* for this provider at least until everybody has signed in once.
 
 ## Generic IdP setup
 
@@ -172,7 +185,14 @@ The sync follows the same rules as a role change in the management UI: when a
 user loses the admin role, the admin API tokens they created are revoked. The
 last admin is never demoted. Their login still works, they keep the admin role
 and the server logs a warning; make another user admin (or fix the group
-membership) to resolve it.
+membership) to resolve it. Every role the sync changes is written to the audit
+log as `user.update` with `previousRole`, `role` and the `provider`.
+
+A user linked to **several providers** that all sync the role gets the role of
+the provider they signed in with last, so it can switch between *Admin* and
+*Editor* from one login to the next when the providers map them differently.
+Map them consistently, or let only one provider sync the role (*only when the
+user is created* on the others).
 
 ## Account linking
 
@@ -180,13 +200,27 @@ Identities are linked **by `sub` per provider**: a user can be linked to
 several providers, but to one identity per provider.
 
 1. A user linked to the token's `sub` at this provider is logged in.
-2. Otherwise a local user with the same e-mail address is linked, **only if
-   the IdP marks the e-mail as verified** (`email_verified: true`) and the user
-   is not linked to another identity of this provider yet (`account_conflict`).
+2. Otherwise, when a local user with the same e-mail address exists, it is
+   linked **only if the provider links existing accounts by e-mail**, the IdP
+   marks the e-mail as verified (`email_verified: true`) and the user is not
+   linked to another identity of this provider yet (`account_conflict`).
+   Without the option the login is refused (`account_not_linked`); no second
+   account is created for the address.
 3. Otherwise a new user is created when the provider creates users. This also
    requires an `email` claim **that the IdP marks as verified**: the address
    becomes the account's unique identity, so an unverified one could claim the
    address of a person who has no account yet.
+
+**Link existing accounts by e-mail** is off for providers added in the
+management UI; the environment provider always links by e-mail, as in 0.3.x.
+Linking hands an existing account, with its role, to whoever the IdP asserts
+the address for. Without role mappings (or with *only when the user is
+created*) the account keeps its role, so an IdP meant for editors could sign in
+to an administrator's account, and with several providers the instance is only
+as safe as the one that is most careless about `email_verified`. Turn it on
+only for an IdP that verifies addresses itself and where users cannot change
+them (self-hosted IdPs often let users edit their address), ideally together
+with allowed domains; or link the accounts once and turn it off again.
 
 > **Note:** some IdPs never send `email_verified` (e.g. Microsoft Entra ID by
 > default, see below). With such an IdP neither linking by e-mail, auto
@@ -242,6 +276,7 @@ have, and API tokens they created stay valid:
 | `missing_email` | Auto creation or allowed domains need an `email` claim. |
 | `email_not_verified` | The IdP did not mark the e-mail as verified, so it is neither linked to the local user with this address, used to create a new user, nor accepted for an allowed domain. |
 | `account_conflict` | The local user with this e-mail is already linked to another identity of this provider. |
+| `account_not_linked` | A local user with this e-mail exists but is not linked to this provider, and the provider does not link existing accounts by e-mail. |
 | `missing_subject` | The ID token has no `sub`. |
 
 ## Provider notes
