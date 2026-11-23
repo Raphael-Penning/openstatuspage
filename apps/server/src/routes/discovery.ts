@@ -185,7 +185,7 @@ export function renderLlms(i: LlmsInput): string {
     `- ${link('Summary', u('/api/public/summary'))}: Everything the overview page shows`,
     `- ${link('Services', u('/api/public/services'))}: Public services with status and uptime`,
     `- ${link('History', u('/api/public/history'))}: Incidents and maintenance, paginated with \`page[number]\`, filtered with \`filter[type]\`, \`filter[service]\`, \`filter[month]\``,
-    ...(i.apiDescription ? [`- ${link('API description', u('/api/openapi.json'))}: Machine-readable OpenAPI 3.1 description of this API (JSON)`] : []),
+    ...(i.apiDescription ? [`- ${link('API description', u('/api/openapi.json'))}: Machine-readable OpenAPI 3.1 description of the public API (JSON)`] : []),
     '',
     '## Feeds',
     '',
