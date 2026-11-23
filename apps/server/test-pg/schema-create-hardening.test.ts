@@ -98,13 +98,13 @@ describe('a) a superuser migrates while PUBLIC may CREATE on public', () => {
     const owner = await connect(pgdb, 'admin');
     await prepareDatabase(owner, pgdb.config('admin'), newLog());
     // Like PostgreSQL 14, plus a direct grant to the public role on osp_public. Then the migration
-    // runs again (the functions are replaced, so it is idempotent).
+    // runs again (the functions are replaced, so it is idempotent). It is run directly: later
+    // migrations are already applied, so the migrator would refuse to run it out of order.
     await sql
-      .raw(`grant create on schema public to public; grant create on schema osp_public to ${pgdb.publicRole};
-        delete from kysely_migration where name = '0013_schema_create_hardening'`)
+      .raw(`grant create on schema public to public; grant create on schema osp_public to ${pgdb.publicRole}`)
       .execute(owner);
     expect(await mayCreate(owner, pgdb.publicRole, 'public')).toBe(true);
-    await migrateToLatest(owner);
+    await migrations['0013_schema_create_hardening']!.up(owner);
     expect(await holdsCreate(owner, 'public', 'public')).toBe(false);
     expect(await mayCreate(owner, pgdb.publicRole, 'public')).toBe(false);
     expect(await mayCreate(owner, pgdb.publicRole, 'osp_public')).toBe(false);
