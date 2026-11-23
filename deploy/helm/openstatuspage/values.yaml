@@ -358,6 +358,18 @@ extraVolumes: []
 # -- Extra volume mounts of the container.
 extraVolumeMounts: []
 
+themes:
+  # -- Mount a themes folder (THEMES_DIR, docs/themes.md) from a ConfigMap at
+  # /themes, read-only, in every instance that serves pages (not the worker).
+  # Themes are read on start: a change of the files restarts the pods.
+  enabled: false
+  # -- Theme files for a ConfigMap the chart creates: "<id>.json" (and an
+  # optional "<id>.css") to the file content, e.g. with
+  # --set-file 'themes.files.ocean\.json=./themes/ocean.json'. Ignored with existingConfigMap.
+  files: {}
+  # -- Name of an existing ConfigMap with the theme files instead of files.
+  existingConfigMap: ""
+
 networkPolicy:
   # -- Create NetworkPolicies (default deny, then the rules below per instance).
   enabled: false

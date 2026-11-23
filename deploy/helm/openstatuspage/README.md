@@ -147,6 +147,26 @@ Reasons:
 Run the bundled Postfix of the Compose files or scripts/install.sh outside the
 cluster and point `SMTP_HOST` at it if you want the same setup.
 
+### Themes
+
+Themes of the public pages can be uploaded in the management UI (stored in the
+database) or put into a themes folder (docs/themes.md). The chart mounts a
+folder from a ConfigMap at `/themes`, read-only, and sets `THEMES_DIR` in every
+instance that serves pages (single, public, admin; not the worker):
+
+```sh
+helm upgrade osp oci://ghcr.io/raphael-penning/charts/openstatuspage --reuse-values \
+  --set themes.enabled=true \
+  --set-file 'themes.files.ocean\.json=./themes/ocean.json' \
+  --set-file 'themes.files.ocean\.css=./themes/ocean.css'
+```
+
+or with `themes.existingConfigMap` naming a ConfigMap you manage (keys
+`<id>.json` and `<id>.css`). Themes are read on start: a change of the files
+the chart manages restarts the pods (checksum annotation); after a change of
+an existing ConfigMap, restart the Deployments yourself. Folder themes are
+read-only in the admin; invalid files are logged and skipped.
+
 ## Values
 
 | Key | Default | Description |
@@ -210,6 +230,9 @@ cluster and point `SMTP_HOST` at it if you want the same setup.
 | `priorityClassName` | `""` | Priority class. |
 | `terminationGracePeriodSeconds` | `30` | Shutdown time. |
 | `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` | `[]` | Extra container settings for every instance (`extraEnvFrom` reaches the public instance too). |
+| `themes.enabled` | `false` | Mount a themes folder at `/themes` (`THEMES_DIR`) in every instance that serves pages. |
+| `themes.files` | `{}` | Theme files for the chart's ConfigMap: `<id>.json` / `<id>.css` to their content. |
+| `themes.existingConfigMap` | `""` | Use this ConfigMap for the folder instead. |
 | `networkPolicy.enabled` | `false` | NetworkPolicies (deny by default). |
 | `networkPolicy.ingress.from` | namespace `ingress-nginx` | Who may reach the HTTP port (the worker accepts nothing). |
 | `networkPolicy.egress.dns` | enabled, kube-dns | DNS. |

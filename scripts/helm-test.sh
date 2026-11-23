@@ -275,6 +275,23 @@ check "topology spread gets the component selector" has splitnp Deployment "$APP
 check "ConfigMap carries the SMTP settings" has splitnp ConfigMap "$APP" 'SMTP_HOST: "smtp.example.com"'
 check "pods restart on Secret changes" has splitnp Deployment "$APP-admin" 'checksum/secret: '
 
+echo "== themes folder"
+render themes -f "$CI/split-values.yaml" --set themes.enabled=true \
+  --set-file "themes.files.ocean\\.json=$ROOT/contrib/themes/ocean.json" --set-file "themes.files.ocean\\.css=$ROOT/contrib/themes/ocean.css"
+check "themes: off by default" lacks sqlite Deployment "$APP" 'THEMES_DIR|/themes'
+check "themes: chart ConfigMap holds the theme files" has themes ConfigMap "$APP-themes" '"ocean.json": '
+check "themes: chart ConfigMap holds the extra CSS" has themes ConfigMap "$APP-themes" '"ocean.css": "/\*'
+check "themes: public gets THEMES_DIR=/themes" env_is themes "$APP-public" THEMES_DIR /themes
+check "themes: admin gets THEMES_DIR=/themes" env_is themes "$APP-admin" THEMES_DIR /themes
+check "themes: public mounts the folder read-only" \
+  bash -c "grep -A2 'mountPath: /themes' <(awk '/^  name: $APP-public\$/,/^---/' '$TMP/themes.yaml') | grep -q 'readOnly: true'"
+check "themes: public mounts the chart ConfigMap" has themes Deployment "$APP-public" "name: $APP-themes"
+check "themes: worker has no themes folder" lacks themes Deployment "$APP-worker" 'THEMES_DIR|/themes'
+check "themes: new theme files restart the pods" has themes Deployment "$APP-public" 'checksum/themes: '
+render themesexisting -f "$CI/sqlite-values.yaml" --set themes.enabled=true --set themes.existingConfigMap=example-themes
+check "themes: an existing ConfigMap is mounted" has themesexisting Deployment "$APP" 'name: example-themes'
+check "themes: no chart ConfigMap with an existing one" bash -c "! grep -q 'name: $APP-themes' '$TMP/themesexisting.yaml'"
+
 echo "== NOTES"
 notes() { # notes <name> [helm args...] -> $TMP/<name>.notes (client-side dry run, no cluster)
   local name="$1"; shift
@@ -294,6 +311,9 @@ BASE=(--set baseUrl=https://status.example.com)
 KEY=(--set secrets.secretKey=test-only-secret-key-0123456789abcdef)
 expect_failure "missing SECRET_KEY fails" 'SECRET_KEY is required' "${BASE[@]}"
 expect_failure "short SECRET_KEY fails" 'at least 32 characters' "${BASE[@]}" --set secrets.secretKey=short
+expect_failure "themes without files fails" 'themes.enabled needs themes.files' "${BASE[@]}" "${KEY[@]}" --set themes.enabled=true
+expect_failure "theme file names are checked" "'Bad.txt' does not match pattern" "${BASE[@]}" "${KEY[@]}" --set themes.enabled=true \
+  --set-string 'themes.files.Bad\.txt=x'
 expect_failure "missing baseUrl fails" 'baseUrl is required' "${KEY[@]}"
 expect_failure "baseUrl with a path fails" 'baseUrl' "${KEY[@]}" --set baseUrl=https://example.com/status
 expect_failure "split without PostgreSQL fails" 'split.enabled=true needs PostgreSQL' "${BASE[@]}" "${KEY[@]}" \

@@ -1,0 +1,19 @@
+{{- /* The themes folder (docs/themes.md): the theme files of themes.files, mounted at /themes. */}}
+{{- if .Values.themes.enabled }}
+{{- if not (or .Values.themes.files .Values.themes.existingConfigMap) }}
+{{- fail "themes.enabled needs themes.files or themes.existingConfigMap" }}
+{{- end }}
+{{- if not .Values.themes.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openstatuspage.fullname" . }}-themes
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openstatuspage.labels" . | nindent 4 }}
+data:
+  {{- range $name, $content := .Values.themes.files }}
+  {{ $name | quote }}: {{ $content | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}
