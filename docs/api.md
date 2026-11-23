@@ -332,6 +332,13 @@ zod schemas of [`schemas.ts`](../packages/shared/src/schemas.ts), converted with
   API (`Cache-Control: private, no-cache`, `Vary: Cookie, Authorization`). Worker
   instances do not serve it. The document has no server version and a relative
   server URL.
+- The setting `publicApiDescription` (default `true`) publishes the public part:
+  the public pages then link it in the footer ("API"), in the page head
+  (`<link rel="service-desc" type="application/openapi+json">`, RFC 8631) and in
+  `llms.txt`. When it is `false` the links are gone and every request that would
+  get the public part (anonymous clients, every client of a public instance) is
+  answered with `404`; signed-in users and API tokens on `admin` and `all`
+  instances still get the whole API, so `/admin/api` keeps working.
 - The management UI shows it at **API** (`/admin/api`, every signed-in user):
   the endpoints by topic with a filter, parameters, schemas, examples and
   *Try it* for requests to the same instance with the current session (the CSRF
@@ -383,7 +390,7 @@ error documents like everywhere else.
 | Method | Path | Response |
 | --- | --- | --- |
 | GET | `/api/health` | `{ "status": "ok" }` (`application/json`) for liveness/readiness probes, once the database answers. Exists in every role; the role itself is only logged on start. |
-| GET | `/api/openapi.json` | The [OpenAPI 3.1 description](#openapi-description) (`application/json`, `ETag`): the public part for anonymous clients and public instances, the whole API for signed-in users and API tokens on `admin` and `all` instances. Not on worker instances. |
+| GET | `/api/openapi.json` | The [OpenAPI 3.1 description](#openapi-description) (`application/json`, `ETag`): the public part for anonymous clients and public instances, the whole API for signed-in users and API tokens on `admin` and `all` instances. `404` for the public part when the setting `publicApiDescription` is `false`. Not on worker instances. |
 | GET | `/feed.rss`, `/feed.atom` | RSS 2.0 / Atom feed of incidents and maintenance (last 50 items) |
 | GET | `/robots.txt` | Crawler rules (`text/plain`): the public pages and the read-only `/api/public/` endpoints, without the subscription endpoints, the rest of `/api/`, `/admin`, `/subscription/`, the short manage links `/s/` and `/preferences/`, plus the sitemap; `Disallow: /` on an `admin` instance |
 | GET | `/sitemap.xml` | Sitemap index (`application/xml`) of `/sitemap-pages.xml`, `/sitemap-incidents-N.xml` (public incidents and maintenance windows) and `/sitemap-services-N.xml` (public services), at most 5,000 URLs per file. Roles `public` and `all`. |
@@ -1546,6 +1553,7 @@ Footer, navigation and link settings (attributes of `settings/site`, all optiona
 | `copyrightText` | string (≤ 200, one line), default `""` | Plain-text notice; `{year}` becomes the year of the render. Empty: `© <year> <siteName>`. |
 | `brandUrl` | http(s) URL or `null` | Links the notice to your website; also `sameAs` of the Organization JSON-LD. |
 | `showPoweredBy` | boolean, default `true` | Shows the "Powered by OpenStatusPage" line. |
+| `publicApiDescription` | boolean, default `true` | Publishes the API description: the "API" link in the footer, in the page head and in `llms.txt`, and `GET /api/openapi.json` for anonymous clients (`404` when `false`). |
 | `infoLinkUrl` | http(s) URL, a path on this site (`/about`: one leading `/`, no `//`, backslash or whitespace) or `null` | Extra entry of the page navigation; hidden when `null`. |
 | `infoLinkLabel` | string (≤ 60), default `""` | Its text; empty: "About this page" (translated). |
 | `utmEnabled` | boolean, default `false` | Append UTM parameters to the configured outbound links. |

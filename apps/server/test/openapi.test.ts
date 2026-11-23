@@ -22,6 +22,7 @@ import {
 } from '../src/openapi/document.js';
 import { NON_API_ROUTES, OPERATIONS, type Operation } from '../src/openapi/operations.js';
 import type { JsonApiRouteConfig } from '../src/plugins/jsonapi.js';
+import { DEFAULT_SETTINGS, saveSettings } from '../src/services/settings.js';
 import { adminClient, client, createTestApp, createUser, data, login, type TestApp } from './helpers.js';
 import { createWebDir, renderFromSource } from './web-fixture.js';
 
@@ -326,6 +327,42 @@ describe('GET /api/openapi.json', () => {
     // An invalid token is anonymous: the public part.
     const invalid = await t.app.inject({ method: 'GET', url: '/api/openapi.json', headers: { authorization: 'Bearer osp_wrong' } });
     expect(paths(invalid.body)).not.toContain('/api/admin/services');
+  });
+
+  it('answers 404 to anonymous clients when the page does not publish its API description, not to signed-in users', async () => {
+    const admin = await adminClient(t, 'toggle@example.com');
+    expect((await admin.get('/api/admin/settings')).json().data.attributes.publicApiDescription).toBe(true);
+    await admin.patch('/api/admin/settings', { publicApiDescription: false });
+    try {
+      const res = await t.app.inject({ method: 'GET', url: '/api/openapi.json' });
+      expect(res.statusCode).toBe(404);
+      expect(res.headers['cache-control']).toBe('private, no-cache');
+      expect(res.headers.etag).toBeUndefined();
+      // A cached copy cannot be revalidated into a 304 either.
+      const etag = String((await admin.get('/api/openapi.json')).headers.etag);
+      const cond = await t.app.inject({ method: 'GET', url: '/api/openapi.json', headers: { 'if-none-match': '*' } });
+      expect(cond.statusCode).toBe(404);
+      // Signed-in users (the admin page /admin/api) still get the whole API.
+      const cookie = await login(t.app, 'editor@example.com');
+      const full = await t.app.inject({ method: 'GET', url: '/api/openapi.json', headers: { cookie } });
+      expect(full.statusCode).toBe(200);
+      expect(full.headers.etag).toBe(etag);
+      expect(full.json()).toEqual(buildOpenApiDocument('full'));
+
+      // An APP_ROLE=public instance: no client gets anything.
+      const pub = await createTestApp({ APP_ROLE: 'public' });
+      try {
+        await saveSettings(pub.db, { ...DEFAULT_SETTINGS, publicApiDescription: false });
+        const res = await pub.app.inject({ method: 'GET', url: '/api/openapi.json', headers: { cookie } });
+        expect(res.statusCode).toBe(404);
+        expect(res.headers['cache-control']).toBe('public, no-cache');
+      } finally {
+        await pub.close();
+      }
+    } finally {
+      await admin.patch('/api/admin/settings', { publicApiDescription: true });
+    }
+    expect((await t.app.inject({ method: 'GET', url: '/api/openapi.json' })).statusCode).toBe(200);
   });
 
   it('gives every client of a public instance the public part only, and is missing on workers', async () => {

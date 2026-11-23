@@ -313,6 +313,26 @@ describe.each(['all', 'public'])('rendered public pages (APP_ROLE=%s)', (role) =
     expect(root).not.toContain('utm_');
   });
 
+  it('links the API description in the footer and the head by default, without JavaScript', async () => {
+    const res = await get('/');
+    const footer = /<footer[\s\S]*<\/footer>/.exec(rootOf(res))?.[0] ?? '';
+    expect(footer).toMatch(
+      /<a href="\/api\/openapi.json" type="application\/json" class="[^"]*">API<span class="sr-only"> \(machine-readable OpenAPI description in JSON\)<\/span><\/a>/,
+    );
+    expect(res.body).toContain('<link rel="service-desc" type="application/openapi+json" href="/api/openapi.json"/>');
+  });
+
+  it('leaves the API description link out when the page does not publish it', async () => {
+    const admin = await adminClient(seeder, 'api-link@example.com');
+    expect((await admin.patch('/api/admin/settings', { publicApiDescription: false })).statusCode).toBe(200);
+    const res = await get('/');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain('/api/openapi.json');
+    expect(rootOf(res)).toContain('Status API');
+    // The state the client hydrates from agrees with the markup.
+    expect(JSON.stringify(stateOf(res))).toContain('"publicApiDescription":false');
+  });
+
   it('caches briefly with an ETag', async () => {
     const first = await get('/');
     expect(first.headers['cache-control']).toBe('public, max-age=10, stale-while-revalidate=60');

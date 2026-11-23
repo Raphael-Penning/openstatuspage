@@ -16,6 +16,12 @@ breaking changes.
   [Themes](docs/themes.md) has a quickstart that links to it.
 - **Administration → Appearance** links to the new guide chapter
   *Creating a theme* in the help area.
+- Visitors find the API description: the public footer links the
+  machine-readable OpenAPI description (`/api/openapi.json`) as "API", also in
+  `llms.txt` and in the page head (`rel="service-desc"`). The new setting
+  **Publish the API description** (`publicApiDescription`, default on) turns it
+  off; then the endpoint answers `404` to anonymous clients and on public
+  instances, while signed-in users keep the whole API.
 
 ### Fixed
 

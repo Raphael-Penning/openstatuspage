@@ -252,10 +252,11 @@ export const OPERATIONS: readonly Operation[] = [
     tag: 'Meta',
     summary: 'This API description (OpenAPI 3.1)',
     description:
-      'Anonymous requests and instances with `APP_ROLE=public` get the public part (public read API, private pages, subscriptions, feeds and images). A signed-in user or an API token on an `admin` or `all` instance gets the whole API. Revalidate with `If-None-Match`.',
+      'Anonymous requests and instances with `APP_ROLE=public` get the public part (public read API, private pages, subscriptions, feeds and images). A signed-in user or an API token on an `admin` or `all` instance gets the whole API. When the page does not publish its API description (setting `publicApiDescription` off), every request that would get the public part is answered with `404`; signed-in users and API tokens still get the whole API. Revalidate with `If-None-Match`.',
     access: 'public',
     optionalAuth: true,
     jsonapi: false,
+    errors: [404],
     response: {
       kind: 'other',
       contentTypes: ['application/json'],
