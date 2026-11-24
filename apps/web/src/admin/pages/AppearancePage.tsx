@@ -57,6 +57,8 @@ function issueLines(error: unknown): string[] {
 
 /** Saves a file the server answers (theme export) with the name from Content-Disposition. */
 async function download(url: string, fallbackName: string): Promise<void> {
+  // Browser-side fetch of a relative same-origin admin path (/api/admin/themes/<encoded id>/export[-css]); no server-side request, not SSRF.
+  // nosemgrep: nodejs_scan.javascript-ssrf-rule-node_ssrf
   const res = await fetch(url, { credentials: 'same-origin' });
   if (!res.ok) throw new ApiError(res.status, null);
   const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
