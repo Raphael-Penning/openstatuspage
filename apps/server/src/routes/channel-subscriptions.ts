@@ -106,6 +106,8 @@ export async function registerChannelSubscriptionRoutes(app: FastifyInstance): P
       } catch {
         return reply.header('referrer-policy', 'no-referrer').redirect('/subscription/channel?error=invalid', 303);
       }
+      // Always the fixed path /subscription/channel on this site; id and token are only URL-encoded query values and already verified.
+      // nosemgrep: nodejs_scan.javascript-redirect-rule-express_open_redirect
       return reply.header('referrer-policy', 'no-referrer').redirect(channelManagePage(ctx.config, id, token), 303);
     });
 
