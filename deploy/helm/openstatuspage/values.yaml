@@ -104,7 +104,7 @@ secrets:
 # split mode. No database is deployed by the chart.
 database:
   # -- PostgreSQL URL of the owner role, e.g.
-  # postgres://osp_app:<password>@postgres.example.com:5432/openstatuspage. Used by
+  # postgres://osp_app:$DB_PASSWORD@postgres.example.com:5432/openstatuspage. Used by
   # the single instance, or by admin and worker in split mode (they migrate the
   # schema on start). Stored in the chart's Secret; prefer existingSecret.
   url: ""
@@ -115,7 +115,7 @@ database:
   public:
     # -- Split mode only: PostgreSQL URL of the restricted public role
     # (deploy/postgres/roles.sql), e.g.
-    # postgres://osp_public:<password>@postgres.example.com:5432/openstatuspage.
+    # postgres://osp_public:$DB_PASSWORD@postgres.example.com:5432/openstatuspage.
     url: ""
     # -- Existing Secret holding the URL of the public role. The public pods
     # reference it, so it must not be database.existingSecret or
