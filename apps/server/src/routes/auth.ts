@@ -139,6 +139,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // keeps the routes of 0.3.x (/api/auth/oidc/login and /api/auth/oidc/callback).
 
   const loginFail = (reply: FastifyReply, code: string) =>
+    // Fixed same-site path; the only variable is an internal error code, URL-encoded into the query.
+    // nosemgrep: nodejs_scan.javascript-redirect-rule-express_open_redirect
     reply.redirect(`/admin/login?error=${encodeURIComponent(code)}`, 302);
 
   async function startOidcLogin(req: FastifyRequest, reply: FastifyReply, providerId: string) {
