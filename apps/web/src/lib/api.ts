@@ -158,6 +158,8 @@ export const api = {
   delete: <T = void>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, undefined, options),
   /** POST of raw bytes as application/octet-stream (image uploads); the answer is a JSON:API document. */
   upload: async <T>(path: string, body: Blob, query?: Query): Promise<T> => {
+    // Browser-side same-origin fetch: path is an app constant ('/api/admin/uploads'), query is URLSearchParams-encoded.
+    // nosemgrep: nodejs_scan.javascript-ssrf-rule-node_ssrf
     const res = await fetch(buildUrl(path, query), {
       method: 'POST',
       credentials: 'same-origin',
