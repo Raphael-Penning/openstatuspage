@@ -1,0 +1,14 @@
+{
+  "name": "openstatuspage-readme-media",
+  "private": true,
+  "description": "Records the README demo GIF and screenshots and renders the social preview image. Not part of the pnpm workspace.",
+  "type": "module",
+  "scripts": {
+    "demo-data": "node demo-data.mjs",
+    "record": "node record-demo.mjs",
+    "social": "node render-social-preview.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.49.1"
+  }
+}
