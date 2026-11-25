@@ -1,5 +1,7 @@
 # OpenStatusPage
 
+![Demo of the public status page: the overview with an ongoing incident and degraded services, the incident with its updates, and the affected service with its 90-day uptime](docs/assets/demo.gif)
+
  [LIVE DEMO HERE](https://openstatus.partlabs.de/)
 
 A self-hosted, open-source status page for companies that want to keep their
